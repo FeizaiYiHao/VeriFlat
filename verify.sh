@@ -6,10 +6,7 @@ else
 fi
 FLAGS=""
 for opt in "$@"; do
-    echo $opt
     FLAGS+=" $opt"
 done
-
-echo $FLAGS
 
 $CURRENT_DIR/verus/source/target-verus/release/verus $CURRENT_DIR/lib.rs $FLAGS
