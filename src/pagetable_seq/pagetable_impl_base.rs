@@ -943,15 +943,11 @@ impl PageTable {
                     old(self).mapping_4k@,
                 ));
 
-            // assert(        
-            //     forall|cpu_id: CpuId|
-            //         #![trigger self.tlb_mapping_4k@[cpu_id as int]]
-            //         #![trigger self.tlb_mapping_2m@[cpu_id as int]]
-            //         #![trigger self.tlb_mapping_1g@[cpu_id as int]]
-            //     0 <= cpu_id < NUM_CPUS ==> self.tlb_mapping_4k@[cpu_id as int].submap_of(self.mapping_4k@) 
-            //         && self.tlb_mapping_2m@[cpu_id as int].submap_of(self.mapping_2m@)
-            //         && self.tlb_mapping_1g@[cpu_id as int].submap_of(self.mapping_1g@)
-            // );
+            assert(        
+                forall|cpu_id: CpuId|
+                    #![trigger self.tlb_mapping_4k@[cpu_id as int]]
+                0 <= cpu_id < NUM_CPUS ==> self.tlb_mapping_4k@[cpu_id as int].submap_of(self.mapping_4k@) 
+            );           
         };
 
         assert(self.wf_l4());
