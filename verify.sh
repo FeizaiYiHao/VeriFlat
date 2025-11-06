@@ -9,4 +9,4 @@ for opt in "$@"; do
     FLAGS+=" $opt"
 done
 
-$CURRENT_DIR/verus/source/target-verus/release/verus $CURRENT_DIR/lib.rs $FLAGS
+$CURRENT_DIR/verus/source/target-verus/release/verus $CURRENT_DIR/src/lib.rs $FLAGS
