@@ -164,6 +164,7 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
             0 <= cpu_id < NUM_CPUS ==> !(ret@[cpu_id as int].contains_key(va@)),
         forall|cpu_id: CpuId|
             #![trigger ret@[cpu_id as int]]
+            #![trigger tlbmap_4k@[cpu_id as int]]
             0 <= cpu_id < NUM_CPUS ==> ret@[cpu_id as int].submap_of(tlbmap_4k@[cpu_id as int]),
 {
     let mut cpu_id = 0;

@@ -8,7 +8,7 @@ use crate::define::*;
 use crate::util::page_ptr_util_u::*;
 
 // use crate::lemma::lemma_u::*;
-#[derive(Clone,Debug)]
+#[derive(Debug)]
 pub struct PageEntryPerm {
     pub present: bool,
     pub ps: bool,
@@ -17,13 +17,40 @@ pub struct PageEntryPerm {
     pub user: bool,
 }
 
-#[derive(Clone,Debug)]
+impl Clone for PageEntryPerm {
+    fn clone(&self) -> (ret:Self) 
+        ensures
+            self == ret,
+    {
+        PageEntryPerm {
+            present: self.present,
+            ps: self.ps,
+            write: self.write,
+            execute_disable: self.execute_disable,
+            user: self.user,
+        }
+    }
+
+}
+
+#[derive(Debug)]
 pub struct PageEntry {
     pub addr: PAddr,
     pub perm: PageEntryPerm,
     // pub ps: bool,
 }
+impl Clone for PageEntry {
+    fn clone(&self) -> (ret:Self) 
+        ensures
+            self == ret,
+    {
+        PageEntry {
+            addr: self.addr,
+            perm: self.perm.clone(),
+        }
+    }
 
+}
 impl PageEntry {
     pub open spec fn is_empty(&self) -> bool {
         &&& self.addr == 0
