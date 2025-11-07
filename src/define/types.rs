@@ -4,6 +4,32 @@ verus! {
 
 use vstd::simple_pptr::*;
 
+// -------------------- Begin of New Types --------------------
+pub type LocklThreadId = usize;
+
+pub type LockMajorId = usize;
+pub type LockMinorId = usize;
+pub struct LockIdX{
+    pub major:LockMajorId,
+    pub minor:LockMinorId,
+}
+
+impl LockIdX{
+    pub open spec fn spec_greater(&self, other: &Self) -> bool{
+        (self.major > other.major) || (self.major == other.major && self.minor == self.minor)
+    }
+
+    #[verifier::when_used_as_spec(spec_greater)]
+    pub fn greater(&self, other: &Self) -> (ret:bool)
+        ensures
+            ret == self.greater(other),
+    {
+        (self.major > other.major) || (self.major == other.major && self.minor == self.minor)
+    }
+}
+
+// -------------------- End of New Types ----------------------
+
 // use crate::trap::Registers;
 // -------------------- Begin of Types --------------------
 pub type ThreadPtr = usize;
