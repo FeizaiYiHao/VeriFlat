@@ -5,26 +5,36 @@ use std::thread::ThreadId;
 verus! {
 
 pub trait RwLockTrait{
-    spec fn rlocked(&self, thread_id:LocklThreadId) -> bool; 
-    spec fn wlocked(&self, thread_id:LocklThreadId) -> bool; 
+    spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
+    spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
 }
 
 impl<T> RwLockTrait for T {
-    uninterp spec fn rlocked(&self, thread_id:LocklThreadId) -> bool; 
-    uninterp spec fn wlocked(&self, thread_id:LocklThreadId) -> bool; 
+    uninterp spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
+    uninterp spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
 }
 
-pub struct ReadPerm{
-    pub local_thread_id: LocklThreadId,
-    pub lock_major: LockMajorId,
-    pub lock_minor: LockMinorId,
-}
-pub struct WritePerm{
-    pub local_thread_id: LocklThreadId,
-    pub lock_major: LockMajorId,
-    pub lock_minor: LockMinorId,
+pub tracked enum LockState {
+    Mutex,
+    ReadLock,
+    WriteLock,
 }
 
+pub tracked struct LockPerm{
+    pub local_thread_id: LockThreadId,
+    pub lock_major: LockMajorId,
+    pub lock_minor: LockMinorId,
+    pub state: LockState
+}
+
+impl LockPerm{
+    pub open spec fn lock_id(&self) -> LockId{
+        LockId{
+            major:self.lock_major,
+            minor:self.lock_minor,
+        }
+    }
+}
 
 }
 
