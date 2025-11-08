@@ -2,16 +2,72 @@ use vstd::prelude::*;
 use crate::define::*;
 use core::sync::atomic::*;
 use std::thread::ThreadId;
+
+use super::LockManager;
 verus! {
 
-pub trait RwLockTrait{
+pub trait LockMinorIdTrait {
+    spec fn lock_minor(&self) -> LockMinorId;
+}
+    
+pub trait RwLockTrait {
     spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
     spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
+    spec fn locked(&self, thread_id:LockThreadId) -> bool;
 }
 
-impl<T> RwLockTrait for T {
+// impl<T> RwLockTrait for T {
+//     uninterp spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
+//     uninterp spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
+//     open spec fn locked(&self, thread_id:LockThreadId) -> bool{
+//         self.rlocked(thread_id) || self.wlocked(thread_id)
+//     } 
+// }
+
+pub struct RwLock<T, const LMId: LockMajorId>{
+    value: Option<T>,
+}
+
+impl<T, const LMId: LockMajorId> RwLockTrait for RwLock<T, LMId> {
     uninterp spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
     uninterp spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
+    open spec fn locked(&self, thread_id:LockThreadId) -> bool{
+        self.rlocked(thread_id) || self.wlocked(thread_id)
+    } 
+}
+
+impl<T: , const LMId: LockMajorId> RwLock<T, LMId>{
+    pub closed spec fn is_Some(&self) -> bool{
+        self.value is Some
+    }
+
+    pub closed spec fn view(&self) -> T
+        recommends
+            self.is_Some(),
+    {
+        self.value->0
+    }
+
+    pub fn rlock(&mut self, Tracked(lm): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
+            requires
+            old(self).locked(old(lm).thread_id()) == false,
+            old(lm).lock_seq().len() == 0 ||
+                old(self).lock_id().greater(&old(lm).lock_seq().last()),
+        ensures
+            self.rlocked(lm.thread_id()),
+            self.wlocked(lm.thread_id()) == false,
+            self.lock_id() == old(self).lock_id(),
+            self.addr() == old(self).addr(),
+            self.is_init() == old(self).is_init(),
+            self.view() == old(self).view(),
+            lm.thread_id() == old(lm).thread_id(),
+            lm.lock_seq() == old(lm).lock_seq().push(self.lock_id()),
+            ret@.local_thread_id == lm.thread_id(),
+            ret@.state == LockState::ReadLock,
+            ret@.lock_id() == self.lock_id()
+    {
+        Tracked::assume_new()
+    }
 }
 
 pub tracked enum LockState {
@@ -20,7 +76,7 @@ pub tracked enum LockState {
     WriteLock,
 }
 
-pub tracked struct LockPerm{
+pub tracked struct LockPerm {
     pub local_thread_id: LockThreadId,
     pub lock_major: LockMajorId,
     pub lock_minor: LockMinorId,
