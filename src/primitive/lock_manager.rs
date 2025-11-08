@@ -13,7 +13,7 @@ impl ThreadIdPerm{
     pub uninterp spec fn id(&self) -> LockThreadId;
 }
 
-pub tracked struct LockManager{
+pub struct LockManager{
 }
 
 impl LockManager{
