@@ -24,8 +24,110 @@ pub trait RwLockTrait {
 //     } 
 // }
 
-pub struct RwLock<T, const LMId: LockMajorId>{
+pub struct RwLockOption<T, const LMId: LockMajorId>{
     value: Option<T>,
+}
+
+impl<T, const LMId: LockMajorId> RwLockTrait for RwLockOption<T, LMId> {
+    uninterp spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
+    uninterp spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
+    open spec fn locked(&self, thread_id:LockThreadId) -> bool{
+        self.rlocked(thread_id) || self.wlocked(thread_id)
+    } 
+}
+
+impl<T, const LMId: LockMajorId> RwLockOption<T, LMId>{
+    pub uninterp spec fn lock_minor(&self) -> usize;
+
+    pub closed spec fn view(&self) -> Option<T>
+    {
+        self.value
+    }
+
+    pub open spec fn lock_id(&self) -> LockId
+    {
+        LockId{
+            major: LMId,
+            minor: self.lock_minor(),
+        }
+    }
+
+    #[verifier::external_body]
+    pub fn wlock(&mut self, Tracked(lm): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
+            requires
+            old(self).locked(old(lm).thread_id()) == false,
+            old(lm).lock_seq().len() == 0 ||
+                old(self).lock_id().greater(&old(lm).lock_seq().last()),
+        ensures
+            self.rlocked(lm.thread_id()) == false,
+            self.wlocked(lm.thread_id()),
+            self.lock_id() == old(self).lock_id(),
+            self.view() == old(self).view(),
+            lm.thread_id() == old(lm).thread_id(),
+            lm.lock_seq() == old(lm).lock_seq().push(self.lock_id()),
+            ret@.local_thread_id == lm.thread_id(),
+            ret@.state == LockState::WriteLock,
+            ret@.lock_id() == self.lock_id()
+    {
+        Tracked::assume_new()
+    }
+
+    #[verifier::external_body]
+    pub fn wunlock(&mut self, Tracked(lm): Tracked<&mut LockManager>, lp: Tracked<LockPerm>)
+        requires
+            old(self).locked(old(lm).thread_id()),
+            lp@.local_thread_id == old(lm).thread_id(),
+            lp@.state == LockState::WriteLock,
+            lp@.lock_id() == old(self).lock_id(),
+        ensures
+            self.rlocked(lm.thread_id()) == false,
+            self.wlocked(lm.thread_id()) == false,
+            self.lock_id() == old(self).lock_id(),
+            self.view() == old(self).view(),
+            lm.thread_id() == old(lm).thread_id(),
+            lm.lock_seq() == old(lm).lock_seq().remove_value(self.lock_id()),
+    {}
+
+    #[verifier::external_body]
+    pub fn take(&mut self, lp: Tracked<&LockPerm>) -> (ret: Option<T>)
+        requires
+            lp@.state == LockState::WriteLock,
+            lp@.lock_id() == old(self).lock_id(),
+        ensures
+            forall|i:usize|
+                #![auto] 
+                self.rlocked(i) == old(self).rlocked(i),
+            forall|i:usize|
+                #![auto] 
+                self.wlocked(i) == old(self).wlocked(i),
+            self.lock_id() == old(self).lock_id(),
+            self.view() is None,
+            ret == old(self).view()
+    {
+        self.value.take()
+    }
+
+    #[verifier::external_body]
+    pub fn set(&mut self, lp: Tracked<&LockPerm>, v: Option<T>)
+        requires
+            lp@.state == LockState::WriteLock,
+            lp@.lock_id() == old(self).lock_id(),
+        ensures
+            forall|i:usize|
+                #![auto] 
+                self.rlocked(i) == old(self).rlocked(i),
+            forall|i:usize|
+                #![auto] 
+                self.wlocked(i) == old(self).wlocked(i),
+            self.lock_id() == old(self).lock_id(),
+            self.view() == v,
+    {
+        self.value = v;
+    }
+}
+
+pub struct RwLock<T, const LMId: LockMajorId>{
+    value: T,
 }
 
 impl<T, const LMId: LockMajorId> RwLockTrait for RwLock<T, LMId> {
@@ -36,37 +138,93 @@ impl<T, const LMId: LockMajorId> RwLockTrait for RwLock<T, LMId> {
     } 
 }
 
-impl<T: , const LMId: LockMajorId> RwLock<T, LMId>{
-    pub closed spec fn is_Some(&self) -> bool{
-        self.value is Some
-    }
+impl<T:Copy, const LMId: LockMajorId> RwLock<T, LMId>{
+    pub uninterp spec fn lock_minor(&self) -> usize;
 
     pub closed spec fn view(&self) -> T
-        recommends
-            self.is_Some(),
     {
-        self.value->0
+        self.value
     }
 
-    pub fn rlock(&mut self, Tracked(lm): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
+    pub open spec fn lock_id(&self) -> LockId
+    {
+        LockId{
+            major: LMId,
+            minor: self.lock_minor(),
+        }
+    }
+
+    #[verifier::external_body]
+    pub fn wlock(&mut self, Tracked(lm): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
             requires
             old(self).locked(old(lm).thread_id()) == false,
             old(lm).lock_seq().len() == 0 ||
                 old(self).lock_id().greater(&old(lm).lock_seq().last()),
         ensures
-            self.rlocked(lm.thread_id()),
-            self.wlocked(lm.thread_id()) == false,
+            self.rlocked(lm.thread_id()) == false,
+            self.wlocked(lm.thread_id()),
             self.lock_id() == old(self).lock_id(),
-            self.addr() == old(self).addr(),
-            self.is_init() == old(self).is_init(),
             self.view() == old(self).view(),
             lm.thread_id() == old(lm).thread_id(),
             lm.lock_seq() == old(lm).lock_seq().push(self.lock_id()),
             ret@.local_thread_id == lm.thread_id(),
-            ret@.state == LockState::ReadLock,
+            ret@.state == LockState::WriteLock,
             ret@.lock_id() == self.lock_id()
     {
         Tracked::assume_new()
+    }
+
+    #[verifier::external_body]
+    pub fn wunlock(&mut self, Tracked(lm): Tracked<&mut LockManager>, lp: Tracked<LockPerm>)
+        requires
+            old(self).locked(old(lm).thread_id()),
+            lp@.local_thread_id == old(lm).thread_id(),
+            lp@.state == LockState::WriteLock,
+            lp@.lock_id() == old(self).lock_id(),
+        ensures
+            self.rlocked(lm.thread_id()) == false,
+            self.wlocked(lm.thread_id()) == false,
+            self.lock_id() == old(self).lock_id(),
+            self.view() == old(self).view(),
+            lm.thread_id() == old(lm).thread_id(),
+            lm.lock_seq() == old(lm).lock_seq().remove_value(self.lock_id()),
+    {}
+
+    #[verifier::external_body]
+    pub fn take(&mut self, lp: Tracked<&LockPerm>) -> (ret: T)
+        requires
+            lp@.state == LockState::WriteLock,
+            lp@.lock_id() == old(self).lock_id(),
+        ensures
+            forall|i:usize|
+                #![auto] 
+                self.rlocked(i) == old(self).rlocked(i),
+            forall|i:usize|
+                #![auto] 
+                self.wlocked(i) == old(self).wlocked(i),
+            self.lock_id() == old(self).lock_id(),
+            old(self).view() == self.view(),
+            ret == old(self).view()
+    {
+        self.value
+    }
+
+    #[verifier::external_body]
+    pub fn set(&mut self, lp: Tracked<&LockPerm>, v: T)
+        requires
+            lp@.state == LockState::WriteLock,
+            lp@.lock_id() == old(self).lock_id(),
+        ensures
+            forall|i:usize|
+                #![auto]
+                self.rlocked(i) == old(self).rlocked(i),
+            forall|i:usize|
+                #![auto]
+                self.wlocked(i) == old(self).wlocked(i),
+            self.lock_id() == old(self).lock_id(),
+            self.view() == v,
+    {
+        self.value = v;
     }
 }
 
