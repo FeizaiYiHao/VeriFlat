@@ -46,6 +46,8 @@ pub type CpuId = usize;
 
 pub type PagePtr = usize;
 
+pub type PageIndex = usize;
+
 pub type PagePerm4k = PointsTo<[u8; PAGE_SZ_4k]>;
 
 pub type PagePerm2m = PointsTo<[u8; PAGE_SZ_2m]>;
@@ -57,6 +59,8 @@ pub type VAddr = usize;
 pub type PAddr = usize;
 
 pub type PageMapPtr = usize;
+
+pub type PageTableRoot = usize;
 
 // pub type PageEntryPerm = usize;
 pub type Pcid = usize;
@@ -126,7 +130,7 @@ pub enum PageState {
     Unavailable4k,
     Unavailable2m,
     Unavailable1g,
-    Pagetable,
+    // Pagetable,
     Allocated4k,
     Allocated2m,
     Allocated1g,

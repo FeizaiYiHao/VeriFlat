@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use crate::define::*;
+use crate::{define::*, primitive::LockInv};
 use core::sync::atomic::*;
 use std::thread::ThreadId;
 
@@ -138,7 +138,11 @@ impl<T, const LMId: LockMajorId> RwLockTrait for RwLock<T, LMId> {
     } 
 }
 
-impl<T:Copy, const LMId: LockMajorId> RwLock<T, LMId>{
+impl<T:Copy + LockInv, const LMId: LockMajorId> RwLock<T, LMId>{
+    pub open spec fn inv(&self) -> bool{
+        self@.inv()
+    }
+
     pub uninterp spec fn lock_minor(&self) -> usize;
 
     pub closed spec fn view(&self) -> T
