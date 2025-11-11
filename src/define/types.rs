@@ -15,12 +15,12 @@ pub struct LockId{
 }
 
 impl LockId{
-    pub open spec fn spec_greater(&self, other: &Self) -> bool{
+    pub open spec fn spec_greater(self, other: Self) -> bool{
         (self.major > other.major) || (self.major == other.major && self.minor == self.minor)
     }
 
     #[verifier::when_used_as_spec(spec_greater)]
-    pub fn greater(&self, other: &Self) -> (ret:bool)
+    pub fn greater(self, other: Self) -> (ret:bool)
         ensures
             ret == self.greater(other),
     {

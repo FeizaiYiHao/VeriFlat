@@ -25,7 +25,7 @@ impl LockManager{
             #![trigger self.lock_seq()[i]] 
             1<=i<self.lock_seq().len() 
             ==> 
-            self.lock_seq()[i].greater(&self.lock_seq()[i - 1])
+            self.lock_seq()[i].greater(self.lock_seq()[i - 1])
     }
 }
 
