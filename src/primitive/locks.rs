@@ -138,7 +138,7 @@ impl<T, const LMId: LockMajorId> RwLockTrait for RwLock<T, LMId> {
     } 
 }
 
-impl<T:Copy + LockInv, const LMId: LockMajorId> RwLock<T, LMId>{
+impl<T:LockInv, const LMId: LockMajorId> RwLock<T, LMId>{
     pub open spec fn inv(&self) -> bool{
         self@.inv()
     }
@@ -193,7 +193,10 @@ impl<T:Copy + LockInv, const LMId: LockMajorId> RwLock<T, LMId>{
             lm.thread_id() == old(lm).thread_id(),
             lm.lock_seq() == old(lm).lock_seq().remove_value(self.lock_id()),
     {}
+}
 
+
+impl<T:Copy + LockInv, const LMId: LockMajorId> RwLock<T, LMId>{
     #[verifier::external_body]
     pub fn take(&mut self, lp: Tracked<&LockPerm>) -> (ret: T)
         requires

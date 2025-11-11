@@ -1,4 +1,3 @@
-use std::intrinsics::fabsf128;
 
 use vstd::prelude::*;
 use vstd::simple_pptr::*;

@@ -62,6 +62,8 @@ pub type PageMapPtr = usize;
 
 pub type PageTableRoot = usize;
 
+pub type RwLockPageTableRoot = usize;
+
 // pub type PageEntryPerm = usize;
 pub type Pcid = usize;
 
@@ -130,7 +132,7 @@ pub enum PageState {
     Unavailable4k,
     Unavailable2m,
     Unavailable1g,
-    // Pagetable,
+    Pagetable(PageTableRoot),
     Allocated4k,
     Allocated2m,
     Allocated1g,
