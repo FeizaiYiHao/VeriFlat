@@ -3,6 +3,7 @@ use vstd::prelude::*;
 verus! {
 
 use crate::define::*;
+use crate::primitive::LockInv;
 use vstd::simple_pptr::*;
 use crate::util::page_ptr_util_u::*;
 use super::pagemap_util_t::*;
@@ -1219,5 +1220,11 @@ impl PageTable {
     }
 }
 
+    impl LockInv for PageTable{
+        open spec fn inv(&self) -> bool{
+            &&&
+            self.wf()
+        }
+    }
 
 } // verus!
