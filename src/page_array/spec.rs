@@ -32,7 +32,7 @@ impl PageArray{
             old(self).inv(),
             old(self)@[page_index as int].locked(old(lm).thread_id()) == false,
             old(lm).lock_seq().len() == 0 ||
-                old(self)@[page_index as int].lock_id().greater(&old(lm).lock_seq().last()),
+                old(self)@[page_index as int].lock_id().greater(old(lm).lock_seq().last()),
         ensures
             forall|p_i:usize| #![auto] page_index_wf(p_i) && p_i != page_index ==> self@[p_i as int] == old(self)@[p_i as int],
             self@[page_index as int].rlocked(lm.thread_id()) == false,
