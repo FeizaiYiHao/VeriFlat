@@ -7,6 +7,7 @@ pub mod util;
 pub mod lemma;
 pub mod primitive;
 pub mod page_array;
+pub mod kernel;
 
 verus! {
 global size_of usize == 8;
