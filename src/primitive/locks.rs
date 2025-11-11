@@ -57,7 +57,7 @@ impl<T, const LMId: LockMajorId> RwLockOption<T, LMId>{
             requires
             old(self).locked(old(lm).thread_id()) == false,
             old(lm).lock_seq().len() == 0 ||
-                old(self).lock_id().greater(&old(lm).lock_seq().last()),
+                old(self).lock_id().greater(old(lm).lock_seq().last()),
         ensures
             self.rlocked(lm.thread_id()) == false,
             self.wlocked(lm.thread_id()),
@@ -163,7 +163,7 @@ impl<T:LockInv, const LMId: LockMajorId> RwLock<T, LMId>{
             requires
             old(self).locked(old(lm).thread_id()) == false,
             old(lm).lock_seq().len() == 0 ||
-                old(self).lock_id().greater(&old(lm).lock_seq().last()),
+                old(self).lock_id().greater(old(lm).lock_seq().last()),
         ensures
             self.rlocked(lm.thread_id()) == false,
             self.wlocked(lm.thread_id()),
