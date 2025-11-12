@@ -128,6 +128,10 @@ impl<T, const lock_managerId: LockMajorId> RwLockOption<T, lock_managerId>{
 
 pub struct RwLock<T, const lock_managerId: LockMajorId>{
     value: T,
+
+    is_init: Ghost<bool>,
+    released: Ghost<bool>,
+    modified: Ghost<bool>,
 }
 
 impl<T, const lock_managerId: LockMajorId> RwLockTrait for RwLock<T, lock_managerId> {
@@ -143,11 +147,23 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
         self@.inv()
     }
 
-    pub uninterp spec fn is_init(&self) -> bool;
+    pub closed spec fn is_init(&self) -> bool{
+        self.is_init@
+    }
 
-    pub uninterp spec fn lock_minor(&self) -> usize;
+    pub closed spec fn lock_minor(&self) -> LockMinorId{
+        self.value.lock_minor()
+    }
 
-    pub uninterp spec fn released(&self) -> bool;
+    /// re-aquiring a released lock will make the state of the object well-formed bu unkown.  
+    pub closed spec fn released(&self) -> bool{
+        self.released@
+    }
+
+    /// 
+    pub closed spec fn modified(&self) -> bool{
+        self.modified@
+    }
 
     pub closed spec fn view(&self) -> T
         recommends 
@@ -168,7 +184,6 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
     pub fn wlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
             requires
             old(self).locked(old(lock_manager).thread_id()) == false,
-            old(self).is_init(),
 
             old(lock_manager).lock_seq().len() == 0 ||
                 old(self).lock_id().greater(old(lock_manager).lock_seq().last()),
@@ -177,21 +192,18 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
             self.wlocked(lock_manager.thread_id()),
             self.lock_id() == old(self).lock_id(),
             old(self).released() == false ==> self.view() == old(self).view(),
+            old(self).is_init(),
             self.is_init() == old(self).is_init(),
 
             lock_manager.thread_id() == old(lock_manager).thread_id(),
             lock_manager.lock_seq() == old(lock_manager).lock_seq().push(self.lock_id()),
+            old(lock_manager).wf() ==> lock_manager.wf(),
             ret@.thread_id() == lock_manager.thread_id(),
 
             ret@.state == LockState::WriteLock,
             ret@.lock_id() == self.lock_id(),
 
-            forall|t_id:usize| 
-                #![auto]
-                t_id != lock_manager.thread_id() 
-                ==>
-                old(self).locked(t_id) == false,
-            
+            self.modified() == false,
     {
         Tracked::assume_new()
     }
@@ -205,6 +217,8 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
             lp@.thread_id() == old(lock_manager).thread_id(),
             lp@.state == LockState::WriteLock,
             lp@.lock_id() == old(self).lock_id(),
+
+            old(lock_manager).lock_seq().contains(old(self).lock_id())
         ensures
             self.rlocked(lock_manager.thread_id()) == false,
             self.wlocked(lock_manager.thread_id()) == false,
@@ -213,7 +227,8 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
             self.is_init() == old(self).is_init(),
 
             lock_manager.thread_id() == old(lock_manager).thread_id(),
-            lock_manager.lock_seq() == old(lock_manager).lock_seq().remove_value(self.lock_id()),
+            lock_manager.lock_seq() === old(lock_manager).lock_seq().remove_value(self.lock_id()),
+            old(lock_manager).wf() ==> lock_manager.wf(),
 
             self.released(),
     {}
@@ -226,6 +241,7 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
         requires
             lp@.state == LockState::WriteLock,
             lp@.lock_id() == old(self).lock_id(),
+            old(self).is_init(),
         ensures
             forall|i:usize|
                 #![auto] 
@@ -234,7 +250,8 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
                 #![auto] 
                 self.wlocked(i) == old(self).wlocked(i),
             self.lock_id() == old(self).lock_id(),
-            ret == old(self).view()
+            self.is_init() == false,
+            ret == old(self).view(),
     {
         unsafe { core::ptr::read(&self.value as *const T) }
     }
@@ -244,6 +261,7 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
         requires
             lp@.state == LockState::WriteLock,
             lp@.lock_id() == old(self).lock_id(),
+            old(self).is_init() == false,
         ensures
             forall|i:usize|
                 #![auto]
@@ -253,6 +271,10 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
                 self.wlocked(i) == old(self).wlocked(i),
             self.lock_id() == old(self).lock_id(),
             self.view() == v,
+
+            self.modified() == true,
+
+            self.is_init(),
     {
         self.value = v;
     }

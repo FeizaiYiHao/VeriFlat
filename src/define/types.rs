@@ -16,7 +16,7 @@ pub struct LockId{
 
 impl LockId{
     pub open spec fn spec_greater(self, other: Self) -> bool{
-        (self.major > other.major) || (self.major == other.major && self.minor == self.minor)
+        (self.major > other.major) || (self.major == other.major && self.minor > self.minor)
     }
 
     #[verifier::when_used_as_spec(spec_greater)]
@@ -24,7 +24,7 @@ impl LockId{
         ensures
             ret == self.greater(other),
     {
-        (self.major > other.major) || (self.major == other.major && self.minor == self.minor)
+        (self.major > other.major) || (self.major == other.major && self.minor > self.minor)
     }
 }
 
