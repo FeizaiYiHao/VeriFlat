@@ -5,7 +5,7 @@ use crate::{define::*, primitive::*};
 verus! {
 
     #[derive(Clone, Copy)]
-    pub struct PageX {
+    pub struct Page {
         pub addr: PagePtr,
         pub state: PageState,
         // pub is_io_page: bool,
@@ -15,9 +15,9 @@ verus! {
         pub io_mappings: Ghost<Set<(PageTableRoot, VAddr)>>,
     }
 
-    pub type Page = RwLock<PageX, PHY_PAGE_LOCK_MAJOR>;
+    pub type RwLockPage = RwLock<Page, PHY_PAGE_LOCK_MAJOR>;
 
-    impl PageX{
+    impl Page{
         pub open spec fn ref_count_inv(&self) -> bool{
             &&&
             self.ref_count == self.mappings@.len() + self.io_mappings@.len()
@@ -36,7 +36,7 @@ verus! {
         }
     }
 
-    impl LockInv for PageX{
+    impl LockInv for Page{
         open spec fn inv(&self) -> bool{
             &&&
             self.ref_count_inv()

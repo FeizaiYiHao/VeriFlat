@@ -40,21 +40,21 @@ impl PageTableLocked{
     }
 
     #[verifier::external_body]
-    pub fn read_lock(&mut self, Tracked(lm): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
+    pub fn read_lock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
         requires
-            old(self).locked(old(lm).thread_id()) == false,
-            old(lm).lock_seq().len() == 0 ||
-                old(self).lock_id().greater(old(lm).lock_seq().last()),
+            old(self).locked(old(lock_manager).thread_id()) == false,
+            old(lock_manager).lock_seq().len() == 0 ||
+                old(self).lock_id().greater(old(lock_manager).lock_seq().last()),
         ensures
-            self.rlocked(lm.thread_id()),
-            self.wlocked(lm.thread_id()) == false,
+            self.rlocked(lock_manager.thread_id()),
+            self.wlocked(lock_manager.thread_id()) == false,
             self.lock_id() == old(self).lock_id(),
             self.addr() == old(self).addr(),
             self.is_init() == old(self).is_init(),
             self.view() == old(self).view(),
-            lm.thread_id() == old(lm).thread_id(),
-            lm.lock_seq() == old(lm).lock_seq().push(self.lock_id()),
-            ret@.local_thread_id == lm.thread_id(),
+            lock_manager.thread_id() == old(lock_manager).thread_id(),
+            lock_manager.lock_seq() == old(lock_manager).lock_seq().push(self.lock_id()),
+            ret@.thread_id() == lock_manager.thread_id(),
             ret@.state == LockState::ReadLock,
             ret@.lock_id() == self.lock_id()
     {
