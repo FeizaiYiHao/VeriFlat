@@ -1225,6 +1225,9 @@ impl PageTable {
             &&&
             self.wf()
         }
+        open spec fn lock_minor(&self) -> LockMinorId{
+            self.cr3
+        }
     }
 
 } // verus!

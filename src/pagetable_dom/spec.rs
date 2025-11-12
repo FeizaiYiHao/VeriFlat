@@ -32,7 +32,7 @@ impl PageTableDom {
                 &&&
                 self.map@[rw_pt_root].addr() == rw_pt_root
                 &&&
-                self.map@[rw_pt_root].value().inv()
+                self.map@[rw_pt_root].value().is_init() ==> self.map@[rw_pt_root].value().inv()
             }
     }
 
@@ -54,7 +54,6 @@ impl PageTableDom {
 
     pub open spec fn spec_index(&self, pagetable_root: RwLockPageTableRoot) -> RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>
         recommends
-            self.inv(),
             self.dom().contains(pagetable_root),
     {
         self.map@[pagetable_root].value()
@@ -78,11 +77,11 @@ impl PageTableDom {
                     self[pt_r] == old(self)[pt_r],
             
             lock_manager.thread_id() == old(lock_manager).thread_id(),
-            lock_manager.lock_seq() == lock_manager.lock_seq().push(self[pagetable_root].lock_id()),
+            lock_manager.lock_seq() == old(lock_manager).lock_seq().push(self[pagetable_root].lock_id()),
             lock_manager.wf(),
 
             self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
-            self[pagetable_root]@ == old(self)[pagetable_root]@,
+            old(self)[pagetable_root].released() == false ==> self[pagetable_root]@ == old(self)[pagetable_root]@,
             self[pagetable_root].wlocked(lock_manager.thread_id()),
             self[pagetable_root].rlocked(lock_manager.thread_id()) == false,
 
@@ -107,32 +106,33 @@ impl PageTableDom {
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
             old(self)[pagetable_root].wlocked(old(lock_manager).thread_id()) == true,
+            old(self)[pagetable_root].is_init(),
             old(lock_manager).lock_seq().contains(old(self)[pagetable_root].lock_id()),
             old(lock_manager).wf(),
             lock_perm.lock_id() == old(self)[pagetable_root].lock_id(),
             lock_perm.state == LockState::WriteLock,
             lock_perm.thread_id() == old(lock_manager).thread_id(),
         ensures 
-            // self.inv(),
-            // self.dom() == old(self).dom(),
-            // forall|pt_r:PageTableRoot|
-            //     #![auto]
-            //     self.dom().contains(pt_r) && pt_r != pagetable_root
-            //     ==>
-            //         self[pt_r] == old(self)[pt_r],
+            self.inv(),
+            self.dom() == old(self).dom(),
+            forall|pt_r:PageTableRoot|
+                #![auto]
+                self.dom().contains(pt_r) && pt_r != pagetable_root
+                ==>
+                    self[pt_r] == old(self)[pt_r],
             
-            // lock_manager.thread_id() == old(lock_manager).thread_id(),
-            // lock_manager.lock_seq() == lock_manager.lock_seq().push(self[pagetable_root].lock_id()),
-            // lock_manager.wf(),
+            lock_manager.thread_id() == old(lock_manager).thread_id(),
+            lock_manager.lock_seq() == old(lock_manager).lock_seq().remove_value(self[pagetable_root].lock_id()),
+            lock_manager.wf(),
 
-            // self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
-            // self[pagetable_root]@ == old(self)[pagetable_root]@,
-            // self[pagetable_root].wlocked(lock_manager.thread_id()),
-            // self[pagetable_root].rlocked(lock_manager.thread_id()) == false,
+            self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
+            self[pagetable_root]@ == old(self)[pagetable_root]@,
+            self[pagetable_root].wlocked(lock_manager.thread_id()) == false,
+            self[pagetable_root].rlocked(lock_manager.thread_id()) == false,
     {
-        proof{ 
-            self.page_table_dom_lock_id_axiom();
-        }
+        // proof{ 
+        //     self.page_table_dom_lock_id_axiom();
+        // }
         let tracked mut rwlock_perm = self.map.borrow_mut().tracked_remove(pagetable_root);
         let mut rwlock = PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).take(Tracked(&mut rwlock_perm));
         rwlock.wunlock(Tracked(lock_manager), Tracked(lock_perm));

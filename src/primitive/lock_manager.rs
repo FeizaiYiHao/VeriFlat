@@ -14,11 +14,17 @@ impl ThreadIdPerm{
 }
 
 pub struct LockManager{
+    thread_id: LockThreadId,
+    lock_seq: Seq<LockId>,
 }
 
 impl LockManager{
-    pub uninterp spec fn thread_id(&self) -> LockThreadId;
-    pub uninterp spec fn lock_seq(&self) -> Seq<LockId>;
+    pub closed spec fn thread_id(&self) -> LockThreadId {
+        self.thread_id
+    }
+    pub closed spec fn lock_seq(&self) -> Seq<LockId>{
+        self.lock_seq
+    }
     pub open spec fn wf(&self) -> bool{
         &&&
         forall|i:int|
