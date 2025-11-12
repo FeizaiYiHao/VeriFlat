@@ -43,5 +43,9 @@ verus! {
             &&&
             self.mapped_state_inv()
         }
+
+        open spec fn lock_minor(&self) -> LockMinorId{
+            self.addr
+        }
     }
 }
