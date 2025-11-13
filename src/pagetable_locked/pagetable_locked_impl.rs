@@ -13,10 +13,10 @@ pub struct PageTableLocked{
 }
 
 impl RwLockTrait for PageTableLocked {
-    uninterp spec fn rlocked(&self, thread_id:LockThreadId) -> bool; 
-    uninterp spec fn wlocked(&self, thread_id:LockThreadId) -> bool; 
+    uninterp spec fn rlocked_by(&self, thread_id:LockThreadId) -> bool; 
+    uninterp spec fn wlocked_by(&self, thread_id:LockThreadId) -> bool; 
     open spec fn locked(&self, thread_id:LockThreadId) -> bool{
-        self.rlocked(thread_id) || self.wlocked(thread_id)
+        self.rlocked_by(thread_id) || self.wlocked_by(thread_id)
     } 
 }
 
@@ -46,8 +46,8 @@ impl PageTableLocked{
             old(lock_manager).lock_seq().len() == 0 ||
                 old(self).lock_id().greater(old(lock_manager).lock_seq().last()),
         ensures
-            self.rlocked(lock_manager.thread_id()),
-            self.wlocked(lock_manager.thread_id()) == false,
+            self.rlocked_by(lock_manager.thread_id()),
+            self.wlocked_by(lock_manager.thread_id()) == false,
             self.lock_id() == old(self).lock_id(),
             self.addr() == old(self).addr(),
             self.is_init() == old(self).is_init(),

@@ -1,6 +1,6 @@
 use vstd::prelude::*;
-use crate::page_array::spec::PageArray;
-use crate::pagetable_dom::spec::PageTableDom;
+use crate::page_array::page_array_define_spec::*;
+use crate::pagetable_dom::pagetable_dom_define_spec::*;
 verus! {
 
     pub struct Kernel{

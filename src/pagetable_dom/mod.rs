@@ -1,1 +1,1 @@
-pub mod spec;
+pub mod pagetable_dom_define_spec;
