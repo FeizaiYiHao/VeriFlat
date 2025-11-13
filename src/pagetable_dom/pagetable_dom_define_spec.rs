@@ -32,24 +32,13 @@ impl PageTableDom {
                 &&&
                 self.map@[rw_pt_root].addr() == rw_pt_root
                 &&&
-                self.map@[rw_pt_root].value().is_init() ==> self.map@[rw_pt_root].value().inv()
-            }
-    }
-
-    pub proof fn page_table_dom_lock_id_axiom(&self)
-        requires 
-            self.perms_wf(),
-        ensures
-            forall|rw_pt_root:RwLockPageTableRoot| 
-                #![auto]
-                self.map@.dom().contains(rw_pt_root)
-                ==>
                 {
-                    &&&
-                    self.map@[rw_pt_root].value().lock_minor() == self.map@[rw_pt_root].value()@.cr3
+                    |||
+                    self.map@[rw_pt_root].value().wlocked()
+                    |||
+                    self.map@[rw_pt_root].value().inv()
                 }
-    {
-        admit()
+            }
     }
 
     pub open spec fn spec_index(&self, pagetable_root: RwLockPageTableRoot) -> RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>
@@ -82,15 +71,12 @@ impl PageTableDom {
 
             self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
             old(self)[pagetable_root].released() == false ==> self[pagetable_root]@ == old(self)[pagetable_root]@,
-            self[pagetable_root].wlocked(lock_manager.thread_id()),
-            self[pagetable_root].rlocked(lock_manager.thread_id()) == false,
+            self[pagetable_root].wlocked_by(lock_manager.thread_id()),
+            self[pagetable_root].rlocked_by(lock_manager.thread_id()) == false,
 
             ret@.lock_id() == self[pagetable_root].lock_id(),
             ret@.state == LockState::WriteLock,
     {
-        proof{ 
-            self.page_table_dom_lock_id_axiom();
-        }
         let tracked mut rwlock_perm = self.map.borrow_mut().tracked_remove(pagetable_root);
         let mut rwlock = PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).take(Tracked(&mut rwlock_perm));
         let ret = rwlock.wlock(Tracked(lock_manager));
@@ -105,8 +91,9 @@ impl PageTableDom {
         requires
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
-            old(self)[pagetable_root].wlocked(old(lock_manager).thread_id()) == true,
-            old(self)[pagetable_root].is_init(),
+            old(self)[pagetable_root].wlocked_by(old(lock_manager).thread_id()) == true,
+            old(self)[pagetable_root].inv(),
+
             old(lock_manager).lock_seq().contains(old(self)[pagetable_root].lock_id()),
             old(lock_manager).wf(),
             lock_perm.lock_id() == old(self)[pagetable_root].lock_id(),
@@ -127,12 +114,9 @@ impl PageTableDom {
 
             self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
             self[pagetable_root]@ == old(self)[pagetable_root]@,
-            self[pagetable_root].wlocked(lock_manager.thread_id()) == false,
-            self[pagetable_root].rlocked(lock_manager.thread_id()) == false,
+            self[pagetable_root].wlocked_by(lock_manager.thread_id()) == false,
+            self[pagetable_root].rlocked_by(lock_manager.thread_id()) == false,
     {
-        // proof{ 
-        //     self.page_table_dom_lock_id_axiom();
-        // }
         let tracked mut rwlock_perm = self.map.borrow_mut().tracked_remove(pagetable_root);
         let mut rwlock = PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).take(Tracked(&mut rwlock_perm));
         rwlock.wunlock(Tracked(lock_manager), Tracked(lock_perm));

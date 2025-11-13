@@ -1,5 +1,6 @@
 pub mod array;
 pub mod locks;
+pub mod lock_array;
 pub mod lock_manager;
 pub mod trait_inv;
 pub use array::*;
