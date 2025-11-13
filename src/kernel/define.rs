@@ -8,6 +8,13 @@ verus! {
         pub page_array: PageArray,
     }
 
-    
+    impl Kernel{
+        pub open spec fn subsystems_inv(&self) -> bool{
+            &&&
+            self.page_array.inv()
+            &&&
+            self.pagetable_dom.inv()
+        }
+    }
 
 }

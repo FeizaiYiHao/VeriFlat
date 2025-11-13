@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 pub mod pagetable_seq;
-pub mod pagetable_locked;
 pub mod pagetable_dom;
 pub mod define;
 pub mod util;
