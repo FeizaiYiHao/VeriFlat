@@ -682,7 +682,6 @@ impl PageTable {
             ) is None || old(self).mapping_4k().dom().contains(
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             ) == false,
-            old(self).page_closure().contains(target_entry.addr) == false,
             page_ptr_valid(target_entry.addr),
         ensures
             self.wf(),
