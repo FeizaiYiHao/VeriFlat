@@ -9,11 +9,18 @@ verus! {
     }
 
     impl Kernel{
-        pub open spec fn subsystems_inv(&self) -> bool{
+        pub open spec fn subsystems_inv(&self) -> bool {
             &&&
             self.page_array.inv()
             &&&
             self.pagetable_dom.inv()
+        }
+
+        pub open spec fn inv(&self) -> bool {
+            &&&
+            self.subsystems_inv()
+            &&&
+            self.page_array_pagetable_dom_inv()
         }
     }
 

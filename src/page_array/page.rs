@@ -20,6 +20,10 @@ verus! {
     pub type RwLockPage = RwLock<Page, PHY_PAGE_LOCK_MAJOR>;
 
     impl Page{
+        pub open spec fn mappings_4k(&self) -> Set<(PageTableRoot, VAddr)> {
+            self.mappings_4k@
+        }
+
         pub open spec fn ref_count_inv(&self) -> bool{
             &&&
             self.ref_count == self.mappings_4k@.len() + self.mappings_2m@.len() +self.mappings_1g@.len()

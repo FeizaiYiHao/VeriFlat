@@ -66,8 +66,8 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
         self.is_init@
     }
 
-    pub closed spec fn lock_minor(&self) -> LockMinorId{
-        self.value.lock_minor()
+    pub open spec fn lock_minor(&self) -> LockMinorId{
+        self@.lock_minor()
     }
 
     /// re-aquiring a released lock will make the state of the object well-formed bu unkown.  
