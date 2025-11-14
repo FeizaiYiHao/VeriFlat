@@ -6,22 +6,18 @@ use crate::primitive::lock_manager::{self, LockManager};
 use crate::primitive::write_locked_by_same_thread;
 use crate::util::page_ptr_util_u::{page_index2page_ptr, page_index_valid, spec_page_index2page_ptr};
 
-use super::define::Kernel;
+use super::kernel_define_spec::Kernel;
 verus! {
 
     impl Kernel{
         pub open spec fn page_array_pagetable_dom_inv(&self) -> bool{
             &&&
-            true
+            self.page_array_pagetable_dom_inv1()
+            &&&
+            self.page_array_pagetable_dom_inv2()
+            &&&
+            self.pagetable_dom_page_array_inv1()
         }
-
-        // pub open spec fn page_array_mapping_infer_pagetable_exist(&self, page_index: PageIndex) -> bool
-        //     recommends
-        //         page_index_valid(page_index),
-        //         self.subsystems_inv(),
-        // {
-        //     forall|
-        // }
 
         #[verifier(external_body)]
         pub proof fn page_array_pagetable_dom_inv1_open(&self)

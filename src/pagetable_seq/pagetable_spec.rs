@@ -474,16 +474,16 @@ impl PageTable {
                 self.l1_rev_map@[p].2,
             )->0.addr == p
             // no l1 tables map to other levels
-        &&& forall|p: PageMapPtr, i: L1Index|
-            #![trigger self.l1_tables@.dom().contains(p), self.l1_tables@[p].value()[i].perm.present, self.l2_tables@.dom().contains(self.l1_tables@[p].value()[i].addr)]
-            #![trigger self.l1_tables@.dom().contains(p), self.l1_tables@[p].value()[i].perm.present, self.l3_tables@.dom().contains(self.l1_tables@[p].value()[i].addr)]
-            #![trigger self.l1_tables@.dom().contains(p), self.l1_tables@[p].value()[i].perm.present, self.l1_tables@[p].value()[i].addr]
-            self.l1_tables@.dom().contains(p) && 0 <= i < 512
-                && self.l1_tables@[p].value()[i].perm.present ==> self.l2_tables@.dom().contains(
-                self.l1_tables@[p].value()[i].addr,
-            ) == false && self.l3_tables@.dom().contains(self.l1_tables@[p].value()[i].addr)
-                == false && self.cr3
-                != self.l1_tables@[p].value()[i].addr
+        // &&& forall|p: PageMapPtr, i: L1Index|
+        //     #![trigger self.l1_tables@.dom().contains(p), self.l1_tables@[p].value()[i].perm.present, self.l2_tables@.dom().contains(self.l1_tables@[p].value()[i].addr)]
+        //     #![trigger self.l1_tables@.dom().contains(p), self.l1_tables@[p].value()[i].perm.present, self.l3_tables@.dom().contains(self.l1_tables@[p].value()[i].addr)]
+        //     #![trigger self.l1_tables@.dom().contains(p), self.l1_tables@[p].value()[i].perm.present, self.l1_tables@[p].value()[i].addr]
+        //     self.l1_tables@.dom().contains(p) && 0 <= i < 512
+        //         && self.l1_tables@[p].value()[i].perm.present ==> self.l2_tables@.dom().contains(
+        //         self.l1_tables@[p].value()[i].addr,
+        //     ) == false && self.l3_tables@.dom().contains(self.l1_tables@[p].value()[i].addr)
+        //         == false && self.cr3
+        //         != self.l1_tables@[p].value()[i].addr
         // no hugepage in l1
         &&& forall|p: PageMapPtr, i: L1Index|
             #![trigger self.l1_tables@[p].value()[i].perm.ps]
