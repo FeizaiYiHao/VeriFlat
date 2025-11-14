@@ -24,6 +24,14 @@ verus! {
             self.mappings_4k@
         }
 
+        pub open spec fn mappings_2m(&self) -> Set<(PageTableRoot, VAddr)> {
+            self.mappings_2m@
+        }
+
+        pub open spec fn mappings_1g(&self) -> Set<(PageTableRoot, VAddr)> {
+            self.mappings_1g@
+        }
+
         pub open spec fn ref_count_inv(&self) -> bool{
             &&&
             self.ref_count == self.mappings_4k@.len() + self.mappings_2m@.len() +self.mappings_1g@.len()
@@ -46,10 +54,20 @@ verus! {
                 }
             }
         }
+        pub open spec fn mappings_finite(&self) -> bool{
+            &&&
+            self.mappings_4k().finite()
+            &&&
+            self.mappings_2m().finite()
+            &&&
+            self.mappings_1g().finite()
+        }
     }
 
     impl LockInv for Page{
         open spec fn inv(&self) -> bool{
+            &&&
+            self.mappings_finite()
             &&&
             self.ref_count_inv()
             &&&

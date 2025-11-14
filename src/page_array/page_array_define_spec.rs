@@ -54,6 +54,11 @@ impl PageArray{
             old(self)[page_index]@.state == PageState::Mapped4k,
             old(self)[page_index]@.ref_count != usize::MAX,
             old(self)[page_index]@.mappings_4k().contains((pagetable_root, v_addr)) == false
+        ensures
+            self.inv(),
+
+            self[page_index].wlocked_by(lock_perm.thread_id()) == true,
+            self[page_index].inv(),
     {
         let mut page = self.phy_pages.take(page_index, Tracked(lock_perm));
         page.ref_count = page.ref_count + 1;
