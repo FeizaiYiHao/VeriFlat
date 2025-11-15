@@ -21,7 +21,7 @@ Talk about how to modify Verus to enforce this check.
 
 ### Objects with atomic interfaces
 Page table `view()` update and maybe page table updates in general have an immediate effect on the observable state of the kernel hence should trigger a 
-global kernel-level `inv()` check similar to unlocking a write-lock.
+global kernel-level `inv()` check similar to unlocking a write-lock. Also any update to the PCI root table too.
 
 ## Providing an atomic system call spec interface
 
