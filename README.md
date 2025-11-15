@@ -29,7 +29,7 @@ global kernel-level `inv()` check similar to unlocking a write-lock.
 For a kernel object that is locked at most once for the duration of the entire system call, its state change can be described as a single,
 atomic operation using pre- and postcondition. 
 
-For a kernel object that is locked more than once for the duration of the system call, we can still report its last-seen state as the postcondition, 
+For a kernel object that is locked more than once for the duration of the system call, we can still report its last-seen state in the postcondition, 
 but it shouldn't be super useful. 
 
 ### Nullifying the pre state of re-locked object. 
