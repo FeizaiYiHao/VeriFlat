@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 
-use crate::{define::*, page_array::page::*, primitive::*, util::page_index_util::page_index_wf};
+use crate::{define::*, page_array::page::*, primitive::*, util::{page_index_util::page_index_wf, seq_util::no_change_except}};
 
 verus! {
 
@@ -40,7 +40,7 @@ impl PageArray{
         self.phy_pages@
     }
 
-    pub fn add_mapping_4k(&mut self, page_index: PageIndex, Tracked(lock_perm): Tracked<&LockPerm>, pagetable_root:PageTableRoot, v_addr: VAddr)
+    pub fn page_add_mapping_4k(&mut self, page_index: PageIndex, Tracked(lock_perm): Tracked<&LockPerm>, pagetable_root:PageTableRoot, v_addr: VAddr)
         requires
             page_index_wf(page_index),
             old(self).inv(),
@@ -57,13 +57,34 @@ impl PageArray{
         ensures
             self.inv(),
 
+            no_change_except(self@, old(self)@, page_index),
+
             self[page_index].wlocked_by(lock_perm.thread_id()) == true,
             self[page_index].inv(),
+            self[page_index]@.state == old(self)[page_index]@.state,
+            self[page_index]@.addr == old(self)[page_index]@.addr,
     {
         let mut page = self.phy_pages.take(page_index, Tracked(lock_perm));
         page.ref_count = page.ref_count + 1;
         page.mappings_4k = Ghost(page.mappings_4k@.insert((pagetable_root, v_addr)));
         self.phy_pages.put(page_index,Tracked(lock_perm), page);
+    }
+
+    pub fn lock_page(&mut self, page_index: PageIndex, Tracked(lock_manager): Tracked<&mut LockManager>) -> (ret: Tracked<LockPerm>)
+        requires
+            page_index_wf(page_index),
+            old(self).inv(),
+
+            old(self)[page_index].locked(old(lock_manager).thread_id()) == false,
+                old(lock_manager).lock_seq().len() == 0 ||
+                    old(self)[page_index].lock_id().greater(old(lock_manager).lock_seq().last()),
+        ensures
+            self.inv(),
+
+            self[page_index].wlocked_by(lock_manager.thread_id()) == true,
+            self[page_index].inv(),
+    {
+        self.phy_pages.wlock(page_index, Tracked(lock_manager))
     }
 
 }

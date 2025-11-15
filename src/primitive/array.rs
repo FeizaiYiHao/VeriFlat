@@ -8,7 +8,6 @@ pub struct Array<A, const N: usize>{
 }
 
 impl<A, const N: usize> Array<A, N> {
-
     #[verifier(external_body)]
     pub const fn new() -> (ret: Self)
         ensures
