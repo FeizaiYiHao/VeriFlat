@@ -616,42 +616,29 @@ impl PageTable {
         }
     }
 
-    pub open   spec fn spec_resolve_mapping_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<
-        PageEntry,
-    >
+    pub open   spec fn spec_resolve_mapping_1g_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i < 512,
             0 <= l3i < 512,
     {
         if self.spec_resolve_mapping_l4(l4i) is None {
             None
-        } else if !self.l3_tables@[self.spec_resolve_mapping_l4(
-            l4i,
-        )->0.addr].value()[l3i].perm.present
-            || !self.l3_tables@[self.spec_resolve_mapping_l4(
-            l4i,
-        )->0.addr].value()[l3i].perm.ps {
-            None
-        } else {
+        } else if !self.l3_tables@[self.spec_resolve_mapping_l4(l4i)->0.addr].value()[l3i].perm.ps {
+                None
+            } else {
             Some(self.l3_tables@[self.spec_resolve_mapping_l4(l4i)->0.addr].value()[l3i])
         }
     }
 
-    pub open   spec fn spec_resolve_mapping_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<
-        PageEntry,
-    >
+    pub open   spec fn spec_resolve_mapping_l3(&self, l4i: L4Index, l3i: L3Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i < 512,
             0 <= l3i < 512,
     {
         if self.spec_resolve_mapping_l4(l4i) is None {
             None
-        } else if !self.l3_tables@[self.spec_resolve_mapping_l4(
-            l4i,
-        )->0.addr].value()[l3i].perm.present
-            || self.l3_tables@[self.spec_resolve_mapping_l4(
-            l4i,
-        )->0.addr].value()[l3i].perm.ps {
+        } else if !self.l3_tables@[self.spec_resolve_mapping_l4(l4i)->0.addr].value()[l3i].perm.present
+            || self.l3_tables@[self.spec_resolve_mapping_l4(l4i)->0.addr].value()[l3i].perm.ps {
             None
         } else {
             Some(self.l3_tables@[self.spec_resolve_mapping_l4(l4i)->0.addr].value()[l3i])
@@ -671,22 +658,10 @@ impl PageTable {
     {
         if self.spec_resolve_mapping_l3(l4i, l3i) is None {
             None
-        } else if !self.l2_tables@[self.spec_resolve_mapping_l3(
-            l4i,
-            l3i,
-        )->0.addr].value()[l2i].perm.present
-            || !self.l2_tables@[self.spec_resolve_mapping_l3(
-            l4i,
-            l3i,
-        )->0.addr].value()[l2i].perm.ps {
+        } else if !self.l2_tables@[self.spec_resolve_mapping_l3(l4i,l3i)->0.addr].value()[l2i].perm.ps {
             None
         } else {
-            Some(
-                self.l2_tables@[self.spec_resolve_mapping_l3(
-                    l4i,
-                    l3i,
-                )->0.addr].value()[l2i],
-            )
+            Some(self.l2_tables@[self.spec_resolve_mapping_l3(l4i,l3i)->0.addr].value()[l2i])
         }
     }
 
@@ -707,18 +682,10 @@ impl PageTable {
             l4i,
             l3i,
         )->0.addr].value()[l2i].perm.present
-            || self.l2_tables@[self.spec_resolve_mapping_l3(
-            l4i,
-            l3i,
-        )->0.addr].value()[l2i].perm.ps {
+            || self.l2_tables@[self.spec_resolve_mapping_l3(l4i,l3i)->0.addr].value()[l2i].perm.ps {
             None
         } else {
-            Some(
-                self.l2_tables@[self.spec_resolve_mapping_l3(
-                    l4i,
-                    l3i,
-                )->0.addr].value()[l2i],
-            )
+            Some(self.l2_tables@[self.spec_resolve_mapping_l3(l4i,l3i)->0.addr].value()[l2i])
         }
     }
 
@@ -737,20 +704,10 @@ impl PageTable {
     {
         if self.spec_resolve_mapping_l2(l4i, l3i, l2i) is None {
             None
-        } else if !self.l1_tables@[self.spec_resolve_mapping_l2(
-            l4i,
-            l3i,
-            l2i,
-        )->0.addr].value()[l1i].perm.present {
+        } else if !self.l1_tables@[self.spec_resolve_mapping_l2(l4i,l3i,l2i)->0.addr].value()[l1i].perm.present {
             None
         } else {
-            Some(
-                self.l1_tables@[self.spec_resolve_mapping_l2(
-                    l4i,
-                    l3i,
-                    l2i,
-                )->0.addr].value()[l1i],
-            )
+            Some(self.l1_tables@[self.spec_resolve_mapping_l2(l4i,l3i,l2i)->0.addr].value()[l1i])
         }
 
     }

@@ -112,7 +112,7 @@ impl PageTable {
         let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
         let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
         let l3_entry = l3_tbl.get(target_l3i);
-        if l3_entry.perm.present && l3_entry.perm.ps {
+        if l3_entry.perm.ps {
             Some(l3_entry)
         } else {
             None
@@ -301,6 +301,7 @@ impl PageTable {
                     write: true,
                     execute_disable: false,
                     user: true,
+                    kernel_present: true,
                 },
             },
         );
@@ -437,6 +438,7 @@ impl PageTable {
                     write: true,
                     execute_disable: false,
                     user: true,
+                    kernel_present: true,
                 },
             },
         );
@@ -583,6 +585,7 @@ impl PageTable {
                     write: true,
                     execute_disable: false,
                     user: true,
+                    kernel_present: true,
                 },
             },
         );
@@ -725,6 +728,7 @@ impl PageTable {
                     write: target_entry.write,
                     execute_disable: target_entry.execute_disable,
                     user: true,
+                    kernel_present: true,
                 },
             },
         );
@@ -1120,6 +1124,7 @@ impl PageTable {
                     write: target_entry.write,
                     execute_disable: target_entry.execute_disable,
                     user: true,
+                    kernel_present: true,
                 },
             },
         );
@@ -1292,6 +1297,7 @@ impl PageTable {
                     write: false,
                     execute_disable: false,
                     user: false,
+                    kernel_present: true,
                 },
             },
         );
@@ -1491,6 +1497,7 @@ impl PageTable {
                     write: false,
                     execute_disable: false,
                     user: false,
+                    kernel_present: true,
                 },
             },
         );
@@ -1695,6 +1702,7 @@ impl PageTable {
                     write: false,
                     execute_disable: false,
                     user: false,
+                    kernel_present: true,
                 },
             },
         );
