@@ -112,7 +112,7 @@ impl PageTable {
         let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
         let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
         let l3_entry = l3_tbl.get(target_l3i);
-        if l3_entry.perm.ps {
+        if l3_entry.perm.ps && l3_entry.perm.kernel_present {
             Some(l3_entry)
         } else {
             None
@@ -190,7 +190,7 @@ impl PageTable {
         let tracked l2_perm = self.l2_tables.borrow().tracked_borrow(l3_entry.addr);
         let l2_tbl: &PageMap = PPtr::<PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
         let l2_entry = l2_tbl.get(target_l2i);
-        if l2_entry.perm.present && l2_entry.perm.ps {
+        if l2_entry.perm.kernel_present && l2_entry.perm.ps {
             Some(l2_entry)
         } else {
             None
@@ -214,13 +214,10 @@ impl PageTable {
             self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
         ensures
             self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
-            self.mapping_4k().dom().contains(
-                spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
-            ) =~= ret is Some,
-            ret is Some ==> self.mapping_4k().dom().contains(
-                spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
-            ) && self.mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))]
-                == page_entry_to_map_entry(&ret.unwrap()),
+            self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),) =~= ret is Some,
+            ret is Some 
+                ==> self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) 
+                && self.mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))] == page_entry_to_map_entry(&ret.unwrap()),
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -231,10 +228,11 @@ impl PageTable {
         proof {
             va_lemma();
         }
+        assert(self.l1_tables@.dom().contains(l2_entry.addr));
         let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(l2_entry.addr);
         let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(l2_entry.addr).borrow(Tracked(l1_perm));
         let l1_entry = l1_tbl.get(target_l1i);
-        if l1_entry.perm.present {
+        if l1_entry.perm.kernel_present {
             Some(l1_entry)
         } else {
             None
@@ -281,7 +279,9 @@ impl PageTable {
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
             #![trigger page_map_perm.value()[i].perm.present]
+            #![trigger page_map_perm.value()[i].perm.ps]
             0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
+                && page_map_perm.value()[i].perm.ps == false
                 && page_map_perm.value()[i].perm.present == false
                 && page_map_perm.value()[i].perm.write == false
                 && page_map_perm.value()[i].perm.execute_disable == false);
@@ -301,7 +301,7 @@ impl PageTable {
                     write: true,
                     execute_disable: false,
                     user: true,
-                    kernel_present: true,
+                    kernel_present: false,
                 },
             },
         );
@@ -326,32 +326,32 @@ impl PageTable {
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
                 #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
                 #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
-                    < 512 ==> old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)
-                    == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    && 0 <= l1i < 512 
+                    ==> 
+                    old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i));
         };
         assert(self.wf_mapping_2m()) by {
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
                 #![trigger old(self).spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 ==> old(
-                    self,
-                ).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(
-                    l4i,
-                    l3i,
-                    l2i,
-                ));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    ==> 
+                    old(self).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i));
         };
         assert(self.wf_mapping_1g()) by {
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_1g_l3(l4i,l3i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 ==> old(
-                    self,
-                ).spec_resolve_mapping_1g_l3(l4i, l3i) == self.spec_resolve_mapping_1g_l3(
-                    l4i,
-                    l3i,
-                ));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512
+                    ==> 
+                    old(self).spec_resolve_mapping_1g_l3(l4i, l3i) == self.spec_resolve_mapping_1g_l3(l4i, l3i)
+                );
         };
         assert(self.user_only()) ;
         assert(self.rwx_upper_level_entries());
@@ -385,7 +385,9 @@ impl PageTable {
             page_map_perm.value().wf(),
             forall|i: usize|
                 #![trigger page_map_perm.value()[i].is_empty()]
-                0 <= i < 512 ==> page_map_perm.value()[i].is_empty(),
+                0 <= i < 512 
+                ==> 
+                page_map_perm.value()[i].is_empty(),
         ensures
             self.wf(),
             self.kernel_l4_end == old(self).kernel_l4_end,
@@ -410,17 +412,19 @@ impl PageTable {
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
             #![trigger page_map_perm.value()[i].perm.present]
-            0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
+            #![trigger page_map_perm.value()[i].perm.ps]
+            0 <= i < 512 
+            ==> 
+                page_map_perm.value()[i].is_empty()
                 && page_map_perm.value()[i].perm.present == false
                 && page_map_perm.value()[i].perm.write == false
-                && page_map_perm.value()[i].perm.execute_disable == false);
-        assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && !old(
-            self,
-        ).spec_resolve_mapping_l4(target_l4i)->0.perm.ps && old(
-            self,
-        ).spec_resolve_mapping_l4(target_l4i)->0.perm.write && !old(
-            self,
-        ).spec_resolve_mapping_l4(target_l4i)->0.perm.execute_disable);
+                && page_map_perm.value()[i].perm.execute_disable == false
+                && page_map_perm.value()[i].perm.ps == false
+            );
+        assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present 
+            && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps 
+            && old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.write 
+            && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.execute_disable);
 
         let tracked mut l3_perm = self.l3_tables.borrow_mut().tracked_remove(target_l3_p);
         proof {
@@ -445,17 +449,11 @@ impl PageTable {
         proof {
             self.l3_tables.borrow_mut().tracked_insert(target_l3_p, l3_perm);
             assert(self.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some
-                && self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr
-                == page_map_ptr && !self.spec_resolve_mapping_l3(
-                target_l4i,
-                target_l3i,
-            )->0.perm.ps && self.spec_resolve_mapping_l3(
-                target_l4i,
-                target_l3i,
-            )->0.perm.write && !self.spec_resolve_mapping_l3(
-                target_l4i,
-                target_l3i,
-            )->0.perm.execute_disable);
+                    && self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == page_map_ptr 
+                    && !self.spec_resolve_mapping_l3(target_l4i,target_l3i)->0.perm.ps 
+                    && self.spec_resolve_mapping_l3(target_l4i,target_l3i)->0.perm.write 
+                    && !self.spec_resolve_mapping_l3(target_l4i,target_l3i)->0.perm.execute_disable
+                );
             self.l2_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
             self.l2_rev_map@ = self.l2_rev_map@.insert(page_map_ptr, (target_l4i, target_l3i));
         }
@@ -471,31 +469,32 @@ impl PageTable {
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
                 #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
                 #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
-                    < 512 ==> old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)
-                    == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    && 0 <= l1i < 512 
+                    ==> 
+                    old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i));
         };
         assert(self.wf_mapping_2m()) by {
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
                 #![trigger old(self).spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 ==> old(
-                    self,
-                ).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(
-                    l4i,
-                    l3i,
-                    l2i,
-                ));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512
+                    ==> 
+                    old(self).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i));
         };
         assert(self.wf_mapping_1g()) by {
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_1g_l3(l4i,l3i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && (l4i, l3i) != (
-                    target_l4i,
-                    target_l3i,
-                ) ==> old(self).spec_resolve_mapping_1g_l3(l4i, l3i)
-                    =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && (l4i, l3i) != (target_l4i,target_l3i) 
+                    ==>
+                    old(self).spec_resolve_mapping_1g_l3(l4i, l3i) =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
         };
         assert(self.user_only());
         assert(self.rwx_upper_level_entries());
@@ -556,10 +555,15 @@ impl PageTable {
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
             #![trigger page_map_perm.value()[i].perm.present]
+            #![trigger page_map_perm.value()[i].perm.ps]
+            #![trigger page_map_perm.value()[i].perm.kernel_present]
             0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
                 && page_map_perm.value()[i].perm.present == false
                 && page_map_perm.value()[i].perm.write == false
-                && page_map_perm.value()[i].perm.execute_disable == false) by {broadcast use PageTable::reveal_page_table_addtional_wf;};
+                && page_map_perm.value()[i].perm.execute_disable == false
+                && page_map_perm.value()[i].perm.ps == false
+                && page_map_perm.value()[i].perm.kernel_present == false
+            );
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && 
                 !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps && 
                  old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.write && 
@@ -619,33 +623,34 @@ impl PageTable {
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
                 #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
                 #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
-                    < 512 ==> old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)
-                    == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    && 0 <= l1i < 512 
+                    ==> 
+                    old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i));
         };
         assert(self.wf_mapping_2m()) by {
             broadcast use PageTable::reveal_page_table_mappings_wf;
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
                 #![trigger old(self).spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 ==> old(
-                    self,
-                ).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(
-                    l4i,
-                    l3i,
-                    l2i,
-                ));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    ==> 
+                    old(self).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i));
         };
         assert(self.wf_mapping_1g()) by {
             broadcast use PageTable::reveal_page_table_mappings_wf;
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_1g_l3(l4i,l3i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && (l4i, l3i) != (
-                    target_l4i,
-                    target_l3i,
-                ) ==> old(self).spec_resolve_mapping_1g_l3(l4i, l3i)
-                    =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && (l4i, l3i) != (target_l4i,target_l3i) 
+                    ==> 
+                    old(self).spec_resolve_mapping_1g_l3(l4i, l3i) =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
         };
         assert(self.mappings_wf()) by {
             broadcast use PageTable::reveal_page_table_mappings_wf;};
@@ -677,15 +682,10 @@ impl PageTable {
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr
                 == target_l1_p,
-            old(self).spec_resolve_mapping_4k_l1(
-                target_l4i,
-                target_l3i,
-                target_l2i,
-                target_l1i,
-            ) is None || old(self).mapping_4k().dom().contains(
-                spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
-            ) == false,
+            old(self).spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i,) is None 
+                || old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
             page_ptr_valid(target_entry.addr),
+            target_entry.present,
         ensures
             self.wf(),
             self.kernel_l4_end == old(self).kernel_l4_end,
@@ -707,9 +707,7 @@ impl PageTable {
         assert(va_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))) by {
             va_lemma();
         };
-        assert(self.mapping_4k@.dom().contains(
-            spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
-        ) == false) by {
+        assert(self.mapping_4k@.dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false) by {
             broadcast use PageTable::reveal_page_table_mappings_wf;
         };
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
@@ -734,16 +732,8 @@ impl PageTable {
         );
         proof {
             self.l1_tables.borrow_mut().tracked_insert(target_l1_p, l1_perm);
-            assert(self.spec_resolve_mapping_4k_l1(
-                target_l4i,
-                target_l3i,
-                target_l2i,
-                target_l1i,
-            ) is Some);
-            self.mapping_4k@ = self.mapping_4k@.insert(
-                spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
-                *target_entry,
-            );
+            assert(self.spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i) is Some);
+            self.mapping_4k@ = self.mapping_4k@.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),*target_entry);
         }
         assert(self.wf_l4());
         assert(self.wf_l3());
@@ -759,39 +749,33 @@ impl PageTable {
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
                 #![trigger self.mapping_4k@.dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
                 #![trigger old(self).mapping_4k@.dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
-                    < 512 && !((target_l4i, target_l3i, target_l2i, target_l1i) =~= (
-                    l4i,
-                    l3i,
-                    l2i,
-                    l1i,
-                )) ==> self.mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == old(
-                    self,
-                ).mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    && 0 <= l1i < 512 
+                    && !((target_l4i, target_l3i, target_l2i, target_l1i) =~= (l4i,l3i,l2i,l1i,)) 
+                    ==> 
+                    self.mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == old(self).mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))));
 
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger self.spec_resolve_mapping_l2(l4i,l3i,l2i)]
                 #![trigger old(self).spec_resolve_mapping_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && !((
-                    target_l4i,
-                    target_l3i,
-                    target_l2i,
-                ) =~= (l4i, l3i, l2i)) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= old(
-                    self,
-                ).spec_resolve_mapping_l2(l4i, l3i, l2i));
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512 
+                    && !((target_l4i,target_l3i,target_l2i) =~= (l4i, l3i, l2i)) 
+                    ==> 
+                    self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= old(self).spec_resolve_mapping_l2(l4i, l3i, l2i));
 
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger self.spec_resolve_mapping_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512
-                    && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && !((
-                    target_l4i,
-                    target_l3i,
-                    target_l2i,
-                ) =~= (l4i, l3i, l2i)) ==> self.spec_resolve_mapping_l2(
-                    l4i,
-                    l3i,
-                    l2i,
-                )->0.addr != target_l1_p) by {
+                self.kernel_l4_end <= l4i < 512 
+                    && 0 <= l3i < 512 
+                    && 0 <= l2i < 512
+                    && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some 
+                    && !((target_l4i,target_l3i,target_l2i,) =~= (l4i, l3i, l2i)) 
+                    ==> 
+                    self.spec_resolve_mapping_l2(l4i,l3i,l2i,)->0.addr != target_l1_p) by {
                 old(self).internal_resolve_disjoint();
             };
 
@@ -858,14 +842,175 @@ impl PageTable {
         // assert(self.mapping_1g() =~= old(self).mapping_1g());
     }
 
-    /// Precondition:
-    /// This unmap method will only be called when all previous level exists, and target entry exists in pagetable
-    /// The VA -> PA mapping should exist.
-    ///
-    /// Postcondition:
-    /// unmap will need to delete target entry mappings in mapping_4k (VA->PA),
-    /// PageMaps lx_tables should not change.
-    pub fn unmap_4k_page(
+    pub fn unmap_4k_page_user_view(
+        &mut self,
+        target_l4i: L4Index,
+        target_l3i: L3Index,
+        target_l2i: L2Index,
+        target_l1i: L2Index,
+        target_l1_p: PageMapPtr,
+    )
+        requires
+            old(self).wf(),
+            old(self).kernel_l4_end <= target_l4i < 512,
+            0 <= target_l3i < 512,
+            0 <= target_l2i < 512,
+            0 <= target_l1i < 512,
+            old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr
+                == target_l1_p,
+            old(self).spec_resolve_mapping_4k_l1(
+                target_l4i,
+                target_l3i,
+                target_l2i,
+                target_l1i,
+            ) is Some || old(self).mapping_4k().dom().contains(
+                spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
+            ) == true,
+        ensures
+            self.wf(),
+            self.kernel_l4_end == old(self).kernel_l4_end,
+            self.page_closure() =~= old(self).page_closure(),
+            self.mapping_4k@ == old(self).mapping_4k@.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), 
+                MapEntry{
+                    addr: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].addr,
+                    write: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].write,
+                    execute_disable: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].execute_disable,
+                    present: false,
+                }),
+            self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is Some,
+            self.mapping_2m() =~= old(self).mapping_2m(),
+            self.mapping_1g() =~= old(self).mapping_1g(),
+            self.kernel_entries =~= old(self).kernel_entries,
+    {
+        broadcast use PageTable::reveal_page_table_wf;
+        broadcast use PageTable::reveal_page_table_levels_wf;
+        // broadcast use PageTable::reveal_page_table_disjoint_wf;
+        // broadcast use PageTable::reveal_page_table_mappings_wf;
+        // broadcast use PageTable::reveal_page_table_addtional_wf;
+
+        let va = Ghost(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)));
+        assert(va_4k_valid(va@)) by {
+            va_lemma();
+        };
+        assert(self.mapping_4k@.dom().contains(va@)) by { broadcast use PageTable::reveal_page_table_mappings_wf; };
+        let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
+        let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(target_l1_p).borrow(Tracked(&l1_perm));
+        let mut l1_entry = l1_tbl.get(target_l1i);
+        l1_entry.perm.present = false;
+        page_map_set(target_l1_p, Tracked(&mut l1_perm), target_l1i, l1_entry);
+
+        proof {
+            self.l1_tables.borrow_mut().tracked_insert(target_l1_p, l1_perm);
+            self.mapping_4k@ = self.mapping_4k@.insert(va@, MapEntry{
+                    addr: self.mapping_4k@[va@].addr,
+                    write: self.mapping_4k@[va@].write,
+                    execute_disable: self.mapping_4k@[va@].execute_disable,
+                    present: false,
+                });
+        }
+        
+        assert(self.wf_l4());
+        assert(self.wf_l3());
+        assert(self.wf_l2());
+        assert(self.wf_l1());
+        assert(self.disjoint_l4()) by { broadcast use PageTable::reveal_page_table_disjoint_wf; };
+        assert(self.disjoint_l3()) by { broadcast use PageTable::reveal_page_table_disjoint_wf; };
+        assert(self.disjoint_l2()) by { broadcast use PageTable::reveal_page_table_disjoint_wf; };
+        assert(self.disjoint_wf()) by { broadcast use PageTable::reveal_page_table_disjoint_wf; };
+        assert(self.wf_mapping_4k()) by {
+            broadcast use PageTable::reveal_page_table_mappings_wf;
+            va_lemma();
+            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
+                #![trigger self.mapping_4k@.dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
+                #![trigger old(self).mapping_4k@.dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
+                    < 512 && !((target_l4i, target_l3i, target_l2i, target_l1i) =~= (
+                    l4i,
+                    l3i,
+                    l2i,
+                    l1i,
+                )) ==> self.mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == old(
+                    self,
+                ).mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))));
+
+            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+                #![trigger self.spec_resolve_mapping_l2(l4i,l3i,l2i)]
+                #![trigger old(self).spec_resolve_mapping_l2(l4i,l3i,l2i)]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && !((
+                    target_l4i,
+                    target_l3i,
+                    target_l2i,
+                ) =~= (l4i, l3i, l2i)) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= old(
+                    self,
+                ).spec_resolve_mapping_l2(l4i, l3i, l2i));
+
+            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+                #![trigger self.spec_resolve_mapping_l2(l4i,l3i,l2i)]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512
+                    && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && !((
+                    target_l4i,
+                    target_l3i,
+                    target_l2i,
+                ) =~= (l4i, l3i, l2i)) ==> self.spec_resolve_mapping_l2(
+                    l4i,
+                    l3i,
+                    l2i,
+                )->0.addr != target_l1_p) by {
+                old(self).internal_resolve_disjoint();
+            };
+
+            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
+                #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
+                #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
+                    < 512 && !((target_l4i, target_l3i, target_l2i) =~= (l4i, l3i, l2i))
+                    ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some == old(
+                    self,
+                ).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some);
+
+            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
+                #![trigger self.mapping_4k@[spec_index2va((l4i,l3i,l2i,l1i))]]
+                #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i
+                    < 512 ==> self.mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                    == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some);
+        };
+        assert(self.wf_mapping_2m()) by {
+            broadcast use PageTable::reveal_page_table_mappings_wf;
+            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+                #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
+                #![trigger old(self).spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 ==> old(
+                    self,
+                ).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(
+                    l4i,
+                    l3i,
+                    l2i,
+                ));
+        };
+        assert(self.wf_mapping_1g()) by {
+            broadcast use PageTable::reveal_page_table_mappings_wf;
+            assert(forall|l4i: L4Index, l3i: L3Index|
+                #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)]
+                #![trigger old(self).spec_resolve_mapping_1g_l3(l4i,l3i)]
+                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && (l4i, l3i) != (
+                    target_l4i,
+                    target_l3i,
+                ) ==> old(self).spec_resolve_mapping_1g_l3(l4i, l3i)
+                    =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
+        };
+        assert(self.mappings_wf()) by { broadcast use PageTable::reveal_page_table_mappings_wf; };
+        // assert(self.user_only());
+        // assert(self.rwx_upper_level_entries());
+        // assert(self.present_or_zero());
+        // assert(self.table_pages_wf());
+        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.mapping_2m() =~= old(self).mapping_2m());
+        assert(self.mapping_1g() =~= old(self).mapping_1g());
+    }
+
+    pub fn unmap_4k_page_kernel(
         &mut self,
         target_l4i: L4Index,
         target_l3i: L3Index,
@@ -1053,6 +1198,7 @@ impl PageTable {
             old(self).page_closure().contains(target_entry.addr) == false,
             page_ptr_valid(target_entry.addr),
             page_ptr_2m_valid(target_entry.addr),
+            target_entry.present,
         ensures
             self.wf(),
             self.kernel_l4_end == old(self).kernel_l4_end,
@@ -1266,7 +1412,7 @@ impl PageTable {
                     write: false,
                     execute_disable: false,
                     user: false,
-                    kernel_present: true,
+                    kernel_present: false,
                 },
             },
         );
@@ -1466,7 +1612,7 @@ impl PageTable {
                     write: false,
                     execute_disable: false,
                     user: false,
-                    kernel_present: true,
+                    kernel_present: false,
                 },
             },
         );
@@ -1671,7 +1817,7 @@ impl PageTable {
                     write: false,
                     execute_disable: false,
                     user: false,
-                    kernel_present: true,
+                    kernel_present: false,
                 },
             },
         );
