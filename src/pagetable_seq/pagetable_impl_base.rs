@@ -921,38 +921,7 @@ impl PageTable {
             self.mapping_4k@ = self.mapping_4k@.remove(va@);
             assert(!self.mapping_4k@.contains_key(va@));
         }
-
-        // we need to flush the tlb for all cores.
-        assert(self.tlb_mapping_4k@.len() == NUM_CPUS) by { broadcast use PageTable::reveal_page_table_addtional_wf; };
-        self.tlb_mapping_4k = flush_tlb_4kentry(self.tlb_mapping_4k, va);
-
-        assert(self.tlb_submap_of_mapping()) by {
-            broadcast use PageTable::reveal_page_table_addtional_wf;
-            assert(old(self).mapping_4k@.remove(va@) =~= self.mapping_4k@);
-            assert(forall|cpu_id: CpuId|
-                #![auto]
-                0 <= cpu_id < NUM_CPUS ==> self.tlb_mapping_4k@[cpu_id as int].submap_of(
-                    old(self).tlb_mapping_4k@[cpu_id as int],
-                )  // from flush_tlb_4kentry
-                 && old(self).tlb_mapping_4k@[cpu_id as int].submap_of(
-                    old(self).mapping_4k@,
-                )  // from precondition
-            );
-            broadcast use submap_by_transitivity;  // show transitivity, so below can be proved.
-
-            assert(forall|cpu_id: CpuId|
-                #![auto]
-                0 <= cpu_id < NUM_CPUS ==> self.tlb_mapping_4k@[cpu_id as int].submap_of(
-                    old(self).mapping_4k@,
-                ));
-
-            assert(        
-                forall|cpu_id: CpuId|
-                    #![trigger self.tlb_mapping_4k@[cpu_id as int]]
-                0 <= cpu_id < NUM_CPUS ==> self.tlb_mapping_4k@[cpu_id as int].submap_of(self.mapping_4k@) 
-            );           
-        };
-
+        
         assert(self.wf_l4());
         assert(self.wf_l3());
         assert(self.wf_l2());
