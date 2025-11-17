@@ -1,12 +1,12 @@
 use vstd::prelude::*;
 pub mod pagetable_seq;
-pub mod pagetable_dom;
+// pub mod pagetable_dom;
 pub mod define;
 pub mod util;
 pub mod lemma;
 pub mod primitive;
 pub mod page_array;
-pub mod kernel;
+// pub mod kernel;
 
 verus! {
 global size_of usize == 8;
