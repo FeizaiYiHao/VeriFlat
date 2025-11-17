@@ -34,6 +34,7 @@ impl PageMap {
                     #![trigger self.ar@[j]]
                     0 <= j < i ==> usize2page_entry(self.ar@[j]).is_empty(),
                 forall|j: int| #![trigger self@[j].is_empty()] 0 <= j < i ==> self@[j].is_empty(),
+                forall|j: int| #![trigger self@[j]] 0 <= j < i ==> self@[j].perm.kernel_present == false,
         {
             let ghost_view = Ghost(self@);
             self.ar.set(i, 0usize);
@@ -51,12 +52,13 @@ impl PageMap {
         &&& self.spec_seq@.len() == 512
         &&& forall|i: int|
             #![trigger usize2page_entry(self.ar@[i])]
-            0 <= i < 512 ==> (usize2page_entry(self.ar@[i])
-                =~= self.spec_seq@[i])
-            // &&&
-            // forall|i:int|
-            //     #![trigger usize2page_entry(self.ar@[i]).is_empty()]
-            //     0<=i<512 ==> (usize2page_entry(self.ar@[i]).is_empty() <==> self.ar@[i] == 0)
+            0 <= i < 512 
+            ==> 
+            (usize2page_entry(self.ar@[i]) =~= self.spec_seq@[i])
+        &&&
+        forall|i:int|
+            #![trigger MEM_valid(self.spec_seq@[i].addr)]
+            0<=i<512 && self.spec_seq@[i].perm.kernel_present ==> MEM_valid(self.spec_seq@[i].addr)
 
     }
 
