@@ -86,11 +86,11 @@ pub struct MapEntry {
     pub addr: PAddr,
     pub write: bool,
     pub execute_disable: bool,
-    pub kernel_present: bool,
+    pub present: bool,
 }
 
 pub open spec fn spec_page_entry_to_map_entry(p: &PageEntry) -> MapEntry {
-    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, kernel_present:p.perm.kernel_present }
+    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present:p.perm.present }
 }
 
 #[verifier(when_used_as_spec(spec_page_entry_to_map_entry))]
@@ -98,40 +98,40 @@ pub fn page_entry_to_map_entry(p: &PageEntry) -> (ret: MapEntry)
     ensures
         ret =~= spec_page_entry_to_map_entry(p),
 {
-    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, kernel_present:p.perm.kernel_present  }
+    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present:p.perm.present  }
 }
 
-pub open spec fn spec_map_entry_to_page_entry(m: &MapEntry, ps: bool) -> PageEntry {
-    PageEntry {
-        addr: m.addr,
-        perm: PageEntryPerm {
-            present: true,
-            ps: ps,
-            write: m.write,
-            execute_disable: m.execute_disable,
-            user: true,
-            kernel_present: m.kernel_present,
-        },
-    }
-}
+// pub open spec fn spec_map_entry_to_page_entry(m: &MapEntry, ps: bool) -> PageEntry {
+//     PageEntry {
+//         addr: m.addr,
+//         perm: PageEntryPerm {
+//             present: true,
+//             ps: ps,
+//             write: m.write,
+//             execute_disable: m.execute_disable,
+//             user: true,
+//             present: m.present,
+//         },
+//     }
+// }
 
-#[verifier(when_used_as_spec(spec_map_entry_to_page_entry))]
-pub fn map_entry_to_page_entry(m: &MapEntry, ps: bool) -> (ret: PageEntry)
-    ensures
-        ret == spec_map_entry_to_page_entry(m, ps),
-{
-    PageEntry {
-        addr: m.addr,
-        perm: PageEntryPerm {
-            present: true,
-            ps: ps,
-            write: m.write,
-            execute_disable: m.execute_disable,
-            user: true,
-            kernel_present: m.kernel_present,
-        },
-    }
-}
+// #[verifier(when_used_as_spec(spec_map_entry_to_page_entry))]
+// pub fn map_entry_to_page_entry(m: &MapEntry, ps: bool) -> (ret: PageEntry)
+//     ensures
+//         ret == spec_map_entry_to_page_entry(m, ps),
+// {
+//     PageEntry {
+//         addr: m.addr,
+//         perm: PageEntryPerm {
+//             present: true,
+//             ps: ps,
+//             write: m.write,
+//             execute_disable: m.execute_disable,
+//             user: true,
+//             present: m.present,
+//         },
+//     }
+// }
 
 pub open spec fn usize2present(v: usize) -> bool {
     (v & PAGE_ENTRY_PRESENT_MASK as usize) != 0
