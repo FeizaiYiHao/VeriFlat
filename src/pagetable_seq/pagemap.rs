@@ -82,28 +82,29 @@ impl PageMap {
         requires
             old(self).wf(),
             0 <= index < 512,
-            value.perm.present ==> MEM_valid(value.addr),
-            value.perm.present == false ==> value.is_empty(),
+            value.perm.present ==> value.perm.kernel_present,
+            value.perm.kernel_present ==> MEM_valid(value.addr),
+            value.perm.kernel_present == false ==> value.is_empty(),
         ensures
             self.wf(),
             self@ =~= old(self)@.update(index as int, value),
     {
-        if value.perm.present == false {
+        if value.perm.kernel_present == false {
             self.ar.set(index, 0usize);
             proof {
                 zero_leads_is_empty_page_entry();
                 self.spec_seq@ = self.spec_seq@.update(index as int, usize2page_entry(0usize));
             }
-            return ;
+            return;
         } else {
             let u = page_entry2usize(&value);
             self.ar.set(index, u);
 
             assert(usize2present(u) == value.perm.present);
-            assert(usize2present(u) == true);
+            assert(usize2kernel_present(u) == true);
             assert(u != 0) by (bit_vector)
                 requires
-                    (u & 0x1u64 as usize) != 0 == true,
+                    (u & 0x1usize << 52u64 as usize) != 0 == true,
             ;
 
             proof {

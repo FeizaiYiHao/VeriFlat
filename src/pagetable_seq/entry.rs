@@ -61,6 +61,7 @@ impl PageEntry {
         &&& self.perm.write == false
         &&& self.perm.execute_disable == false
         &&& self.perm.user == false
+        &&& self.perm.kernel_present == false
     }
 
     pub fn empty() -> (ret: Self)
@@ -184,8 +185,13 @@ pub open spec fn spec_usize2page_entry_perm(v: usize) -> PageEntryPerm {
 pub fn usize2page_entry_perm(v: usize) -> (ret: PageEntryPerm)
     ensures
         ret =~= spec_usize2page_entry_perm(v),
-        v == 0 ==> ret.present == false && ret.ps == false && ret.write == false
-            && ret.execute_disable == false && ret.user == false,
+        v == 0 ==> 
+            ret.present == false && 
+            ret.ps == false && 
+            ret.write == false && 
+            ret.execute_disable == false && 
+            ret.user == false &&
+            ret.kernel_present == false,
 {
     assert(0usize & 0x1 as usize != 0 == false) by (bit_vector);
     assert(0usize & (0x1u64 << 0x7u64) as usize != 0 == false) by (bit_vector);
@@ -211,9 +217,14 @@ pub open spec fn spec_usize2page_entry(v: usize) -> PageEntry {
 pub fn usize2page_entry(v: usize) -> (ret: PageEntry)
     ensures
         ret =~= spec_usize2page_entry(v),
-        v == 0 ==> ret.addr == 0 && ret.perm.present == false && ret.perm.ps == false
-            && ret.perm.write == false && ret.perm.execute_disable == false && ret.perm.user
-            == false,
+        v == 0 ==> 
+            ret.addr == 0 && 
+            ret.perm.present == false && 
+            ret.perm.ps == false && 
+            ret.perm.write == false && 
+            ret.perm.execute_disable == false && 
+            ret.perm.user == false && 
+            ret.perm.kernel_present == false,
 {
     assert(0usize & 0x0000_ffff_ffff_f000u64 as usize == 0) by (bit_vector);
     PageEntry { addr: usize2pa(v), perm: usize2page_entry_perm(v) }
