@@ -156,6 +156,7 @@ impl PageTableDom {
             old(self)[pagetable_root]@.spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i) is None 
                 || old(self)[pagetable_root]@.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
             page_ptr_valid(target_entry.addr),
+            target_entry.present,
         ensures
             self.inv(),
             self.dom() == old(self).dom(),
@@ -164,7 +165,7 @@ impl PageTableDom {
                 self.dom().contains(pt_r) && pt_r != pagetable_root
                 ==>
                     self[pt_r] == old(self)[pt_r],
-                    
+
             self[pagetable_root].inv(),
             self[pagetable_root]@.kernel_l4_end == old(self)[pagetable_root]@.kernel_l4_end,
             self[pagetable_root]@.page_closure() =~= old(self)[pagetable_root]@.page_closure(),
