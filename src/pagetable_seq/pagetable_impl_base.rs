@@ -12,14 +12,6 @@ use crate::lemma::lemma_u::*;
 
 // exec
 impl PageTable {
-    // pub fn map_4k_page(&mut self, va:VAddr, dst: MapEntry)
-    //     requires
-    //         old(self).wf(),
-    //         old(self).page_closure().contains(dst.addr) == false,
-    //         old(self).mapping_4k()[va] is None,
-    //         page_ptr_valid(dst.addr),
-    // {
-    // }
     pub fn get_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
