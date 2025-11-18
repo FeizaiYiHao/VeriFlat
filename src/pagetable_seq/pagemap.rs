@@ -34,7 +34,7 @@ impl PageMap {
                     #![trigger self.ar@[j]]
                     0 <= j < i ==> usize2page_entry(self.ar@[j]).is_empty(),
                 forall|j: int| #![trigger self@[j].is_empty()] 0 <= j < i ==> self@[j].is_empty(),
-                forall|j: int| #![trigger self@[j]] 0 <= j < i ==> self@[j].perm.kernel_present == false,
+                forall|j: int| #![trigger self.spec_seq@[j]] 0 <= j < i ==> self.spec_seq@[j].perm.kernel_present == false,
         {
             let ghost_view = Ghost(self@);
             self.ar.set(i, 0usize);
@@ -45,6 +45,7 @@ impl PageMap {
                 self.spec_seq@ = self.spec_seq@.update(i as int, usize2page_entry(0usize));
             }
         }
+        assert(forall|j: int| #![trigger self@[j]] 0 <= j < 512 ==> self.spec_seq@[j].perm.kernel_present == false);
     }
 
     pub open spec fn wf(&self) -> bool {
@@ -57,8 +58,9 @@ impl PageMap {
             (usize2page_entry(self.ar@[i]) =~= self.spec_seq@[i])
         &&&
         forall|i:int|
-            #![trigger MEM_valid(self.spec_seq@[i].addr)]
-            0<=i<512 && self.spec_seq@[i].perm.kernel_present ==> MEM_valid(self.spec_seq@[i].addr)
+            #![trigger self.spec_seq@[i].addr]
+            0<=i<512 && self.spec_seq@[i].perm.kernel_present 
+            ==> MEM_valid(self.spec_seq@[i].addr)
 
     }
 
@@ -70,7 +72,7 @@ impl PageMap {
         recommends
             0 <= index < 512,
     {
-        self.spec_seq@[index as int]
+        self@[index as int]
     }
 
     pub open spec fn is_empty(&self) -> bool

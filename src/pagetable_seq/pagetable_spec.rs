@@ -11,6 +11,10 @@ use super::entry::*;
 use super::pagemap::*;
 use crate::lemma::lemma_u::*;
 
+/// mapping_xx is the abstract mappings of each page size.
+/// if an entry exists in mapping_xx.dom(), is entry is visible to the kernel at least. 
+/// if the entry has present flag set, it's visible to the page table walk. 
+/// our TLB spec will be that the TLB is `alway` a subset of kernel view. Regardless the locking state of the page table.
 pub struct PageTable {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
@@ -1011,6 +1015,7 @@ impl PageTable {
                     self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr != self.spec_resolve_mapping_l2(l4j, l3j, l2j)->0.addr,
     {
     }
+
     pub proof fn four_level_empty_imply_4k_map_empty(&self)
         requires
             self.wf(),
