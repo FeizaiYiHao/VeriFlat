@@ -32,11 +32,11 @@ atomic operation using pre- and postcondition.
 For a kernel object that is locked more than once for the duration of the system call, we can still report its last-seen state in the postcondition, 
 but it shouldn't be super useful. 
 
-### Nullifying the pre state of re-locked object. 
-When a kernel object is locked twice, for the second time the lock is acquired, since the object can be modified by other threads in the time window between 
-`unlock()` and `lock()`, the `lock()` function will make the state of the object `undefined`.
-Therefore, Verus wouldn't be able to infer and connection between the state of the object before the system call and the state of the object when 
-it's re-locked. 
+### Nullifying the pre state of unlocked object. 
+After the first `unlock()` operation, each `lock()` triggers a change of the global state -- all the kernel objects that are not locked will have 
+their states nullified. Since they could be changed by other threads.
+
+### S
 
 ### Ensuring invariants when objects are re-locked.
 Since we nullify the pre-state of a re-locked object, Verus wouldn't be able to infer that all the invariants still hold after this re-`lock()`. 
