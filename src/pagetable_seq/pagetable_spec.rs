@@ -3,7 +3,7 @@ use vstd::prelude::*;
 verus! {
 
 use crate::define::*;
-use crate::primitive::LockInv;
+use crate::locks::*;
 use vstd::simple_pptr::*;
 use crate::util::page_ptr_util_u::*;
 use super::pagemap_util_t::*;
