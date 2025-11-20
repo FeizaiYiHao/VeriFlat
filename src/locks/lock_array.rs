@@ -1,8 +1,10 @@
 use vstd::prelude::*;
-use crate::{define::*, primitive::LockInv};
+use crate::{define::*};
 use core::sync::atomic::*;
 
-use super::{Array, LockManager, locks::*};
+use super::*;
+use crate::primitive::*;
+
 verus! {
 
     impl<T: LockInv, const N: usize, const LockMajor: LockMajorId> Array<RwLock<T, LockMajor>, N> { 

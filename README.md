@@ -36,7 +36,10 @@ but it shouldn't be super useful.
 After the first `unlock()` operation, each `lock()` triggers a change of the global state -- all the kernel objects that are not locked will have 
 their states nullified. Since they could be changed by other threads.
 
-### S
+### Squash changes on tracked maps.
+There exists a few tracked maps whose domains determine the domains of `alive` objects in the kernel. For example, the domain of all `Container`
+in the kernel. These maps has zero impact on the actual state of the kernel other than aiding the proofs. Since all the objects under these 
+maps are protected by locks, it's safe to reorder their operations and squash the changes into one big atomic change. 
 
 ### Ensuring invariants when objects are re-locked.
 Since we nullify the pre-state of a re-locked object, Verus wouldn't be able to infer that all the invariants still hold after this re-`lock()`. 
