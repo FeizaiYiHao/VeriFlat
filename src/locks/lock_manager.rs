@@ -6,16 +6,15 @@ use super::LockPerm;
 
 verus! {
 
-pub tracked struct ThreadIdPerm{
+pub enum LMState{
+    Lock,
+    Unlock,
+    ReLock,
 }
-
-impl ThreadIdPerm{
-    pub uninterp spec fn id(&self) -> LockThreadId;
-}
-
 pub struct LockManager{
     thread_id: LockThreadId,
     lock_seq: Seq<LockId>,
+    state: LMState,
 }
 
 impl LockManager{
