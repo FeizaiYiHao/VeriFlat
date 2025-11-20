@@ -56,9 +56,9 @@ pub trait LockMinorIdTrait {
     spec fn lock_minor(&self) -> LockMinorId;
 }
 
-pub enum LockingThread{
+pub enum RwLockState{
     Write{thread_id: LockThreadId, lock_id: LockId},
-    Read{thread_id: LockThreadId, lock_id: LockId},
+    Read{reader_map: Map<LockThreadId, LockId>},
     None,
 }
 
@@ -69,7 +69,7 @@ pub struct RwLock<T>{
     is_init: Ghost<bool>,
     num_released: Ghost<int>,
     modified: Ghost<bool>,
-    locking_thread: Ghost<LockingThread>,
+    locking_thread: Ghost<RwLockState>,
 }
 
 // pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLock<T>, y: RwLock<V>) -> bool{
@@ -82,7 +82,7 @@ pub struct RwLock<T>{
 // }
 
 impl<T:LockedUtil> RwLock<T>{
-    pub closed spec fn locking_thread(&self) -> LockingThread
+    pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread@
     }
@@ -90,7 +90,7 @@ impl<T:LockedUtil> RwLock<T>{
         &&&
         self.locking_thread() is Read
         &&&
-        self.locking_thread()->Read_thread_id == thread_id
+        self.locking_thread()->Read_reader_map.dom().contains(thread_id)
     } 
     pub open spec fn wlocked_by(&self, thread_id:LockThreadId) -> bool{
         &&&
@@ -98,26 +98,19 @@ impl<T:LockedUtil> RwLock<T>{
         &&&
         self.locking_thread()->Write_thread_id == thread_id
     } 
-    pub open spec fn lock_id(&self) -> LockId{
-        if self.locking_thread() is Read {
-            self.locking_thread()->Read_lock_id
-        }else if  self.locking_thread() is Write {
-            self.locking_thread()->Write_lock_id
-        }else{
-            arbitrary()
-        }
-    } 
-    pub open spec fn locked_by(&self, thread_id:LockThreadId) -> bool{
+    pub open spec fn locked_by(&self, lock_manager:&LockManager) -> bool{
         |||
-        self.rlocked_by(thread_id)
+        self.rlocked_by(lock_manager.thread_id())
         |||
-        self.wlocked_by(thread_id)
+        self.wlocked_by(lock_manager.thread_id())
     } 
 
 
     pub open spec fn inv(&self) -> bool{
         &&&
         self@.inv()
+        &&&
+        self.is_init()
     }
 
     pub closed spec fn is_init(&self) -> bool {
@@ -135,8 +128,23 @@ impl<T:LockedUtil> RwLock<T>{
     }
 
     pub closed spec fn view(&self) -> T
+        recommends
+            self.is_init(),
     {
         self.value
+    }
+
+    pub open spec fn wlock_ensures(&self, old:&Self, lock_manager: &LockManager, lock_id: LockId) -> bool{
+        &&&
+        self.locking_thread() == RwLockState::Write { thread_id: lock_manager.thread_id(), lock_id: lock_id }
+        &&&
+        self.inv()
+        &&&
+        self.num_released() == old.num_released()
+        &&&
+        self.modified() == old.modified()
+        &&&
+        self@ == old@
     }
 
     #[verifier::external_body]

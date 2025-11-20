@@ -32,6 +32,12 @@ impl LockManager{
             ==> 
             self.lock_seq()[i].greater(self.lock_seq()[i - 1])
     }
+    pub open spec fn lock_id_valid(&self, lock_id: LockId) -> bool{
+        |||
+        self.lock_seq().len() == 0
+        |||
+        lock_id.greater(self.lock_seq().last())
+    }
 }
 
 
