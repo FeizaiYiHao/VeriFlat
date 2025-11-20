@@ -64,7 +64,7 @@ verus! {
         }
     }
 
-    impl LockInv for Page{
+    impl LockedUtil for Page{
         open spec fn inv(&self) -> bool{
             &&&
             self.mappings_finite()
