@@ -12,11 +12,10 @@ pub trait LockMinorIdTrait {
 pub struct RwLock<T>{
     value: T,
 
-    is_init: Ghost<bool>,
-    released: Ghost<bool>,
+    num_released: Ghost<int>,
     modified: Ghost<bool>,
-    reading_thread: Ghost<Map<LockThreadId, LockId>>,
-    writing_thread: Ghost<Option<LockThreadId>>,
+    reading_thread: Ghost<Option<LockThreadId, LockId>>,
+    writing_thread: Ghost<Option<LockThreadId, LockId>>,
 }
 
 pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLock<T>, y: RwLock<V>) -> bool{
@@ -29,47 +28,50 @@ pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLo
 }
 
 impl<T:LockedUtil> RwLock<T>{
-    pub closed spec fn reading_thread(&self) -> Set<LockThreadId>{
+    pub closed spec fn reading_thread(&self) -> Option<LockThreadId, LockId>
+    {
         self.reading_thread@
-    } 
-    pub closed spec fn writing_thread(&self) -> Option<LockThreadId>{
+    }
+    pub closed spec fn writing_thread(&self) -> Option<LockThreadId, LockId>
+    {
         self.writing_thread@
-    } 
+    }
     pub open spec fn rlocked_by(&self, thread_id:LockThreadId) -> bool{
-        self.reading_thread().contains(thread_id)
+        &&&
+        self.reading_thread() is Some
+        &&&
+        self.reading_thread()->0.0 == thread_id
     } 
-    pub open  spec fn wlocked_by(&self, thread_id:LockThreadId) -> bool{
+    pub open spec fn wlocked_by(&self, thread_id:LockThreadId) -> bool{
         &&&
         self.writing_thread() is Some
         &&&
-        self.writing_thread()->0 == thread_id
-    }
-    pub open spec fn rlocked(&self) -> bool{
-        self.reading_thread().len() != 0
-    }
-    pub open spec fn wlocked(&self) -> bool{
+        self.writing_thread()->0.0 == thread_id
+    } 
+
+    pub open spec fn rlocked_by(&self, thread_id:LockThreadId) -> bool{
+        &&&
+        self.reading_thread() is Some
+        &&&
+        self.reading_thread()->0.0 == thread_id
+    } 
+    pub open spec fn wlocked_by(&self, thread_id:LockThreadId) -> bool{
+        &&&
         self.writing_thread() is Some
-    }
-    pub open spec fn locked(&self, thread_id:LockThreadId) -> bool{
-        self.rlocked_by(thread_id) || self.wlocked_by(thread_id)
+        &&&
+        self.writing_thread()->0.0 == thread_id
     } 
 
 
     pub open spec fn inv(&self) -> bool{
         &&&
-        self.is_init()
-        &&&
         self@.inv()
     }
 
-    pub closed spec fn is_init(&self) -> bool{
-        self.is_init@
-    }
 
-
-    /// re-aquiring a released lock will make the state of the object well-formed bu unkown.  
-    pub closed spec fn released(&self) -> bool{
-        self.released@
+    /// 
+    pub closed spec fn num_released(&self) -> int {
+        self.num_released@
     }
 
     /// 
@@ -78,8 +80,6 @@ impl<T:LockedUtil> RwLock<T>{
     }
 
     pub closed spec fn view(&self) -> T
-        recommends 
-            self.is_init(),
     {
         self.value
     }
