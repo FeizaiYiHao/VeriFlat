@@ -61,6 +61,21 @@ impl<T:LockedUtil> RwLock<T>{
         &&&
         self.writing_thread()->0.0 == thread_id
     } 
+    pub open spec fn lock_id(&self) -> LockId{
+        if self.writing_thread() is Some {
+            self.writing_thread()->0.1
+        }else if  self.reading_thread() is Some {
+            self.reading_thread()->0.1
+        }else{
+            arbitrary()
+        }
+    } 
+    pub open spec fn locked_by(&self, thread_id:LockThreadId) -> bool{
+        |||
+        self.rlocked_by(thread_id)
+        |||
+        self.wlocked_by(thread_id)
+    } 
 
 
     pub open spec fn inv(&self) -> bool{
@@ -85,23 +100,21 @@ impl<T:LockedUtil> RwLock<T>{
     }
 
     #[verifier::external_body]
-    pub fn wlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
+    pub fn wlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
         requires
             old(self).locked(old(lock_manager).thread_id()) == false,
 
+            old(self).lock_major_sat(lock_major@),
             old(lock_manager).lock_seq().len() == 0 ||
-                old(self).lock_id().greater(old(lock_manager).lock_seq().last()),
+                lock_major.greater(old(lock_manager).lock_seq().last()),
         ensures
             self.rlocked_by(lock_manager.thread_id()) == false,
             self.wlocked_by(lock_manager.thread_id()),
-            self.lock_id() == old(self).lock_id(),
-            old(self).released() == false ==> self.view() == old(self).view(),
+
             self@.inv(),
-            old(self).is_init(),
-            self.is_init() == old(self).is_init(),
 
             lock_manager.thread_id() == old(lock_manager).thread_id(),
-            lock_manager.lock_seq() == old(lock_manager).lock_seq().push(self.lock_id()),
+            lock_manager.lock_seq() == old(lock_manager).lock_seq().push(lock_major),
             old(lock_manager).wf() ==> lock_manager.wf(),
             ret@.thread_id() == lock_manager.thread_id(),
 
