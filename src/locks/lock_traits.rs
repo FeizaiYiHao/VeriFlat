@@ -38,38 +38,5 @@ pub trait LockMinor{
     spec fn lock_minor(&self) -> LockMinorId;
 }
 
-impl<T> LockMinor for PointsTo<RwLock<T>>{
-    open spec fn lock_minor(&self) -> LockMinorId{
-        self.addr()
-    }
-}  
-
-impl<T:LockedUtil> LockedUtil for PointsTo<RwLock<T>>{
-    open spec fn lock_major_1(&self) -> LockMajorId {
-        self.value()@.lock_major_1()
-    }
-    open spec fn lock_major_2(&self) -> LockMajorId {
-        self.value()@.lock_major_2()
-    }    
-    open spec fn lock_major_3(&self) -> LockMajorId {
-        self.value()@.lock_major_3()
-    }    
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        self.value()@.lock_major_default()
-    }
-
-    open spec fn lock_major_1_predicate(&self) -> bool{
-        self.value()@.lock_major_1_predicate()
-    }
-    open spec fn lock_major_2_predicate(&self) -> bool{
-        self.value()@.lock_major_2_predicate()
-    }
-    open spec fn lock_major_3_predicate(&self) -> bool{
-        self.value()@.lock_major_3_predicate()
-    }
-    open spec fn lock_major_default_predicate(&self) -> bool{
-        self.value()@.lock_major_default_predicate()
-    }
-}  
 
 }
