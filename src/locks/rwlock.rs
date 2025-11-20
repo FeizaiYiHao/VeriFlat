@@ -9,17 +9,17 @@ pub trait LockMinorIdTrait {
     spec fn lock_minor(&self) -> LockMinorId;
 }
 
-pub struct RwLock<T, const lock_managerId: LockMajorId>{
+pub struct RwLock<T>{
     value: T,
 
     is_init: Ghost<bool>,
     released: Ghost<bool>,
     modified: Ghost<bool>,
-    reading_thread: Ghost<Set<LockThreadId>>,
+    reading_thread: Ghost<Map<LockThreadId, LockId>>,
     writing_thread: Ghost<Option<LockThreadId>>,
 }
 
-pub open spec fn write_locked_by_same_thread<T:LockInv, V:LockInv, const lock_managerId_T: LockMajorId, const lock_managerId_V: LockMajorId>(x: RwLock<T, lock_managerId_T>, y: RwLock<V, lock_managerId_V>) -> bool{
+pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLock<T>, y: RwLock<V>) -> bool{
     &&&
     x.writing_thread() is Some
     &&&
@@ -28,7 +28,7 @@ pub open spec fn write_locked_by_same_thread<T:LockInv, V:LockInv, const lock_ma
     x.writing_thread()->0 == y.writing_thread()->0
 }
 
-impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
+impl<T:LockedUtil> RwLock<T>{
     pub closed spec fn reading_thread(&self) -> Set<LockThreadId>{
         self.reading_thread@
     } 
@@ -66,9 +66,6 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
         self.is_init@
     }
 
-    pub open spec fn lock_minor(&self) -> LockMinorId{
-        self@.lock_minor()
-    }
 
     /// re-aquiring a released lock will make the state of the object well-formed bu unkown.  
     pub closed spec fn released(&self) -> bool{
@@ -85,14 +82,6 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
             self.is_init(),
     {
         self.value
-    }
-
-    pub open spec fn lock_id(&self) -> LockId
-    {
-        LockId{
-            major: lock_managerId,
-            minor: self.lock_minor(),
-        }
     }
 
     #[verifier::external_body]
@@ -151,43 +140,6 @@ impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
     {}
 }
 
-
-impl<T:LockInv, const lock_managerId: LockMajorId> RwLock<T, lock_managerId>{
-    #[verifier::external_body]
-    pub fn take(&mut self, lp: Tracked<&LockPerm>) -> (ret: T)
-        requires
-            lp@.state == LockState::WriteLock,
-            lp@.lock_id() == old(self).lock_id(),
-            old(self).is_init(),
-        ensures
-            self.reading_thread() == old(self).reading_thread(),
-            self.writing_thread() == old(self).writing_thread(),
-            self.lock_id() == old(self).lock_id(),
-            self.is_init() == false,
-            ret == old(self).view(),
-    {
-        unsafe { core::ptr::read(&self.value as *const T) }
-    }
-
-    #[verifier::external_body]
-    pub fn put(&mut self, lp: Tracked<&LockPerm>, v: T)
-        requires
-            lp@.state == LockState::WriteLock,
-            lp@.lock_id() == old(self).lock_id(),
-            old(self).is_init() == false,
-        ensures
-            self.reading_thread() == old(self).reading_thread(),
-            self.writing_thread() == old(self).writing_thread(),
-            self.lock_id() == old(self).lock_id(),
-            self.view() == v,
-
-            self.modified() == true,
-
-            self.is_init(),
-    {
-        self.value = v;
-    }
-}
 
 pub tracked enum LockState {
     Mutex,

@@ -1031,7 +1031,7 @@ impl PageTable {
     }
 }
 
-    impl LockInv for PageTable{
+    impl LockedUtil for PageTable{
         open spec fn inv(&self) -> bool{
             &&&
             self.wf()
