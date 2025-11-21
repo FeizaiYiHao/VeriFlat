@@ -10,22 +10,26 @@ pub tracked enum LockState {
 }
 
 pub tracked struct LockPerm {
-    pub local_thread_id: LockThreadId,
-    pub lock_major: LockMajorId,
-    pub lock_minor: LockMinorId,
-    pub state: LockState
+    local_thread_id: LockThreadId,
+    lock_major: LockMajorId,
+    lock_minor: LockMinorId,
+    state: LockState
 }
 
 impl LockPerm{
-    pub open spec fn lock_id(&self) -> LockId{
+    pub closed spec fn lock_id(&self) -> LockId{
         LockId{
             major:self.lock_major,
             minor:self.lock_minor,
         }
     }
 
-    pub open spec fn thread_id(&self) -> LockThreadId{
+    pub closed spec fn thread_id(&self) -> LockThreadId{
         self.local_thread_id
+    }
+
+    pub closed spec fn state(&self) -> LockState{
+        self.state
     }
 }
 }
