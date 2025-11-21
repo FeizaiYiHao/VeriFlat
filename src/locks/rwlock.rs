@@ -52,10 +52,6 @@ impl RwLockInner{
     }
 }
 
-pub trait LockMinorIdTrait {
-    spec fn lock_minor(&self) -> LockMinorId;
-}
-
 pub enum RwLockState{
     Write{thread_id: LockThreadId, lock_id: LockId},
     Read{reader_map: Map<LockThreadId, LockId>},
@@ -86,25 +82,24 @@ impl<T:LockedUtil> RwLock<T>{
     {
         self.locking_thread@
     }
-    pub open spec fn rlocked_by(&self, thread_id:LockThreadId) -> bool{
+    pub open spec fn rlocked_by(&self, lock_manager:&LockManager) -> bool{
         &&&
         self.locking_thread() is Read
         &&&
-        self.locking_thread()->Read_reader_map.dom().contains(thread_id)
+        self.locking_thread()->Read_reader_map.dom().contains(lock_manager.thread_id())
     } 
-    pub open spec fn wlocked_by(&self, thread_id:LockThreadId) -> bool{
+    pub open spec fn wlocked_by(&self, lock_manager:&LockManager) -> bool{
         &&&
         self.locking_thread() is Write
         &&&
-        self.locking_thread()->Write_thread_id == thread_id
+        self.locking_thread()->Write_thread_id == lock_manager.thread_id()
     } 
     pub open spec fn locked_by(&self, lock_manager:&LockManager) -> bool{
         |||
-        self.rlocked_by(lock_manager.thread_id())
+        self.rlocked_by(lock_manager)
         |||
-        self.wlocked_by(lock_manager.thread_id())
-    } 
-
+        self.wlocked_by(lock_manager)
+    }
 
     pub open spec fn inv(&self) -> bool{
         &&&
@@ -132,19 +127,6 @@ impl<T:LockedUtil> RwLock<T>{
             self.is_init(),
     {
         self.value
-    }
-
-    pub open spec fn wlock_ensures(&self, old:&Self, lock_manager: &LockManager, lock_id: LockId) -> bool{
-        &&&
-        self.locking_thread() == RwLockState::Write { thread_id: lock_manager.thread_id(), lock_id: lock_id }
-        &&&
-        self.inv()
-        &&&
-        self.num_released() == old.num_released()
-        &&&
-        self.modified() == old.modified()
-        &&&
-        self@ == old@
     }
 
     #[verifier::external_body]
@@ -202,6 +184,43 @@ impl<T:LockedUtil> RwLock<T>{
     {
         self.lock.wunlock();
     }
+}
+
+pub open spec fn wlock_requires<T:LockedUtil>(old:RwLock<T>, lock_manager: &LockManager) -> bool{
+    old.locked_by(lock_manager) == false
+}
+
+pub open spec fn wlock_ensures<T:LockedUtil>(old:RwLock<T>, new:RwLock<T>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+    &&&
+    new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_id }
+    &&&
+    new.inv()
+    &&&
+    new.num_released() == old.num_released()
+    &&&
+    new.modified() == old.modified()
+    &&&
+    new@ == old@
+
+    &&&
+    lock_perm.state() is WriteLock
+    &&&
+    lock_perm.lock_id() == lock_id
+    &&&
+    lock_perm.thread_id() == thread_id
+}
+
+pub open spec fn wunlock_ensures<T:LockedUtil>(old:RwLock<T>, new:RwLock<T>) -> bool{
+    &&&
+    new.locking_thread() == RwLockState::None
+    &&&
+    new.inv()
+    &&&
+    new.num_released() == old.num_released() + 1
+    &&&
+    new.modified() == old.modified()
+    &&&
+    new@ == old@
 }
 
 }

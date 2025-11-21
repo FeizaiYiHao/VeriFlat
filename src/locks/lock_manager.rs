@@ -24,6 +24,9 @@ impl LockManager{
     pub closed spec fn lock_seq(&self) -> Seq<LockId>{
         self.lock_seq
     }
+    pub closed spec fn state(&self) -> LMState{
+        self.state
+    }
     pub open spec fn wf(&self) -> bool{
         &&&
         forall|i:int|
@@ -40,6 +43,30 @@ impl LockManager{
     }
 }
 
+    pub open spec fn lock_ensures(old:&LockManager, new:&LockManager, lock_id: LockId) -> bool{
+        &&&
+        new.thread_id() == old.thread_id()
+        &&&
+        old.state() is Lock ==> new.state() is Lock
+        &&&
+        old.state() is Unlock ==> new.state() is ReLock
+        &&&
+        old.state() is ReLock ==> new.state() is ReLock 
+        &&&
+        new.lock_seq() =~= old.lock_seq().push(lock_id)
+    }
 
+    pub open spec fn unlock_ensures(old:&LockManager, new:&LockManager, lock_id: LockId) -> bool{
+        &&&
+        new.thread_id() == old.thread_id()
+        &&&
+        old.state() is Lock ==> new.state() is Unlock
+        &&&
+        old.state() is Unlock ==> new.state() is Unlock
+        &&&
+        old.state() is ReLock ==> new.state() is Unlock 
+        &&&
+        new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
+    }
 
 }

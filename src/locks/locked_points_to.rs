@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::define::*;
 use super::*;
+use core::mem::MaybeUninit;
 verus! {
 
 impl<T> LockMinor for PointsTo<RwLock<T>>{
@@ -54,19 +55,45 @@ fn wlock<T:LockedUtil>(pptr:&PPtr<T>, Tracked(perm): Tracked<&mut PointsTo<RwLoc
         old(perm).lock_major_sat(lock_id@.major),
         old(perm).lock_minor() == lock_id@.minor,
 
-        old(perm).value().locked_by(old(lock_manager)) == false,
+        wlock_requires(old(perm).value(), old(lock_manager)),
         old(lock_manager).lock_id_valid(lock_id@),
     ensures
         perm.addr() == old(perm).addr(),
         perm.is_init(),
 
-        
+        wlock_ensures(old(perm).value(), perm.value(), lock_id@, lock_manager.thread_id(), ret@),
+        lock_ensures(old(lock_manager), lock_manager, lock_id@),
 {
-    Tracked::assume_new()
+     unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T>>;
+        (*uptr).assume_init_mut().wlock(Tracked(lock_manager), Ghost(lock_id@.major))
+    }
 }
 #[verifier::external_body]
-fn wunlock<T:LockedUtil>(pptr:&PPtr<T>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T>>>, Tracked(lock_manager): Tracked<&mut LockManager>, lock_perm: Tracked<LockPerm>){
+fn wunlock<T:LockedUtil>(pptr:&PPtr<T>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T>>>, Tracked(lock_manager): Tracked<&mut LockManager>, lock_perm: Tracked<LockPerm>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
 
+        old(perm).value().wlocked_by(old(lock_manager)),
+        old(perm).value().inv(),
+
+        lock_perm@.state() is WriteLock,
+        lock_perm@.thread_id() == old(lock_manager).thread_id(),
+        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+    ensures
+        old(perm).addr() == perm.addr(),
+        perm.is_init(),
+
+        perm.value().locking_thread() is None,
+
+        wunlock_ensures(old(perm).value(), perm.value()),
+        unlock_ensures(old(lock_manager), lock_manager, lock_perm@.lock_id()),
+{
+     unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T>>;
+        (*uptr).assume_init_mut().wunlock(Tracked(lock_manager), lock_perm);
+    }
 }
 
 }
