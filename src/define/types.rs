@@ -7,29 +7,6 @@ use vstd::simple_pptr::*;
 use super::*;
 
 // -------------------- Begin of New Types --------------------
-pub type LockThreadId = usize;
-
-pub type LockMajorId = usize;
-pub type LockMinorId = usize;
-pub struct LockId{
-    pub major:LockMajorId,
-    pub minor:LockMinorId,
-}
-
-impl LockId{
-    pub open spec fn spec_greater(self, other: Self) -> bool{
-        (self.major > other.major) || (self.major == other.major && self.minor > self.minor)
-    }
-
-    #[verifier::when_used_as_spec(spec_greater)]
-    pub fn greater(self, other: Self) -> (ret:bool)
-        ensures
-            ret == self.greater(other),
-    {
-        (self.major > other.major) || (self.major == other.major && self.minor > self.minor)
-    }
-}
-
 // -------------------- End of New Types ----------------------
 
 // use crate::trap::Registers;

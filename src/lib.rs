@@ -5,7 +5,7 @@ pub mod define;
 pub mod util;
 pub mod lemma;
 pub mod primitive;
-pub mod locks;
+// pub mod locks;
 // pub mod page_array;
 // pub mod kernel;
 
