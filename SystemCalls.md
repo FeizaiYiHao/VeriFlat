@@ -25,4 +25,5 @@ CPU -> Rlock Container -> Rlock Process -> Wlock Thread (State Running) -> Lock 
 
 ## Kill Process
 CPU -> Rlock Container -> Rlock Process -> ... ->  Wlock target Process -> Wlock Threads -> Change states to Killing.
+
 CPU -> Rlock Container -> Rlock Process -> ... ->  Wlock parent Process ->  Wlock target Process -> Wlock Threads (state killing) -> Wlock Endpoint/ lock scheduler
