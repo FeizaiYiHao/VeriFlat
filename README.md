@@ -14,14 +14,17 @@ Since no other thread can even potentially observe the state of the objects unde
 
 ### Verifying the kernel invariants
 When the a object under a broken invariant becomes `visible` to other threads again, (i.e., the write-lock is released),
-we trigger a assertion on `inv()` on the kernel to make sure all invariants are preserved.  
+we trigger an assertion on `inv()` on the kernel to make sure all invariants are preserved.  
 
 #### TODO
 Talk about how to modify Verus to enforce this check. 
 
-### Objects with atomic interfaces
+### User accessible kernel objects
 Page table `view()` update and maybe page table updates in general have an immediate effect on the observable state of the kernel hence should trigger a 
 global kernel-level `inv()` check similar to unlocking a write-lock. Also any update to the PCI root table too.
+
+### Kernel objects with atomic interfaces 
+Each operation on these objects is both `rlock` and `wlock`.
 
 ## Providing an atomic system call spec interface
 
