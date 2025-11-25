@@ -11,6 +11,15 @@ impl<T> LockMinor for PointsTo<RwLock<T>>{
     }
 }  
 
+impl<T:LockIdUtil> LockIdUtil for PointsTo<RwLock<T>>{
+    open spec fn container_depth(&self) -> ContainerDepth{
+        self.value()@.container_depth()
+    }
+    open spec fn process_depth(&self) -> ProcessDepth{
+        self.value()@.process_depth()
+    }
+}  
+
 impl<T:LockedUtil> LockedUtil for PointsTo<RwLock<T>>{
     open spec fn inv(&self) -> bool{
         &&&

@@ -77,7 +77,7 @@ pub struct RwLock<T>{
 //     x.writing_thread()->0 == y.writing_thread()->0
 // }
 
-impl<T:LockedUtil> RwLock<T>{
+impl<T> RwLock<T>{
     pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread@
@@ -101,13 +101,6 @@ impl<T:LockedUtil> RwLock<T>{
         self.wlocked_by(lock_manager)
     }
 
-    pub open spec fn inv(&self) -> bool{
-        &&&
-        self@.inv()
-        &&&
-        self.is_init()
-    }
-
     pub closed spec fn is_init(&self) -> bool {
         self.is_init@
     }
@@ -123,10 +116,16 @@ impl<T:LockedUtil> RwLock<T>{
     }
 
     pub closed spec fn view(&self) -> T
-        recommends
-            self.is_init(),
     {
         self.value
+    }
+}
+impl<T:LockedUtil> RwLock<T>{
+    pub open spec fn inv(&self) -> bool{
+        &&&
+        self@.inv()
+        &&&
+        self.is_init()
     }
 
     #[verifier::external_body]
