@@ -11,11 +11,11 @@ impl<T> LockMinor for PointsTo<RwLock<T>>{
     }
 }  
 
-impl<T:LockIdUtil> LockIdUtil for PointsTo<RwLock<T>>{
-    open spec fn container_depth(&self) -> ContainerDepth{
+impl<T:LockOwnerIdUtil> LockOwnerIdUtil for PointsTo<RwLock<T>>{
+    open spec fn container_depth(&self) -> LockOwnerId{
         self.value()@.container_depth()
     }
-    open spec fn process_depth(&self) -> ProcessDepth{
+    open spec fn process_depth(&self) -> LockOwnerId{
         self.value()@.process_depth()
     }
 }  

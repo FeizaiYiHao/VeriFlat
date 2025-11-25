@@ -1031,13 +1031,53 @@ impl PageTable {
     }
 }
 
-    impl LockedUtil for PageTable{
+    impl LockedUtil for PageTable {
         open spec fn inv(&self) -> bool{
             &&&
             self.wf()
         }
-        open spec fn lock_minor(&self) -> LockMinorId{
-            self.cr3
+        
+        open spec fn lock_major_1(&self) -> LockMajorId {
+            arbitrary()
+        }
+        
+        open spec fn lock_major_2(&self) -> LockMajorId {
+            arbitrary()
+        }
+        
+        open spec fn lock_major_3(&self) -> LockMajorId {
+            arbitrary()
+        }
+        
+        open spec fn lock_major_default(&self) -> LockMajorId {
+            PAGE_TABLE_LOCK_MAJOR
+        }
+        
+        open spec fn lock_major_1_predicate(&self) -> bool {
+            arbitrary()
+        }
+        
+        open spec fn lock_major_2_predicate(&self) -> bool {
+            arbitrary()
+        }
+        
+        open spec fn lock_major_3_predicate(&self) -> bool {
+            arbitrary()
+        }
+        
+        open spec fn lock_major_default_predicate(&self) -> bool {
+            true
+        }
+        
+    }
+
+    impl LockOwnerIdUtil for PageTable {
+        open spec fn container_depth(&self) -> LockOwnerId {
+            LockOwnerId::none()
+        }
+    
+        open spec fn process_depth(&self) -> LockOwnerId {
+            LockOwnerId::none()
         }
     }
 

@@ -34,9 +34,9 @@ pub trait LockedUtil {
     }
 }
 
-pub trait LockIdUtil {
-    spec fn container_depth(&self) -> ContainerDepth;
-    spec fn process_depth(&self) -> ProcessDepth;
+pub trait LockOwnerIdUtil {
+    spec fn container_depth(&self) -> LockOwnerId;
+    spec fn process_depth(&self) -> LockOwnerId;
 }
 
 pub trait LockMinor {
