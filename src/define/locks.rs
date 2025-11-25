@@ -13,183 +13,301 @@ pub type LockThreadId = usize;
 // -------------------- End of lock thread id  ----------------
 
 // -------------------- Begin of lock id  ---------------------
-pub struct ContainerDepth{
+#[derive(PartialEq)]
+#[derive(Eq)]
+pub struct LockOwnerId{
     pub value: Option<usize>,
 }
-pub struct ProcessDepth {
-    pub value: Option<usize>,
-}
+
 pub type LockMajorId = usize;
 pub type LockMinorId = usize;
 #[derive(PartialEq)]
 #[derive(Eq)]
 pub struct LockId{
-    pub container: ContainerDepth,
-    pub process: ProcessDepth,
+    pub container: LockOwnerId,
+    pub process: LockOwnerId,
     pub major:LockMajorId,
     pub minor:LockMinorId,
 }
 
-// impl ContainerDepth
-impl PartialEq for ContainerDepth {
-    fn eq(&self, other: &ContainerDepth) -> bool {
-        match (self.value, other.value) {
+impl LockOwnerId{
+    pub open spec fn none() -> Self{
+        LockOwnerId{value: None}
+    }
+    pub open spec fn spec_eq(self, other: Self) -> bool {
+        self === other 
+    }
+    pub open spec fn spec_gt(self, other: Self) -> bool {
+        match (self.value, other.value){
+            (None, None) => false,
+            (None, Some(_)) => true,
+            (Some(_), None) => false,
+            (Some(x), Some(y)) => x > y,
+        }
+    }
+    pub open spec fn spec_ge(self, other: Self) -> bool {
+        |||
+        self == other
+        |||
+        self > other
+    }    
+    pub open spec fn spec_lt(self, other: Self) -> bool {
+        match (self.value, other.value){
             (None, None) => true,
-            (Some(x), Some(y)) => x == y,
-            _ => false,
+            (None, Some(_)) => false,
+            (Some(_), None) => true,
+            (Some(x), Some(y)) => x < y,
         }
     }
-}
-impl PartialEqSpecImpl for ContainerDepth {
-    open spec fn obeys_eq_spec() -> bool {
-        true
-    }
-
-    open spec fn eq_spec(&self, other: &ContainerDepth) -> bool {
-        match (self.value, other.value) {
-            (None, None) => true,
-            (Some(x), Some(y)) => x == y,
-            _ => false,
-        }
-    }
-}
-impl PartialOrd for ContainerDepth{
-    fn partial_cmp(&self, other: &ContainerDepth) -> Option<core::cmp::Ordering> {
-        match (self.value, other.value) {
-            (None, None) => Some(core::cmp::Ordering::Equal),
-            (None, Some(_)) => Some(core::cmp::Ordering::Greater),
-            (Some(_), None) => Some(core::cmp::Ordering::Less),
-            (Some(x), Some(y)) => y.partial_cmp(&x),
-        }
-    }
-}
-impl PartialOrdSpecImpl for ContainerDepth{
-    open spec fn obeys_partial_cmp_spec() -> bool {
-        true
-    }
-    open spec fn partial_cmp_spec(&self, other: &ContainerDepth) -> Option<core::cmp::Ordering> {
-        match (self.value, other.value) {
-            (None, None) => Some(core::cmp::Ordering::Equal),
-            (None, Some(_)) => Some(core::cmp::Ordering::Greater),
-            (Some(_), None) => Some(core::cmp::Ordering::Less),
-            (Some(x), Some(y)) => vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&y,&x),
-        }
+    pub open spec fn spec_le(self, other: Self) -> bool {
+        |||
+        self == other
+        |||
+        self < other
     }
 }
 
-// impl ProcessDepth
-impl PartialEq for ProcessDepth {
-    fn eq(&self, other: &ProcessDepth) -> bool {
-        match (self.value, other.value) {
-            (None, None) => true,
-            (Some(x), Some(y)) => x == y,
-            _ => false,
-        }
-    }
-}
-impl PartialEqSpecImpl for ProcessDepth {
-    open spec fn obeys_eq_spec() -> bool {
-        true
-    }
 
-    open spec fn eq_spec(&self, other: &ProcessDepth) -> bool {
-        match (self.value, other.value) {
-            (None, None) => true,
-            (Some(x), Some(y)) => x == y,
-            _ => false,
-        }
-    }
-}
-impl PartialOrd for ProcessDepth{
-    fn partial_cmp(&self, other: &ProcessDepth) -> Option<core::cmp::Ordering> {
-        match (self.value, other.value) {
-            (None, None) => Some(core::cmp::Ordering::Equal),
-            (None, Some(_)) => Some(core::cmp::Ordering::Greater),
-            (Some(_), None) => Some(core::cmp::Ordering::Less),
-            (Some(x), Some(y)) => y.partial_cmp(&x),
-        }
-    }
-}
-impl PartialOrdSpecImpl for ProcessDepth{
-    open spec fn obeys_partial_cmp_spec() -> bool {
-        true
-    }
-    open spec fn partial_cmp_spec(&self, other: &ProcessDepth) -> Option<core::cmp::Ordering> {
-        match (self.value, other.value) {
-            (None, None) => Some(core::cmp::Ordering::Equal),
-            (None, Some(_)) => Some(core::cmp::Ordering::Greater),
-            (Some(_), None) => Some(core::cmp::Ordering::Less),
-            (Some(x), Some(y)) => vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&y,&x),
-        }
-    }
-}
-
-// impl LockId
-impl PartialOrd for LockId{
-    fn partial_cmp(&self, other: &LockId) -> Option<core::cmp::Ordering> {
-        if self.container != other.container {
-            self.container.partial_cmp(&other.container)
-        }else if self.process != other.process{
-            self.process.partial_cmp(&other.process)
-        }else if self.major != other.major {
-            self.major.partial_cmp(&other.major)
-        }else{
-            self.minor.partial_cmp(&other.minor)
-        }
-    }
-}
-impl PartialOrdSpecImpl for LockId{
-    open spec fn obeys_partial_cmp_spec() -> bool {
-        true
-    }
-    open spec fn partial_cmp_spec(&self, other: &LockId) -> Option<core::cmp::Ordering> {
-        if self.container != other.container {
-            vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.container, &other.container)
-        }else if self.process != other.process{
-            vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.process, &other.process)
-        }else if self.major != other.major {
-            vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.major, &other.major)
-        }else{
-            vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.minor, &other.minor)
-        }
-    }
-}
-
-impl Ord for LockId{
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        if self.container != other.container {
-            self.container.cmp(&other.container)
-        }else if self.process != other.process{
-            self.process.cmp(&other.process)
-        }else if self.major != other.major {
-            self.major.cmp(&other.major)
-        }else{
-            self.minor.cmp(&other.minor)
-        }
-    }
-}
-impl OrdSpecImpl for LockId{
-}
-// impl SpecOrd for LockId{
-//     open spec fn spec_lt(self, other:LockId) -> bool {
-//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Less)
+// // impl LockOwnerId
+// impl PartialEq for LockOwnerId {
+//     fn eq(&self, other: &LockOwnerId) -> bool {
+//         match (self.value, other.value) {
+//             (None, None) => true,
+//             (Some(x), Some(y)) => x == y,
+//             _ => false,
+//         }
 //     }
-//     open spec fn spec_le(self, other:LockId) -> bool { 
-//         |||
-//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Less)
-//         |||
-//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Equal)
+// }
+// impl PartialEqSpecImpl for LockOwnerId {
+//     open spec fn obeys_eq_spec() -> bool {
+//         true
 //     }
-//     open spec fn spec_gt(self, other:LockId) -> bool {
-//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Greater)
+
+//     open spec fn eq_spec(&self, other: &LockOwnerId) -> bool {
+//         match (self.value, other.value) {
+//             (None, None) => true,
+//             (Some(x), Some(y)) => spec_eq(x,y),
+//             _ => false,
+//         }
 //     }
-//     open spec fn spec_ge(self, other:LockId) -> bool {
-//         |||
-//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Greater)
-//         |||
-//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Equal)
+// }
+// impl PartialOrd for LockOwnerId{
+//     fn partial_cmp(&self, other: &LockOwnerId) -> Option<core::cmp::Ordering> {
+//         match (self.value, other.value) {
+//             (None, None) => Some(core::cmp::Ordering::Equal),
+//             (None, Some(_)) => Some(core::cmp::Ordering::Greater),
+//             (Some(_), None) => Some(core::cmp::Ordering::Less),
+//             (Some(x), Some(y)) => y.partial_cmp(&x),
+//         }
+//     }
+// }
+// impl PartialOrdSpecImpl for LockOwnerId{
+//     open spec fn obeys_partial_cmp_spec() -> bool {
+//         true
+//     }
+//     open spec fn partial_cmp_spec(&self, other: &LockOwnerId) -> Option<core::cmp::Ordering> {
+//         match (self.value, other.value) {
+//             (None, None) => Some(core::cmp::Ordering::Equal),
+//             (None, Some(_)) => Some(core::cmp::Ordering::Greater),
+//             (Some(_), None) => Some(core::cmp::Ordering::Less),
+//             (Some(x), Some(y)) => vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&y,&x),
+//         }
+//     }
+// }
+// impl Ord for LockOwnerId{
+//     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+//         match (self.value, other.value) {
+//             (None, None) => core::cmp::Ordering::Equal,
+//             (None, Some(_)) => core::cmp::Ordering::Greater,
+//             (Some(_), None) => core::cmp::Ordering::Less,
+//             (Some(x), Some(y)) => y.cmp(&x),
+//         }
+//     }
+// }
+// impl OrdSpecImpl for LockOwnerId{
+//     open spec fn obeys_cmp_spec() -> bool {
+//         true
+//     }
+
+//     open spec fn cmp_spec(&self, other: &LockOwnerId) -> core::cmp::Ordering {
+//         match (self.value, other.value) {
+//             (None, None) => core::cmp::Ordering::Equal,
+//             (None, Some(_)) => core::cmp::Ordering::Greater,
+//             (Some(_), None) => core::cmp::Ordering::Less,
+//             (Some(x), Some(y)) => vstd::std_specs::cmp::OrdSpec::cmp_spec(&y, &x),
+//         }
+//     }
+// }
+// // impl LockOwnerId
+// impl PartialEq for LockOwnerId {
+//     fn eq(&self, other: &LockOwnerId) -> bool {
+//         match (self.value, other.value) {
+//             (None, None) => true,
+//             (Some(x), Some(y)) => x == y,
+//             _ => false,
+//         }
+//     }
+// }
+// impl PartialEqSpecImpl for LockOwnerId {
+//     open spec fn obeys_eq_spec() -> bool {
+//         true
+//     }
+
+//     open spec fn eq_spec(&self, other: &LockOwnerId) -> bool {
+//         match (self.value, other.value) {
+//             (None, None) => true,
+//             (Some(x), Some(y)) => spec_eq(x,y),
+//             _ => false,
+//         }
+//     }
+// }
+// impl PartialOrd for LockOwnerId{
+//     fn partial_cmp(&self, other: &LockOwnerId) -> Option<core::cmp::Ordering> {
+//         match (self.value, other.value) {
+//             (None, None) => Some(core::cmp::Ordering::Equal),
+//             (None, Some(_)) => Some(core::cmp::Ordering::Greater),
+//             (Some(_), None) => Some(core::cmp::Ordering::Less),
+//             (Some(x), Some(y)) => y.partial_cmp(&x),
+//         }
+//     }
+// }
+// impl PartialOrdSpecImpl for LockOwnerId{
+//     open spec fn obeys_partial_cmp_spec() -> bool {
+//         true
+//     }
+//     open spec fn partial_cmp_spec(&self, other: &LockOwnerId) -> Option<core::cmp::Ordering> {
+//         match (self.value, other.value) {
+//             (None, None) => Some(core::cmp::Ordering::Equal),
+//             (None, Some(_)) => Some(core::cmp::Ordering::Greater),
+//             (Some(_), None) => Some(core::cmp::Ordering::Less),
+//             (Some(x), Some(y)) => vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&y,&x),
+//         }
+//     }
+// }
+// impl Ord for LockOwnerId{
+//     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+//         match (self.value, other.value) {
+//             (None, None) => core::cmp::Ordering::Equal,
+//             (None, Some(_)) => core::cmp::Ordering::Greater,
+//             (Some(_), None) => core::cmp::Ordering::Less,
+//             (Some(x), Some(y)) => y.cmp(&x),
+//         }
+//     }
+// }
+// impl OrdSpecImpl for LockOwnerId{
+//     open spec fn obeys_cmp_spec() -> bool {
+//         true
+//     }
+
+//     open spec fn cmp_spec(&self, other: &Self) -> core::cmp::Ordering {
+//         match (self.value, other.value) {
+//             (None, None) => core::cmp::Ordering::Equal,
+//             (None, Some(_)) => core::cmp::Ordering::Greater,
+//             (Some(_), None) => core::cmp::Ordering::Less,
+//             (Some(x), Some(y)) => vstd::std_specs::cmp::OrdSpec::cmp_spec(&y, &x),
+//         }
+//     }
+// }
+// // impl LockId
+// impl PartialOrd for LockId{
+//     fn partial_cmp(&self, other: &LockId) -> Option<core::cmp::Ordering> {
+//         if self.container != other.container {
+//             self.container.partial_cmp(&other.container)
+//         }else if self.process != other.process{
+//             self.process.partial_cmp(&other.process)
+//         }else if self.major != other.major {
+//             self.major.partial_cmp(&other.major)
+//         }else{
+//             self.minor.partial_cmp(&other.minor)
+//         }
+//     }
+// }
+// impl PartialOrdSpecImpl for LockId{
+//     open spec fn obeys_partial_cmp_spec() -> bool {
+//         true
+//     }
+//     open spec fn partial_cmp_spec(&self, other: &LockId) -> Option<core::cmp::Ordering> {
+//         if self.container != other.container {
+//             vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.container, &other.container)
+//         }else if self.process != other.process{
+//             vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.process, &other.process)
+//         }else if self.major != other.major {
+//             vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.major, &other.major)
+//         }else{
+//             vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(&self.minor, &other.minor)
+//         }
 //     }
 // }
 
+// impl Ord for LockId{
+//     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+//         if self.container != other.container {
+//             self.container.cmp(&other.container)
+//         }else if self.process != other.process{
+//             self.process.cmp(&other.process)
+//         }else if self.major != other.major {
+//             self.major.cmp(&other.major)
+//         }else{
+//             self.minor.cmp(&other.minor)
+//         }
+//     }
+// }
+// impl OrdSpecImpl for LockId{
+//     open spec fn obeys_cmp_spec() -> bool {
+//         true
+//     }
+
+//     open spec fn cmp_spec(&self, other: &Self) -> core::cmp::Ordering {
+//         if self.container != other.container {
+//             vstd::std_specs::cmp::OrdSpec::cmp_spec(&self.container, &other.container)
+//         }else if self.process != other.process{
+//             vstd::std_specs::cmp::OrdSpec::cmp_spec(&self.process, &other.process)
+//         }else if self.major != other.major {
+//             vstd::std_specs::cmp::OrdSpec::cmp_spec(&self.major, &other.major)
+//         }else{
+//             vstd::std_specs::cmp::OrdSpec::cmp_spec(&self.minor, &other.minor)
+//         }
+//     }
+// }
+
+impl LockId{
+    pub open spec fn spec_gt(self, other: Self) -> bool {
+        if self.container != other.container {
+            self.container > other.container
+        }else if self.process != other.process{
+            self.process > other.process
+        }else if self.major != other.major {
+            self.major > other.major
+        }else{
+            self.minor > other.minor
+        }
+    }
+    pub open spec fn spec_ge(self, other: Self) -> bool {
+        |||
+        self == other
+        |||
+        self > other
+    }
+    pub open spec fn spec_lt(self, other: Self) -> bool {
+        if self.container != other.container {
+            self.container < other.container
+        }else if self.process != other.process{
+            self.process < other.process
+        }else if self.major != other.major {
+            self.major < other.major
+        }else{
+            self.minor < other.minor
+        }
+    }
+    pub open spec fn spec_le(self, other: Self) -> bool {
+        |||
+        self == other
+        |||
+        self < other
+    }
+}
+
 // -------------------- End of lock id  -----------------------
+
+
 }
