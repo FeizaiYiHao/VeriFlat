@@ -34,7 +34,12 @@ pub trait LockedUtil {
     }
 }
 
-pub trait LockMinor{
+pub trait LockIdUtil {
+    spec fn container_depth(&self) -> ContainerDepth;
+    spec fn process_depth(&self) -> ProcessDepth;
+}
+
+pub trait LockMinor {
     spec fn lock_minor(&self) -> LockMinorId;
 }
 

@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::define::*;
 use core::sync::atomic::*;
+use vstd::std_specs::cmp::*;
 
 use super::LockPerm;
 
@@ -33,13 +34,13 @@ impl LockManager{
             #![trigger self.lock_seq()[i]] 
             1<=i<self.lock_seq().len() 
             ==> 
-            self.lock_seq()[i].greater(self.lock_seq()[i - 1])
+            self.lock_seq()[i] > self.lock_seq()[i - 1]
     }
     pub open spec fn lock_id_valid(&self, lock_id: LockId) -> bool{
         |||
         self.lock_seq().len() == 0
         |||
-        lock_id.greater(self.lock_seq().last())
+        lock_id > self.lock_seq().last()
     }
 }
 
