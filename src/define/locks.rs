@@ -22,6 +22,7 @@ pub struct ProcessDepth {
 pub type LockMajorId = usize;
 pub type LockMinorId = usize;
 #[derive(PartialEq)]
+#[derive(Eq)]
 pub struct LockId{
     pub container: ContainerDepth,
     pub process: ProcessDepth,
@@ -154,23 +155,41 @@ impl PartialOrdSpecImpl for LockId{
     }
 }
 
-impl LockId{
-    // pub open spec fn spec_greater(self, other: Self) -> bool{
-    //     // if container_depth_lock_id_greater(self.container, other.container){
-
-    //     // }
-    //     // true
-    //     self.container >
-    // }
-
-    // #[verifier::when_used_as_spec(spec_greater)]
-    // pub fn greater(self, other: Self) -> (ret:bool)
-    //     ensures
-    //         ret == self.greater(other),
-    // {
-    //     (self.major > other.major) || (self.major == other.major && self.minor > self.minor)
-    // }
+impl Ord for LockId{
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        if self.container != other.container {
+            self.container.cmp(&other.container)
+        }else if self.process != other.process{
+            self.process.cmp(&other.process)
+        }else if self.major != other.major {
+            self.major.cmp(&other.major)
+        }else{
+            self.minor.cmp(&other.minor)
+        }
+    }
 }
+impl OrdSpecImpl for LockId{
+}
+// impl SpecOrd for LockId{
+//     open spec fn spec_lt(self, other:LockId) -> bool {
+//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Less)
+//     }
+//     open spec fn spec_le(self, other:LockId) -> bool { 
+//         |||
+//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Less)
+//         |||
+//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Equal)
+//     }
+//     open spec fn spec_gt(self, other:LockId) -> bool {
+//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Greater)
+//     }
+//     open spec fn spec_ge(self, other:LockId) -> bool {
+//         |||
+//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Greater)
+//         |||
+//         vstd::std_specs::cmp::PartialOrdSpecImpl::partial_cmp_spec(&self, &other) == Some(core::cmp::Ordering::Equal)
+//     }
+// }
 
 // -------------------- End of lock id  -----------------------
 }
