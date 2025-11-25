@@ -15,8 +15,11 @@ pub type LockThreadId = usize;
 // -------------------- Begin of lock id  ---------------------
 #[derive(PartialEq)]
 #[derive(Eq)]
-pub struct LockOwnerId{
-    pub value: Option<usize>,
+pub enum LockOwnerId{
+    High,
+    Some(usize),
+    None,
+    NA,
 }
 
 pub type LockMajorId = usize;
@@ -32,17 +35,27 @@ pub struct LockId{
 
 impl LockOwnerId{
     pub open spec fn none() -> Self{
-        LockOwnerId{value: None}
+        LockOwnerId::None
     }
     pub open spec fn spec_eq(self, other: Self) -> bool {
-        self === other 
+        |||
+        self === other
+        |||
+        self is NA || other is NA 
     }
     pub open spec fn spec_gt(self, other: Self) -> bool {
-        match (self.value, other.value){
-            (None, None) => false,
-            (None, Some(_)) => true,
-            (Some(_), None) => false,
-            (Some(x), Some(y)) => x > y,
+        match (self, other){
+            (LockOwnerId::NA, _) => false,
+            (_, LockOwnerId::NA) => false,
+            (LockOwnerId::High, LockOwnerId::High) => false,
+            (LockOwnerId::High, LockOwnerId::Some(_)) => true,
+            (LockOwnerId::High, LockOwnerId::None) => true,
+            (LockOwnerId::Some(_), LockOwnerId::High) => false,
+            (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x > y,
+            (LockOwnerId::Some(_), LockOwnerId::None) => true,
+            (LockOwnerId::None, LockOwnerId::High) => false,
+            (LockOwnerId::None, LockOwnerId::Some(_)) => false,
+            (LockOwnerId::None, LockOwnerId::None) => false,
         }
     }
     pub open spec fn spec_ge(self, other: Self) -> bool {
@@ -52,11 +65,18 @@ impl LockOwnerId{
         self > other
     }    
     pub open spec fn spec_lt(self, other: Self) -> bool {
-        match (self.value, other.value){
-            (None, None) => true,
-            (None, Some(_)) => false,
-            (Some(_), None) => true,
-            (Some(x), Some(y)) => x < y,
+        match (self, other){
+            (LockOwnerId::NA, _) => false,
+            (_, LockOwnerId::NA) => false,
+            (LockOwnerId::High, LockOwnerId::High) => false,
+            (LockOwnerId::High, LockOwnerId::Some(_)) => false,
+            (LockOwnerId::High, LockOwnerId::None) => false,
+            (LockOwnerId::Some(_), LockOwnerId::High) => true,
+            (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x < y,
+            (LockOwnerId::Some(_), LockOwnerId::None) => false,
+            (LockOwnerId::None, LockOwnerId::High) => true,
+            (LockOwnerId::None, LockOwnerId::Some(_)) => true,
+            (LockOwnerId::None, LockOwnerId::None) => false,
         }
     }
     pub open spec fn spec_le(self, other: Self) -> bool {
