@@ -20,7 +20,7 @@ Minor Id: Index
 
 ## Container
 Container Depth: self.depth or killing container's depth
-Process Depth: High 
+Process Depth: NA 
 Major Id: Container major id
 Minor Id: addr
 
@@ -37,7 +37,7 @@ Major Id: self.state
 Minor Id: addr
 
 ## CPU
-Container Depth: High or killing thread's container depth
-Process Depth: High or killing thread's process depth
+Container Depth: Running or killing thread's container depth or None if idle
+Process Depth: Running or killing thread's process depth or None if idle
 Major Id: CPU major ID
 Minor Id: CPU id
