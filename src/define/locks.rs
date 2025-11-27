@@ -3,8 +3,27 @@ use vstd::std_specs::cmp::*;
 use core::cmp::Ordering;
 verus! {
 // -------------------- Begin of const ------------------------
-pub const PAGE_TABLE_LOCK_MAJOR:usize = 0;
-pub const PHY_PAGE_LOCK_MAJOR:usize = 1;
+pub const CPU_LOCK_MAJOR:usize = 100;
+pub const CONTAINER_LOCK_MAJOR:usize = 101;
+pub const PROCESS_LOCK_MAJOR:usize = 102;
+
+pub const ALLOCATED_PAGE_MAJOR:usize = 1000;
+pub const Pagetable_PAGE_MAJOR:usize = 1001;
+
+pub const THREAD_RUNNING_LOCK_MAJOR:usize = 10000;
+pub const ENDPOINT_LOCK_MAJOR:usize = 10001;
+pub const THREAD_BLOCKED_LOCK_MAJOR:usize = 10002;
+
+pub const PAGE_TABLE_LOCK_MAJOR:usize = 10003;
+pub const MAPPED_PAGE_LOCK_MAJOR:usize = 10004;
+
+pub const PAGE_ALLOCATOR_MAJOR:usize = 10005;
+
+pub const SCHEDULER_LOCK_MAJOR:usize = 20000;
+pub const THREAD_SCHEDULED_LOCK_MAJOR:usize = 20001;
+
+pub const FREE_PAGE_LOCK_MAJOR:usize = 30000;
+pub const MERGED_PAGE_LOCK_MAJOR:usize = 30000;
 // -------------------- End of const --------------------------
 
 
@@ -19,7 +38,7 @@ pub enum LockOwnerId{
     High,
     Some(usize),
     None,
-    NA,
+    NotApp,
 }
 
 pub type LockMajorId = usize;
@@ -41,12 +60,12 @@ impl LockOwnerId{
         |||
         self === other
         |||
-        self is NA || other is NA 
+        self is NotApp || other is NotApp 
     }
     pub open spec fn spec_gt(self, other: Self) -> bool {
         match (self, other){
-            (LockOwnerId::NA, _) => false,
-            (_, LockOwnerId::NA) => false,
+            (LockOwnerId::NotApp, _) => false,
+            (_, LockOwnerId::NotApp) => false,
             (LockOwnerId::High, LockOwnerId::High) => false,
             (LockOwnerId::High, LockOwnerId::Some(_)) => true,
             (LockOwnerId::High, LockOwnerId::None) => true,
@@ -66,8 +85,8 @@ impl LockOwnerId{
     }    
     pub open spec fn spec_lt(self, other: Self) -> bool {
         match (self, other){
-            (LockOwnerId::NA, _) => false,
-            (_, LockOwnerId::NA) => false,
+            (LockOwnerId::NotApp, _) => false,
+            (_, LockOwnerId::NotApp) => false,
             (LockOwnerId::High, LockOwnerId::High) => false,
             (LockOwnerId::High, LockOwnerId::Some(_)) => false,
             (LockOwnerId::High, LockOwnerId::None) => false,
