@@ -10,7 +10,7 @@ use crate::util::page_ptr_util_u::spec_index2va;
 verus! {
 
 pub struct PageTableDom{
-    pub map: Tracked<Map<RwLockPageTableRoot, PointsTo<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>>>
+    pub map: Tracked<Map<RwLockPageTableRoot, PointsTo<RwLock<PageTable>>>>
 }
 
 impl PageTableDom {
