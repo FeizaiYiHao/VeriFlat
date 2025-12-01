@@ -56,7 +56,7 @@ impl<T:LockedUtil> LockedUtil for PointsTo<RwLock<T>>{
 }  
 
 #[verifier::external_body]
-fn wlock<T:LockedUtil>(pptr:&PPtr<T>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T>>>, Tracked(lock_manager): Tracked<&mut LockManager>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockedUtil>(pptr:&PPtr<RwLock<T>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T>>>, Tracked(lock_manager): Tracked<&mut LockManager>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -79,7 +79,7 @@ fn wlock<T:LockedUtil>(pptr:&PPtr<T>, Tracked(perm): Tracked<&mut PointsTo<RwLoc
     }
 }
 #[verifier::external_body]
-fn wunlock<T:LockedUtil>(pptr:&PPtr<T>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T>>>, Tracked(lock_manager): Tracked<&mut LockManager>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockedUtil>(pptr:&PPtr<RwLock<T>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T>>>, Tracked(lock_manager): Tracked<&mut LockManager>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
