@@ -91,6 +91,7 @@ pub const CONTAINER_ENDPOINT_LIST_LEN: usize = 10;
 
 pub const MAX_CONTAINER_SCHEDULER_LEN: usize = 10;
 
+pub const PAGE_TABLE_HAS_KILL_STATE: bool = false;
 // -------------------- End of Const --------------------
 
 }

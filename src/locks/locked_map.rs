@@ -11,17 +11,17 @@ pub enum MapDomainDelta{
     Add(Set<usize>),
 }
 
-#[verifier::reject_recursive_types(V)]
-pub struct LockedMap<V:LockedUtil + LockOwnerIdUtil>{
-    map: Tracked<Map<usize, PointsTo<RwLock<V>>>>,
+#[verifier::reject_recursive_types(T)]
+pub struct LockedMap<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool>{
+    map: Tracked<Map<usize, PointsTo<RwLock<T, HasKillState>>>>,
     delta: MapDomainDelta,
 }
 
-impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
+impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasKillState>{
     pub closed spec fn delta(&self) -> MapDomainDelta{
         self.delta
     }
-    pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<V>>>{
+    pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, HasKillState>>>{
         self.map@
     }
     pub open spec fn dom(&self) -> Set<usize>{
@@ -40,7 +40,7 @@ impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
                 self@[k].addr() == k
             }
     }
-    pub open spec fn spec_index(&self, key: usize) -> RwLock<V>
+    pub open spec fn spec_index(&self, key: usize) -> RwLock<T, HasKillState>
         recommends
             self@.dom().contains(key),
     {
@@ -76,7 +76,7 @@ impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
             lock_ensures(old(lock_manager), lock_manager, lock_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock(&PPtr::<RwLock<V>>::from_usize(key), Tracked(&mut perm), Tracked(lock_manager), lock_id);
+        let ret = wlock(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lock_manager), lock_id);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -94,7 +94,7 @@ impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
 
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lock_manager).thread_id(),
-            lock_perm@.lock_id() == old(self)[key].locking_thread()->Write_lock_id,
+            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
@@ -105,7 +105,7 @@ impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
             unlock_ensures(old(lock_manager), lock_manager, lock_perm@.lock_id()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wunlock(&PPtr::<RwLock<V>>::from_usize(key), Tracked(&mut perm), Tracked(lock_manager), lock_perm);
+        let ret = wunlock(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lock_manager), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -113,7 +113,7 @@ impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
     }
 }
 
-impl<V:LockedUtil + LockOwnerIdUtil> Step for LockedMap<V>{
+impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> Step for LockedMap<T, HasKillState>{
     open spec fn step_spec(self, old:&Self, lock_manager: &LockManager) -> bool{
         &&&
         forall|k:usize|

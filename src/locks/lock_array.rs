@@ -7,7 +7,7 @@ use crate::primitive::*;
 
 verus! {
 
-    impl<T: LockedUtil, const N: usize> Array<RwLock<T>, N> { 
+    impl<T: LockedUtil, const N: usize> Array<RwLock<T, HasKillState>, N> { 
         
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lock_manager): Tracked<&mut LockManager>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
