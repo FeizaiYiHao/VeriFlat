@@ -28,8 +28,10 @@ pub trait LockedUtil {
         else if lock_major == self.lock_major_3(){
             self.lock_major_3_predicate()
         }
-        else {
-            lock_major == self.lock_major_default()
+        else if lock_major == self.lock_major_default(){
+            self.lock_major_default_predicate()
+        }else{
+            false
         }
     }
 }

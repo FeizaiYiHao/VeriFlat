@@ -85,6 +85,7 @@ pub fn wunlock<T:LockedUtil>(pptr:&PPtr<RwLock<T>>, Tracked(perm): Tracked<&mut 
         old(perm).is_init(),
 
         old(perm).value().wlocked_by(old(lock_manager)),
+        old(perm).value().being_killed() == false,
         old(perm).value().inv(),
 
         lock_perm@.state() is WriteLock,

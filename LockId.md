@@ -9,7 +9,7 @@ Minor Id: addr
 ## Physical pages 
 Container Depth: None
 Process Depth: None
-Major Id: Based on the state of the page
+Major Id: Based on the state of the page (Free, merged, allocated, mapped)
 Minor Id: Index
 
 ## Endpoint 
@@ -33,11 +33,11 @@ Minor Id: addr
 ## Thread
 Container Depth: None or killing container's depth
 Process Depth: None or killing process's depth
-Major Id: self.state
+Major Id: self.state (Running, Blocked, scheduled)
 Minor Id: addr
 
 ## CPU
 Container Depth: Running or killing thread's container depth or None if idle
 Process Depth: Running or killing thread's process depth or None if idle
-Major Id: CPU major ID
+Major Id: self.state (Running, idle, off)
 Minor Id: CPU id

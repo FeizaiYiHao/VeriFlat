@@ -89,6 +89,7 @@ impl<V:LockedUtil + LockOwnerIdUtil> LockedMap<V>{
             old(self).dom().contains(key),
             
             old(self)[key].wlocked_by(old(lock_manager)),
+            old(self)[key].being_killed() == false,
             old(self)[key].inv(),
 
             lock_perm@.state() is WriteLock,
@@ -120,6 +121,12 @@ impl<V:LockedUtil + LockOwnerIdUtil> Step for LockedMap<V>{
             old.dom().contains(k) && old[k].locked_by(lock_manager)
             ==>
             self.dom().contains(k) && self[k] =~= old[k]
+        &&&
+        forall|k:usize|
+            #![auto]
+            self.dom().contains(k) && self[k].locked_by(lock_manager) == false
+            ==>
+            self[k].being_killed_by(lock_manager) == false
         &&&
         self.delta() =~= old.delta()
     }

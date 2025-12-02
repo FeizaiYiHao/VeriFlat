@@ -159,6 +159,9 @@ impl<T> RwLock<T>{
     pub closed spec fn killing_thread_id(&self) -> Option<LockThreadId>{
         self.lock.kill
     }
+    pub open spec fn being_killed(&self) -> bool{
+        self.killing_thread_id() is Some
+    }
     pub open spec fn being_killed_by(&self, lock_manager:&LockManager) -> bool{
         self.killing_thread_id() != Some(lock_manager.thread_id())
     }
@@ -259,6 +262,10 @@ pub open spec fn wlock_ensures<T:LockedUtil>(old:RwLock<T>, new:RwLock<T>, lock_
     new.num_released() == old.num_released()
     &&&
     new.modified() == old.modified()
+    &&&
+    new.being_killed() == old.being_killed()
+    &&& 
+    new.being_killed() == false
     &&&
     new@ == old@
 
