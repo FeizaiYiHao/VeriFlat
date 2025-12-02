@@ -6,6 +6,7 @@ pub mod util;
 pub mod lemma;
 pub mod primitive;
 pub mod locks;
+pub mod concurrency;
 // pub mod page_array;
 // pub mod kernel;
 

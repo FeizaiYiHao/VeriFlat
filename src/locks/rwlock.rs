@@ -8,6 +8,7 @@ verus! {
 pub struct RwLockInner{
     lock: AtomicBool, // false means no one is read/writing the lock content.
     writing: bool,
+    pub kill: Option<LockThreadId>, // The id of the CPU that has marked this object as being killed
     num_of_reader: usize, // right now we don't need to worry about overflow because we don't support kernel interrupt.
 }
 
@@ -24,12 +25,50 @@ impl RwLockInner{
             self.lock.store(false, Ordering::Release);
         }
     }
+
+    #[verifier::external_body]
+    pub fn try_wlock(&mut self) -> Result<(),LockThreadId> {
+        loop {
+            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
+            if self.kill.is_some() {
+                let ret = self.kill.unwrap();
+                self.lock.store(false, Ordering::Release);
+                return Err(ret);
+            }
+            if self.num_of_reader == 0 && self.writing == false{
+                self.writing = true;
+                self.lock.store(false, Ordering::Release);
+                return Ok(());
+            }
+            self.lock.store(false, Ordering::Release);
+        }
+    }
+
+    #[verifier::external_body]
+    pub fn try_wlock_and_mark_kill(&mut self, thread_id: LockThreadId) -> Result<(),LockThreadId> {
+        loop {
+            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
+            if self.kill.is_some() {
+                let ret = self.kill.unwrap();
+                self.lock.store(false, Ordering::Release);
+                return Err(ret);
+            }
+            if self.num_of_reader == 0 && self.writing == false{
+                self.writing = true;
+                self.kill = Some(thread_id);
+                self.lock.store(false, Ordering::Release);
+                return Ok(());
+            }
+            self.lock.store(false, Ordering::Release);
+        }
+    }
+
+    
     #[verifier::external_body]
     pub fn wunlock(&mut self) {
         self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
         self.writing = false;
         self.lock.store(false, Ordering::Release);
-        
     }
 
     #[verifier::external_body]
@@ -40,6 +79,23 @@ impl RwLockInner{
                 self.num_of_reader = self.num_of_reader + 1;
                 self.lock.store(false, Ordering::Release);
                 break;
+            }
+            self.lock.store(false, Ordering::Release);
+        }
+    }
+    #[verifier::external_body]
+    pub fn try_rlock(&mut self) -> Result<(),LockThreadId> {
+        loop {
+            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
+            if self.kill.is_some() {
+                let ret = self.kill.unwrap();
+                self.lock.store(false, Ordering::Release);
+                return Err(ret);
+            }
+            if self.writing == false{
+                self.num_of_reader = self.num_of_reader + 1;
+                self.lock.store(false, Ordering::Release);
+                return Ok(());
             }
             self.lock.store(false, Ordering::Release);
         }
@@ -100,7 +156,12 @@ impl<T> RwLock<T>{
         |||
         self.wlocked_by(lock_manager)
     }
-
+    pub closed spec fn killing_thread_id(&self) -> Option<LockThreadId>{
+        self.lock.kill
+    }
+    pub open spec fn being_killed_by(&self, lock_manager:&LockManager) -> bool{
+        self.killing_thread_id() != Some(lock_manager.thread_id())
+    }
     pub closed spec fn is_init(&self) -> bool {
         self.is_init@
     }
