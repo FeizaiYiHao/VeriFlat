@@ -114,7 +114,7 @@ pub enum RwLockState{
     None,
 }
 
-pub struct RwLock<T>{
+pub struct RwLock<T, const HasKillState: bool>{
     lock: RwLockInner,
     value: T,
 
@@ -124,7 +124,7 @@ pub struct RwLock<T>{
     locking_thread: Ghost<RwLockState>,
 }
 
-// pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLock<T>, y: RwLock<V>) -> bool{
+// pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLock<T, HasKillState>, y: RwLock<T, HasKillState>) -> bool{
 //     &&&
 //     x.writing_thread() is Some
 //     &&&
@@ -133,7 +133,7 @@ pub struct RwLock<T>{
 //     x.writing_thread()->0 == y.writing_thread()->0
 // }
 
-impl<T> RwLock<T>{
+impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread@
@@ -156,8 +156,15 @@ impl<T> RwLock<T>{
         |||
         self.wlocked_by(lock_manager)
     }
-    pub closed spec fn killing_thread_id(&self) -> Option<LockThreadId>{
+    pub closed spec fn killing_thread_id_inner(&self) -> Option<LockThreadId>{
         self.lock.kill
+    }
+    pub open spec fn killing_thread_id(&self) ->  Option<LockThreadId>{
+        if HasKillState{
+            self.killing_thread_id_inner()
+        }else{
+            None
+        }
     }
     pub open spec fn being_killed(&self) -> bool{
         self.killing_thread_id() is Some
@@ -184,7 +191,7 @@ impl<T> RwLock<T>{
         self.value
     }
 }
-impl<T:LockedUtil> RwLock<T>{
+impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     pub open spec fn inv(&self) -> bool{
         &&&
         self@.inv()
@@ -249,11 +256,11 @@ impl<T:LockedUtil> RwLock<T>{
     }
 }
 
-pub open spec fn wlock_requires<T:LockedUtil>(old:RwLock<T>, lock_manager: &LockManager) -> bool{
+pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, lock_manager: &LockManager) -> bool{
     old.locked_by(lock_manager) == false
 }
 
-pub open spec fn wlock_ensures<T:LockedUtil>(old:RwLock<T>, new:RwLock<T>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
     &&&
     new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_id }
     &&&
@@ -277,7 +284,7 @@ pub open spec fn wlock_ensures<T:LockedUtil>(old:RwLock<T>, new:RwLock<T>, lock_
     lock_perm.thread_id() == thread_id
 }
 
-pub open spec fn wunlock_ensures<T:LockedUtil>(old:RwLock<T>, new:RwLock<T>) -> bool{
+pub open spec fn wunlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
     &&&
     new.locking_thread() == RwLockState::None
     &&&
