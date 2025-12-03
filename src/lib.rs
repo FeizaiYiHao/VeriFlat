@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 pub mod pagetable_seq;
-pub mod pagetable_dom;
+pub mod pagetable_map;
 pub mod define;
 pub mod util;
 pub mod lemma;
