@@ -111,6 +111,57 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
         }
         return ret;
     }
+
+    pub fn take(&mut self, key:usize, Tracked(lock_manager): Tracked<&LockManager>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            
+            old(self)[key].wlocked_by(lock_manager),
+            old(self)[key].is_init(),
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == lock_manager.thread_id(),
+            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+        ensures
+            self.perms_wf(),
+            self.unchanged_except(old(self), key),
+
+            take_ensures(old(self)[key], self[key]),
+
+            ret == old(self)[key]@,
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        let ret = take(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lock_manager), lock_perm);
+        proof{
+            self.map.borrow_mut().tracked_insert(key, perm);
+        }
+        return ret;
+    }
+
+    pub fn put(&mut self, key:usize, Tracked(lock_manager): Tracked<&LockManager>, lock_perm: Tracked<&LockPerm>, v:T)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            
+            old(self)[key].wlocked_by(lock_manager),
+            old(self)[key].is_init() == false,
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == lock_manager.thread_id(),
+            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+        ensures
+            self.perms_wf(),
+            self.unchanged_except(old(self), key),
+
+            put_ensures(old(self)[key], self[key], v),
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        put(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lock_manager), lock_perm, v);
+        proof{
+            self.map.borrow_mut().tracked_insert(key, perm);
+        }
+    }
 }
 
 impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> Step for LockedMap<T, HasKillState>{

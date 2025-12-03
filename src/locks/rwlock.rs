@@ -138,11 +138,19 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     {
         self.locking_thread@
     }
+    pub open spec fn rlocked(&self) -> bool{
+        &&&
+        self.locking_thread() is Read
+    } 
     pub open spec fn rlocked_by(&self, lock_manager:&LockManager) -> bool{
         &&&
         self.locking_thread() is Read
         &&&
         self.locking_thread()->Read_reader_map.dom().contains(lock_manager.thread_id())
+    } 
+    pub open spec fn wlocked(&self) -> bool{
+        &&&
+        self.locking_thread() is Write
     } 
     pub open spec fn wlocked_by(&self, lock_manager:&LockManager) -> bool{
         &&&
@@ -254,6 +262,17 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     {
         self.lock.wunlock();
     }
+
+    #[verifier::external_body]
+    pub fn take(&mut self) -> T
+    {
+        unsafe { core::ptr::read(&self.value as *const T) }
+    }
+    #[verifier::external_body]
+    pub fn put(&mut self, v: T)
+    {
+        unsafe { core::ptr::write(&mut self.value as *mut T, v) }
+    }
 }
 
 pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, lock_manager: &LockManager) -> bool{
@@ -282,6 +301,9 @@ pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLoc
     lock_perm.lock_id() == lock_id
     &&&
     lock_perm.thread_id() == thread_id
+
+    &&&
+    new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
 pub open spec fn wunlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
@@ -295,6 +317,41 @@ pub open spec fn wunlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwL
     new.modified() == old.modified()
     &&&
     new@ == old@
+
+    &&&
+    new.killing_thread_id_inner() == old.killing_thread_id_inner()
+}
+
+pub open spec fn take_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
+    &&&
+    new.locking_thread() == old.locking_thread()
+    &&&
+    new.is_init() == false
+    &&&
+    new.num_released() == old.num_released()
+    &&&
+    new.modified() == old.modified()
+    &&&
+    new@ == old@
+
+    &&&
+    new.killing_thread_id_inner() == old.killing_thread_id_inner()
+}
+
+pub open spec fn put_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, v:T) -> bool{
+    &&&
+    new.locking_thread() == old.locking_thread()
+    &&&
+    new.is_init() == true
+    &&&
+    new.num_released() == old.num_released()
+    &&&
+    new.modified() == old.modified()
+    &&&
+    new@ == v
+    
+    &&&
+    new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
 }

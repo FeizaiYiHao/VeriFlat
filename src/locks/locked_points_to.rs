@@ -106,4 +106,54 @@ pub fn wunlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasK
     }
 }
 
+#[verifier::external_body]
+pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lock_manager): Tracked<&LockManager>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+
+        old(perm).value().wlocked_by(lock_manager),
+        old(perm).value().is_init(),
+
+        lock_perm@.state() is WriteLock,
+        lock_perm@.thread_id() == lock_manager.thread_id(),
+        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+    ensures
+        old(perm).addr() == perm.addr(),
+        perm.is_init(),
+
+        take_ensures(old(perm).value(), perm.value()),
+
+        ret == old(perm).value()@
+{
+     unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
+        (*uptr).assume_init_mut().take()
+    }
+}
+
+#[verifier::external_body]
+pub fn put<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lock_manager): Tracked<&LockManager>, lock_perm: Tracked<&LockPerm>, v: T) 
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+
+        old(perm).value().wlocked_by(lock_manager),
+        old(perm).value().is_init() == false,
+
+        lock_perm@.state() is WriteLock,
+        lock_perm@.thread_id() == lock_manager.thread_id(),
+        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+    ensures
+        old(perm).addr() == perm.addr(),
+        perm.is_init(),
+
+        put_ensures(old(perm).value(), perm.value(), v),
+{
+     unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
+        (*uptr).assume_init_mut().put(v)
+    }
+}
+
 }
