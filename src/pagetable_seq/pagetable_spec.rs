@@ -1038,15 +1038,15 @@ impl PageTable {
         }
         
         open spec fn lock_major_1(&self) -> LockMajorId {
-            arbitrary()
+            0x233
         }
         
         open spec fn lock_major_2(&self) -> LockMajorId {
-            arbitrary()
+            0x233
         }
         
         open spec fn lock_major_3(&self) -> LockMajorId {
-            arbitrary()
+            0x233
         }
         
         open spec fn lock_major_default(&self) -> LockMajorId {

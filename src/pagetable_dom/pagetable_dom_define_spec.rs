@@ -25,6 +25,15 @@ impl PageTableDom {
         self.map.perms_wf()
     }
 
+    pub open spec fn wlocked_or_inv(&self) -> bool{
+        &&&
+        forall|pt_r:PageTableRoot|
+            #![auto]
+            self.dom().contains(pt_r)
+            ==>
+                self[pt_r].wlocked() || self[pt_r].inv()
+    }
+
     pub open spec fn spec_index(&self, pagetable_root: RwLockPageTableRoot) -> RwLock<PageTable, PAGE_TABLE_HAS_KILL_STATE>
         recommends
             self.dom().contains(pagetable_root),
@@ -32,8 +41,7 @@ impl PageTableDom {
         self.map[pagetable_root]
     }
 
-    pub fn wlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lock_manager): Tracked<&mut LockManager>) 
-    // -> (ret: Tracked<LockPerm>)
+    pub fn wlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lock_manager): Tracked<&mut LockManager>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
@@ -41,75 +49,53 @@ impl PageTableDom {
                 || LockId::from_pagetable_root(pagetable_root) > old(lock_manager).lock_seq().last(),
             old(self)[pagetable_root].locked_by(old(lock_manager)) == false,
             old(lock_manager).wf(),
-        // ensures 
-        //     self.inv(),
-        //     self.dom() == old(self).dom(),
-        //     forall|pt_r:PageTableRoot|
-        //         #![auto]
-        //         self.dom().contains(pt_r) && pt_r != pagetable_root
-        //         ==>
-        //             self[pt_r] == old(self)[pt_r],
+        ensures 
+            self.inv(),
+            self.dom() == old(self).dom(),
+            forall|pt_r:PageTableRoot|
+                #![auto]
+                self.dom().contains(pt_r) && pt_r != pagetable_root
+                ==>
+                    self[pt_r] == old(self)[pt_r],
             
-        //     lock_manager.thread_id() == old(lock_manager).thread_id(),
-        //     lock_manager.lock_seq() == old(lock_manager).lock_seq().push(self[pagetable_root].lock_id()),
-        //     lock_manager.wf(),
+            lock_manager.thread_id() == old(lock_manager).thread_id(),
+            lock_manager.lock_seq() == old(lock_manager).lock_seq().push(LockId::from_pagetable_root(pagetable_root)),
+            lock_manager.wf(),
 
-        //     self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
-        //     old(self)[pagetable_root].released() == false ==> self[pagetable_root]@ == old(self)[pagetable_root]@,
-        //     self[pagetable_root].wlocked_by(lock_manager.thread_id()),
-        //     self[pagetable_root].rlocked_by(lock_manager.thread_id()) == false,
-
-        //     ret@.lock_id() == self[pagetable_root].lock_id(),
-        //     ret@.state == LockState::WriteLock,
+            wlock_ensures(old(self)[pagetable_root], self[pagetable_root], LockId::from_pagetable_root(pagetable_root), lock_manager.thread_id(), ret@),
+            lock_ensures(old(lock_manager), lock_manager, LockId::from_pagetable_root(pagetable_root)),
     {
-        // let tracked mut rwlock_perm = self.map.borrow_mut().tracked_remove(pagetable_root);
-        // let mut rwlock = PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).take(Tracked(&mut rwlock_perm));
-        // let ret = rwlock.wlock(Tracked(lock_manager));
-        // PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).put(Tracked(&mut rwlock_perm), rwlock);
-        // proof{
-        //     self.map.borrow_mut().tracked_insert(pagetable_root, rwlock_perm);
-        // }
-        // ret
+        self.map.wlock(pagetable_root, Tracked(lock_manager), Ghost(LockId::from_pagetable_root(pagetable_root)))
     }
 
-//     pub fn wunlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lock_manager): Tracked<&mut LockManager>, Tracked(lock_perm): Tracked<LockPerm>) 
-//         requires
-//             old(self).inv(),
-//             old(self).dom().contains(pagetable_root),
-//             old(self)[pagetable_root].wlocked_by(old(lock_manager).thread_id()) == true,
-//             old(self)[pagetable_root].inv(),
-
-//             old(lock_manager).lock_seq().contains(old(self)[pagetable_root].lock_id()),
-//             old(lock_manager).wf(),
-//             lock_perm.lock_id() == old(self)[pagetable_root].lock_id(),
-//             lock_perm.state == LockState::WriteLock,
-//             lock_perm.thread_id() == old(lock_manager).thread_id(),
-//         ensures 
-//             self.inv(),
-//             self.dom() == old(self).dom(),
-//             forall|pt_r:PageTableRoot|
-//                 #![auto]
-//                 self.dom().contains(pt_r) && pt_r != pagetable_root
-//                 ==>
-//                     self[pt_r] == old(self)[pt_r],
+    pub fn wunlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lock_manager): Tracked<&mut LockManager>, lock_perm: Tracked<LockPerm>) 
+        requires
+            old(self).inv(),
+            old(self).dom().contains(pagetable_root),
             
-//             lock_manager.thread_id() == old(lock_manager).thread_id(),
-//             lock_manager.lock_seq() == old(lock_manager).lock_seq().remove_value(self[pagetable_root].lock_id()),
-//             lock_manager.wf(),
+            old(self)[pagetable_root].wlocked_by(old(lock_manager)),
+            old(self)[pagetable_root].being_killed() == false,
+            old(self)[pagetable_root].inv(),
 
-//             self[pagetable_root].lock_id() == old(self)[pagetable_root].lock_id(),
-//             self[pagetable_root]@ == old(self)[pagetable_root]@,
-//             self[pagetable_root].wlocked_by(lock_manager.thread_id()) == false,
-//             self[pagetable_root].rlocked_by(lock_manager.thread_id()) == false,
-//     {
-//         let tracked mut rwlock_perm = self.map.borrow_mut().tracked_remove(pagetable_root);
-//         let mut rwlock = PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).take(Tracked(&mut rwlock_perm));
-//         rwlock.wunlock(Tracked(lock_manager), Tracked(lock_perm));
-//         PPtr::<RwLock<PageTable, PAGE_TABLE_LOCK_MAJOR>>::from_usize(pagetable_root).put(Tracked(&mut rwlock_perm), rwlock);
-//         proof{
-//             self.map.borrow_mut().tracked_insert(pagetable_root, rwlock_perm);
-//         }
-//     }
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == old(lock_manager).thread_id(),
+            lock_perm@.lock_id() == old(self)[pagetable_root].locking_thread() -> Write_lock_id,
+        ensures 
+            self.inv(),
+            self.dom() == old(self).dom(),
+            forall|pt_r:PageTableRoot|
+                #![auto]
+                self.dom().contains(pt_r) && pt_r != pagetable_root
+                ==>
+                    self[pt_r] == old(self)[pt_r],
+        
+            self[pagetable_root].locking_thread() is None,
+
+            wunlock_ensures(old(self)[pagetable_root], self[pagetable_root]),
+            unlock_ensures(old(lock_manager), lock_manager, lock_perm@.lock_id()),
+    {
+        self.map.wunlock(pagetable_root, Tracked(lock_manager), lock_perm);
+    }
 
 //     pub fn map_4k_page(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lock_perm): Tracked<&LockPerm>, 
 //         target_l4i: L4Index,
