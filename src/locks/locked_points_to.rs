@@ -9,7 +9,7 @@ impl<T, const HasKillState: bool> LockMinor for PointsTo<RwLock<T, HasKillState>
     open spec fn lock_minor(&self) -> LockMinorId{
         self.addr()
     }
-}  
+}
 
 impl<T:LockOwnerIdUtil, const HasKillState: bool> LockOwnerIdUtil for PointsTo<RwLock<T, HasKillState>>{
     open spec fn container_depth(&self) -> LockOwnerId{
@@ -128,7 +128,7 @@ pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKill
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().take()
+        (*uptr).assume_init_mut().take(Tracked(lock_manager),lock_perm)
     }
 }
 
@@ -152,7 +152,7 @@ pub fn put<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillS
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().put(v)
+        (*uptr).assume_init_mut().put(Tracked(lock_manager), lock_perm,v)
     }
 }
 
