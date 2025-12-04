@@ -210,26 +210,11 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
         requires
-            // old(self).locked(old(lock_manager).thread_id()) == false,
+            old(self)@.lock_major_sat(lock_major@),
 
-            // old(self).lock_major_sat(lock_major@),
-            // old(lock_manager).lock_seq().len() == 0 ||
-            //     lock_major.greater(old(lock_manager).lock_seq().last()),
-        ensures
-            // self.rlocked_by(lock_manager.thread_id()) == false,
-            // self.wlocked_by(lock_manager.thread_id()),
-
-            // self@.inv(),
-
-            // lock_manager.thread_id() == old(lock_manager).thread_id(),
-            // lock_manager.lock_seq() == old(lock_manager).lock_seq().push(lock_major),
-            // old(lock_manager).wf() ==> lock_manager.wf(),
-            // ret@.thread_id() == lock_manager.thread_id(),
-
-            // ret@.state == LockState::WriteLock,
-            // ret@.lock_id() == self.lock_id(),
-
-            // self.modified() == false,
+            wlock_requires(*old(self), old(lock_manager)),
+        // ensures
+            // TODO fill
     {
         self.lock.wlock();
         Tracked::assume_new()
