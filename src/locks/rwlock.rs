@@ -222,39 +222,18 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
 
     #[verifier::external_body]
     pub fn wunlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>, lp: Tracked<LockPerm>)
-        // requires
-        //     old(self).locked(old(lock_manager).thread_id()),
-        //     old(self).inv(),
-
-        //     lp@.thread_id() == old(lock_manager).thread_id(),
-        //     lp@.state == LockState::WriteLock,
-        //     lp@.lock_id() == old(self).lock_id(),
-
-        //     old(lock_manager).lock_seq().contains(old(self).lock_id())
-        // ensures
-        //     self.rlocked_by(lock_manager.thread_id()) == false,
-        //     self.wlocked_by(lock_manager.thread_id()) == false,
-        //     self.lock_id() == old(self).lock_id(),
-        //     self.inv(),
-        //     self.view() == old(self).view(),
-        //     self.is_init() == old(self).is_init(),
-
-        //     lock_manager.thread_id() == old(lock_manager).thread_id(),
-        //     lock_manager.lock_seq() === old(lock_manager).lock_seq().remove_value(self.lock_id()),
-        //     old(lock_manager).wf() ==> lock_manager.wf(),
-
-        //     self.released(),
+        // TODO fill
     {
         self.lock.wunlock();
     }
 
     #[verifier::external_body]
-    pub fn take(&mut self) -> T
+    pub fn take(&mut self, Tracked(lock_manager): Tracked<&LockManager>, lp: Tracked<&LockPerm>) -> T
     {
         unsafe { core::ptr::read(&self.value as *const T) }
     }
     #[verifier::external_body]
-    pub fn put(&mut self, v: T)
+    pub fn put(&mut self, Tracked(lock_manager): Tracked<&LockManager>, lp: Tracked<&LockPerm>, v: T)
     {
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
     }
