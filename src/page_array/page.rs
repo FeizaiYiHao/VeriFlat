@@ -15,7 +15,7 @@ verus! {
         pub mappings_1g: Ghost<Set<(PageTableRoot, VAddr)>>,
         // pub io_mappings: Ghost<Set<(PageTableRoot, VAddr)>>,
 
-        pub free_list_node_stroage: ExternalNode<PageIndex>,
+        pub free_list_node_storage: ExternalNode<PageIndex>,
     }
 
     impl Page{
