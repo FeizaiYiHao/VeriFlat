@@ -2,9 +2,8 @@ use vstd::prelude::*;
 
 use crate::{define::*, primitive::*};
 use crate::locks::*;
+use crate::linkedlist::*;
 verus! {
-
-    #[derive(Clone, Copy)]
     pub struct Page {
         pub addr: PagePtr,
         pub state: PageState,
@@ -15,6 +14,8 @@ verus! {
         pub mappings_2m: Ghost<Set<(PageTableRoot, VAddr)>>,
         pub mappings_1g: Ghost<Set<(PageTableRoot, VAddr)>>,
         // pub io_mappings: Ghost<Set<(PageTableRoot, VAddr)>>,
+
+        pub free_list_node_stroage: ExternalNode<PageIndex>,
     }
 
     impl Page{
