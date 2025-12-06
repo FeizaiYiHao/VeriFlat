@@ -8,6 +8,7 @@ pub mod primitive;
 pub mod locks;
 pub mod concurrency;
 pub mod page_array;
+pub mod linkedlist;
 // pub mod kernel;
 
 verus! {
