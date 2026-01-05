@@ -7,4 +7,5 @@ fi
 
 cd "$CURRENT_DIR/verus/source"
 source "$CURRENT_DIR/verus/tools/activate"
+vargo build --release
 cd "$CURRENT_DIR"
