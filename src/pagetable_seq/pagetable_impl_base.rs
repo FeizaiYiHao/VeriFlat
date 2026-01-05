@@ -1242,11 +1242,17 @@ impl PageTable {
                 target_l3i,
                 target_l2i,
             ) is Some);
-            self.mapping_2m@ = self.mapping_2m@.insert(
+        }
+        self.mapping_2m = Ghost(self.mapping_2m@.insert(
+            spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
+            *target_entry,
+        ));
+        assert(
+            self.mapping_2m@ == old(self).mapping_2m@.insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
                 *target_entry,
-            );
-        }
+            )
+        );
         assert(self.wf_l4());
         assert(self.wf_l3());
         assert(self.wf_l2());
