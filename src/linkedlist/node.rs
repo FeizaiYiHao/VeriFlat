@@ -1,17 +1,25 @@
+use core::mem::MaybeUninit;
+
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
 
 pub struct Node<T>{
     pub value: T,
-    pub next: usize,
-    pub prev: usize,
+    pub next: Option<usize>,
+    pub prev: Option<usize>,
 }
 
 pub struct ExternalNode<T>{
     storage: Node<T>,
     is_init: Ghost<bool>,
     addr: Ghost<usize>,
+}
+
+impl<T> Node<T>{
+    pub open spec fn view(&self) -> T {
+        self.value
+    }
 }
 
 impl<T> ExternalNode<T>{
@@ -55,15 +63,69 @@ pub broadcast proof fn node_has_size<T>()
 {
 }
 #[verifier(external_body)]
-pub proof fn test_node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
+pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
     ensures 
-        
         forall|k:K| 
             #![trigger others[k].addr()] 
             others.dom().contains(k) 
             ==> 
             this.addr() != others[k].addr(),
+        *this == *old(this),
 {
+}
+
+#[verifier(external_body)]
+pub fn node_update_value<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, value: T)
+    requires
+        old(perm)@.addr() == addr,
+        old(perm)@.is_init(),
+    ensures
+        perm@.is_init(),
+        perm@.addr() == old(perm)@.addr(),
+        perm@.value()@ == value,
+        perm@.value().prev == old(perm)@.value().prev,
+        perm@.value().next == old(perm)@.value().next,
+{
+    unsafe {
+        let uptr = addr as *mut MaybeUninit<Node<T>>;
+        (*uptr).assume_init_mut().value = value;
+    }
+}
+
+#[verifier(external_body)]
+pub fn node_update_prev<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, prev: Option<usize>)
+    requires
+        old(perm)@.addr() == addr,
+        old(perm)@.is_init(),
+    ensures
+        perm@.is_init(),
+        perm@.addr() == old(perm)@.addr(),
+        perm@.value()@ == old(perm)@.value()@,
+        perm@.value().prev == prev,
+        perm@.value().next == old(perm)@.value().next,
+{
+    unsafe {
+        let uptr = addr as *mut MaybeUninit<Node<T>>;
+        (*uptr).assume_init_mut().prev = prev;
+    }
+}
+
+#[verifier(external_body)]
+pub fn node_update_next<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, next: Option<usize>)
+    requires
+        old(perm)@.addr() == addr,
+        old(perm)@.is_init(),
+    ensures
+        perm@.is_init(),
+        perm@.addr() == old(perm)@.addr(),
+        perm@.value()@ == old(perm)@.value()@,
+        perm@.value().prev == old(perm)@.value().prev,
+        perm@.value().next == next,
+{
+    unsafe {
+        let uptr = addr as *mut MaybeUninit<Node<T>>;
+        (*uptr).assume_init_mut().next = next;
+    }
 }
 
 }
