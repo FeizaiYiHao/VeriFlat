@@ -10,7 +10,7 @@ pub mod concurrency;
 pub mod page_array;
 pub mod linkedlist;
 pub mod test;
-// pub mod kernel;
+pub mod kernel;
 
 verus! {
 global size_of usize == 8;

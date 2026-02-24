@@ -9,7 +9,7 @@ verus! {
         pub state: PageState,
         // pub is_io_page: bool,
         pub ref_count: usize,
-        // pub owning_container: Option<ContainerPtr>,
+        // pub owning_container: ContainerPtr,
         pub mappings_4k: Ghost<Set<(PageTableRoot, VAddr)>>,
         pub mappings_2m: Ghost<Set<(PageTableRoot, VAddr)>>,
         pub mappings_1g: Ghost<Set<(PageTableRoot, VAddr)>>,
