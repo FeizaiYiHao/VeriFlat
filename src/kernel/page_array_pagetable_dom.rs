@@ -1,10 +1,10 @@
 use vstd::prelude::*;
-use crate::define::{PageIndex, PageTableRoot, VAddr};
-use crate::page_array::page_array_define_spec::*;
-use crate::pagetable_map::pagetable_dom_define_spec::*;
-use crate::primitive::lock_manager::{self, LockManager};
-use crate::primitive::write_locked_by_same_thread;
-use crate::util::page_ptr_util_u::{page_index2page_ptr, page_index_valid, spec_page_index2page_ptr};
+use crate::define::*;
+use crate::page_array::*;
+use crate::pagetable_map::*;
+use crate::primitive::*;
+use crate::util::page_ptr_util_u::*;
+use crate::locks::*;
 
 use super::kernel_define_spec::Kernel;
 verus! {
@@ -40,7 +40,7 @@ verus! {
                 page_index_valid(p_i) && self.page_array@[p_i as int]@.mappings_4k@.contains(mapping)
                 ==>{
                     |||
-                    self.page_array@[p_i as int].writing_thread() is Some
+                    self.page_array@[p_i as int].locking_thread() is Write
                     |||
                     self.pagetable_dom.dom().contains(mapping.0)
                 }

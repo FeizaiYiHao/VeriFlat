@@ -124,14 +124,14 @@ pub struct RwLock<T, const HasKillState: bool>{
     locking_thread: Ghost<RwLockState>,
 }
 
-// pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil>(x: RwLock<T, HasKillState>, y: RwLock<T, HasKillState>) -> bool{
-//     &&&
-//     x.writing_thread() is Some
-//     &&&
-//     y.writing_thread() is Some
-//     &&&
-//     x.writing_thread()->0 == y.writing_thread()->0
-// }
+pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil, const HasKillStateX: bool, const HasKillStateY: bool>(x: RwLock<T, HasKillStateX>, y: RwLock<V, HasKillStateY>) -> bool{
+    &&&
+    x.locking_thread() is Write
+    &&&
+    y.locking_thread() is Write
+    &&&
+    x.locking_thread()->Write_thread_id == y.locking_thread()->Write_thread_id
+}
 
 impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     pub closed spec fn locking_thread(&self) -> RwLockState
