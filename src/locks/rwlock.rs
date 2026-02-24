@@ -142,27 +142,27 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
         &&&
         self.locking_thread() is Read
     } 
-    pub open spec fn rlocked_by(&self, lock_manager:&LockManager) -> bool{
+    pub open spec fn rlocked_by(&self, cctx:&ConcurrencyContext) -> bool{
         &&&
         self.locking_thread() is Read
         &&&
-        self.locking_thread()->Read_reader_map.dom().contains(lock_manager.thread_id())
+        self.locking_thread()->Read_reader_map.dom().contains(cctx.thread_id())
     } 
     pub open spec fn wlocked(&self) -> bool{
         &&&
         self.locking_thread() is Write
     } 
-    pub open spec fn wlocked_by(&self, lock_manager:&LockManager) -> bool{
+    pub open spec fn wlocked_by(&self, cctx:&ConcurrencyContext) -> bool{
         &&&
         self.locking_thread() is Write
         &&&
-        self.locking_thread()->Write_thread_id == lock_manager.thread_id()
+        self.locking_thread()->Write_thread_id == cctx.thread_id()
     } 
-    pub open spec fn locked_by(&self, lock_manager:&LockManager) -> bool{
+    pub open spec fn locked_by(&self, cctx:&ConcurrencyContext) -> bool{
         |||
-        self.rlocked_by(lock_manager)
+        self.rlocked_by(cctx)
         |||
-        self.wlocked_by(lock_manager)
+        self.wlocked_by(cctx)
     }
     pub closed spec fn killing_thread_id_inner(&self) -> Option<LockThreadId>{
         self.lock.kill
@@ -177,8 +177,8 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     pub open spec fn being_killed(&self) -> bool{
         self.killing_thread_id() is Some
     }
-    pub open spec fn being_killed_by(&self, lock_manager:&LockManager) -> bool{
-        self.killing_thread_id() != Some(lock_manager.thread_id())
+    pub open spec fn being_killed_by(&self, cctx:&ConcurrencyContext) -> bool{
+        self.killing_thread_id() != Some(cctx.thread_id())
     }
     pub closed spec fn is_init(&self) -> bool {
         self.is_init@
@@ -208,11 +208,11 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 
     #[verifier::external_body]
-    pub fn wlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
+    pub fn wlock(&mut self, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
         requires
             old(self)@.lock_major_sat(lock_major@),
 
-            wlock_requires(*old(self), old(lock_manager)),
+            wlock_requires(*old(self), old(cctx)),
         // ensures
             // TODO fill
     {
@@ -221,26 +221,26 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 
     #[verifier::external_body]
-    pub fn wunlock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>, lp: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lp: Tracked<LockPerm>)
         // TODO fill
     {
         self.lock.wunlock();
     }
 
     #[verifier::external_body]
-    pub fn take(&mut self, Tracked(lock_manager): Tracked<&LockManager>, lp: Tracked<&LockPerm>) -> T
+    pub fn take(&mut self, Tracked(cctx): Tracked<&ConcurrencyContext>, lp: Tracked<&LockPerm>) -> T
     {
         unsafe { core::ptr::read(&self.value as *const T) }
     }
     #[verifier::external_body]
-    pub fn put(&mut self, Tracked(lock_manager): Tracked<&LockManager>, lp: Tracked<&LockPerm>, v: T)
+    pub fn put(&mut self, Tracked(cctx): Tracked<&ConcurrencyContext>, lp: Tracked<&LockPerm>, v: T)
     {
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
     }
 }
 
-pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, lock_manager: &LockManager) -> bool{
-    old.locked_by(lock_manager) == false
+pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, cctx: &ConcurrencyContext) -> bool{
+    old.locked_by(cctx) == false
 }
 
 pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{

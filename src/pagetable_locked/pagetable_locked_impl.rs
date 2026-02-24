@@ -40,21 +40,21 @@ impl PageTableLocked{
     }
 
     #[verifier::external_body]
-    pub fn read_lock(&mut self, Tracked(lock_manager): Tracked<&mut LockManager>) -> (ret:Tracked<LockPerm>)
+    pub fn read_lock(&mut self, Tracked(cctx): Tracked<&mut ConcurrencyContext>) -> (ret:Tracked<LockPerm>)
         requires
-            old(self).locked(old(lock_manager).thread_id()) == false,
-            old(lock_manager).lock_seq().len() == 0 ||
-                old(self).lock_id().greater(old(lock_manager).lock_seq().last()),
+            old(self).locked(old(cctx).thread_id()) == false,
+            old(cctx).lock_seq().len() == 0 ||
+                old(self).lock_id().greater(old(cctx).lock_seq().last()),
         ensures
-            self.rlocked_by(lock_manager.thread_id()),
-            self.wlocked_by(lock_manager.thread_id()) == false,
+            self.rlocked_by(cctx.thread_id()),
+            self.wlocked_by(cctx.thread_id()) == false,
             self.lock_id() == old(self).lock_id(),
             self.addr() == old(self).addr(),
             self.is_init() == old(self).is_init(),
             self.view() == old(self).view(),
-            lock_manager.thread_id() == old(lock_manager).thread_id(),
-            lock_manager.lock_seq() == old(lock_manager).lock_seq().push(self.lock_id()),
-            ret@.thread_id() == lock_manager.thread_id(),
+            cctx.thread_id() == old(cctx).thread_id(),
+            cctx.lock_seq() == old(cctx).lock_seq().push(self.lock_id()),
+            ret@.thread_id() == cctx.thread_id(),
             ret@.state == LockState::ReadLock,
             ret@.lock_id() == self.lock_id()
     {
