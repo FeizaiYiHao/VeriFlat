@@ -7,25 +7,25 @@ use super::LockPerm;
 
 verus! {
 
-pub enum LMState{
+pub enum CCtxtState{
     Lock,
     Unlock,
     ReLock,
 }
-pub struct LockManager{
+pub struct ConcurrencyContext{
     thread_id: LockThreadId,
     lock_seq: Seq<LockId>,
-    state: LMState,
+    state: CCtxtState,
 }
 
-impl LockManager{
+impl ConcurrencyContext{
     pub closed spec fn thread_id(&self) -> LockThreadId {
         self.thread_id
     }
     pub closed spec fn lock_seq(&self) -> Seq<LockId>{
         self.lock_seq
     }
-    pub closed spec fn state(&self) -> LMState{
+    pub closed spec fn state(&self) -> CCtxtState{
         self.state
     }
     pub open spec fn wf(&self) -> bool{
@@ -44,7 +44,7 @@ impl LockManager{
     }
 }
 
-    pub open spec fn lock_ensures(old:&LockManager, new:&LockManager, lock_id: LockId) -> bool{
+    pub open spec fn lock_ensures(old:&ConcurrencyContext, new:&ConcurrencyContext, lock_id: LockId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
@@ -57,7 +57,7 @@ impl LockManager{
         new.lock_seq() =~= old.lock_seq().push(lock_id)
     }
 
-    pub open spec fn unlock_ensures(old:&LockManager, new:&LockManager, lock_id: LockId) -> bool{
+    pub open spec fn unlock_ensures(old:&ConcurrencyContext, new:&ConcurrencyContext, lock_id: LockId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
