@@ -29,3 +29,30 @@ CPU -> Rlock Container -> Rlock Process -> ... ->  Wlock target Process -> Wlock
 
 CPU -> Rlock Container -> Rlock Process -> ... ->  Wlock parent Process ->  Wlock target Process -> Wlock blocked/scheduled Threads (state killing) -> Wlock Endpoint/ lock scheduler
 CPU -> Rlock Container -> Rlock Process -> ... ->  Wlock parent Process ->  Wlock target Process -> Wlock Running Threads (state killing) -> Wlock CPU
+
+
+# Supported system calls
+## Single step system calls
+Create thread
+Create process
+Create endpoint
+Create container
+Map
+Unmap
+Send
+Receive
+Kill thread
+
+## Multiple step system calls
+### Kill process (plus child processes and all threads)
+Lock all the processes, lock all threads and change thread states to killing. 
+Move threads up to the top process
+Kill all processes
+Kill all threads
+
+Kill container (plus child containers and all processes and threads)
+Lock all the containers, processes, threads and change thread states to killing. 
+Move threads up to the top process of the top container
+Kill all the containers
+Kill all processes
+Kill all threads
