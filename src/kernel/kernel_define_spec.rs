@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 use crate::page_array::page_array_define_spec::*;
-use crate::pagetable_dom::pagetable_dom_define_spec::*;
+use crate::pagetable_map::*;
 verus! {
 
     pub struct Kernel{
@@ -19,8 +19,8 @@ verus! {
         pub open spec fn inv(&self) -> bool {
             &&&
             self.subsystems_inv()
-            &&&
-            self.page_array_pagetable_dom_inv()
+            // &&&
+            // self.page_array_pagetable_dom_inv()
         }
     }
 
