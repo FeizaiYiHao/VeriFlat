@@ -7,10 +7,14 @@ use super::LockPerm;
 
 verus! {
 
-pub enum CCtxtState{
+pub enum CCtxtLockState{
     Lock,
     Unlock,
-    ReLock,
+    // ReLock,
+}
+pub struct CCtxtState{  
+    pub locking_state: CCtxtLockState,
+    pub serial_num: nat,
 }
 pub struct ConcurrencyContext{
     thread_id: LockThreadId,
@@ -25,8 +29,11 @@ impl ConcurrencyContext{
     pub closed spec fn lock_seq(&self) -> Seq<LockId>{
         self.lock_seq
     }
-    pub closed spec fn state(&self) -> CCtxtState{
-        self.state
+    pub closed spec fn locking_state(&self) -> CCtxtLockState{
+        self.state.locking_state
+    }
+    pub closed spec fn locking_serial_num(&self) -> nat{
+        self.state.serial_num
     }
     pub open spec fn wf(&self) -> bool{
         &&&
@@ -48,11 +55,13 @@ impl ConcurrencyContext{
         &&&
         new.thread_id() == old.thread_id()
         &&&
-        old.state() is Lock ==> new.state() is Lock
+        old.locking_state() is Lock ==> new.locking_state() is Lock
         &&&
-        old.state() is Unlock ==> new.state() is ReLock
+        old.locking_state() is Unlock ==> new.locking_state() is Lock
         &&&
-        old.state() is ReLock ==> new.state() is ReLock 
+        old.locking_state() is Lock ==> old.locking_serial_num() == new.locking_serial_num()
+        &&&
+        old.locking_state() is Unlock ==> old.locking_serial_num() + 1 == new.locking_serial_num()
         &&&
         new.lock_seq() =~= old.lock_seq().push(lock_id)
     }
@@ -61,11 +70,11 @@ impl ConcurrencyContext{
         &&&
         new.thread_id() == old.thread_id()
         &&&
-        old.state() is Lock ==> new.state() is Unlock
+        old.locking_state() is Lock ==> new.locking_state() is Unlock
         &&&
-        old.state() is Unlock ==> new.state() is Unlock
+        old.locking_state() is Unlock ==> new.locking_state() is Unlock
         &&&
-        old.state() is ReLock ==> new.state() is Unlock 
+        old.locking_serial_num() + 1 == new.locking_serial_num()
         &&&
         new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
     }
