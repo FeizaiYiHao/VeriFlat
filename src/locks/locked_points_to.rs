@@ -56,7 +56,7 @@ impl<T:LockedUtil, const HasKillState: bool> LockedUtil for PointsTo<RwLock<T, H
 }  
 
 #[verifier::external_body]
-pub fn wlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -64,32 +64,32 @@ pub fn wlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKil
         old(perm).lock_major_sat(lock_id@.major),
         old(perm).lock_minor() == lock_id@.minor,
 
-        wlock_requires(old(perm).value(), old(cctx)),
-        old(cctx).lock_id_valid(lock_id@),
+        wlock_requires(old(perm).value(), old(lctx)),
+        old(lctx).lock_id_valid(lock_id@),
     ensures
         perm.addr() == old(perm).addr(),
         perm.is_init(),
 
-        wlock_ensures(old(perm).value(), perm.value(), lock_id@, cctx.thread_id(), ret@),
-        lock_ensures(old(cctx), cctx, lock_id@),
+        wlock_ensures(old(perm).value(), perm.value(), lock_id@, lctx.thread_id(), ret@),
+        lock_ensures(old(lctx), lctx, lock_id@),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().wlock(Tracked(cctx), Ghost(lock_id@.major))
+        (*uptr).assume_init_mut().wlock(Tracked(lctx), Ghost(lock_id@.major))
     }
 }
 #[verifier::external_body]
-pub fn wunlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
 
-        old(perm).value().wlocked_by(old(cctx)),
+        old(perm).value().wlocked_by(old(lctx)),
         old(perm).value().being_killed() == false,
         old(perm).value().inv(),
 
         lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == old(cctx).thread_id(),
+        lock_perm@.thread_id() == old(lctx).thread_id(),
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
     ensures
         old(perm).addr() == perm.addr(),
@@ -98,25 +98,25 @@ pub fn wunlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasK
         perm.value().locking_thread() is None,
 
         wunlock_ensures(old(perm).value(), perm.value()),
-        unlock_ensures(old(cctx), cctx, lock_perm@.lock_id()),
+        unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().wunlock(Tracked(cctx), lock_perm);
+        (*uptr).assume_init_mut().wunlock(Tracked(lctx), lock_perm);
     }
 }
 
 #[verifier::external_body]
-pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(cctx): Tracked<&ConcurrencyContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
 
-        old(perm).value().wlocked_by(cctx),
+        old(perm).value().wlocked_by(lctx),
         old(perm).value().is_init(),
 
         lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == cctx.thread_id(),
+        lock_perm@.thread_id() == lctx.thread_id(),
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
     ensures
         old(perm).addr() == perm.addr(),
@@ -128,21 +128,21 @@ pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKill
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().take(Tracked(cctx),lock_perm)
+        (*uptr).assume_init_mut().take(Tracked(lctx),lock_perm)
     }
 }
 
 #[verifier::external_body]
-pub fn put<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(cctx): Tracked<&ConcurrencyContext>, lock_perm: Tracked<&LockPerm>, v: T) 
+pub fn put<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
 
-        old(perm).value().wlocked_by(cctx),
+        old(perm).value().wlocked_by(lctx),
         old(perm).value().is_init() == false,
 
         lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == cctx.thread_id(),
+        lock_perm@.thread_id() == lctx.thread_id(),
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
     ensures
         old(perm).addr() == perm.addr(),
@@ -152,7 +152,7 @@ pub fn put<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillS
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().put(Tracked(cctx), lock_perm,v)
+        (*uptr).assume_init_mut().put(Tracked(lctx), lock_perm,v)
     }
 }
 

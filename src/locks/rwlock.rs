@@ -142,27 +142,27 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
         &&&
         self.locking_thread() is Read
     } 
-    pub open spec fn rlocked_by(&self, cctx:&ConcurrencyContext) -> bool{
+    pub open spec fn rlocked_by(&self, lctx:&LocalContext) -> bool{
         &&&
         self.locking_thread() is Read
         &&&
-        self.locking_thread()->Read_reader_map.dom().contains(cctx.thread_id())
+        self.locking_thread()->Read_reader_map.dom().contains(lctx.thread_id())
     } 
     pub open spec fn wlocked(&self) -> bool{
         &&&
         self.locking_thread() is Write
     } 
-    pub open spec fn wlocked_by(&self, cctx:&ConcurrencyContext) -> bool{
+    pub open spec fn wlocked_by(&self, lctx:&LocalContext) -> bool{
         &&&
         self.locking_thread() is Write
         &&&
-        self.locking_thread()->Write_thread_id == cctx.thread_id()
+        self.locking_thread()->Write_thread_id == lctx.thread_id()
     } 
-    pub open spec fn locked_by(&self, cctx:&ConcurrencyContext) -> bool{
+    pub open spec fn locked_by(&self, lctx:&LocalContext) -> bool{
         |||
-        self.rlocked_by(cctx)
+        self.rlocked_by(lctx)
         |||
-        self.wlocked_by(cctx)
+        self.wlocked_by(lctx)
     }
     pub closed spec fn killing_thread_id_inner(&self) -> Option<LockThreadId>{
         self.lock.kill
@@ -177,8 +177,8 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     pub open spec fn being_killed(&self) -> bool{
         self.killing_thread_id() is Some
     }
-    pub open spec fn being_killed_by(&self, cctx:&ConcurrencyContext) -> bool{
-        self.killing_thread_id() != Some(cctx.thread_id())
+    pub open spec fn being_killed_by(&self, lctx:&LocalContext) -> bool{
+        self.killing_thread_id() != Some(lctx.thread_id())
     }
     pub closed spec fn is_init(&self) -> bool {
         self.is_init@
@@ -208,11 +208,11 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 
     #[verifier::external_body]
-    pub fn wlock(&mut self, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
+    pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
         requires
             old(self)@.lock_major_sat(lock_major@),
 
-            wlock_requires(*old(self), old(cctx)),
+            wlock_requires(*old(self), old(lctx)),
         // ensures
             // TODO fill
     {
@@ -221,26 +221,26 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 
     #[verifier::external_body]
-    pub fn wunlock(&mut self, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lp: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
         // TODO fill
     {
         self.lock.wunlock();
     }
 
     #[verifier::external_body]
-    pub fn take(&mut self, Tracked(cctx): Tracked<&ConcurrencyContext>, lp: Tracked<&LockPerm>) -> T
+    pub fn take(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>) -> T
     {
         unsafe { core::ptr::read(&self.value as *const T) }
     }
     #[verifier::external_body]
-    pub fn put(&mut self, Tracked(cctx): Tracked<&ConcurrencyContext>, lp: Tracked<&LockPerm>, v: T)
+    pub fn put(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>, v: T)
     {
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
     }
 }
 
-pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, cctx: &ConcurrencyContext) -> bool{
-    old.locked_by(cctx) == false
+pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, lctx: &LocalContext) -> bool{
+    old.locked_by(lctx) == false
 }
 
 pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
