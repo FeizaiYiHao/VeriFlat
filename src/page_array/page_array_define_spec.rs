@@ -48,7 +48,7 @@ impl PageArray{
             ==>
             self[i] == old[i]
     }
-    pub fn page_add_mapping_4k(&mut self, page_index: PageIndex, Tracked(lctx): Tracked<&LocalContext>, Tracked(lock_perm): Tracked<&LockPerm>, pagetable_root:PageTableRoot, v_addr: VAddr)
+    pub fn page_add_mapping_4k(&mut self, page_index: PageIndex, Tracked(lctx): Tracked<&LocalContext>, Tracked(lock_perm): Tracked<&LockPerm>, pagetable_root:RwLockPageTableRoot, v_addr: VAddr)
         requires
             page_index_wf(page_index),
 

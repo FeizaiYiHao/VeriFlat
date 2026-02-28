@@ -146,17 +146,32 @@ impl LockId{
 }
 
 impl LockId{
-    pub open spec fn from_pagetable_root(pagetable_root: RwLockPageTableRoot) -> Self{
+    // pub open spec fn from_pagetable_root(pagetable_root: RwLockPageTableRoot) -> Self{
+    //     LockId{
+    //         container: LockOwnerId::none(),
+    //         process: LockOwnerId::none(),
+    //         major: PAGE_TABLE_LOCK_MAJOR,
+    //         minor:pagetable_root,
+    //     }
+    // }
+}
+
+pub trait ToLockId{
+    spec fn to_lock_id(&self) -> LockId;
+}
+
+// -------------------- End of lock id  -----------------------
+
+impl ToLockId for RwLockPageTableRoot{
+    open spec fn to_lock_id(&self) -> LockId{
         LockId{
             container: LockOwnerId::none(),
             process: LockOwnerId::none(),
             major: PAGE_TABLE_LOCK_MAJOR,
-            minor:pagetable_root,
+            minor:self.to_usize(),
         }
     }
 }
-
-// -------------------- End of lock id  -----------------------
 
 
 }

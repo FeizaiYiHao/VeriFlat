@@ -9,7 +9,7 @@ use crate::util::*;
 verus! {
 
 pub struct PageTableDom{
-    pub map: LockedMap<PageTable, PAGE_TABLE_HAS_KILL_STATE>,
+    pub map: LockedMap<RwLockPageTableRoot, PageTable, PAGE_TABLE_HAS_KILL_STATE>,
 }
 
 impl PageTableDom {
@@ -28,7 +28,7 @@ impl PageTableDom {
 
     pub open spec fn wlocked_or_inv(&self) -> bool{
         &&&
-        forall|pt_r:PageTableRoot|
+        forall|pt_r:RwLockPageTableRoot|
             #![auto]
             self.dom().contains(pt_r)
             ==>
@@ -42,33 +42,37 @@ impl PageTableDom {
         self.map[pagetable_root]
     }
 
+    #[verifier::veriflat_pull]
     pub fn wlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
             old(lctx).lock_seq().len() == 0
-                || LockId::from_pagetable_root(pagetable_root) > old(lctx).lock_seq().last(),
+                || pagetable_root.to_lock_id() > old(lctx).lock_seq().last(),
             old(self)[pagetable_root].locked_by(old(lctx)) == false,
+            old(lctx).locking_serial_num() == old(self)[pagetable_root].serial_num(),
+
             old(lctx).wf(),
         ensures 
             self.inv(),
             self.dom() == old(self).dom(),
-            forall|pt_r:PageTableRoot|
+            forall|pt_r:RwLockPageTableRoot|
                 #![auto]
                 self.dom().contains(pt_r) && pt_r != pagetable_root
                 ==>
                     self[pt_r] == old(self)[pt_r],
             
             lctx.thread_id() == old(lctx).thread_id(),
-            lctx.lock_seq() == old(lctx).lock_seq().push(LockId::from_pagetable_root(pagetable_root)),
+            lctx.lock_seq() == old(lctx).lock_seq().push(pagetable_root.to_lock_id()),
             lctx.wf(),
 
-            wlock_ensures(old(self)[pagetable_root], self[pagetable_root], LockId::from_pagetable_root(pagetable_root), lctx.thread_id(), ret@),
-            lock_ensures(old(lctx), lctx, LockId::from_pagetable_root(pagetable_root)),
+            wlock_ensures(old(self)[pagetable_root], self[pagetable_root], pagetable_root.to_lock_id(), lctx.thread_id(), ret@),
+            lock_ensures(old(lctx), lctx, pagetable_root.to_lock_id()),
     {
-        self.map.wlock(pagetable_root, Tracked(lctx), Ghost(LockId::from_pagetable_root(pagetable_root)))
+        self.map.wlock(pagetable_root, Tracked(lctx), Ghost(pagetable_root.to_lock_id()))
     }
 
+    #[verifier::veriflat_push]
     pub fn wunlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>) 
         requires
             old(self).inv(),
@@ -84,7 +88,7 @@ impl PageTableDom {
         ensures 
             self.inv(),
             self.dom() == old(self).dom(),
-            forall|pt_r:PageTableRoot|
+            forall|pt_r:RwLockPageTableRoot|
                 #![auto]
                 self.dom().contains(pt_r) && pt_r != pagetable_root
                 ==>
@@ -129,7 +133,7 @@ impl PageTableDom {
         ensures
             self.inv(),
             self.dom() == old(self).dom(),
-            forall|pt_r:PageTableRoot|
+            forall|pt_r:RwLockPageTableRoot|
                 #![auto]
                 self.dom().contains(pt_r) && pt_r != pagetable_root
                 ==>
