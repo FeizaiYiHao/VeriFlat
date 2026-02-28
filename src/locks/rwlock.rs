@@ -9,7 +9,7 @@ pub struct RwLockInner{
     lock: AtomicBool, // false means no one is read/writing the lock content.
     writing: bool,
     pub kill: Option<LockThreadId>, // The id of the CPU that has marked this object as being killed
-    num_of_reader: usize, // right now we don't need to worry about overflow because we don't support kernel interrupt.
+    num_of_reader: usize, // right now we don't need to worry about overflow because we don't support kernel naterrupt.
 }
 
 impl RwLockInner{
@@ -119,7 +119,7 @@ pub struct RwLock<T, const HasKillState: bool>{
     value: T,
 
     is_init: Ghost<bool>,
-    num_released: Ghost<int>,
+    serial_num: Ghost<nat>,
     modified: Ghost<bool>,
     locking_thread: Ghost<RwLockState>,
 }
@@ -185,8 +185,8 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     }
 
     /// 
-    pub closed spec fn num_released(&self) -> int {
-        self.num_released@
+    pub closed spec fn serial_num(&self) -> nat {
+        self.serial_num@
     }
 
     /// 
@@ -240,7 +240,10 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
 }
 
 pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, lctx: &LocalContext) -> bool{
+    &&&
     old.locked_by(lctx) == false
+    &&&
+    old.serial_num() == lctx.locking_serial_num()
 }
 
 pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
@@ -249,7 +252,7 @@ pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLoc
     &&&
     new.inv()
     &&&
-    new.num_released() == old.num_released()
+    new.serial_num() == old.serial_num()
     &&&
     new.modified() == old.modified()
     &&&
@@ -276,8 +279,6 @@ pub open spec fn wunlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwL
     &&&
     new.inv()
     &&&
-    new.num_released() == old.num_released() + 1
-    &&&
     new.modified() == old.modified()
     &&&
     new@ == old@
@@ -292,7 +293,7 @@ pub open spec fn take_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock
     &&&
     new.is_init() == false
     &&&
-    new.num_released() == old.num_released()
+    new.serial_num() == old.serial_num()
     &&&
     new.modified() == old.modified()
     &&&
@@ -308,7 +309,7 @@ pub open spec fn put_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<
     &&&
     new.is_init() == true
     &&&
-    new.num_released() == old.num_released()
+    new.serial_num() == old.serial_num()
     &&&
     new.modified() == old.modified()
     &&&

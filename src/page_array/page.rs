@@ -10,24 +10,24 @@ verus! {
         // pub is_io_page: bool,
         pub ref_count: usize,
         // pub owning_container: ContainerPtr,
-        pub mappings_4k: Ghost<Set<(PageTableRoot, VAddr)>>,
-        pub mappings_2m: Ghost<Set<(PageTableRoot, VAddr)>>,
-        pub mappings_1g: Ghost<Set<(PageTableRoot, VAddr)>>,
-        // pub io_mappings: Ghost<Set<(PageTableRoot, VAddr)>>,
+        pub mappings_4k: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
+        pub mappings_2m: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
+        pub mappings_1g: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
+        // pub io_mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
 
         pub free_list_node_storage: ExternalNode<PageIndex>,
     }
 
     impl Page{
-        pub open spec fn mappings_4k(&self) -> Set<(PageTableRoot, VAddr)> {
+        pub open spec fn mappings_4k(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
             self.mappings_4k@
         }
 
-        pub open spec fn mappings_2m(&self) -> Set<(PageTableRoot, VAddr)> {
+        pub open spec fn mappings_2m(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
             self.mappings_2m@
         }
 
-        pub open spec fn mappings_1g(&self) -> Set<(PageTableRoot, VAddr)> {
+        pub open spec fn mappings_1g(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
             self.mappings_1g@
         }
 

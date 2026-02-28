@@ -41,7 +41,10 @@ pub type PageMapPtr = usize;
 
 pub type PageTableRoot = usize;
 
-pub type RwLockPageTableRoot = usize;
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RwLockPageTableRoot{
+   pub v: usize,
+}
 
 // pub type PageEntryPerm = usize;
 pub type Pcid = usize;
@@ -111,7 +114,7 @@ pub enum PageState {
     Unavailable4k,
     Unavailable2m,
     Unavailable1g,
-    Pagetable(PageTableRoot),
+    Pagetable(RwLockPageTableRoot),
     Allocated4k,
     Allocated2m,
     Allocated1g,

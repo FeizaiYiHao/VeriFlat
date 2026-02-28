@@ -22,7 +22,7 @@ verus! {
         #[verifier(external_body)]
         pub proof fn page_array_pagetable_dom_inv1_open(&self)
             ensures 
-                forall|p_i:PageIndex, mapping: (PageTableRoot, VAddr)|
+                forall|p_i:PageIndex, mapping: (RwLockPageTableRoot, VAddr)|
                     #![auto]
                     page_index_valid(p_i) && self.page_array@[p_i as int]@.mappings_4k@.contains(mapping)
                     ==>{
@@ -35,7 +35,7 @@ verus! {
 
         pub open spec fn page_array_pagetable_dom_inv1(&self) -> bool{
             &&&
-            forall|p_i:PageIndex, mapping: (PageTableRoot, VAddr)|
+            forall|p_i:PageIndex, mapping: (RwLockPageTableRoot, VAddr)|
                 #![auto]
                 page_index_valid(p_i) && self.page_array@[p_i as int]@.mappings_4k@.contains(mapping)
                 ==>{
@@ -48,7 +48,7 @@ verus! {
 
         pub open spec fn page_array_pagetable_dom_inv2(&self) -> bool{
             &&&
-            forall|p_i:PageIndex, mapping: (PageTableRoot, VAddr)|
+            forall|p_i:PageIndex, mapping: (RwLockPageTableRoot, VAddr)|
                 #![auto]
                 page_index_valid(p_i) && self.page_array@[p_i as int]@.mappings_4k@.contains(mapping)
                 ==>{
@@ -61,7 +61,7 @@ verus! {
 
         pub open spec fn pagetable_dom_page_array_inv1(&self) -> bool{
             &&&
-            forall|pt_r:PageTableRoot, va:VAddr|
+            forall|pt_r:RwLockPageTableRoot, va:VAddr|
                 #![auto]
                 self.pagetable_dom.dom().contains(pt_r)
                 ==>{
