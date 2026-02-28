@@ -3,10 +3,10 @@ use crate::locks::*;
 
 verus! {
     pub trait Step{
-        spec fn step_spec(self, old:&Self, cctx: &ConcurrencyContext) -> bool;
-        proof fn step(&mut self, cctx: &ConcurrencyContext)
+        spec fn step_spec(self, old:&Self, lctx: &LocalContext) -> bool;
+        proof fn step(&mut self, lctx: &LocalContext)
             ensures
-                self.step_spec(old(self), cctx),
+                self.step_spec(old(self), lctx),
         ;
     }
 }

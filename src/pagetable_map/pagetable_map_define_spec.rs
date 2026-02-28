@@ -42,14 +42,14 @@ impl PageTableDom {
         self.map[pagetable_root]
     }
 
-    pub fn wlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(cctx): Tracked<&mut ConcurrencyContext>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
-            old(cctx).lock_seq().len() == 0
-                || LockId::from_pagetable_root(pagetable_root) > old(cctx).lock_seq().last(),
-            old(self)[pagetable_root].locked_by(old(cctx)) == false,
-            old(cctx).wf(),
+            old(lctx).lock_seq().len() == 0
+                || LockId::from_pagetable_root(pagetable_root) > old(lctx).lock_seq().last(),
+            old(self)[pagetable_root].locked_by(old(lctx)) == false,
+            old(lctx).wf(),
         ensures 
             self.inv(),
             self.dom() == old(self).dom(),
@@ -59,27 +59,27 @@ impl PageTableDom {
                 ==>
                     self[pt_r] == old(self)[pt_r],
             
-            cctx.thread_id() == old(cctx).thread_id(),
-            cctx.lock_seq() == old(cctx).lock_seq().push(LockId::from_pagetable_root(pagetable_root)),
-            cctx.wf(),
+            lctx.thread_id() == old(lctx).thread_id(),
+            lctx.lock_seq() == old(lctx).lock_seq().push(LockId::from_pagetable_root(pagetable_root)),
+            lctx.wf(),
 
-            wlock_ensures(old(self)[pagetable_root], self[pagetable_root], LockId::from_pagetable_root(pagetable_root), cctx.thread_id(), ret@),
-            lock_ensures(old(cctx), cctx, LockId::from_pagetable_root(pagetable_root)),
+            wlock_ensures(old(self)[pagetable_root], self[pagetable_root], LockId::from_pagetable_root(pagetable_root), lctx.thread_id(), ret@),
+            lock_ensures(old(lctx), lctx, LockId::from_pagetable_root(pagetable_root)),
     {
-        self.map.wlock(pagetable_root, Tracked(cctx), Ghost(LockId::from_pagetable_root(pagetable_root)))
+        self.map.wlock(pagetable_root, Tracked(lctx), Ghost(LockId::from_pagetable_root(pagetable_root)))
     }
 
-    pub fn wunlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_perm: Tracked<LockPerm>) 
+    pub fn wunlock(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>) 
         requires
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
             
-            old(self)[pagetable_root].wlocked_by(old(cctx)),
+            old(self)[pagetable_root].wlocked_by(old(lctx)),
             old(self)[pagetable_root].being_killed() == false,
             old(self)[pagetable_root].inv(),
 
             lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == old(cctx).thread_id(),
+            lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[pagetable_root].locking_thread() -> Write_lock_id,
         ensures 
             self.inv(),
@@ -93,12 +93,12 @@ impl PageTableDom {
             self[pagetable_root].locking_thread() is None,
 
             wunlock_ensures(old(self)[pagetable_root], self[pagetable_root]),
-            unlock_ensures(old(cctx), cctx, lock_perm@.lock_id()),
+            unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
     {
-        self.map.wunlock(pagetable_root, Tracked(cctx), lock_perm);
+        self.map.wunlock(pagetable_root, Tracked(lctx), lock_perm);
     }
 
-    pub fn map_4k_page(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(cctx): Tracked<&ConcurrencyContext>, Tracked(lock_perm): Tracked<&LockPerm>, 
+    pub fn map_4k_page(&mut self, pagetable_root: RwLockPageTableRoot, Tracked(lctx): Tracked<&LocalContext>, Tracked(lock_perm): Tracked<&LockPerm>, 
         target_l4i: L4Index,
         target_l3i: L3Index,
         target_l2i: L2Index,
@@ -108,11 +108,11 @@ impl PageTableDom {
         requires
             old(self).inv(),
             old(self).dom().contains(pagetable_root),
-            old(self)[pagetable_root].wlocked_by(cctx) == true,
+            old(self)[pagetable_root].wlocked_by(lctx) == true,
             old(self)[pagetable_root].inv(),
 
             lock_perm.state() is WriteLock,
-            lock_perm.thread_id() == cctx.thread_id(),
+            lock_perm.thread_id() == lctx.thread_id(),
             lock_perm.lock_id() == old(self)[pagetable_root].locking_thread() -> Write_lock_id,
 
             old(self)[pagetable_root]@.kernel_l4_end <= target_l4i < 512,
@@ -135,7 +135,7 @@ impl PageTableDom {
                 ==>
                     self[pt_r] == old(self)[pt_r],
 
-            self[pagetable_root].wlocked_by(cctx) == true,
+            self[pagetable_root].wlocked_by(lctx) == true,
             self[pagetable_root].inv(),
             self[pagetable_root]@.kernel_l4_end == old(self)[pagetable_root]@.kernel_l4_end,
             self[pagetable_root]@.page_closure() =~= old(self)[pagetable_root]@.page_closure(),
@@ -144,9 +144,9 @@ impl PageTableDom {
             self[pagetable_root]@.mapping_1g() =~= old(self)[pagetable_root]@.mapping_1g(),
             self[pagetable_root]@.kernel_entries =~= old(self)[pagetable_root]@.kernel_entries,
     {
-        let mut pagetable = self.map.take(pagetable_root, Tracked(cctx), Tracked(lock_perm));
+        let mut pagetable = self.map.take(pagetable_root, Tracked(lctx), Tracked(lock_perm));
         pagetable.map_4k_page(target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
-        self.map.put(pagetable_root, Tracked(cctx), Tracked(lock_perm), pagetable);
+        self.map.put(pagetable_root, Tracked(lctx), Tracked(lock_perm), pagetable);
     }
 }
 

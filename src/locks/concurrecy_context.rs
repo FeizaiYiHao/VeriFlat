@@ -7,29 +7,29 @@ use super::LockPerm;
 
 verus! {
 
-pub enum CCtxtLockState{
+pub enum LCtxtLockState{
     Lock,
     Unlock,
     // ReLock,
 }
-pub struct CCtxtState{  
-    pub locking_state: CCtxtLockState,
+pub struct LCtxtState{  
+    pub locking_state: LCtxtLockState,
     pub serial_num: nat,
 }
-pub struct ConcurrencyContext{
+pub struct LocalContext{
     thread_id: LockThreadId,
     lock_seq: Seq<LockId>,
-    state: CCtxtState,
+    state: LCtxtState,
 }
 
-impl ConcurrencyContext{
+impl LocalContext{
     pub closed spec fn thread_id(&self) -> LockThreadId {
         self.thread_id
     }
     pub closed spec fn lock_seq(&self) -> Seq<LockId>{
         self.lock_seq
     }
-    pub closed spec fn locking_state(&self) -> CCtxtLockState{
+    pub closed spec fn locking_state(&self) -> LCtxtLockState{
         self.state.locking_state
     }
     pub closed spec fn locking_serial_num(&self) -> nat{
@@ -51,7 +51,7 @@ impl ConcurrencyContext{
     }
 }
 
-    pub open spec fn lock_ensures(old:&ConcurrencyContext, new:&ConcurrencyContext, lock_id: LockId) -> bool{
+    pub open spec fn lock_ensures(old:&LocalContext, new:&LocalContext, lock_id: LockId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
@@ -66,7 +66,7 @@ impl ConcurrencyContext{
         new.lock_seq() =~= old.lock_seq().push(lock_id)
     }
 
-    pub open spec fn unlock_ensures(old:&ConcurrencyContext, new:&ConcurrencyContext, lock_id: LockId) -> bool{
+    pub open spec fn unlock_ensures(old:&LocalContext, new:&LocalContext, lock_id: LockId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&

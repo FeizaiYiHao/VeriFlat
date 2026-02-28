@@ -58,7 +58,7 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
             ==>
             self[k] == old[k]
     }
-    pub fn wlock(&mut self, key:usize, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -66,34 +66,34 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
             old(self)@[key].lock_major_sat(lock_id@.major),
             old(self)@[key].lock_minor() == lock_id@.minor,
 
-            wlock_requires(old(self)[key], old(cctx)),
-            old(cctx).lock_id_valid(lock_id@),
+            wlock_requires(old(self)[key], old(lctx)),
+            old(lctx).lock_id_valid(lock_id@),
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
 
-            wlock_ensures(old(self)[key], self[key], lock_id@, cctx.thread_id(), ret@),
-            lock_ensures(old(cctx), cctx, lock_id@),
+            wlock_ensures(old(self)[key], self[key], lock_id@, lctx.thread_id(), ret@),
+            lock_ensures(old(lctx), lctx, lock_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(cctx), lock_id);
+        let ret = wlock(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
         return ret;
     }
 
-    pub fn wunlock(&mut self, key:usize, Tracked(cctx): Tracked<&mut ConcurrencyContext>, lock_perm: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(old(cctx)),
+            old(self)[key].wlocked_by(old(lctx)),
             old(self)[key].being_killed() == false,
             old(self)[key].inv(),
 
             lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == old(cctx).thread_id(),
+            lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
         ensures
             self.perms_wf(),
@@ -102,26 +102,26 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
             self[key].locking_thread() is None,
 
             wunlock_ensures(old(self)[key], self[key]),
-            unlock_ensures(old(cctx), cctx, lock_perm@.lock_id()),
+            unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wunlock(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(cctx), lock_perm);
+        let ret = wunlock(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
         return ret;
     }
 
-    pub fn take(&mut self, key:usize, Tracked(cctx): Tracked<&ConcurrencyContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+    pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(cctx),
+            old(self)[key].wlocked_by(lctx),
             old(self)[key].is_init(),
 
             lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == cctx.thread_id(),
+            lock_perm@.thread_id() == lctx.thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
         ensures
             self.perms_wf(),
@@ -132,23 +132,23 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
             ret == old(self)[key]@,
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = take(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(cctx), lock_perm);
+        let ret = take(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
         return ret;
     }
 
-    pub fn put(&mut self, key:usize, Tracked(cctx): Tracked<&ConcurrencyContext>, lock_perm: Tracked<&LockPerm>, v:T)
+    pub fn put(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v:T)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(cctx),
+            old(self)[key].wlocked_by(lctx),
             old(self)[key].is_init() == false,
 
             lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == cctx.thread_id(),
+            lock_perm@.thread_id() == lctx.thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
         ensures
             self.perms_wf(),
@@ -157,7 +157,7 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
             put_ensures(old(self)[key], self[key], v),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        put(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(cctx), lock_perm, v);
+        put(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -165,23 +165,23 @@ impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<T, HasK
 }
 
 impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> Step for LockedMap<T, HasKillState>{
-    open spec fn step_spec(self, old:&Self, cctx: &ConcurrencyContext) -> bool{
+    open spec fn step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
         &&&
         forall|k:usize|
             #![auto]
-            old.dom().contains(k) && old[k].locked_by(cctx)
+            old.dom().contains(k) && old[k].locked_by(lctx)
             ==>
             self.dom().contains(k) && self[k] =~= old[k]
         &&&
         forall|k:usize|
             #![auto]
-            self.dom().contains(k) && self[k].locked_by(cctx) == false
+            self.dom().contains(k) && self[k].locked_by(lctx) == false
             ==>
-            self[k].being_killed_by(cctx) == false
+            self[k].being_killed_by(lctx) == false
         &&&
         self.delta() =~= old.delta()
     }
-    proof fn step(&mut self, cctx: &ConcurrencyContext)
+    proof fn step(&mut self, lctx: &LocalContext)
     {
         admit()
     }

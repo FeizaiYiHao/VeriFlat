@@ -1,23 +1,60 @@
 # VeriFlat
 
-## TODO
-Add a user view() of the page table and a kernel view() of the page table.
+## System call, kernel call, internal function
 
-The user view() of the page table cannot be locked, hence triggering an inv() check whenever it's updated. 
+### System call 
+System calls are function interfaces marked with `veriflat_system_call` that are callable by the user programs.
+System calls maintain the abstract operational specifications and can only call kernel calls and internal functions.
+
+### Kernel call
+Kernel calls are functions that take `&mut Kernel` or `& Kernel`.
+Kernel calls are not callable by the user program.
+
+### Internal functions
+Internal functions do not take `&mut kernel` or `& kernel`, hence unable to perform a global level `inv()` check. 
+Each internal function can be marked with `push` and/or `pull`. 
+A push function means that the function releases some locks, which requires to return all the way back to an kernel call or system call to perform the `inv()` check.
+A pull function means that the function acquires some locks, which means the before calling this function, the caller must have entered `locking` state. 
+If an internal function calls a `push` or `pull` function, the function must be marked as `push` or `pull` too.
+After a `push` call, the function must return immediately (`assert()` and `proof{}` are allowed). 
 
 ## Verifying concurrent invariants
 
 ### Concurrent invariant
 Each invariant in VeriFlat is always `true` through out the concurrent execution of each thread. 
-A invariants can only be broken when all the objects under the invariant are all write-locked (or spinlocked) by the same thread.
+An invariants can only be broken when all the objects under the invariant are all write-locked (or spinlocked) by the same thread.
 Since no other thread can even potentially observe the state of the objects under a broken invariant, it is OK. 
 
 ### Verifying the kernel invariants
-When the a object under a broken invariant becomes `visible` to other threads again, (i.e., the write-lock is released),
-we trigger an assertion on `inv()` on the kernel to make sure all invariants are preserved.  
+After a push operation, all execution returns to a kernel level call, and immediately we perform an `inv()` check.
 
 #### TODO
 Talk about how to modify Verus to enforce this check. 
+
+## Providing system call specification
+
+### Visible kernel state
+Container tree structure
+Process tree structure
+Scheduler state
+Endpoint state
+Address spaces
+IO address spaces 
+Root table state 
+Container quota
+CPU state
+
+### Atomic kernel spec
+All changes to the above kernel objects in a given invocation to a syscall need to 
+appear to be atomic -- No other thread shall observe partial changes of a system call.
+To achieve this, all visible kernel objects locked by a system call 
+will need to be locked before any `push` operation and cannot be re-locked.
+The logic is simple -- before any change to the visible kernel objects becomes visible to other threads, 
+all changed (including changed in the future) objects must be invisible.
+
+## Deadlock freedom
+See [LockId](LockId.md)
+
 
 ### User accessible kernel objects
 Page table `view()` update and maybe page table updates in general have an immediate effect on the observable state of the kernel hence should trigger a 
@@ -51,3 +88,8 @@ after the second `lock()` returns.
 
 #### TODO
 Talk about how to modify Verus to enforce this assume. 
+
+## TODO
+Add a user view() of the page table and a kernel view() of the page table.
+
+The user view() of the page table cannot be locked, hence triggering an inv() check whenever it's updated. 
