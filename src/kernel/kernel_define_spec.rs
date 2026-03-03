@@ -19,8 +19,8 @@ verus! {
         pub open spec fn inv(&self) -> bool {
             &&&
             self.subsystems_inv()
-            // &&&
-            // self.page_array_pagetable_dom_inv()
+            &&&
+            self.page_array_pagetable_dom_inv()
         }
     }
 

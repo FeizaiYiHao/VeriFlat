@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::{define::*};
 use core::sync::atomic::*;
+use crate::concurrency::*;
 
 use super::*;
 use crate::primitive::*;
@@ -179,6 +180,23 @@ verus! {
         {
             self.array.ar[index].put(Tracked(lctx), lock_perm, v);
         } 
+    }
+
+    impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
+        open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
+            &&&
+            forall|i:usize|
+                #![auto]
+                0 <= i < N && self[i]@.locked_by(lctx) == false
+                ==>
+                self[i]@.being_killed_by(lctx) == false
+                &&
+                self[i]@.serial_num() == lctx.locking_serial_num()
+        }
+        proof fn random_step(&mut self, lctx: &LocalContext)
+        {
+            admit()
+        }
     }
 
 }
