@@ -7,16 +7,16 @@ use super::LockPerm;
 
 verus! {
 
-pub enum LCtxtLockState{
+pub ghost enum LCtxtLockState{
     Lock,
     Unlock,
     // ReLock,
 }
-pub struct LCtxtState{  
+pub tracked struct LCtxtState{  
     pub locking_state: LCtxtLockState,
     pub serial_num: nat,
 }
-pub struct LocalContext{
+pub tracked struct LocalContext{
     thread_id: LockThreadId,
     lock_seq: Seq<LockId>,
     state: LCtxtState,

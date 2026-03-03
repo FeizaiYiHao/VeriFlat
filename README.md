@@ -44,6 +44,10 @@ Root table state
 Container quota
 CPU state
 
+Container Domain is visible through ...
+Process Domain is visible through ...
+Thread Domain is visible through ...
+
 ### Atomic kernel spec
 All changes to the above kernel objects in a given invocation to a syscall need to 
 appear to be atomic -- No other thread shall observe partial changes of a system call.

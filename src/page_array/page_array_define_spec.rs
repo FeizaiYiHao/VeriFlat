@@ -99,6 +99,28 @@ impl PageArray{
         self.phy_pages.wlock(page_index, Tracked(lctx), lock_id)
     }
 
+    pub fn wunlock_page(&mut self, page_index: PageIndex, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+        requires
+            page_index_wf(page_index),
+            old(self).inv(),
+
+            old(self)[page_index]@.wlocked_by(old(lctx)),
+            old(self)[page_index]@.being_killed() == false,
+            old(self)[page_index].inv(),
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == old(lctx).thread_id(),
+            lock_perm@.lock_id() == old(self)[page_index]@.locking_thread() -> Write_lock_id,
+        ensures
+            self.inv(),
+            self.unchanged_except(old(self), page_index),
+
+            wunlock_ensures(old(self)[page_index]@, self[page_index]@),
+            unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
+    {
+        self.phy_pages.wunlock(page_index, Tracked(lctx), lock_perm);
+    }
+
 }
 
 }

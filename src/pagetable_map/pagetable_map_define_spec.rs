@@ -16,6 +16,8 @@ impl PageTableDom {
     pub open spec fn inv(&self) -> bool {
         &&&
         self.perms_wf()
+        &&&
+        self.wlocked_or_inv()
     }
 
     pub open spec fn dom(&self) -> Set<RwLockPageTableRoot>{
