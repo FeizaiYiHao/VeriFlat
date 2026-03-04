@@ -201,7 +201,13 @@ pub open spec fn spec_index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> usize
     (i.0 as usize) << 39 & (i.1 as usize) << 30 & (i.2 as usize) << 21 & (i.3 as usize) << 12
 }
 
-pub fn index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> usize {
+pub fn index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> (ret: usize) 
+    ensures
+        ret == spec_index2va(i),
+{
+    proof{
+        va_lemma();
+    }
     (i.0 as usize) << 39 & (i.1 as usize) << 30 & (i.2 as usize) << 21 & (i.3 as usize) << 12
 }
 

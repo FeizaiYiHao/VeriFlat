@@ -121,6 +121,50 @@ impl PageArray{
         self.phy_pages.wunlock(page_index, Tracked(lctx), lock_perm);
     }
 
+    pub fn take(&mut self, page_index:PageIndex, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:Page)
+            requires
+                old(self).inv(),
+                page_index_wf(page_index),
+
+                old(self)[page_index]@.wlocked_by(lctx),
+                old(self)[page_index]@.being_killed() == false,
+                old(self)[page_index].inv(),
+
+                lock_perm@.state() is WriteLock,
+                lock_perm@.thread_id() == lctx.thread_id(),
+                lock_perm@.lock_id() == old(self)[page_index]@.locking_thread() -> Write_lock_id,
+            ensures
+                self.inv(),
+                self.unchanged_except(old(self), page_index),
+
+                take_ensures(old(self)[page_index]@, self[page_index]@),
+                
+                ret == old(self)[page_index]@@,
+        {
+            assert(self.phy_pages[page_index]@.is_init());
+            self.phy_pages.take(page_index, Tracked(lctx), lock_perm)
+        } 
+
+        pub fn put(&mut self, page_index:PageIndex, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>, v:Page)
+            requires
+                old(self).inv(),
+                page_index_wf(page_index),
+
+                old(self)[page_index]@.wlocked_by(lctx),
+                old(self)[page_index]@.being_killed() == false,
+                old(self)[page_index]@.is_init() == false,
+
+                lock_perm@.state() is WriteLock,
+                lock_perm@.thread_id() == lctx.thread_id(),
+                lock_perm@.lock_id() == old(self)[page_index]@.locking_thread() -> Write_lock_id,
+            ensures
+                self.inv(),
+                self.unchanged_except(old(self), page_index),
+
+                put_ensures(old(self)[page_index]@, self[page_index]@, v),
+        {
+            self.phy_pages.put(page_index, Tracked(lctx), lock_perm, v);
+        } 
 }
 
 }
