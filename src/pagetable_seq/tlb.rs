@@ -25,7 +25,7 @@ impl SingleTLB{
 
 pub struct CPUTLB{
     pub cpu_tlbs: Ghost<Seq<SingleTLB>>,
-    pub pcid: Pcid,
+    pcid: Pcid,
 }
 
 impl CPUTLB{
@@ -38,6 +38,20 @@ impl CPUTLB{
         &&&
         pcid_valid(self.pcid()) 
     }
+    pub open spec fn tlb_va_wf(&self) -> bool{
+        &&&
+        forall|cpu_id: CpuId, va:VAddr|
+        cpu_id_valid(cpu_id) ==>
+        {
+            &&&
+            self[cpu_id].tlb_4k().contains_key(va) ==> va_4k_valid(va)
+            &&&
+            self[cpu_id].tlb_2m().contains_key(va) ==> va_2m_valid(va)
+            &&&
+            self[cpu_id].tlb_1g().contains_key(va) ==> va_1g_valid(va)
+        }
+    }
+
     pub closed spec fn pcid(&self) -> Pcid{
         self.pcid
     }
