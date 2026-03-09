@@ -33,8 +33,8 @@ pub const MAX_USIZE: u64 = 31 * 1024 * 1024 * 1024;
 
 pub const PCID_MAX: usize = 4096;
 
-pub open spec fn pcid_valid(index: Pcid) -> bool{
-    0 <= index < PCID_MAX
+pub open spec fn pcid_valid(pcid: Pcid) -> bool{
+    0 <= pcid < PCID_MAX
 }
 
 pub const IOID_MAX: usize = 4096;
@@ -61,8 +61,8 @@ pub const PCID_ENABLE_MASK: usize = 0x8000_0000_0000_0000u64 as usize;
 
 pub const NUM_CPUS: usize = 32;
 
-pub open spec fn cpu_id_valid(index: CpuId) -> bool{
-    0 <= index < NUM_CPUS
+pub open spec fn cpu_id_valid(cpu_id: CpuId) -> bool{
+    0 <= cpu_id < NUM_CPUS
 }
 
 pub const PAGE_ENTRY_PRESENT_SHIFT: u64 = 0;
