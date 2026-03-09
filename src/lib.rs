@@ -10,7 +10,18 @@ pub mod concurrency;
 pub mod page_array;
 pub mod linkedlist;
 pub mod test;
-pub mod kernel;
+// pub mod kernel;
+
+pub use pagetable_seq::*;
+pub use pagetable_map::*;
+pub use define::*;
+pub use util::*;
+pub use lemma::*;
+pub use primitive::*;
+pub use locks::*;
+pub use concurrency::*;
+pub use page_array::*;
+pub use linkedlist::*;
 
 verus! {
 global size_of usize == 8;
