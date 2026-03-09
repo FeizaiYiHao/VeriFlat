@@ -10,7 +10,7 @@ pub mod concurrency;
 pub mod page_array;
 pub mod linkedlist;
 pub mod test;
-// pub mod kernel;
+pub mod kernel;
 
 pub use pagetable_seq::*;
 pub use pagetable_map::*;

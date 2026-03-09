@@ -6,6 +6,7 @@ verus! {
     pub struct Kernel{
         pub pagetable_dom: PageTableDom,
         pub page_array: PageArray,
+        pub cpu_tlb: CPUTLB,
     }
 
     impl Kernel{
@@ -14,6 +15,8 @@ verus! {
             self.page_array.inv()
             &&&
             self.pagetable_dom.inv()
+            &&&
+            self.cpu_tlb.inv()
         }
 
         pub open spec fn inv(&self) -> bool {
