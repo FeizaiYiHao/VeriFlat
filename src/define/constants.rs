@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-
+use super::super::*; 
 verus! {
 
 // -------------------- Begin of Const --------------------
@@ -33,6 +33,10 @@ pub const MAX_USIZE: u64 = 31 * 1024 * 1024 * 1024;
 
 pub const PCID_MAX: usize = 4096;
 
+pub open spec fn pcid_valid(index: Pcid) -> bool{
+    0 <= index < PCID_MAX
+}
+
 pub const IOID_MAX: usize = 4096;
 
 pub const MEM_MASK: u64 = 0x0000_ffff_ffff_f000;
@@ -56,6 +60,10 @@ pub const READ_WRITE_EXECUTE: usize = 0x0000_0000_0000_0002u64 as usize;
 pub const PCID_ENABLE_MASK: usize = 0x8000_0000_0000_0000u64 as usize;
 
 pub const NUM_CPUS: usize = 32;
+
+pub open spec fn cpu_id_valid(index: CpuId) -> bool{
+    0 <= index < NUM_CPUS
+}
 
 pub const PAGE_ENTRY_PRESENT_SHIFT: u64 = 0;
 
