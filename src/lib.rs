@@ -9,6 +9,7 @@ pub mod locks;
 pub mod concurrency;
 pub mod page_array;
 pub mod linkedlist;
+pub mod cpu;
 pub mod test;
 pub mod kernel;
 
@@ -22,6 +23,7 @@ pub use locks::*;
 pub use concurrency::*;
 pub use page_array::*;
 pub use linkedlist::*;
+pub use cpu::*;
 
 verus! {
 global size_of usize == 8;
