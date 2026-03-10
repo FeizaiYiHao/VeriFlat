@@ -5,25 +5,29 @@ use super::super::*;
 verus! {
 
 pub ghost struct SingleTLB{
-    pub tlb_4k: Map<VAddr, MapEntry>,
-    pub tlb_2m: Map<VAddr, MapEntry>,
-    pub tlb_1g: Map<VAddr, MapEntry>,
+    pub tlb_4k: Map<VAddr, TLBEntry>,
+    pub tlb_2m: Map<VAddr, TLBEntry>,
+    pub tlb_1g: Map<VAddr, TLBEntry>,
 }
 
 impl SingleTLB{
-    pub open spec fn tlb_4k(&self) -> Map<VAddr, MapEntry> {
+    pub open spec fn tlb_4k(&self) -> Map<VAddr, TLBEntry> {
         self.tlb_4k
     }
-    pub open spec fn tlb_2m(&self) -> Map<VAddr, MapEntry>{
+    pub open spec fn tlb_2m(&self) -> Map<VAddr, TLBEntry>{
         self.tlb_2m
     }
-    pub open spec fn tlb_1g(&self) -> Map<VAddr, MapEntry>{
+    pub open spec fn tlb_1g(&self) -> Map<VAddr, TLBEntry>{
         self.tlb_1g
     }
 
     pub open spec fn is_empty(&self) -> bool{
         &&&
         self.tlb_4k().dom() == Set::<VAddr>::empty()
+        &&&
+        self.tlb_2m().dom() == Set::<VAddr>::empty()
+        &&&
+        self.tlb_1g().dom() == Set::<VAddr>::empty()
     }
 }
  

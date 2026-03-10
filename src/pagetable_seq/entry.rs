@@ -89,6 +89,12 @@ pub struct MapEntry {
     pub present: bool,
 }
 
+pub struct TLBEntry {
+    pub addr: PAddr,
+    pub write: bool,
+    pub execute_disable: bool,
+}
+
 pub open spec fn spec_page_entry_to_map_entry(p: &PageEntry) -> MapEntry {
     MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present:p.perm.present }
 }
@@ -100,6 +106,7 @@ pub fn page_entry_to_map_entry(p: &PageEntry) -> (ret: MapEntry)
 {
     MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present:p.perm.present  }
 }
+
 
 // pub open spec fn spec_map_entry_to_page_entry(m: &MapEntry, ps: bool) -> PageEntry {
 //     PageEntry {

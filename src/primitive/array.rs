@@ -147,7 +147,22 @@ impl<T: Copy, const N: usize> Array<Option<T>, N> {
     }
 }
 
-
+impl<A:Copy, const N: usize> Array<A, N> {
+  #[verifier(external_body)]
+    pub fn new_with_init_value(v:A) -> (ret: Self)
+        ensures
+            ret.wf(),
+            ret@ == Seq::new(N as nat, |i:int|{v}),
+    {
+        unsafe{
+        let ret = Self {
+            ar: [v;N],
+            seq: Ghost(Seq::empty()),
+        };
+        ret
+        }
+    }
+}
 fn test<const N: usize>(ar: &mut Array<u64, N>)
     requires
         old(ar).wf(),
