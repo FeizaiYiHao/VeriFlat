@@ -5,6 +5,8 @@ verus! {
 pub enum  CpuState{
     Running,
     Idle,
+    Killing,
+    Killed,
     Off,
 }
 
@@ -12,20 +14,21 @@ pub enum  CpuState{
 // #[derive(Clone, Copy, Debug)]
 pub struct Cpu {
     pub owning_container: ContainerPtr,
-    pub killing_container: Option<ContainerPtr>,
     pub state: CpuState,
     pub current_process: Option<ProcPtr>,
     pub current_thread: Option<ThreadPtr>,
 
     pub tlb_dirty_bitmap: BitMap<PCID_MAX>,
-    pub container_depth: usize,
+    pub container_depth: usize, // killing_container's depth if being killed.
     pub process_depth: usize,
 }
 
 impl Cpu{
-    pub open spec fn wf(&self) -> bool{
+    pub closed spec fn wf(&self) -> bool{
         &&&
-        self.state is Off ==> self.current_process is None && self.current_thread is None
+        self.state is Off || self.state is Killing || self.state is Killed ==> self.current_process is None && self.current_thread is None
+        &&&
+        self.tlb_dirty_bitmap.inv()
     }
 }
 

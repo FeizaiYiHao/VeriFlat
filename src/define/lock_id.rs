@@ -8,6 +8,7 @@ verus! {
 pub const CPU_LOCK_MAJOR_RUNNING:usize = 1;
 pub const CPU_LOCK_MAJOR_IDLE:usize = 2;
 pub const CPU_LOCK_MAJOR_OFF:usize = 3;
+pub const CPU_LOCK_MAJOR_DEFAULT:usize = 4;
 pub const CONTAINER_LOCK_MAJOR:usize = 101;
 pub const PROCESS_LOCK_MAJOR:usize = 102;
 
