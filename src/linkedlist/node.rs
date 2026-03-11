@@ -23,12 +23,22 @@ impl<T> Node<T>{
 }
 
 impl<T> ExternalNode<T>{
-    pub closed spec fn addr(&self) -> usize {
+    pub closed spec fn spec_addr(&self) -> usize {
         self.addr@
     }
     pub closed spec fn is_init(&self) -> bool {
         self.is_init@
     }
+
+    #[verifier(when_used_as_spec(spec_addr))]
+    #[verifier(external_body)]
+    pub fn addr(&self) -> (ret:usize)
+        ensures
+            ret == self.addr()
+    {
+        &self.storage as *const Node<T> as usize
+    }
+
     #[verifier(external_body)]
     pub fn take(&mut self) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))
         requires

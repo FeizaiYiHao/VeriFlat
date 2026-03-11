@@ -193,6 +193,7 @@ pub enum RetValueType {
     NoQuota,
     VaInUse,
 }
+pub type PTType = bool;
 
 // -------------------- End of Types --------------------
 // // -------------------- Begin of Structs --------------------

@@ -1,12 +1,13 @@
 use vstd::prelude::*;
 use crate::page_array::page_array_define_spec::*;
-use crate::pagetable_map::*;
+use crate::{pagetable_map::*, CpuArray};
 verus! {
 
     pub struct Kernel{
         pub pagetable_dom: PageTableDom,
         pub page_array: PageArray,
         pub cpu_tlb: CPUTLB,
+        pub cpu_array: CpuArray,
     }
 
     impl Kernel{
@@ -17,6 +18,8 @@ verus! {
             self.pagetable_dom.inv()
             &&&
             self.cpu_tlb.inv()
+            &&&
+            self.cpu_array.inv()
         }
 
         pub open spec fn inv(&self) -> bool {

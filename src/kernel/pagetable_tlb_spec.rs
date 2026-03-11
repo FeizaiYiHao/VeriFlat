@@ -14,7 +14,7 @@ pub open spec fn spec_tlb_entry_equal_to_map_entry(tlb_entry:TLBEntry, map_entry
 
 /// if the pagetable is locked, the TLB can have entry in which the entry is not present
 /// otherwise TLB has to be a strict submap.
-pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable, PAGE_TABLE_HAS_KILL_STATE>) -> bool
+pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>) -> bool
 {
     &&&
     forall|va: VAddr|
@@ -51,27 +51,9 @@ pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleT
         }
 }
 
-pub open spec fn single_cpu_tlb_subset_of_pagetable(cpu_pcid_tlbs: Seq<SingleTLB>, pagetable: RwLock<PageTable, PAGE_TABLE_HAS_KILL_STATE>) -> bool
+pub open spec fn tlb_subset_of_pagetable(cpu_tlb: CPUTLB, pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>) -> bool
     recommends
-        cpu_pcid_tlbs.len() == PCID_MAX,
-        pagetable@.pcid is Some,
-{
-    &&&
-    cpu_pcid_tlbs.len() == PCID_MAX
-    &&&
-    pagetable@.pcid is Some
-    &&&
-    single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_pcid_tlbs[pagetable@.pcid.unwrap() as int], pagetable)
-}
-
-pub open spec fn tlb_subset_of_pagetable(cpu_tlb: Seq<Seq<SingleTLB>>, pagetable: RwLock<PageTable, PAGE_TABLE_HAS_KILL_STATE>) -> bool
-    recommends
-        cpu_tlb.len() == NUM_CPUS,
-        forall|cpu_id:CpuId|
-            #![auto] 
-            cpu_id_valid(cpu_id)
-            ==>
-            cpu_tlb[cpu_id as int].len() == PCID_MAX,
+        cpu_tlb.inv(),
         pagetable@.pcid is Some,
 {
     &&&
@@ -79,11 +61,11 @@ pub open spec fn tlb_subset_of_pagetable(cpu_tlb: Seq<Seq<SingleTLB>>, pagetable
         #![auto] 
         cpu_id_valid(cpu_id)
         ==>
-        single_cpu_tlb_subset_of_pagetable(cpu_tlb[cpu_id as int], pagetable)
+        single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb[(cpu_id, pagetable@.pcid.unwrap())], pagetable)
 }
 
 impl Kernel{
-
+    
 }
 
 }

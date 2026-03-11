@@ -9,7 +9,7 @@ use crate::util::*;
 verus! {
 
 pub struct PageTableDom{
-    pub map: LockedMap<RwLockPageTableRoot, PageTable, PAGE_TABLE_HAS_KILL_STATE>,
+    pub map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>,
 }
 
 impl PageTableDom {
@@ -37,7 +37,7 @@ impl PageTableDom {
                 self[pt_r].wlocked() || self[pt_r].inv()
     }
 
-    pub open spec fn spec_index(&self, pagetable_root: RwLockPageTableRoot) -> RwLock<PageTable, PAGE_TABLE_HAS_KILL_STATE>
+    pub open spec fn spec_index(&self, pagetable_root: RwLockPageTableRoot) -> RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>
         recommends
             self.dom().contains(pagetable_root),
     {

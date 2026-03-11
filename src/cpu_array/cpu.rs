@@ -5,8 +5,8 @@ verus! {
 pub enum  CpuState{
     Running,
     Idle,
-    Killing,
-    Killed,
+    // Killing,
+    // Killed,
     Off,
 }
 
@@ -18,7 +18,7 @@ pub struct Cpu {
     pub current_process: Option<ProcPtr>,
     pub current_thread: Option<ThreadPtr>,
 
-    pub tlb_dirty_bitmap: BitMap<PCID_MAX>,
+    pub tlb_dirty_bitmap: BitMap<Option<RwLockPageTableRoot>, PCID_MAX>,
     pub container_depth: usize, // killing_container's depth if being killed.
     pub process_depth: usize,
 }
@@ -26,9 +26,16 @@ pub struct Cpu {
 impl Cpu{
     pub closed spec fn wf(&self) -> bool{
         &&&
-        self.state is Off || self.state is Killing || self.state is Killed ==> self.current_process is None && self.current_thread is None
+        self.state is Off
+        // || self.state is Killing
+        // || self.state is Killed 
+        ==> self.current_process is None && self.current_thread is None
         &&&
         self.tlb_dirty_bitmap.inv()
+    }
+
+    pub open spec fn tlb_dirty_bitmap(&self) -> Map<usize, Option<RwLockPageTableRoot>>{
+        self.tlb_dirty_bitmap@
     }
 }
 
@@ -39,15 +46,15 @@ impl LockedUtil for Cpu {
     }
     
     open spec fn lock_major_1(&self) -> LockMajorId {
-        0x233
+        CPU_LOCK_MAJOR_RUNNING
     }
     
     open spec fn lock_major_2(&self) -> LockMajorId {
-        0x233
+        CPU_LOCK_MAJOR_IDLE
     }
     
     open spec fn lock_major_3(&self) -> LockMajorId {
-        0x233
+        CPU_LOCK_MAJOR_OFF
     }
     
     open spec fn lock_major_default(&self) -> LockMajorId {

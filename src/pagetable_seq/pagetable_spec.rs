@@ -1,5 +1,6 @@
 use vstd::prelude::*;
-
+use core::marker::ConstParamTy;
+use std::usize;
 verus! {
 
 use crate::define::*;
@@ -15,7 +16,7 @@ use crate::lemma::lemma_u::*;
 /// if an entry exists in mapping_xx.dom(), is entry is visible to the kernel at least. 
 /// if the entry has present flag set, it's visible to the page table walk. 
 /// our TLB spec will be that the TLB is `alway` a subset of kernel view. Regardless the locking state of the page table.
-pub struct PageTable {
+pub struct PageTable<const TABLE_TYPE:PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
     pub ioid: Option<IOid>,
@@ -33,17 +34,15 @@ pub struct PageTable {
     pub kernel_entries: Ghost<Seq<PageEntry>>,
 }
 
-impl PageTable {
+impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub fn new(
-        pcid: Option<Pcid>,
-        ioid: Option<IOid>,
+        pcid_or_ioid: usize,
         kernel_entries_ghost: Ghost<Seq<PageEntry>>,
         page_map_ptr: PageMapPtr,
         Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
         mem_end_l4_index: usize,
     ) -> (ret: Self)
         requires
-            pcid is Some != ioid is Some,
              0 <= mem_end_l4_index < 512,
             page_ptr_valid(page_map_ptr),
             page_map_perm.addr() == page_map_ptr,
@@ -59,10 +58,12 @@ impl PageTable {
                 0 <= i < mem_end_l4_index ==> kernel_entries_ghost@[i as int]
                     == page_map_perm.value()[i],
             0 <= mem_end_l4_index < 512,
+
+            TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
         ensures
             ret.wf(),
-            ret.pcid == pcid,
-            ret.ioid == ioid,
+            TABLE_TYPE == PT_TYPE ==> ret.pcid() == pcid_or_ioid,
+            TABLE_TYPE == IOMMU_TYPE ==> ret.ioid() == pcid_or_ioid,
             ret.kernel_l4_end == mem_end_l4_index,
             ret.page_closure() == Set::empty().insert(page_map_ptr),
             ret.mapping_4k() == Map::<VAddr, MapEntry>::empty(),
@@ -78,8 +79,8 @@ impl PageTable {
             );
         let mut ret = Self {
             cr3: page_map_ptr,
-            pcid: pcid,
-            ioid: ioid,
+            pcid: if TABLE_TYPE == PT_TYPE {Some(pcid_or_ioid)}else{None},
+            ioid: if TABLE_TYPE == IOMMU_TYPE {Some(pcid_or_ioid)}else{None},
             kernel_l4_end: mem_end_l4_index,
             l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()),
@@ -197,7 +198,18 @@ impl PageTable {
     }
 
     pub open   spec fn pcid_ioid_wf(&self) -> bool {
-        self.pcid is Some != self.ioid is Some
+        &&&
+        TABLE_TYPE == PT_TYPE ==> self.pcid is Some && self.ioid is None
+        &&&
+        TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None && self.ioid is Some
+    }
+
+    pub open spec fn pcid(&self) -> Pcid{
+        self.pcid.unwrap()
+    }
+
+    pub open spec fn ioid(&self) -> Pcid{
+        self.ioid.unwrap()
     }
 
     pub open   spec fn wf_l4(&self) -> bool {
@@ -736,6 +748,8 @@ impl PageTable {
     }
 
     pub open   spec fn kernel_entries_wf(&self) -> bool {
+        &&&
+        TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
         &&& self.kernel_l4_end < 512
         &&& self.kernel_entries@.len() =~= self.kernel_l4_end as nat
         &&& forall|i: usize|
@@ -865,7 +879,7 @@ impl PageTable {
 }
 
 // proof
-impl PageTable {
+impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub proof fn no_mapping_infer_not_mapped(&self, page_map_ptr: PageMapPtr)
         requires
             self.wf(),
@@ -1031,7 +1045,7 @@ impl PageTable {
     }
 }
 
-    impl LockedUtil for PageTable {
+    impl<const TABLE_TYPE:PTType> LockedUtil for  PageTable<TABLE_TYPE> { 
         open spec fn inv(&self) -> bool{
             &&&
             self.wf()
@@ -1071,7 +1085,7 @@ impl PageTable {
         
     }
 
-    impl LockOwnerIdUtil for PageTable {
+    impl<const TABLE_TYPE:PTType> LockOwnerIdUtil for  PageTable<TABLE_TYPE> { 
         open spec fn container_depth(&self) -> LockOwnerId {
             LockOwnerId::none()
         }
