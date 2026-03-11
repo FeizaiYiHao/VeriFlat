@@ -3,14 +3,14 @@ use vstd::prelude::*;
 use crate::*;
 verus! {
 
-pub struct BitMap<const N: usize>{
-    bit_map: Array<bool, N>,
-    map: Ghost<Map<usize, bool>>,
+pub struct BitMap<T, const N: usize>{
+    bit_map: Array<T, N>,
+    map: Ghost<Map<usize, T>>,
 }
 
-impl<const N: usize> BitMap<N>{
+impl<T:Copy, const N: usize> BitMap<T, N>{
 
-    pub closed spec fn view(&self) -> Map<usize, bool>{
+    pub closed spec fn view(&self) -> Map<usize, T>{
         self.map@
     }
 
@@ -29,23 +29,23 @@ impl<const N: usize> BitMap<N>{
         self@[i] == self.bit_map[i]
     }
 
-    pub fn new_false() -> (ret:Self)
+    pub fn new_with_init_value(value:T) -> (ret:Self)
         ensures 
             ret.inv(),
-            ret@ == Map::new(|i:usize|{0 <= i < N}, |k:usize|{false}),
+            ret@ == Map::new(|i:usize|{0 <= i < N}, |k:usize|{value}),
     {
-        let ghost_map = Ghost(Map::new(|i:usize|{0 <= i < N}, |k:usize|{false}));
+        let ghost_map = Ghost(Map::new(|i:usize|{0 <= i < N}, |k:usize|{value}));
         Self{
-            bit_map: Array::new_with_init_value(false),
+            bit_map: Array::new_with_init_value(value),
             map:ghost_map
         }
     }
 
-    pub open spec fn spec_index(&self, index: usize) -> bool {
+    pub open spec fn spec_index(&self, index: usize) -> T {
         self@[index]
     }
 
-    pub fn index(&self, index: usize) -> (ret: bool)
+    pub fn index(&self, index: usize) -> (ret: T)
         requires
             self.inv(),
             0 <= index < N,

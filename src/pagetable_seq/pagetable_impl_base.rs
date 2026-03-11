@@ -11,7 +11,7 @@ use vstd::simple_pptr::*;
 use crate::lemma::lemma_u::*;
 
 // exec
-impl PageTable {
+impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub fn get_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
