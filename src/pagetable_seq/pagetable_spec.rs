@@ -62,8 +62,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
         ensures
             ret.wf(),
-            TABLE_TYPE == PT_TYPE ==> ret.pcid() == pcid_or_ioid,
-            TABLE_TYPE == IOMMU_TYPE ==> ret.ioid() == pcid_or_ioid,
+            ret.pcid_or_ioid() == pcid_or_ioid,
             ret.kernel_l4_end == mem_end_l4_index,
             ret.page_closure() == Set::empty().insert(page_map_ptr),
             ret.mapping_4k() == Map::<VAddr, MapEntry>::empty(),
@@ -204,13 +203,21 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None && self.ioid is Some
     }
 
-    pub open spec fn pcid(&self) -> Pcid{
-        self.pcid.unwrap()
+    pub open spec fn pcid_or_ioid(&self) -> usize{
+        if TABLE_TYPE == PT_TYPE{
+            self.pcid.unwrap()
+        }else{
+            self.ioid.unwrap()
+        }
     }
 
-    pub open spec fn ioid(&self) -> Pcid{
-        self.ioid.unwrap()
-    }
+    // pub open spec fn pcid(&self) -> Pcid{
+    //     self.pcid.unwrap()
+    // }
+
+    // pub open spec fn ioid(&self) -> Pcid{
+    //     self.ioid.unwrap()
+    // }
 
     pub open   spec fn wf_l4(&self) -> bool {
         &&& self.l4_table@.dom() =~= Set::<PageMapPtr>::empty().insert(self.cr3)

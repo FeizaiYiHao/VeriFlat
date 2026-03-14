@@ -42,7 +42,7 @@ impl CPUTLB{
     pub open spec fn spec_index(&self, index: (CpuId, Pcid) ) -> SingleTLB
         recommends 
             cpu_id_valid(index.0),
-            pcid_valid(index.1)
+            usize_in_range::<PCID_MAX>(index.1)
     {
         self@[(index.0, index.1)]
     }
@@ -54,7 +54,7 @@ impl CPUTLB{
             #![auto]
             self@.dom().contains((cpu_id, pcid)) 
             <==>
-            cpu_id_valid(cpu_id) && pcid_valid(pcid)
+            cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid)
     }
 
 
@@ -62,7 +62,7 @@ impl CPUTLB{
         &&&
         forall|cpu_id: CpuId, pcid:Pcid, va:VAddr|
             #![auto]
-            cpu_id_valid(cpu_id) && pcid_valid(pcid)
+            cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid)
             ==>
             {
                 &&&
@@ -88,7 +88,7 @@ impl CPUTLB{
     //     &&&
     //     forall|pcid_i:Pcid|
     //         #![auto]
-    //         pcid_valid(pcid_i) && pcid_i != pcid
+    //         usize_in_range(pcid_i) && pcid_i != pcid
     //         ==>
     //         no_change_except(new[cpu_id], old[cpu_id], pcid_i)
     //     &&&
@@ -104,7 +104,7 @@ impl CPUTLB{
     //     requires
     //         old(self).inv(),
     //         cpu_id_valid(cpu_id),
-    //         pcid_valid(pcid),
+    //         usize_in_range::<PCID_MAX>(pcid),
     //         va_4k_valid(va),
     //     ensures
     //         self.inv(),

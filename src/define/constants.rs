@@ -37,6 +37,10 @@ pub open spec fn pcid_valid(pcid: Pcid) -> bool{
     0 <= pcid < PCID_MAX
 }
 
+pub open spec fn usize_in_range<const RANGE: usize>(value: usize) -> bool{
+    0 <= value < RANGE
+}
+
 pub const IOID_MAX: usize = 4096;
 
 pub const MEM_MASK: u64 = 0x0000_ffff_ffff_f000;

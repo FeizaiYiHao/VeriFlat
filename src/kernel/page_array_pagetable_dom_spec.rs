@@ -10,7 +10,7 @@ use super::kernel_define_spec::Kernel;
 verus! {
 
     impl Kernel{
-        pub open spec fn page_array_pagetable_dom_inv(&self) -> bool{
+        pub open spec fn kernel_page_array_pagetable_dom_inv(&self) -> bool{
             &&&
             self.page_array_pagetable_dom_inv1()
             &&&
@@ -90,8 +90,6 @@ verus! {
                     self.page_array[page_ptr2page_index(self.pagetable_dom[pt_r]@.mapping_4k()[va].addr)]@@.mappings_4k@.contains((pt_r, va))
                 }
         }
-
-
     }
 
     

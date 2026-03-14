@@ -1,23 +1,25 @@
 use vstd::prelude::*;
-use crate::page_array::page_array_define_spec::*;
-use crate::{pagetable_map::*, CpuArray};
+use crate::*;
+
 verus! {
 
+    pub const KERNEL_DEFAULT_PCID:Pcid = 0; 
     pub struct Kernel{
         pub pagetable_dom: PageTableDom,
         pub page_array: PageArray,
-        pub cpu_tlb: CPUTLB,
         pub cpu_array: CpuArray,
+
+        pub default_pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>,
     }
 
     impl Kernel{
         pub open spec fn subsystems_inv(&self) -> bool {
             &&&
+            self.default_pagetable_wf()
+            &&&
             self.page_array.inv()
             &&&
             self.pagetable_dom.inv()
-            &&&
-            self.cpu_tlb.inv()
             &&&
             self.cpu_array.inv()
         }
@@ -26,7 +28,16 @@ verus! {
             &&&
             self.subsystems_inv()
             &&&
-            self.page_array_pagetable_dom_inv()
+            self.kernel_page_array_pagetable_dom_inv()
+            &&&
+            self.kernel_tlb_inv()
+        }
+
+        pub open spec fn default_pagetable_wf(&self) -> bool {
+            &&&
+            self.default_pagetable.inv()
+            &&&
+            self.default_pagetable@.pcid_or_ioid() == KERNEL_DEFAULT_PCID
         }
     }
 

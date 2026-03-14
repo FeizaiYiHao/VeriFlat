@@ -34,6 +34,14 @@ verus! {
                     &&
                     old(self).page_array[i]@.serial_num() == old(lctx).locking_serial_num()
                     ,
+                
+                forall|cpu_id:CpuId|
+                    #![trigger old(self).get_cpu(cpu_id)]
+                    cpu_id_valid(cpu_id) ==> 
+                    old(self).get_cpu(cpu_id).locking_thread() is None
+                    &&
+                    old(self).get_cpu(cpu_id).serial_num() == old(lctx).locking_serial_num()
+                    ,
 
                 old(self).page_array[page_index]@@.is_mapped(),
                 old(lctx).lock_seq().len() != 0,
@@ -95,7 +103,47 @@ verus! {
                 target_l1_p,
                 target_entry,);
             self.page_array.wunlock_page(page_index, Tracked(lctx), Tracked(page_lock_perm));
-            assert(self.inv());
+            // assert(
+            //     forall|cpu_id: CpuId|
+            //         #![auto]
+            //         cpu_id_valid(cpu_id) 
+            //         // && usize_in_range::<PCID_MAX>(pcid) 
+            //         ==> 
+            //         old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap.inv()
+            // );
+            // assert(
+            //     forall|cpu_id: CpuId|
+            //         #![auto]
+            //         cpu_id_valid(cpu_id) 
+            //         // && usize_in_range::<PCID_MAX>(pcid) 
+            //         ==> 
+            //         self.get_cpu(cpu_id).view().tlb_dirty_bitmap.inv()
+            // );
+            assert(
+                forall|cpu_id: CpuId, pcid:Pcid|
+                    #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
+                    #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
+                    cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
+                    ==> 
+                    old(self).cpu_array.get_tlb(cpu_id, pcid) == self.cpu_array.get_tlb(cpu_id, pcid)
+                    &&
+                    old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() == self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()
+                    &&
+                    self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() != pagetable_root
+                    // &&
+                    // old(self).get_pagetable(old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()) == self.get_pagetable(self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap())
+            );
+            // assert(
+            //     forall|cpu_id: CpuId, pcid:Pcid|
+            //         #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
+            //         #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
+            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
+            //         ==> 
+            //         super::pagetable_tlb_spec::single_cpu_single_pcid_tlb_subset_of_pagetable(self.cpu_array.get_tlb(cpu_id, pcid), self.get_pagetable(self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()))
+            // );
+
+            // assert(self.cpu_tlb_submap_of_dirty_pagetable());
+            // assert(self.inv());
             return;
         }
     }

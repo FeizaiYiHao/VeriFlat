@@ -12,10 +12,7 @@ pub mod concurrency;
 pub mod page_array;
 pub mod linkedlist;
 pub mod cpu_array;
-pub mod container;
-pub mod process;
-pub mod thread;
-pub mod endpoint;
+pub mod proc;
 pub mod test;
 pub mod kernel;
 
@@ -30,10 +27,7 @@ pub use concurrency::*;
 pub use page_array::*;
 pub use linkedlist::*;
 pub use cpu_array::*;
-pub use container::*;
-pub use process::*;
-pub use thread::*;
-pub use endpoint::*;
+pub use proc::*;
 
 verus! {
 global size_of usize == 8;

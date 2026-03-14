@@ -118,6 +118,11 @@ pub proof fn seq_update_lemma<A>()
 pub proof fn map_insert_lemma<A, B>()
     ensures
         forall|m: Map<A, B>, x: A, y: A, v: B| x != y ==> m.insert(x, v)[y] == m[y],
+        // forall|m: Map<A, B>, x: A, y: A, v: B| x != y ==> m.insert(x, v).contains_key(y) == m.contains_key(y),
+        // forall|m: Map<A, B>, x: A, v: B| m.insert(x, v).contains_key(x),
+        // forall|m: Map<A, B>, x: A, v: B| #![trigger m.insert(x, v)] m.insert(x, v).dom() == m.dom().insert(x),
+        // forall|m: Map<A, B>, x: A, y: A, v: B| #![trigger m.insert(x, v), m.dom().contains(y)] #![trigger m.insert(x, v).dom().contains(y)] x != y ==> m.insert(x, v).dom().contains(y) == m.dom().contains(y),
+        // forall|m: Map<A, B>, x: A, v: B| #![trigger m.insert(x, v)] m.insert(x, v).dom().contains(x),
 {
 }
 
