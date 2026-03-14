@@ -149,6 +149,9 @@ impl PageTableDom {
             self[pagetable_root]@.mapping_2m() =~= old(self)[pagetable_root]@.mapping_2m(),
             self[pagetable_root]@.mapping_1g() =~= old(self)[pagetable_root]@.mapping_1g(),
             self[pagetable_root]@.kernel_entries =~= old(self)[pagetable_root]@.kernel_entries,
+            self[pagetable_root]@.pcid_or_ioid() =~= old(self)[pagetable_root]@.pcid_or_ioid(),
+            self[pagetable_root]@.cr3 =~= old(self)[pagetable_root]@.cr3,
+
     {
         let mut pagetable = self.map.take(pagetable_root, Tracked(lctx), Tracked(lock_perm));
         pagetable.map_4k_page(target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);

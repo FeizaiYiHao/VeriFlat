@@ -689,6 +689,8 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.mapping_2m() =~= old(self).mapping_2m(),
             self.mapping_1g() =~= old(self).mapping_1g(),
             self.kernel_entries =~= old(self).kernel_entries,
+            self.pcid_or_ioid() =~= old(self).pcid_or_ioid(),
+            self.cr3 =~= old(self).cr3,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;

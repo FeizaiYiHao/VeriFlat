@@ -35,10 +35,10 @@ impl<A, const N: usize> Array<A, N> {
 
     #[verifier(inline)]
     pub open spec fn spec_index(self, i: usize) -> A
-        recommends self.seq@.len() == N,
+        recommends self@.len() == N,
             0 <= i < N,
     {
-        self.seq@[i as int]
+        self@[i as int]
     }
 
     #[verifier(inline)]

@@ -1,30 +1,35 @@
 use vstd::prelude::*;
+use vstd::map::*;
+use vstd::set::*;
 
 use crate::*;
 verus! {
 
 pub struct BitMap<T, const N: usize>{
-    bit_map: Array<T, N>,
-    map: Ghost<Map<usize, T>>,
+    pub bit_map: Array<T, N>,
+    pub map: Ghost<Map<usize, T>>,
 }
 
 impl<T:Copy, const N: usize> BitMap<T, N>{
 
-    pub closed spec fn view(&self) -> Map<usize, T>{
+    pub open spec fn view(&self) -> Map<usize, T>{
         self.map@
     }
 
-    pub closed spec fn inv(&self) -> bool{
+    pub open spec fn inv(&self) -> bool{
         &&&
         self.bit_map.wf()
         &&&
         forall|i:usize|
-        #![auto]
-            0 <= i < N <==> self@.dom().contains(i)
+        #![trigger self@.dom().contains(i)]
+        #![trigger usize_in_range::<N>(i)]
+            usize_in_range::<N>(i) == self@.dom().contains(i)
         &&&
         forall|i:usize|
-        #![auto]
-        0 <= i < N
+        #![trigger usize_in_range::<N>(i)]
+        #![trigger self@[i]]
+        #![trigger self.bit_map[i]]
+        usize_in_range::<N>(i)
         ==>
         self@[i] == self.bit_map[i]
     }
@@ -32,9 +37,9 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
     pub fn new_with_init_value(value:T) -> (ret:Self)
         ensures 
             ret.inv(),
-            ret@ == Map::new(|i:usize|{0 <= i < N}, |k:usize|{value}),
+            ret@ == Map::new(|i:usize|{usize_in_range::<N>(i)}, |k:usize|{value}),
     {
-        let ghost_map = Ghost(Map::new(|i:usize|{0 <= i < N}, |k:usize|{value}));
+        let ghost_map = Ghost(Map::new(|i:usize|{usize_in_range::<N>(i)}, |k:usize|{value}));
         Self{
             bit_map: Array::new_with_init_value(value),
             map:ghost_map
@@ -48,11 +53,39 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
     pub fn index(&self, index: usize) -> (ret: T)
         requires
             self.inv(),
-            0 <= index < N,
+            usize_in_range::<N>(index),
         ensures
             ret == self[index],
     {
         *self.bit_map.get(index)
+    }
+
+    pub fn update(&mut self, index: usize, value:T)
+        requires
+            old(self).inv(),
+            usize_in_range::<N>(index),
+        ensures
+            self.inv(),
+            self@ == old(self)@.insert(index, value),
+    {
+        proof{
+            seq_update_lemma::<T>();
+        }
+
+
+        self.bit_map.set(index, value);
+        proof {
+            self.map@ = self.map@.insert(index, value);
+        }
+
+
+        // assert(        
+        //     forall|i:usize|
+        //         #![trigger self@.dom().contains(i)]
+        //         i != index 
+        //         ==> 
+        //         (self@.dom().contains(i) == old(self)@.dom().contains(i))
+        // );
     }
 
 }
