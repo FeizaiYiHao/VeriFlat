@@ -7,5 +7,6 @@ fi
 
 cd "$CURRENT_DIR/verus/source"
 source "$CURRENT_DIR/verus/tools/activate"
+./tools/get-z3.sh
 vargo build --release
 cd "$CURRENT_DIR"

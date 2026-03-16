@@ -4,55 +4,18 @@ use crate::*;
 use vstd::simple_pptr::*;
 verus! {
 
-pub struct LinkedListNode<T, const MAJOR: LockMajorId>{
-    pub value: LinkedList<T>,
+pub struct LinkedListNode<T>{
+    pub value: RwLock<LinkedList<T>, false>,
     pub external_node: ExternalNode<usize>,
 }
 
-impl<T,const MAJOR: LockMajorId> LockedUtil for LinkedListNode<T, MAJOR>{
-    open spec fn inv(&self) -> bool {
-        self.value.wf()
-    }
 
-    open spec fn lock_major_1(&self) -> crate::LockMajorId {
-        MAJOR
-    }
-
-    open spec fn lock_major_2(&self) -> crate::LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_3(&self) -> crate::LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_default(&self) -> crate::LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_1_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_2_predicate(&self) -> bool {
-        false
-    }
-
-    open spec fn lock_major_3_predicate(&self) -> bool {
-        false
-    }
-
-    open spec fn lock_major_default_predicate(&self) -> bool {
-        false
-    }
-}
-
-pub struct LinkedLinkedList<T:LockedUtil, const MAJOR: LockMajorId>{
+pub struct LinkedLinkedList<T:LockedUtil>{
     pub list: RwLock<LinkedList<usize>, false>,
-    pub perms:  Tracked<Map<usize, PointsTo<RwLock<LinkedListNode<T, MAJOR>, false>>>>,
+    pub perms:  Tracked<Map<usize, PointsTo<RwLock<LinkedListNode<T>, false>>>>,
 }
 
-impl<T:LockedUtil, const MAJOR: LockMajorId> LinkedLinkedList<T, MAJOR>{
+impl<T:LockedUtil,> LinkedLinkedList<T>{
     pub open spec fn list_dom_wf(&self) -> bool{
         &&&
         {
@@ -85,9 +48,9 @@ impl<T:LockedUtil, const MAJOR: LockMajorId> LinkedLinkedList<T, MAJOR>{
             ==>
             {
                 |||
-                self.perms.view()[list_ptr].value().wlocked()
+                self.perms.view()[list_ptr].value().view().wlocked()
                 |||
-                self.perms.view()[list_ptr].value().inv()
+                self.perms.view()[list_ptr].value().value.inv()
             }
         }
     }
@@ -102,6 +65,8 @@ impl<T:LockedUtil, const MAJOR: LockMajorId> LinkedLinkedList<T, MAJOR>{
             self.list.view().view().contains(list_ptr)
             ==>
             self.perms@[list_ptr].value().external_node.addr() == list_ptr
+            &&
+            self.perms@[list_ptr].value().external_node.is_init() == false
         }
     }
 }
