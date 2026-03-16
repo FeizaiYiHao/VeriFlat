@@ -13,6 +13,7 @@ pub mod page_array;
 pub mod linkedlist;
 pub mod cpu_array;
 pub mod proc;
+pub mod allocator;
 pub mod test;
 pub mod kernel;
 

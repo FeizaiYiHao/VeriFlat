@@ -11,6 +11,7 @@ use crate::lemma::seq_remove_lemma;
 use crate::lemma::seq_remove_lemma_2;
 use crate::lemma::seq_skip_index_of_lemma;
 use crate::lemma::seq_skip_lemma;
+use crate::LockedUtil;
 
 use super::*;
 
