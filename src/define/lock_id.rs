@@ -12,6 +12,8 @@ pub const CPU_LOCK_MAJOR_DEFAULT:usize = 4;
 pub const CONTAINER_LOCK_MAJOR:usize = 101;
 pub const PROCESS_LOCK_MAJOR:usize = 102;
 
+pub const ALLOCATOR_INNER_MAJOR:usize = 1000;
+
 pub const ALLOCATED_PAGE_MAJOR:usize = 1000;
 pub const Pagetable_PAGE_MAJOR:usize = 1001;
 
