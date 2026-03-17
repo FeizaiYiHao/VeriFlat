@@ -11,12 +11,15 @@ use crate::lemma::seq_remove_lemma;
 use crate::lemma::seq_remove_lemma_2;
 use crate::lemma::seq_skip_index_of_lemma;
 use crate::lemma::seq_skip_lemma;
+use crate::LockMajorId;
+use crate::LockOwnerId;
+use crate::LockOwnerIdUtil;
 use crate::LockedUtil;
 
 use super::*;
 
 verus! {
-pub struct LinkedList<T>{
+pub struct LinkedList<T, const MAJOR: LockMajorId>{
     pub perms: Tracked<Map<usize, PointsTo<Node<T>>>>,
     pub addr_list: Ghost<Seq<usize>>,
     pub value_list: Ghost<Seq<T>>,
@@ -24,10 +27,64 @@ pub struct LinkedList<T>{
     pub head: Option<usize>,
     pub tail: Option<usize>,
     pub map: Ghost<Map<usize, T>>,
+
+    pub container_depth: Option<usize>,
 }
 
+impl<T, const MAJOR: LockMajorId> LockOwnerIdUtil for LinkedList<T, MAJOR>{
+    open spec fn container_depth(&self) -> LockOwnerId {
+        if self.container_depth is Some{
+            LockOwnerId::Some(self.container_depth.unwrap())
+        }
+        else{
+            LockOwnerId::None
+        }
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::None
+    }
+}
+
+impl<T, const MAJOR: LockMajorId> LockedUtil for LinkedList<T, MAJOR>{
+    open spec fn inv(&self) -> bool {
+        self.wf()
+    }
+
+    open spec fn lock_major_1(&self) -> LockMajorId {
+        MAJOR
+    }
+
+    open spec fn lock_major_2(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_3(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_default(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_1_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_2_predicate(&self) -> bool {
+        false
+    }
+
+    open spec fn lock_major_3_predicate(&self) -> bool {
+        false
+    }
+
+    open spec fn lock_major_default_predicate(&self) -> bool {
+        false
+    }
+}
 //spec
-impl<T> LinkedList<T>{
+impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     pub open spec fn view(&self) -> Seq<T>{
         self.value_list@
     }
@@ -162,8 +219,8 @@ impl<T> LinkedList<T>{
 }
 
 // exec
-impl<T> LinkedList<T>{
-    pub fn new() -> (ret: Self)
+impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
+    pub fn new(container_depth: Option<usize>) -> (ret: Self)
         ensures
             ret.wf(),
     {
@@ -175,6 +232,7 @@ impl<T> LinkedList<T>{
             head: None, 
             tail: None, 
             map: Ghost(Map::empty()),
+            container_depth: container_depth,
         }
     }
 
@@ -189,6 +247,7 @@ impl<T> LinkedList<T>{
             self.length == old(self).length + 1,
             self@ == old(self)@.push(perm@.value()@),
             self.dom() == old(self).dom().insert(addr),
+            self.container_depth == old(self).container_depth,
     {
         let mut perm = perm;
         if self.length == 0 {
@@ -271,6 +330,7 @@ impl<T> LinkedList<T>{
             self@ == old(self)@.insert(0,perm@.value()@),
             self.dom() == old(self).dom().insert(addr),
             self.map() == old(self).map().insert(addr, perm@.value()@),
+            self.container_depth == old(self).container_depth,
     {
         let mut perm = perm;
         if self.length == 0 {
@@ -355,6 +415,7 @@ impl<T> LinkedList<T>{
             ret.1@.is_init(),
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self)@[0],
+            self.container_depth == old(self).container_depth,
     {
         if self.length != 1 {
             proof{
@@ -428,6 +489,7 @@ impl<T> LinkedList<T>{
             self.map() == old(self).map().remove(addr),
             self.length == old(self).length - 1,
             old(self)@.no_duplicates() ==> self@ == old(self)@.remove_value(old(self).map()[addr]),
+            self.container_depth == old(self).container_depth,
     {
             proof {
                 seq_remove_lemma::<usize>();
@@ -567,6 +629,7 @@ impl<T> LinkedList<T>{
             self.map() == old(self).map().remove(addr),
             self.length == old(self).length - 1,
             old(self)@.no_duplicates() ==> self@ == old(self)@.remove_value(old(self).map()[addr]),
+            self.container_depth == old(self).container_depth,
     {
         assert(self.length != 0);
         if self.length == 1 {
