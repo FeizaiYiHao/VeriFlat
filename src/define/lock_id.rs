@@ -5,32 +5,34 @@ use core::cmp::Ordering;
 use crate::define::*;
 verus! {
 // -------------------- Begin of const ------------------------
-pub const CPU_LOCK_MAJOR_RUNNING:usize = 1;
-pub const CPU_LOCK_MAJOR_IDLE:usize = 2;
-pub const CPU_LOCK_MAJOR_OFF:usize = 3;
-pub const CPU_LOCK_MAJOR_DEFAULT:usize = 4;
-pub const CONTAINER_LOCK_MAJOR:usize = 101;
-pub const PROCESS_LOCK_MAJOR:usize = 102;
+pub const CPU_LOCK_MAJOR_RUNNING:LockMajorId = 1;
+pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
+pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 3;
+pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
+pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
+pub const PROCESS_LOCK_MAJOR:LockMajorId = 102;
 
-pub const ALLOCATOR_INNER_MAJOR:usize = 1000;
+pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
-pub const ALLOCATED_PAGE_MAJOR:usize = 1000;
-pub const Pagetable_PAGE_MAJOR:usize = 1001;
+pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
+pub const Pagetable_PAGE_MAJOR:LockMajorId = 1001;
 
-pub const THREAD_RUNNING_LOCK_MAJOR:usize = 10000;
-pub const ENDPOINT_LOCK_MAJOR:usize = 10001;
-pub const THREAD_BLOCKED_LOCK_MAJOR:usize = 10002;
+pub const THREAD_RUNNING_LOCK_MAJOR:LockMajorId = 10000;
+pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
+pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
 
-pub const PAGE_TABLE_LOCK_MAJOR:usize = 10003;
-pub const MAPPED_PAGE_LOCK_MAJOR:usize = 10004;
+pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = 10003;
+pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = 10004;
 
-pub const PAGE_ALLOCATOR_MAJOR:usize = 10005;
+pub const SCHEDULER_LOCK_MAJOR:LockMajorId = 20000;
+pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
 
-pub const SCHEDULER_LOCK_MAJOR:usize = 20000;
-pub const THREAD_SCHEDULED_LOCK_MAJOR:usize = 20001;
+pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
+pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
-pub const FREE_PAGE_LOCK_MAJOR:usize = 30000;
-pub const MERGED_PAGE_LOCK_MAJOR:usize = 30000;
+pub const PAGE_ALLOCATOR_LIST_MAJOR: LockMajorId = 1;
+pub const PAGE_ALLOCATOR_MAJOR: LockMajorId = 1;
+pub const QUOTA_MAJOR: LockMajorId = 1;
 // -------------------- End of const --------------------------
 
 
