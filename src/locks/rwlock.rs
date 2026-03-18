@@ -124,7 +124,7 @@ pub struct RwLock<T, const HasKillState: bool>{
     locking_thread: Ghost<RwLockState>,
 }
 
-pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil, const HasKillStateX: bool, const HasKillStateY: bool>(x: RwLock<T, HasKillStateX>, y: RwLock<V, HasKillStateY>) -> bool{
+pub open spec fn write_locked_by_same_thread<X:LockMajorTrait, Y:LockMajorTrait, const HasKillStateX: bool, const HasKillStateY: bool>(x: RwLock<X, HasKillStateX>, y: RwLock<Y, HasKillStateY>) -> bool{
     &&&
     x.locking_thread() is Write
     &&&
@@ -133,10 +133,30 @@ pub open spec fn write_locked_by_same_thread<T:LockedUtil, V:LockedUtil, const H
     x.locking_thread()->Write_thread_id == y.locking_thread()->Write_thread_id
 }
 
+pub open spec fn write_locked_by_same_thread_xyz<X:LockMajorTrait, Y:LockMajorTrait, Z:LockMajorTrait, const HasKillStateX: bool, const HasKillStateY: bool, const HasKillStateZ: bool>
+        (x: RwLock<X, HasKillStateX>, y: RwLock<Y, HasKillStateY>, z: RwLock<Z, HasKillStateZ>) -> bool{
+    &&&
+    x.locking_thread() is Write
+    &&&
+    y.locking_thread() is Write
+    &&&
+    z.locking_thread() is Write
+    &&&
+    x.locking_thread()->Write_thread_id == y.locking_thread()->Write_thread_id
+    &&&
+    y.locking_thread()->Write_thread_id == z.locking_thread()->Write_thread_id
+}
+
 impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread@
+    }
+    pub open spec fn locked(&self) -> bool{
+        |||
+        self.rlocked()
+        |||
+        self.wlocked()
     }
     pub open spec fn rlocked(&self) -> bool{
         &&&
@@ -199,7 +219,7 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
         self.value
     }
 }
-impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
+impl<T:LockMajorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
     pub open spec fn inv(&self) -> bool{
         &&&
         self@.inv()
@@ -208,21 +228,28 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 
     #[verifier::external_body]
-    pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
+        pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
+    // pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
         requires
-            old(self)@.lock_major_sat(lock_major@),
+            true == false
+            // old(self)@.lock_major_sat(lock_id@.major),
+            // // old(self).lock_minor() == lock_id@.minor,
 
-            wlock_requires(*old(self), old(lctx)),
+            // wlock_requires(*old(self), old(lctx)),
+            // old(lctx).lock_id_valid(lock_id@),
         // ensures
-            // TODO fill
+            // wlock_ensures(old(self), self, lock_id@, lctx.thread_id(), ret@),
+            // lock_ensures(old(lctx), lctx, lock_id@),
     {
         self.lock.wlock();
         Tracked::assume_new()
     }
 
     #[verifier::external_body]
-    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
+    pub fn wunlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
         // TODO fill
+        requires
+            true == false
     {
         self.lock.wunlock();
     }
@@ -239,14 +266,41 @@ impl<T:LockedUtil, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 }
 
-pub open spec fn wlock_requires<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, lctx: &LocalContext) -> bool{
+impl<T:LockMajorTrait + LockMinorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
+    #[verifier::external_body]
+    pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
+        requires
+            old(self)@.lock_major_sat(lock_id@.major),
+            old(self)@.lock_minor() == lock_id@.minor,
+
+            wlock_requires(*old(self), old(lctx)),
+            old(lctx).lock_id_valid(lock_id@),
+        ensures
+            wlock_ensures(*old(self), *self, lock_id@, lctx.thread_id(), ret@),
+            lock_ensures(old(lctx), lctx, lock_id@),
+    {
+        self.lock.wlock();
+        Tracked::assume_new()
+    }
+
+    #[verifier::external_body]
+    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
+        // TODO fill
+        requires
+            true == false
+    {
+        self.lock.wunlock();
+    }
+
+}
+pub open spec fn wlock_requires<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, lctx: &LocalContext) -> bool{
     &&&
     old.locked_by(lctx) == false
     &&&
     old.serial_num() == lctx.locking_serial_num()
 }
 
-pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+pub open spec fn wlock_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
     &&&
     new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_id }
     &&&
@@ -273,7 +327,7 @@ pub open spec fn wlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLoc
     new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
-pub open spec fn wunlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
+pub open spec fn wunlock_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
     &&&
     new.locking_thread() == RwLockState::None
     &&&
@@ -287,7 +341,7 @@ pub open spec fn wunlock_ensures<T:LockedUtil, const HasKillState: bool>(old:RwL
     new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
-pub open spec fn take_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
+pub open spec fn take_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
@@ -303,7 +357,7 @@ pub open spec fn take_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock
     new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
-pub open spec fn put_ensures<T:LockedUtil, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, v:T) -> bool{
+pub open spec fn put_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, v:T) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&

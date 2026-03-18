@@ -106,7 +106,7 @@ verus! {
         }
     }
 
-    impl LockedUtil for Page{
+    impl LockMajorTrait for Page{
         open spec fn inv(&self) -> bool{
             &&&
             self.mappings_finite()
@@ -142,7 +142,7 @@ verus! {
     }
 
     
-    impl LockOwnerIdUtil for Page{
+    impl LockOwnerIdTrait for Page{
         open spec fn container_depth(&self) -> LockOwnerId {
             LockOwnerId::None
         }

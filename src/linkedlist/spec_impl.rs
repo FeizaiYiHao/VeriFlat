@@ -11,10 +11,7 @@ use crate::lemma::seq_remove_lemma;
 use crate::lemma::seq_remove_lemma_2;
 use crate::lemma::seq_skip_index_of_lemma;
 use crate::lemma::seq_skip_lemma;
-use crate::LockMajorId;
-use crate::LockOwnerId;
-use crate::LockOwnerIdUtil;
-use crate::LockedUtil;
+use crate::*;
 
 use super::*;
 
@@ -29,9 +26,11 @@ pub struct LinkedList<T, const MAJOR: LockMajorId>{
     pub map: Ghost<Map<usize, T>>,
 
     pub container_depth: Option<usize>,
+
+    pub minor: Option<usize>,
 }
 
-impl<T, const MAJOR: LockMajorId> LockOwnerIdUtil for LinkedList<T, MAJOR>{
+impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR>{
     open spec fn container_depth(&self) -> LockOwnerId {
         if self.container_depth is Some{
             LockOwnerId::Some(self.container_depth.unwrap())
@@ -46,7 +45,7 @@ impl<T, const MAJOR: LockMajorId> LockOwnerIdUtil for LinkedList<T, MAJOR>{
     }
 }
 
-impl<T, const MAJOR: LockMajorId> LockedUtil for LinkedList<T, MAJOR>{
+impl<T, const MAJOR: LockMajorId> LockMajorTrait for LinkedList<T, MAJOR>{
     open spec fn inv(&self) -> bool {
         self.wf()
     }
@@ -83,6 +82,16 @@ impl<T, const MAJOR: LockMajorId> LockedUtil for LinkedList<T, MAJOR>{
         false
     }
 }
+
+impl<T, const MAJOR: LockMajorId> LockMinorTrait for LinkedList<T, MAJOR>{
+    open spec fn lock_minor(&self) -> LockMinorId {
+        if self.minor is Some{
+            self.minor.unwrap()
+        }else{
+            233
+        }
+    }
+}
 //spec
 impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     pub open spec fn view(&self) -> Seq<T>{
@@ -103,6 +112,18 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
     pub open spec fn map(&self) ->  Map<usize, T>{
         self.map@
+    }
+
+    pub open spec fn spec_len(&self) -> usize{
+        self.length
+    }
+
+    #[verifier(when_used_as_spec(spec_len))]
+    pub fn len(&self) -> (ret:usize)
+        ensures 
+            ret == self.len()
+    {
+        self.length
     }
 
     pub open spec fn wf_perms(&self) -> bool{
@@ -220,7 +241,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
 // exec
 impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
-    pub fn new(container_depth: Option<usize>) -> (ret: Self)
+    pub fn new(container_depth: Option<usize>, minor: Option<usize>) -> (ret: Self)
         ensures
             ret.wf(),
     {
@@ -233,6 +254,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             tail: None, 
             map: Ghost(Map::empty()),
             container_depth: container_depth,
+            minor:minor,
         }
     }
 
@@ -248,6 +270,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self@ == old(self)@.push(perm@.value()@),
             self.dom() == old(self).dom().insert(addr),
             self.container_depth == old(self).container_depth,
+            self.lock_minor() == old(self).lock_minor(),
     {
         let mut perm = perm;
         if self.length == 0 {
@@ -331,6 +354,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.dom() == old(self).dom().insert(addr),
             self.map() == old(self).map().insert(addr, perm@.value()@),
             self.container_depth == old(self).container_depth,
+            self.lock_minor() == old(self).lock_minor(),
     {
         let mut perm = perm;
         if self.length == 0 {
@@ -416,6 +440,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self)@[0],
             self.container_depth == old(self).container_depth,
+            self.lock_minor() == old(self).lock_minor(),
     {
         if self.length != 1 {
             proof{
@@ -490,6 +515,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.length == old(self).length - 1,
             old(self)@.no_duplicates() ==> self@ == old(self)@.remove_value(old(self).map()[addr]),
             self.container_depth == old(self).container_depth,
+            self.lock_minor() == old(self).lock_minor(),
     {
             proof {
                 seq_remove_lemma::<usize>();
@@ -630,6 +656,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.length == old(self).length - 1,
             old(self)@.no_duplicates() ==> self@ == old(self)@.remove_value(old(self).map()[addr]),
             self.container_depth == old(self).container_depth,
+            self.lock_minor() == old(self).lock_minor(),
     {
         assert(self.length != 0);
         if self.length == 1 {

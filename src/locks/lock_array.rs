@@ -8,11 +8,11 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArrayElement<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool>{
+    pub struct LockedArrayElement<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool>{
         pub value: RwLock<T, HasKillState>,
         pub lock_minor: LockMinorId, 
     }
-    impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedArrayElement<T, HasKillState>{
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockedArrayElement<T, HasKillState>{
         pub open spec fn lock_minor(&self) -> LockMinorId{
             self.lock_minor
         }
@@ -24,7 +24,7 @@ verus! {
         }
     }
 
-    impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedUtil for LockedArrayElement<T, HasKillState>{
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockMajorTrait for LockedArrayElement<T, HasKillState>{
         open spec fn inv(&self) -> bool {
             self@.inv()
         }
@@ -62,10 +62,10 @@ verus! {
     }
 
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool, const N: usize>{
+    pub struct LockedArray<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize>{
         array: Array<RwLock<T,HasKillState>, N>,
     }
-    impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool, const N: usize> LockedArray<T, HasKillState, N> { 
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> LockedArray<T, HasKillState, N> { 
         pub closed spec fn inv(&self) -> bool{
             &&&
             self.array.wf()
@@ -110,7 +110,7 @@ verus! {
                 wlock_ensures(old(self)[index]@, self[index]@, lock_id@, lctx.thread_id(), ret@),
                 lock_ensures(old(lctx), lctx, lock_id@),
         {
-            self.array.ar[index].wlock(Tracked(lctx), Ghost(lock_id@.major))
+            self.array.ar[index].wlock_external(Tracked(lctx), Ghost(lock_id@.major))
         }
 
         #[verifier(external_body)]
@@ -135,7 +135,7 @@ verus! {
                 wunlock_ensures(old(self)[index]@, self[index]@),
                 unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
         {
-            self.array.ar[index].wunlock(Tracked(lctx), lock_perm);
+            self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }
 
         #[verifier(external_body)]
@@ -182,7 +182,7 @@ verus! {
         } 
     }
 
-    impl<T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
         open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
             &&&
             forall|i:usize|
