@@ -71,7 +71,7 @@ impl Cpu{
     }
 }
 
-impl LockedUtil for Cpu {
+impl LockMajorTrait for Cpu {
     open spec fn inv(&self) -> bool{
         &&&
         self.wf()
@@ -111,7 +111,7 @@ impl LockedUtil for Cpu {
     
 }
 
-impl LockOwnerIdUtil for Cpu {
+impl LockOwnerIdTrait for Cpu {
     open spec fn container_depth(&self) -> LockOwnerId {
         LockOwnerId::Some(self.container_depth)
     }

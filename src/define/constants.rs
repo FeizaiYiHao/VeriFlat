@@ -109,6 +109,10 @@ pub const CPU_HAS_KILL_STATE: bool = true;
 
 pub const PT_TYPE: PTType = true;
 pub const IOMMU_TYPE: PTType = false;
+
+pub const ALLOCATOR_MIN_WATERMARK: usize = 0;
+pub const ALLOCATOR_MAX_WATERMARK: usize = 256;
+pub const ALLOCATOR_BATCH: usize = 64;
 // -------------------- End of Const --------------------
 
 }

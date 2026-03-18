@@ -5,13 +5,13 @@ use super::*;
 use core::mem::MaybeUninit;
 verus! {
 
-impl<T, const HasKillState: bool> LockMinor for PointsTo<RwLock<T, HasKillState>>{
+impl<T, const HasKillState: bool> LockMinorTrait for PointsTo<RwLock<T, HasKillState>>{
     open spec fn lock_minor(&self) -> LockMinorId{
         self.addr()
     }
 }
 
-impl<T:LockOwnerIdUtil, const HasKillState: bool> LockOwnerIdUtil for PointsTo<RwLock<T, HasKillState>>{
+impl<T:LockOwnerIdTrait, const HasKillState: bool> LockOwnerIdTrait for PointsTo<RwLock<T, HasKillState>>{
     open spec fn container_depth(&self) -> LockOwnerId{
         self.value()@.container_depth()
     }
@@ -20,7 +20,7 @@ impl<T:LockOwnerIdUtil, const HasKillState: bool> LockOwnerIdUtil for PointsTo<R
     }
 }  
 
-impl<T:LockedUtil, const HasKillState: bool> LockedUtil for PointsTo<RwLock<T, HasKillState>>{
+impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwLock<T, HasKillState>>{
     open spec fn inv(&self) -> bool{
         &&&
         self.is_init()
@@ -56,7 +56,7 @@ impl<T:LockedUtil, const HasKillState: bool> LockedUtil for PointsTo<RwLock<T, H
 }  
 
 #[verifier::external_body]
-pub fn wlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -75,11 +75,11 @@ pub fn wlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKil
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().wlock(Tracked(lctx), Ghost(lock_id@.major))
+        (*uptr).assume_init_mut().wlock_external(Tracked(lctx), Ghost(lock_id@.major))
     }
 }
 #[verifier::external_body]
-pub fn wunlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -102,12 +102,12 @@ pub fn wunlock<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasK
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
-        (*uptr).assume_init_mut().wunlock(Tracked(lctx), lock_perm);
+        (*uptr).assume_init_mut().wunlock_external(Tracked(lctx), lock_perm);
     }
 }
 
 #[verifier::external_body]
-pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+pub fn take<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -133,7 +133,7 @@ pub fn take<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKill
 }
 
 #[verifier::external_body]
-pub fn put<T:LockedUtil, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
+pub fn put<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),

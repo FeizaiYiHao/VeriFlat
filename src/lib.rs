@@ -29,6 +29,7 @@ pub use page_array::*;
 pub use linkedlist::*;
 pub use cpu_array::*;
 pub use proc::*;
+pub use allocator::*;
 
 verus! {
 global size_of usize == 8;

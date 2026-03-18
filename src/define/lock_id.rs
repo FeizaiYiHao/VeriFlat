@@ -30,7 +30,8 @@ pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
 pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
-pub const PAGE_ALLOCATOR_LIST_MAJOR: LockMajorId = 1;
+pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = 1;
+pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = 1;
 pub const PAGE_ALLOCATOR_MAJOR: LockMajorId = 1;
 pub const QUOTA_MAJOR: LockMajorId = 1;
 // -------------------- End of const --------------------------

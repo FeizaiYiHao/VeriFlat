@@ -4,7 +4,7 @@ use crate::define::*;
 use super::*;
 verus! {
 
-pub trait LockedUtil {
+pub trait LockMajorTrait {
     spec fn inv(&self) -> bool;
 
     spec fn lock_major_1(&self) -> LockMajorId;
@@ -36,12 +36,12 @@ pub trait LockedUtil {
     }
 }
 
-pub trait LockOwnerIdUtil {
+pub trait LockOwnerIdTrait {
     spec fn container_depth(&self) -> LockOwnerId;
     spec fn process_depth(&self) -> LockOwnerId;
 }
 
-pub trait LockMinor {
+pub trait LockMinorTrait {
     spec fn lock_minor(&self) -> LockMinorId;
 }
 

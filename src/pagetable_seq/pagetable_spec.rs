@@ -1052,7 +1052,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 }
 
-    impl<const TABLE_TYPE:PTType> LockedUtil for  PageTable<TABLE_TYPE> { 
+    impl<const TABLE_TYPE:PTType> LockMajorTrait for  PageTable<TABLE_TYPE> { 
         open spec fn inv(&self) -> bool{
             &&&
             self.wf()
@@ -1092,7 +1092,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         
     }
 
-    impl<const TABLE_TYPE:PTType> LockOwnerIdUtil for  PageTable<TABLE_TYPE> { 
+    impl<const TABLE_TYPE:PTType> LockOwnerIdTrait for  PageTable<TABLE_TYPE> { 
         open spec fn container_depth(&self) -> LockOwnerId {
             LockOwnerId::none()
         }

@@ -14,12 +14,12 @@ pub enum MapDomainDelta<K>{
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
-pub struct LockedMap<K:ToUsize, T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool>{
+pub struct LockedMap<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool>{
     map: Tracked<Map<K, PointsTo<RwLock<T, HasKillState>>>>,
     delta: MapDomainDelta<K>,
 }
 
-impl<K:ToUsize, T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> LockedMap<K, T, HasKillState>{
+impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockedMap<K, T, HasKillState>{
     pub closed spec fn delta(&self) -> MapDomainDelta<K>{
         self.delta
     }
@@ -168,7 +168,7 @@ impl<K:ToUsize, T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> Locked
     }
 }
 
-impl<K:ToUsize, T:LockedUtil + LockOwnerIdUtil, const HasKillState: bool> Step for LockedMap<K, T, HasKillState>{
+impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> Step for LockedMap<K, T, HasKillState>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
         &&&
         forall|k:K|
