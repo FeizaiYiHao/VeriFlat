@@ -81,7 +81,6 @@ impl PageTableDom {
             old(self).dom().contains(pagetable_root),
             
             old(self)[pagetable_root].wlocked_by(old(lctx)),
-            old(self)[pagetable_root].being_killed() == false,
             old(self)[pagetable_root].inv(),
 
             lock_perm@.state() is WriteLock,

@@ -45,5 +45,8 @@ pub trait LockMinorTrait {
     spec fn lock_minor(&self) -> LockMinorId;
 }
 
+pub trait LockKillTrait {
+    spec fn is_being_killed(&self) -> bool;
+}
 
 }

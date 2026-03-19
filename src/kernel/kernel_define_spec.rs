@@ -8,7 +8,7 @@ verus! {
         pub pagetable_dom: PageTableDom,
         pub page_array: PageArray,
         pub cpu_array: CpuArray,
-        pub container_map: LockedMap<RwLockContainerPtr, Container, true>,
+        // pub container_map: LockedMap<RwLockContainerPtr, Container, true>,
 
         pub default_pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>,
     }

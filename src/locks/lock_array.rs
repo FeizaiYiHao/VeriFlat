@@ -106,6 +106,51 @@ verus! {
         }
 
         #[verifier(external_body)]
+        pub fn take(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:T)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+
+                old(self)[index]@.wlocked_by(lctx),
+                old(self)[index]@.is_init(),
+
+                lock_perm@.state() is WriteLock,
+                lock_perm@.thread_id() == lctx.thread_id(),
+                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
+            ensures
+                self.inv(),
+                self.unchanged_except(old(self), index),
+
+                take_ensures(old(self)[index]@, self[index]@),
+                
+                ret == old(self)[index]@@,
+        {
+            self.array.ar[index].take(Tracked(lctx), lock_perm)
+        } 
+
+        #[verifier(external_body)]
+        pub fn put(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>, v:T) 
+            requires
+                old(self).inv(),
+                0 <= index < N,
+
+                old(self)[index]@.wlocked_by(lctx),
+
+                lock_perm@.state() is WriteLock,
+                lock_perm@.thread_id() == lctx.thread_id(),
+                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
+            ensures
+                self.inv(),
+                self.unchanged_except(old(self), index),
+
+                put_ensures(old(self)[index]@, self[index]@, v),
+        {
+            self.array.ar[index].put(Tracked(lctx), lock_perm, v);
+        } 
+    }
+
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const N: usize> LockedArray<T, false, N>{
+            #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires
                 old(self).inv(),
@@ -152,48 +197,6 @@ verus! {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }
 
-        #[verifier(external_body)]
-        pub fn take(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:T)
-            requires
-                old(self).inv(),
-                0 <= index < N,
-
-                old(self)[index]@.wlocked_by(lctx),
-                old(self)[index]@.is_init(),
-
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == lctx.thread_id(),
-                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
-            ensures
-                self.inv(),
-                self.unchanged_except(old(self), index),
-
-                take_ensures(old(self)[index]@, self[index]@),
-                
-                ret == old(self)[index]@@,
-        {
-            self.array.ar[index].take(Tracked(lctx), lock_perm)
-        } 
-
-        #[verifier(external_body)]
-        pub fn put(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>, v:T) 
-            requires
-                old(self).inv(),
-                0 <= index < N,
-
-                old(self)[index]@.wlocked_by(lctx),
-
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == lctx.thread_id(),
-                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
-            ensures
-                self.inv(),
-                self.unchanged_except(old(self), index),
-
-                put_ensures(old(self)[index]@, self[index]@, v),
-        {
-            self.array.ar[index].put(Tracked(lctx), lock_perm, v);
-        } 
     }
 
     impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
