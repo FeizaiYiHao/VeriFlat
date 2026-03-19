@@ -56,7 +56,7 @@ impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwL
 }  
 
 #[verifier::external_body]
-pub fn wlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockMajorTrait>(pptr:&PPtr<RwLock<T, false>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, false>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -74,18 +74,17 @@ pub fn wlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, Ha
         lock_ensures(old(lctx), lctx, lock_id@),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, false>>;
         (*uptr).assume_init_mut().wlock_external(Tracked(lctx), Ghost(lock_id@.major))
     }
 }
 #[verifier::external_body]
-pub fn wunlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockMajorTrait>(pptr:&PPtr<RwLock<T, false>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, false>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
 
         old(perm).value().wlocked_by(old(lctx)),
-        old(perm).value().being_killed() == false,
         old(perm).value().inv(),
 
         lock_perm@.state() is WriteLock,
@@ -101,7 +100,7 @@ pub fn wunlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, 
         unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, false>>;
         (*uptr).assume_init_mut().wunlock_external(Tracked(lctx), lock_perm);
     }
 }

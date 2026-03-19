@@ -21,4 +21,45 @@ pub struct Container {
     //missing fields: scheduler
 }
 
+impl LockMajorTrait for Container {
+    spec fn inv(&self) -> bool {
+        &&&
+        self.children.inv()
+        &&&
+        self.owned_cpus.wf()
+    }
+
+    spec fn lock_major_1(&self) -> LockMajorId {
+        CONTAINER_LOCK_MAJOR
+    }
+
+    spec fn lock_major_2(&self) -> LockMajorId {
+        233
+    }
+
+    spec fn lock_major_3(&self) -> LockMajorId {
+        233
+    }
+
+    spec fn lock_major_default(&self) -> LockMajorId {
+        todo!()
+    }
+
+    spec fn lock_major_1_predicate(&self) -> bool {
+        todo!()
+    }
+
+    spec fn lock_major_2_predicate(&self) -> bool {
+        todo!()
+    }
+
+    spec fn lock_major_3_predicate(&self) -> bool {
+        todo!()
+    }
+
+    spec fn lock_major_default_predicate(&self) -> bool {
+        todo!()
+    }
+}
+
 } // verus!

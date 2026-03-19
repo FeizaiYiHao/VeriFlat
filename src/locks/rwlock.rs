@@ -5,11 +5,24 @@ use crate::locks::*;
 
 verus! {
 
+pub struct KillerInfo{
+    pub container: RwLockContainerPtr,
+    pub container_depth: usize,
+
+    pub process: RwLockProcessPtr,
+    pub process_depth: usize,
+
+    pub thread: RwLockThreadPtr,
+
+    pub cpu_id: CpuId,
+}
+
 pub struct RwLockInner{
     lock: AtomicBool, // false means no one is read/writing the lock content.
     writing: bool,
-    pub kill: Option<LockThreadId>, // The id of the CPU that has marked this object as being killed
-    num_of_reader: usize, // right now we don't need to worry about overflow because we don't support kernel naterrupt.
+    num_of_reader: usize, // right now we don't need to worry about overflow because we don't support kernel interrupt.
+
+    killer_info: Option<KillerInfo>,
 }
 
 impl RwLockInner{
@@ -27,11 +40,11 @@ impl RwLockInner{
     }
 
     #[verifier::external_body]
-    pub fn try_wlock(&mut self) -> Result<(),LockThreadId> {
+    pub fn try_wlock(&mut self) -> Result<(),KillerInfo> {
         loop {
             self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.kill.is_some() {
-                let ret = self.kill.unwrap();
+            if self.killer_info.is_some() {
+                let ret = self.killer_info.unwrap();
                 self.lock.store(false, Ordering::Release);
                 return Err(ret);
             }
@@ -45,17 +58,17 @@ impl RwLockInner{
     }
 
     #[verifier::external_body]
-    pub fn try_wlock_and_mark_kill(&mut self, thread_id: LockThreadId) -> Result<(),LockThreadId> {
+    pub fn try_wlock_and_mark_kill(&mut self, killer_info: KillerInfo) -> Result<(),KillerInfo> {
         loop {
             self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.kill.is_some() {
-                let ret = self.kill.unwrap();
+            if self.killer_info.is_some() {
+                let ret = self.killer_info.unwrap();
                 self.lock.store(false, Ordering::Release);
                 return Err(ret);
             }
             if self.num_of_reader == 0 && self.writing == false{
                 self.writing = true;
-                self.kill = Some(thread_id);
+                self.killer_info = Some(killer_info);
                 self.lock.store(false, Ordering::Release);
                 return Ok(());
             }
@@ -84,11 +97,11 @@ impl RwLockInner{
         }
     }
     #[verifier::external_body]
-    pub fn try_rlock(&mut self) -> Result<(),LockThreadId> {
+    pub fn try_rlock(&mut self) -> Result<(),KillerInfo> {
         loop {
             self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.kill.is_some() {
-                let ret = self.kill.unwrap();
+            if self.killer_info.is_some() {
+                let ret = self.killer_info.unwrap();
                 self.lock.store(false, Ordering::Release);
                 return Err(ret);
             }
@@ -184,21 +197,24 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
         |||
         self.wlocked_by(lctx)
     }
-    pub closed spec fn killing_thread_id_inner(&self) -> Option<LockThreadId>{
-        self.lock.kill
+    pub closed spec fn killer_info_inner(&self) -> Option<KillerInfo>{
+        self.lock.killer_info
     }
-    pub open spec fn killing_thread_id(&self) ->  Option<LockThreadId>{
+    pub open spec fn killer_info(&self) ->  Option<KillerInfo>{
         if HasKillState{
-            self.killing_thread_id_inner()
+            self.killer_info_inner()
         }else{
             None
         }
     }
     pub open spec fn being_killed(&self) -> bool{
-        self.killing_thread_id() is Some
+        self.killer_info_inner() is Some
     }
     pub open spec fn being_killed_by(&self, lctx:&LocalContext) -> bool{
-        self.killing_thread_id() != Some(lctx.thread_id())
+        &&&
+        self.killer_info_inner() is Some
+        &&&
+        self.killer_info_inner().unwrap().cpu_id == lctx.thread_id()
     }
     pub closed spec fn is_init(&self) -> bool {
         self.is_init@
@@ -218,15 +234,19 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     {
         self.value
     }
+
 }
-impl<T:LockMajorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
+
+impl<T:LockMajorTrait, const HasKillState: bool> RwLock<T, HasKillState>{
     pub open spec fn inv(&self) -> bool{
         &&&
         self@.inv()
         &&&
         self.is_init()
     }
+}
 
+impl<T:LockMajorTrait> RwLock<T, false>{
     #[verifier::external_body]
         pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
         requires
@@ -275,7 +295,7 @@ impl<T:LockMajorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
     }
 }
 
-impl<T:LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, const HasKillState: bool> RwLock<T,HasKillState>{
+impl<T:LockMajorTrait + LockMinorTrait + LockOwnerIdTrait> RwLock<T,false>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
         requires
@@ -298,7 +318,6 @@ impl<T:LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, const HasKillState: b
     pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
         requires
             old(self).wlocked_by(old(lctx)),
-            old(self).being_killed() == false,
             old(self).inv(),
 
             lp@.state() is WriteLock,
@@ -329,10 +348,6 @@ pub open spec fn wlock_ensures<T:LockMajorTrait, const HasKillState: bool>(old:R
     &&&
     new.modified() == old.modified()
     &&&
-    new.being_killed() == old.being_killed()
-    &&& 
-    new.being_killed() == false
-    &&&
     new@ == old@
 
     &&&
@@ -341,9 +356,6 @@ pub open spec fn wlock_ensures<T:LockMajorTrait, const HasKillState: bool>(old:R
     lock_perm.lock_id() == lock_id
     &&&
     lock_perm.thread_id() == thread_id
-
-    &&&
-    new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
 pub open spec fn wunlock_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
@@ -355,9 +367,6 @@ pub open spec fn wunlock_ensures<T:LockMajorTrait, const HasKillState: bool>(old
     new.modified() == old.modified()
     &&&
     new@ == old@
-
-    &&&
-    new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
 pub open spec fn take_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
@@ -371,9 +380,6 @@ pub open spec fn take_ensures<T:LockMajorTrait, const HasKillState: bool>(old:Rw
     new.modified() == old.modified()
     &&&
     new@ == old@
-
-    &&&
-    new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
 pub open spec fn put_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, v:T) -> bool{
@@ -387,9 +393,6 @@ pub open spec fn put_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwL
     new.modified() == true
     &&&
     new@ == v
-    
-    &&&
-    new.killing_thread_id_inner() == old.killing_thread_id_inner()
 }
 
 }
