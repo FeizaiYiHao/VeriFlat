@@ -110,7 +110,9 @@ pub proof fn seq_update_lemma<A>()
                 && s.update(j, v)[j] == v,
         forall|s: Seq<A>, i: int, v: A|
             #![trigger s.update(i,v)[i]]
-            0 <= i < s.len() ==> s.update(i, v)[i] == v,
+            0 <= i < s.len() ==> s.update(i, v)[i] == v 
+                // && s.len() == s.update(i, v).len()
+            ,
 {
 }
 
@@ -242,6 +244,16 @@ pub proof fn seq_remove_lemma_2<A>()
 pub proof fn seq_index_lemma<A>()
     ensures
         forall|s: Seq<A>, i: int| #![trigger s[i]] s.no_duplicates() ==> s.index_of(s[i]) == i,
+{
+}
+
+#[verifier(external_body)]
+pub proof fn seq_fold_update_lemma()
+    ensures
+        forall|old: Seq<int>, i: int, v: int|
+            0 <= i < old.len()
+            ==>
+            old.fold_left(0int, |sum: int, i: int| {sum + i}) - old[i] + v ==  old.update(i, v).fold_left(0int, |sum: int, i: int| {sum + i})
 {
 }
 

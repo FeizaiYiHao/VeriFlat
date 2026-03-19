@@ -13,14 +13,17 @@ verus! {
         pub lock_minor: LockMinorId, 
     }
     impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockedArrayElement<T, HasKillState>{
-        pub open spec fn lock_minor(&self) -> LockMinorId{
-            self.lock_minor
-        }
         pub open spec fn view(&self) -> RwLock<T, HasKillState>{
             self.value
         }
         pub open spec fn value(&self) -> RwLock<T, HasKillState>{
             self.value
+        }
+    }
+
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockMinorTrait for LockedArrayElement<T, HasKillState>{
+        open spec fn lock_minor(&self) -> LockMinorId {
+            self.lock_minor
         }
     }
 
@@ -60,7 +63,17 @@ verus! {
             self@@.lock_major_default_predicate()
         }
     }
-
+    
+    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockOwnerIdTrait for LockedArrayElement<T, HasKillState>{
+        open spec fn container_depth(&self) -> LockOwnerId {
+            self.view().view().container_depth()
+        }
+    
+        open spec fn process_depth(&self) -> LockOwnerId {
+            self.view().view().process_depth()
+        }
+    }
+    
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArray<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize>{
         array: Array<RwLock<T,HasKillState>, N>,
@@ -98,11 +111,13 @@ verus! {
                 old(self).inv(),
                 0 <= index < N,
 
+                old(self)[index].container_depth() == lock_id@.container,
+                old(self)[index].process_depth() == lock_id@.process,
                 old(self)[index].lock_major_sat(lock_id@.major),
                 old(self)[index].lock_minor() == lock_id@.minor,
 
                 wlock_requires(old(self)[index]@, old(lctx)),
-                old(lctx).lock_id_valid(lock_id@),
+                old(lctx).lock_id_acyclic(lock_id@),
             ensures
                 self.inv(),
                 self.unchanged_except(old(self), index),
@@ -121,7 +136,6 @@ verus! {
 
                 old(self)[index]@.wlocked_by(old(lctx)),
                 old(self)[index]@.being_killed() == false,
-                old(self)[index].inv(),
 
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),

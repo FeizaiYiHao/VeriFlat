@@ -84,11 +84,13 @@ impl PageArray{
             page_index_wf(page_index),
             old(self).inv(),
 
+            old(self)[page_index].container_depth() == lock_id@.container,
+            old(self)[page_index].process_depth() == lock_id@.process,
             old(self)[page_index].lock_major_sat(lock_id@.major),
             old(self)[page_index].lock_minor() == lock_id@.minor,
 
             wlock_requires(old(self)[page_index]@, old(lctx)),
-            old(lctx).lock_id_valid(lock_id@),
+            old(lctx).lock_id_acyclic(lock_id@),
         ensures
             self.inv(),
             self.unchanged_except(old(self), page_index),
