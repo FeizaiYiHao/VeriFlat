@@ -46,6 +46,31 @@ pub struct RwLockPageTableRoot{
    pub v: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RwLockContainerPtr{
+   pub v: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RwLockProcessPtr{
+   pub v: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RwLockThreadPtr{
+   pub v: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RwLockEndpointPtr{
+   pub v: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RwLockPageAllocatorPtr{
+   pub v: usize,
+}
+
 // pub type PageEntryPerm = usize;
 pub type Pcid = usize;
 
