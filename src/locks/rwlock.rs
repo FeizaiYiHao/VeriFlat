@@ -229,17 +229,8 @@ impl<T:LockMajorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
 
     #[verifier::external_body]
         pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_major: Ghost<LockMajorId>) -> (ret:Tracked<LockPerm>)
-    // pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
         requires
-            true == false
-            // old(self)@.lock_major_sat(lock_id@.major),
-            // // old(self).lock_minor() == lock_id@.minor,
-
-            // wlock_requires(*old(self), old(lctx)),
-            // old(lctx).lock_id_valid(lock_id@),
-        // ensures
-            // wlock_ensures(old(self), self, lock_id@, lctx.thread_id(), ret@),
-            // lock_ensures(old(lctx), lctx, lock_id@),
+            true == false, // this function can only be called in the TCB
     {
         self.lock.wlock();
         Tracked::assume_new()
@@ -247,34 +238,54 @@ impl<T:LockMajorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
 
     #[verifier::external_body]
     pub fn wunlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
-        // TODO fill
         requires
-            true == false
+            true == false, // this function can only be called in the TCB
     {
         self.lock.wunlock();
     }
 
     #[verifier::external_body]
-    pub fn take(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>) -> T
+    pub fn take(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>) -> (ret:T)
+        requires
+            old(self).wlocked_by(lctx),
+            old(self).is_init() == true,
+
+            lp@.state() is WriteLock,
+            lp@.thread_id() == lctx.thread_id(),
+            lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+        ensures
+            take_ensures(*old(self), *self),
+            ret == old(self).view(),
     {
         unsafe { core::ptr::read(&self.value as *const T) }
     }
+
     #[verifier::external_body]
     pub fn put(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>, v: T)
+        requires
+            old(self).wlocked_by(lctx),
+
+            lp@.state() is WriteLock,
+            lp@.thread_id() == lctx.thread_id(),
+            lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+        ensures
+            put_ensures(*old(self), *self, v),
     {
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
     }
 }
 
-impl<T:LockMajorTrait + LockMinorTrait, const HasKillState: bool> RwLock<T,HasKillState>{
+impl<T:LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, const HasKillState: bool> RwLock<T,HasKillState>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
         requires
+            old(self)@.container_depth() == lock_id@.container,
+            old(self)@.process_depth() == lock_id@.process,
             old(self)@.lock_major_sat(lock_id@.major),
             old(self)@.lock_minor() == lock_id@.minor,
 
             wlock_requires(*old(self), old(lctx)),
-            old(lctx).lock_id_valid(lock_id@),
+            old(lctx).lock_id_acyclic(lock_id@),
         ensures
             wlock_ensures(*old(self), *self, lock_id@, lctx.thread_id(), ret@),
             lock_ensures(old(lctx), lctx, lock_id@),
@@ -285,9 +296,17 @@ impl<T:LockMajorTrait + LockMinorTrait, const HasKillState: bool> RwLock<T,HasKi
 
     #[verifier::external_body]
     pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
-        // TODO fill
         requires
-            true == false
+            old(self).wlocked_by(old(lctx)),
+            old(self).being_killed() == false,
+            old(self).inv(),
+
+            lp@.state() is WriteLock,
+            lp@.thread_id() == old(lctx).thread_id(),
+            lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+        ensures
+            wunlock_ensures(*old(self), *self),
+            unlock_ensures(old(lctx), lctx, lp@.lock_id()),
     {
         self.lock.wunlock();
     }
@@ -365,7 +384,7 @@ pub open spec fn put_ensures<T:LockMajorTrait, const HasKillState: bool>(old:RwL
     &&&
     new.serial_num() == old.serial_num()
     &&&
-    new.modified() == old.modified()
+    new.modified() == true
     &&&
     new@ == v
     

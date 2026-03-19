@@ -65,7 +65,7 @@ pub fn wlock<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, Ha
         old(perm).lock_minor() == lock_id@.minor,
 
         wlock_requires(old(perm).value(), old(lctx)),
-        old(lctx).lock_id_valid(lock_id@),
+        old(lctx).lock_id_acyclic(lock_id@),
     ensures
         perm.addr() == old(perm).addr(),
         perm.is_init(),

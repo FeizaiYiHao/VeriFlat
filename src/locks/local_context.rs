@@ -42,8 +42,8 @@ impl LocalContext{
             1<=i<self.lock_seq().len() 
             ==> 
             self.lock_seq()[i] > self.lock_seq()[i - 1]
-    }
-    pub open spec fn lock_id_valid(&self, lock_id: LockId) -> bool{
+    }            
+    pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool{
         |||
         self.lock_seq().len() == 0
         |||

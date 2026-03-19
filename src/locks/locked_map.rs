@@ -70,7 +70,7 @@ impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> L
             old(self)@[key].lock_minor() == lock_id@.minor,
 
             wlock_requires(old(self)[key], old(lctx)),
-            old(lctx).lock_id_valid(lock_id@),
+            old(lctx).lock_id_acyclic(lock_id@),
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
