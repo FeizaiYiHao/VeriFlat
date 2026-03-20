@@ -8,7 +8,13 @@ verus! {
         pub pagetable_dom: PageTableDom,
         pub page_array: PageArray,
         pub cpu_array: CpuArray,
-        // pub container_map: LockedMap<RwLockContainerPtr, Container, true>,
+
+        pub container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,
+        pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, CONTAINER_HAS_KILL_STATE>,
+        pub process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>,
+        pub thread_map: LockedMap<RwLockThreadPtr, Process, THREAD_HAS_KILL_STATE>,
+        pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, ENDPOINT_HAS_KILL_STATE>,
+
 
         pub default_pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>,
     }

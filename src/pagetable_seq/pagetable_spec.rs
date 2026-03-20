@@ -32,6 +32,7 @@ pub struct PageTable<const TABLE_TYPE:PTType> {
     pub mapping_2m: Ghost<Map<VAddr, MapEntry>>,
     pub mapping_1g: Ghost<Map<VAddr, MapEntry>>,
     pub kernel_entries: Ghost<Seq<PageEntry>>,
+    pub proc_ptr: RwLockProcessPtr
 }
 
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
@@ -41,6 +42,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         page_map_ptr: PageMapPtr,
         Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
         mem_end_l4_index: usize,
+        proc_ptr: RwLockProcessPtr,
     ) -> (ret: Self)
         requires
              0 <= mem_end_l4_index < 512,
@@ -70,6 +72,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             ret.mapping_1g() == Map::<VAddr, MapEntry>::empty(),
             ret.kernel_entries =~= kernel_entries_ghost,
             ret.is_empty(),
+            ret.proc_ptr == proc_ptr,
     {
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
@@ -92,6 +95,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             mapping_2m: Ghost(Map::<VAddr, MapEntry>::empty()),
             mapping_1g: Ghost(Map::<VAddr, MapEntry>::empty()),
             kernel_entries: kernel_entries_ghost,
+            proc_ptr: proc_ptr,
         };
         assert(ret.l3_tables@.dom() == Set::<PageMapPtr>::empty());
         assert(ret.l2_tables@.dom() == Set::<PageMapPtr>::empty());

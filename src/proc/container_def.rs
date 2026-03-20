@@ -3,22 +3,36 @@ verus! {
 
 use crate::*;
 
+pub struct PcidIoidAllocator{
+    pub ref_counters: Array<usize, PCID_MAX>,
+    pub id_to_proc: Ghost<Seq<Set<RwLockProcessPtr>>>,
+}
+
+// Each container uses a 2 MiB pages
 pub struct Container {
     pub parent: Option<RwLockContainerPtr>,
-    pub parent_rev_ptr: Option<usize>,
+    pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
     pub depth: usize,
-    pub root_process: Option<RwLockProcessPtr>,
-    pub allocator_ptr: RwLockPageAllocatorPtr,
-    pub owned_cpus: ArraySet<NUM_CPUS>,
-
     pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
+
+    pub root_process: Option<RwLockProcessPtr>,
     pub owned_procs: Ghost<Set<RwLockProcessPtr>>,
-    pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
+    pub pcid_allocator: PcidIoidAllocator,
+    pub ioid_allocator: PcidIoidAllocator,
+
+    pub owned_cpus: ArraySet<NUM_CPUS>,
+
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
 
-    //missing fields: scheduler
+    pub scheduler: RwLockSchedulerPtr,
+
+    pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
+
+    pub allocator_ptr_4k: RwLockPageAllocatorPtr,
+    pub allocator_ptr_2m: RwLockPageAllocatorPtr,
+    pub allocator_ptr_1g: RwLockPageAllocatorPtr,
 }
 
 impl LockInvTrait for Container {

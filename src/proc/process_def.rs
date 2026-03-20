@@ -8,13 +8,18 @@ pub struct Process {
     
     pub pcid: Pcid,
     pub ioid: Option<IOid>,
-    pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
+    pub pagetable: RwLockPageTableRoot,
+    pub iommu_table: RwLockPageTableRoot,
+
+
     pub parent: Option<RwLockProcessPtr>,
-    pub parent_rev_ptr: Option<usize>,
-    pub children: LinkedList<RwLockProcessPtr, PROC_CHILD_LIST_LEN>,
+    pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
+    pub children: LinkedList<RwLockProcessPtr, 233>,
+    pub depth: usize,
     pub uppertree_seq: Ghost<Seq<RwLockProcessPtr>>,
     pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
-    pub depth: usize,
+
+    pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
 }
 
 } // verus!
