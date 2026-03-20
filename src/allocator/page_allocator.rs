@@ -5,9 +5,9 @@ use vstd::simple_pptr::*;
 verus! {
 
 pub struct PageAllocator{
-    pub cpu_caches: LockedArray<AllocatorCache, NUM_CPUS>,
-    pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, false>,
-    pub quota: RwLock<AllocatorQuota, false>,
+    pub cpu_caches: LockedArray<AllocatorCache, NUM_CPUS, NO_KILL_STATE>,
+    pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, NO_KILL_STATE>,
+    pub quota: RwLock<AllocatorQuota, NO_KILL_STATE>,
     pub differential: Ghost<Seq<int>>,
 }
 

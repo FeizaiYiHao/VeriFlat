@@ -19,15 +19,15 @@ impl<T:LockOwnerIdTrait, const HasKillState: bool> LockOwnerIdTrait for PointsTo
         self.value()@.process_depth()
     }
 }  
-
-impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwLock<T, HasKillState>>{
+impl<T:LockInvTrait, const HasKillState: bool> LockInvTrait for PointsTo<RwLock<T, HasKillState>>{
     open spec fn inv(&self) -> bool{
         &&&
         self.is_init()
         &&&
         self.value()@.inv()
     }
-
+}
+impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwLock<T, HasKillState>>{
     open spec fn lock_major_1(&self) -> LockMajorId {
         self.value()@.lock_major_1()
     }
@@ -55,8 +55,10 @@ impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwL
     }
 }  
 
+
+// TODO
 #[verifier::external_body]
-pub fn wlock<T:LockMajorTrait>(pptr:&PPtr<RwLock<T, false>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, false>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -74,12 +76,14 @@ pub fn wlock<T:LockMajorTrait>(pptr:&PPtr<RwLock<T, false>>, Tracked(perm): Trac
         lock_ensures(old(lctx), lctx, lock_id@),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, false>>;
-        (*uptr).assume_init_mut().wlock_external(Tracked(lctx), Ghost(lock_id@.major))
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, NO_KILL_STATE>>;
+        (*uptr).assume_init_mut().wlock_external(Tracked(lctx))
     }
 }
+
+// TODO
 #[verifier::external_body]
-pub fn wunlock<T:LockMajorTrait>(pptr:&PPtr<RwLock<T, false>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, false>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -100,13 +104,13 @@ pub fn wunlock<T:LockMajorTrait>(pptr:&PPtr<RwLock<T, false>>, Tracked(perm): Tr
         unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, false>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, NO_KILL_STATE>>;
         (*uptr).assume_init_mut().wunlock_external(Tracked(lctx), lock_perm);
     }
 }
 
 #[verifier::external_body]
-pub fn take<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+pub fn take<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -132,7 +136,7 @@ pub fn take<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, Has
 }
 
 #[verifier::external_body]
-pub fn put<T:LockMajorTrait, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
+pub fn put<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),

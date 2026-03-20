@@ -4,12 +4,12 @@ use crate::*;
 verus! {
 
 pub struct CpuArray{
-    pub cpu_array: LockedArray<Cpu, NUM_CPUS>,
+    pub cpu_array: LockedArray<Cpu, NUM_CPUS, NO_KILL_STATE>,
     pub tlb: CPUTLB,
 } 
 
 impl CpuArray{
-    pub open spec fn get_cpu(&self, cpu_id:CpuId) -> RwLock<Cpu, false>
+    pub open spec fn get_cpu(&self, cpu_id:CpuId) -> RwLock<Cpu, NO_KILL_STATE>
         recommends
             cpu_id_valid(cpu_id),
             self.inv(),

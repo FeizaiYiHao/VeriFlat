@@ -19,11 +19,13 @@ impl LockOwnerIdTrait for AllocatorCache{
     }
 }
 
-impl LockMajorTrait for AllocatorCache{
+impl LockInvTrait for AllocatorCache{
     open spec fn inv(&self) -> bool {
         self.wf()
     }
+}
 
+impl LockMajorTrait for AllocatorCache{
     open spec fn lock_major_1(&self) -> LockMajorId {
         ALLOCATOR_CACHE_MAJOR
     }

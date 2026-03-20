@@ -106,7 +106,7 @@ verus! {
         }
     }
 
-    impl LockMajorTrait for Page{
+    impl LockInvTrait for Page{
         open spec fn inv(&self) -> bool{
             &&&
             self.mappings_finite()
@@ -115,6 +115,9 @@ verus! {
             &&&
             self.mapped_state_inv()
         }
+    }
+
+    impl LockMajorTrait for Page{
         open spec fn lock_major_1(&self) -> LockMajorId {
             Self::free_page_lock_major()
         }

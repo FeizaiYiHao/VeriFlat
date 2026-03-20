@@ -9,11 +9,13 @@ pub struct AllocatorQuota{
     pub container_depth: usize,
 }
 
-impl LockMajorTrait for AllocatorQuota {
+impl LockInvTrait for AllocatorQuota{
     open spec fn inv(&self) -> bool {
         true
     }
+}
 
+impl LockMajorTrait for AllocatorQuota {
     open spec fn lock_major_1(&self) -> LockMajorId {
         QUOTA_MAJOR
     }

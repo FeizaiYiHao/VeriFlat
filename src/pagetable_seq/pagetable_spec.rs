@@ -1052,11 +1052,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 }
 
-    impl<const TABLE_TYPE:PTType> LockMajorTrait for  PageTable<TABLE_TYPE> { 
+
+    impl<const TABLE_TYPE:PTType> LockInvTrait for  PageTable<TABLE_TYPE> { 
         open spec fn inv(&self) -> bool{
             &&&
             self.wf()
         }
+    }
+    impl<const TABLE_TYPE:PTType> LockMajorTrait for  PageTable<TABLE_TYPE> { 
         
         open spec fn lock_major_1(&self) -> LockMajorId {
             0x233
