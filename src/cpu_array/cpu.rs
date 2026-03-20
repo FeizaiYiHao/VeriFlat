@@ -13,10 +13,10 @@ pub enum  CpuState{
 
 // #[derive(Clone, Copy, Debug)]
 pub struct Cpu {
-    pub owning_container: ContainerPtr,
+    pub owning_container: RwLockContainerPtr,
     pub state: CpuState,
-    pub current_process: Option<ProcPtr>,
-    pub current_thread: Option<ThreadPtr>,
+    pub current_process: Option<RwLockProcessPtr>,
+    pub current_thread: Option<RwLockThreadPtr>,
 
     pub current_pagetable: RwLockPageTableRoot,
     pub current_cr3: PageTableRoot,

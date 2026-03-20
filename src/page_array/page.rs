@@ -9,7 +9,7 @@ verus! {
         pub state: PageState,
         // pub is_io_page: bool,
         pub ref_count: usize,
-        // pub owning_container: ContainerPtr,
+        pub owning_container: RwLockContainerPtr,
         pub mappings_4k: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
         pub mappings_2m: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
         pub mappings_1g: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
@@ -79,9 +79,8 @@ verus! {
         }
         pub open spec fn is_allocated(&self) -> bool {
             match self.state{
-                PageState::Allocated4k 
-                |PageState::Allocated2m
-                |PageState::Allocated1g => true,
+                PageState::Allocated4k{..} 
+                |PageState::Allocated2m{..} => true,
                 _ => false,
             }
         }

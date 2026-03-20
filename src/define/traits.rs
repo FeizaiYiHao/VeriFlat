@@ -117,4 +117,20 @@ verus! {
             }
         } 
     }
+
+    impl ToUsize for RwLockSchedulerPtr{
+        closed spec fn spec_to_usize(&self) -> usize{
+            self.v
+        }
+        fn to_usize(&self) -> (ret:usize)
+        {
+            self.v
+        } 
+        fn from_usize(v:usize) -> (ret:Self)
+        {
+            RwLockSchedulerPtr{
+                v: v,
+            }
+        } 
+    }
 }
