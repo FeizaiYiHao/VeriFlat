@@ -6,7 +6,7 @@ use crate::locks::*;
 verus! {
 
 pub struct PageArray{
-    pub phy_pages: LockedArray<Page, NUM_PAGES>, 
+    pub phy_pages: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>, 
 }
 
 impl PageArray{
@@ -30,14 +30,14 @@ impl PageArray{
         self.pages_inv()
     }
 
-    pub open spec fn spec_index(&self, page_index: PageIndex) -> LockedArrayElement<Page>
+    pub open spec fn spec_index(&self, page_index: PageIndex) -> LockedArrayElement<Page, NO_KILL_STATE>
         recommends 
             page_index_wf(page_index)
     {
         self.phy_pages[page_index]
     }
 
-    pub open spec fn view(&self) -> Seq<RwLock<Page, false>>{
+    pub open spec fn view(&self) -> Seq<RwLock<Page, NO_KILL_STATE>>{
         self.phy_pages@
     }
     pub open spec fn unchanged_except(&self, old: &Self, index:usize) -> bool{

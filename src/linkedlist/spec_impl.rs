@@ -44,12 +44,13 @@ impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR>{
         LockOwnerId::None
     }
 }
-
-impl<T, const MAJOR: LockMajorId> LockMajorTrait for LinkedList<T, MAJOR>{
+impl<T, const MAJOR: LockMajorId> LockInvTrait for LinkedList<T, MAJOR>{
     open spec fn inv(&self) -> bool {
         self.wf()
     }
+}
 
+impl<T, const MAJOR: LockMajorId> LockMajorTrait for LinkedList<T, MAJOR>{
     open spec fn lock_major_1(&self) -> LockMajorId {
         MAJOR
     }

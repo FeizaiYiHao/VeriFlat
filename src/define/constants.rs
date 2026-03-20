@@ -105,7 +105,7 @@ pub const MAX_CONTAINER_SCHEDULER_LEN: usize = 10;
 
 pub const PAGE_TABLE_HAS_KILL_STATE: bool = false;
 pub const PAGE_HAS_KILL_STATE: bool = false;
-pub const CPU_HAS_KILL_STATE: bool = true;
+pub const CPU_HAS_KILL_STATE: bool = false;
 
 pub const PT_TYPE: PTType = true;
 pub const IOMMU_TYPE: PTType = false;
@@ -113,6 +113,8 @@ pub const IOMMU_TYPE: PTType = false;
 pub const ALLOCATOR_MIN_WATERMARK: usize = 0;
 pub const ALLOCATOR_MAX_WATERMARK: usize = 256;
 pub const ALLOCATOR_BATCH: usize = 64;
+
+pub const NO_KILL_STATE: bool = false; 
 // -------------------- End of Const --------------------
 
 }

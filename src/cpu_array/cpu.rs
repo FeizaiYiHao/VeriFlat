@@ -71,12 +71,14 @@ impl Cpu{
     }
 }
 
-impl LockMajorTrait for Cpu {
+impl LockInvTrait for Cpu{
     open spec fn inv(&self) -> bool{
         &&&
         self.wf()
     }
-    
+}
+
+impl LockMajorTrait for Cpu {
     open spec fn lock_major_1(&self) -> LockMajorId {
         CPU_LOCK_MAJOR_RUNNING
     }

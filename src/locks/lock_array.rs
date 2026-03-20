@@ -8,77 +8,10 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArrayElement<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool>{
-        pub value: RwLock<T, HasKillState>,
-        pub lock_minor: LockMinorId, 
-    }
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockedArrayElement<T, HasKillState>{
-        pub open spec fn view(&self) -> RwLock<T, HasKillState>{
-            self.value
-        }
-        pub open spec fn value(&self) -> RwLock<T, HasKillState>{
-            self.value
-        }
-    }
-
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockMinorTrait for LockedArrayElement<T, HasKillState>{
-        open spec fn lock_minor(&self) -> LockMinorId {
-            self.lock_minor
-        }
-    }
-
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockMajorTrait for LockedArrayElement<T, HasKillState>{
-        open spec fn inv(&self) -> bool {
-            self@.inv()
-        }
-        open spec fn lock_major_1(&self) -> LockMajorId {
-            self@@.lock_major_1()
-        }
-    
-        open spec fn lock_major_2(&self) -> LockMajorId {
-            self@@.lock_major_2()
-        }
-    
-        open spec fn lock_major_3(&self) -> LockMajorId {
-            self@@.lock_major_3()
-        }
-    
-        open spec fn lock_major_default(&self) -> LockMajorId {
-            self@@.lock_major_default()
-        }
-    
-        open spec fn lock_major_1_predicate(&self) -> bool {
-            self@@.lock_major_1_predicate()
-        }
-    
-        open spec fn lock_major_2_predicate(&self) -> bool {
-            self@@.lock_major_2_predicate()
-        }
-    
-        open spec fn lock_major_3_predicate(&self) -> bool {
-            self@@.lock_major_3_predicate()
-        }
-    
-        open spec fn lock_major_default_predicate(&self) -> bool {
-            self@@.lock_major_default_predicate()
-        }
-    }
-    
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockOwnerIdTrait for LockedArrayElement<T, HasKillState>{
-        open spec fn container_depth(&self) -> LockOwnerId {
-            self.view().view().container_depth()
-        }
-    
-        open spec fn process_depth(&self) -> LockOwnerId {
-            self.view().view().process_depth()
-        }
-    }
-    
-    #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize>{
+    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,const N: usize, const HasKillState: bool>{
         array: Array<RwLock<T,HasKillState>, N>,
     }
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> LockedArray<T, HasKillState, N> { 
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> LockedArray<T, N, HasKillState> { 
         pub closed spec fn inv(&self) -> bool{
             &&&
             self.array.wf()
@@ -149,7 +82,7 @@ verus! {
         } 
     }
 
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const N: usize> LockedArray<T, false, N>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const N: usize> LockedArray<T, N, NO_KILL_STATE>{
             #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires
@@ -170,7 +103,7 @@ verus! {
                 wlock_ensures(old(self)[index]@, self[index]@, lock_id@, lctx.thread_id(), ret@),
                 lock_ensures(old(lctx), lctx, lock_id@),
         {
-            self.array.ar[index].wlock_external(Tracked(lctx), Ghost(lock_id@.major))
+            self.array.ar[index].wlock_external(Tracked(lctx))
         }
 
         #[verifier(external_body)]
@@ -199,21 +132,21 @@ verus! {
 
     }
 
-    impl<T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
-        open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
-            &&&
-            forall|i:usize|
-                #![auto]
-                0 <= i < N && self[i]@.locked_by(lctx) == false
-                ==>
-                self[i]@.being_killed_by(lctx) == false
-                &&
-                self[i]@.serial_num() == lctx.locking_serial_num()
-        }
-        proof fn random_step(&mut self, lctx: &LocalContext)
-        {
-            admit()
-        }
-    }
+    // impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
+    //     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
+    //         &&&
+    //         forall|i:usize|
+    //             #![auto]
+    //             0 <= i < N && self[i]@.locked_by(lctx) == false
+    //             ==>
+    //             self[i]@.being_killed_by(lctx) == false
+    //             &&
+    //             self[i]@.serial_num() == lctx.locking_serial_num()
+    //     }
+    //     proof fn random_step(&mut self, lctx: &LocalContext)
+    //     {
+    //         admit()
+    //     }
+    // }
 
 }

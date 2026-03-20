@@ -14,12 +14,12 @@ pub enum MapDomainDelta<K>{
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
-pub struct LockedMap<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool>{
+pub struct LockedMap<K:ToUsize, T, const HasKillState: bool>{
     map: Tracked<Map<K, PointsTo<RwLock<T, HasKillState>>>>,
     delta: MapDomainDelta<K>,
 }
 
-impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> LockedMap<K, T, HasKillState>{
+impl<K:ToUsize, T, const HasKillState: bool> LockedMap<K, T, HasKillState>{
     pub closed spec fn delta(&self) -> MapDomainDelta<K>{
         self.delta
     }
@@ -114,7 +114,7 @@ impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> L
     }
 }
 
-impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait> LockedMap<K, T, false>{
+impl<K:ToUsize, T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<K, T, NO_KILL_STATE>{
     pub fn wlock(&mut self, key:K, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
@@ -133,7 +133,7 @@ impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait> LockedMap<K, T, false>{
             lock_ensures(old(lctx), lctx, lock_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock(&PPtr::<RwLock<T, false>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_id);
+        let ret = wlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_id);
         assert(perm.addr() == key.to_usize());
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
@@ -162,7 +162,7 @@ impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait> LockedMap<K, T, false>{
             unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wunlock(&PPtr::<RwLock<T, false>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = wunlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -170,7 +170,7 @@ impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait> LockedMap<K, T, false>{
     }
 }
 
-impl<K:ToUsize, T:LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool> Step for LockedMap<K, T, HasKillState>{
+impl<K:ToUsize, T:LockInvTrait, const HasKillState: bool> Step for LockedMap<K, T, HasKillState>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
         &&&
         forall|k:K|
