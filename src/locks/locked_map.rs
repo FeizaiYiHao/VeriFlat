@@ -14,24 +14,24 @@ pub enum MapDomainDelta<K>{
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
-pub struct LockedMap<K:ToUsize, T, const HasKillState: bool>{
+pub struct LockedMap<K, T, const HasKillState: bool>{
     map: Tracked<Map<K, PointsTo<RwLock<T, HasKillState>>>>,
     delta: MapDomainDelta<K>,
 }
 
-impl<K:ToUsize, T, const HasKillState: bool> LockedMap<K, T, HasKillState>{
-    pub closed spec fn delta(&self) -> MapDomainDelta<K>{
+impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
+    pub closed spec fn delta(&self) -> MapDomainDelta<usize>{
         self.delta
     }
-    pub closed spec fn view(&self) -> Map<K, PointsTo<RwLock<T, HasKillState>>>{
+    pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, HasKillState>>>{
         self.map@
     }
-    pub open spec fn dom(&self) -> Set<K>{
+    pub open spec fn dom(&self) -> Set<usize>{
         self@.dom()
     }
     pub open spec fn perms_wf(&self) -> bool {
         &&&
-        forall|k:K| 
+        forall|k:usize| 
             #![trigger self@[k].is_init()]
             #![trigger self@[k].addr()]
             self@.dom().contains(k)
@@ -40,29 +40,29 @@ impl<K:ToUsize, T, const HasKillState: bool> LockedMap<K, T, HasKillState>{
                 &&&
                 self@[k].is_init()
                 &&&
-                self@[k].addr() == k.to_usize()
+                self@[k].addr() == k
             }
     }
-    pub open spec fn spec_index(&self, key: K) -> RwLock<T, HasKillState>
+    pub open spec fn spec_index(&self, key: usize) -> RwLock<T, HasKillState>
         recommends
             self@.dom().contains(key),
     {
         self@[key].value()
     }
-    pub open spec fn unchanged_except(&self, old: &Self, key:K) -> bool{
+    pub open spec fn unchanged_except(&self, old: &Self, key:usize) -> bool{
         &&&
         old.delta() == self.delta()
         &&&
         old.dom() == self.dom()
         &&&
-        forall|k:K|
+        forall|k:usize|
             #![auto]
             old.dom().contains(k) && k != key
             ==>
             self[k] == old[k]
     }
 
-    pub fn take(&mut self, key:K, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+    pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -82,14 +82,14 @@ impl<K:ToUsize, T, const HasKillState: bool> LockedMap<K, T, HasKillState>{
             ret == old(self)[key]@,
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = take(&PPtr::<RwLock<T, HasKillState>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = take(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
         return ret;
     }
 
-    pub fn put(&mut self, key:K, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v:T)
+    pub fn put(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v:T)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -107,15 +107,15 @@ impl<K:ToUsize, T, const HasKillState: bool> LockedMap<K, T, HasKillState>{
             put_ensures(old(self)[key], self[key], v),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        put(&PPtr::<RwLock<T, HasKillState>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
+        put(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
     }
 }
 
-impl<K:ToUsize, T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<K, T, NO_KILL_STATE>{
-    pub fn wlock(&mut self, key:K, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<usize, T, NO_KILL_STATE>{
+    pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -133,15 +133,15 @@ impl<K:ToUsize, T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<K,
             lock_ensures(old(lctx), lctx, lock_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_id);
-        assert(perm.addr() == key.to_usize());
+        let ret = wlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
+        assert(perm.addr() == key);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
         return ret;
     }
 
-    pub fn wunlock(&mut self, key:K, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -162,7 +162,7 @@ impl<K:ToUsize, T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<K,
             unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wunlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key.to_usize()), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = wunlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -170,16 +170,16 @@ impl<K:ToUsize, T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<K,
     }
 }
 
-impl<K:ToUsize, T:LockInvTrait, const HasKillState: bool> Step for LockedMap<K, T, HasKillState>{
+impl<T:LockInvTrait, const HasKillState: bool> Step for LockedMap<usize, T, HasKillState>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
         &&&
-        forall|k:K|
+        forall|k:usize|
             #![auto]
             old.dom().contains(k) && old[k].locked_by(lctx)
             ==>
             self.dom().contains(k) && self[k] =~= old[k]
         &&&
-        forall|k:K|
+        forall|k:usize|
             #![auto]
             self.dom().contains(k) && self[k].locked_by(lctx) == false
             ==>

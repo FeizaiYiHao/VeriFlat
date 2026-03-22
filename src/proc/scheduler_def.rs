@@ -8,4 +8,11 @@ pub struct Scheduler{
     pub owning_container: RwLockContainerPtr, 
 }
 
+impl LockInvTrait for Scheduler {
+    open spec fn inv(&self) -> bool {
+        &&&
+        self.queue.inv()
+    }
+}
+
 }

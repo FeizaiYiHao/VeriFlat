@@ -11,6 +11,14 @@ pub struct Endpoint {
     pub owning_container: RwLockContainerPtr,
 }
 
+impl LockInvTrait for Endpoint {
+    open spec fn inv(&self) -> bool {
+        &&&
+        self.queue.wf()
+    }
+}
+
+
 impl Endpoint {
     pub open spec fn rf_counter_is_full(&self) -> bool {
         self.rf_counter == usize::MAX

@@ -11,6 +11,13 @@ pub struct PageAllocator{
     pub differential: Ghost<Seq<int>>,
 }
 
+impl LockInvTrait for PageAllocator{
+    open spec fn inv(&self) -> bool {
+        &&&
+        self.wf()
+    }
+}
+
 impl PageAllocator{
     pub open spec fn wf(&self) -> bool{
         &&&

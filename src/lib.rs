@@ -30,6 +30,7 @@ pub use linkedlist::*;
 pub use cpu_array::*;
 pub use proc::*;
 pub use allocator::*;
+pub use kernel::*;
 
 verus! {
 global size_of usize == 8;
