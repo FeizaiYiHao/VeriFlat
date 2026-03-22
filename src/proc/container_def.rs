@@ -14,11 +14,11 @@ pub struct Container {
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
     pub depth: usize,
-    pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
+    pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_CONTAINER_TREE_DEPTH>,
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
 
-    pub root_process: Option<RwLockProcessPtr>,
-    pub owned_procs: Ghost<Set<RwLockProcessPtr>>,
+    pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed 
+    pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
     pub pcid_allocator: PcidIoidAllocator,
     pub ioid_allocator: PcidIoidAllocator,
 
@@ -38,9 +38,32 @@ pub struct Container {
 impl LockInvTrait for Container {
     open spec fn inv(&self) -> bool {
         &&&
+        self.wf()
+    }
+}
+
+impl Container{
+    pub open spec fn wf(&self) -> bool {
+        &&&
         self.children.inv()
         &&&
         self.owned_cpus.wf()
+        &&&
+        self.no_parent_implies_linkedlist_node_init()
+        &&&
+        self.root_process_in_processes()
+        &&&
+        self.uppertree_seq.wf()
+    }
+
+    pub open spec fn no_parent_implies_linkedlist_node_init(&self) -> bool{
+        &&&
+        self.parent is None == self.parent_linkedlist_node.is_init()
+    }
+
+    pub open spec fn root_process_in_processes(&self) -> bool {
+        &&&
+        self.owned_processes.view().contains(self.root_process)
     }
 }
 

@@ -4,12 +4,12 @@ use crate::*;
 verus! {
 
 pub struct CpuArray{
-    pub cpu_array: LockedArray<Cpu, NUM_CPUS, NO_KILL_STATE>,
+    pub cpu_array: LockedArray<Cpu, NUM_CPUS, CPU_HAS_KILL_STATE>,
     pub tlb: CPUTLB,
 } 
 
 impl CpuArray{
-    pub open spec fn get_cpu(&self, cpu_id:CpuId) -> RwLock<Cpu, NO_KILL_STATE>
+    pub open spec fn get_cpu(&self, cpu_id:CpuId) -> RwLock<Cpu, CPU_HAS_KILL_STATE>
         recommends
             cpu_id_valid(cpu_id),
             self.inv(),
@@ -28,19 +28,23 @@ impl CpuArray{
         &&&
         self.cpu_array.inv()
         &&&
-        self.cpus_wf()
+        self.locked_or_inv()
         &&&
         self.tlb.inv()
         &&&
         self.cpu_drity_map_wf()
     }
-    pub open spec fn cpus_wf(&self) -> bool{
+    pub open spec fn locked_or_inv(&self) -> bool{
         &&&
         forall|cpu_id:CpuId|
             #![auto]
             cpu_id_valid(cpu_id)
-            ==>
-            self.cpu_array.spec_index(cpu_id).inv()
+            ==>{
+                |||
+                self.cpu_array.spec_index(cpu_id).view().wlocked()
+                |||
+                self.cpu_array.spec_index(cpu_id).inv()
+            }
     }
     pub open spec fn cpu_drity_map_wf(&self) -> bool{
         &&&

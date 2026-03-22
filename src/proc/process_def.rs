@@ -9,7 +9,7 @@ pub struct Process {
     pub pcid: Pcid,
     pub ioid: Option<IOid>,
     pub pagetable: RwLockPageTableRoot,
-    pub iommu_table: RwLockPageTableRoot,
+    pub iommu_table: Option<RwLockPageTableRoot>,
 
 
     pub parent: Option<RwLockProcessPtr>,
@@ -20,6 +20,44 @@ pub struct Process {
     pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
 
     pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
+}
+
+impl LockInvTrait for Process {
+    open spec fn inv(&self) -> bool {
+        self.wf()
+    }
+}
+
+impl Process{
+    pub open spec fn wf(&self) -> bool {
+        &&&
+        self.children.inv()
+        &&&
+        self.owned_threads.wf()
+        &&&
+        self.no_parent_implies_linkedlist_node_init()
+        &&&
+        self.iommu_table_wf()
+        &&&
+        self.pagetable_iommutable_different()
+        &&&
+        self.at_least_one_thread()
+    }
+    pub open spec fn no_parent_implies_linkedlist_node_init(&self) -> bool{
+        self.parent is None == self.parent_linkedlist_node.is_init()
+    }
+    pub open spec fn iommu_table_wf(&self) -> bool {
+        &&&
+        self.ioid is Some == self.iommu_table is Some
+    }
+    pub open spec fn pagetable_iommutable_different(&self) -> bool {
+        &&&
+        self.iommu_table is Some ==> self.iommu_table.unwrap() != self.pagetable
+    }
+    pub open spec fn at_least_one_thread(&self) -> bool{
+        &&&
+        self.owned_threads.len() != 0
+    }
 }
 
 } // verus!

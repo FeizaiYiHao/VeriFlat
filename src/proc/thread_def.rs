@@ -23,6 +23,13 @@ pub struct Thread {
     pub trap_frame: TrapFrameOption,
 }
 
+impl LockInvTrait for Thread {
+    open spec fn inv(&self) -> bool {
+        &&&
+        true
+    }
+}
+
 #[derive(Clone, Copy)]
 #[allow(inconsistent_fields)]
 pub enum IPCPayLoad {

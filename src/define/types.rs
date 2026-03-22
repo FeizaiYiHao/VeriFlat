@@ -41,40 +41,48 @@ pub type PageMapPtr = usize;
 
 pub type PageTableRoot = usize;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockPageTableRoot{
-   pub v: usize,
-}
+pub type RwLockPageTableRoot = usize;
+pub type RwLockContainerPtr = usize;
+pub type RwLockProcessPtr = usize;
+pub type RwLockThreadPtr = usize;
+pub type RwLockEndpointPtr = usize;
+pub type RwLockPageAllocatorPtr = usize;
+pub type RwLockSchedulerPtr = usize;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockContainerPtr{
-   pub v: usize,
-}
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockPageTableRoot{
+//    pub v: usize,
+// }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockProcessPtr{
-   pub v: usize,
-}
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockContainerPtr{
+//    pub v: usize,
+// }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockThreadPtr{
-   pub v: usize,
-}
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockProcessPtr{
+//    pub v: usize,
+// }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockEndpointPtr{
-   pub v: usize,
-}
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockThreadPtr{
+//    pub v: usize,
+// }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockPageAllocatorPtr{
-   pub v: usize,
-}
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockEndpointPtr{
+//    pub v: usize,
+// }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RwLockSchedulerPtr{
-   pub v: usize,
-}
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockPageAllocatorPtr{
+//    pub v: usize,
+// }
+
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct RwLockSchedulerPtr{
+//    pub v: usize,
+// }
 
 // pub type PageEntryPerm = usize;
 pub type Pcid = usize;

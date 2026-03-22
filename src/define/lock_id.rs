@@ -175,7 +175,7 @@ impl ToLockId for RwLockPageTableRoot{
             container: LockOwnerId::none(),
             process: LockOwnerId::none(),
             major: PAGE_TABLE_LOCK_MAJOR,
-            minor:self.to_usize(),
+            minor:*self,
         }
     }
 }

@@ -16,6 +16,7 @@ use crate::*;
 use super::*;
 
 verus! {
+
 pub struct LinkedList<T, const MAJOR: LockMajorId>{
     pub perms: Tracked<Map<usize, PointsTo<Node<T>>>>,
     pub addr_list: Ghost<Seq<usize>>,
@@ -270,6 +271,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.length == old(self).length + 1,
             self@ == old(self)@.push(perm@.value()@),
             self.dom() == old(self).dom().insert(addr),
+            self.map() == old(self).map().insert(addr, perm@.value()@),
             self.container_depth == old(self).container_depth,
             self.lock_minor() == old(self).lock_minor(),
     {
@@ -440,6 +442,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.1@.is_init(),
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self)@[0],
+            ret.1@.value()@ == old(self).map()[ret.0],
             self.container_depth == old(self).container_depth,
             self.lock_minor() == old(self).lock_minor(),
     {
