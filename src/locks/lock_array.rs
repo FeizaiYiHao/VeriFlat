@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::{define::*};
 use core::sync::atomic::*;
+use std::ops::Index;
 use crate::concurrency::*;
 
 use super::*;
@@ -79,6 +80,27 @@ verus! {
                 put_ensures(old(self)[index]@, self[index]@, v),
         {
             self.array.ar[index].put(Tracked(lctx), lock_perm, v);
+        }
+
+        // @Xiangdong comeback
+        #[verifier::external_body]
+        pub fn borrow<'a, 'b: 'a>(&'b self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+            requires
+                self.inv(),
+                0 <= index < N,
+
+                self[index]@.locked_by(lctx), 
+                self[index]@.is_init(),
+
+                lp@.thread_id() == lctx.thread_id(),
+                lp@.state() is WriteLock ==> self[index]@.write_lock_perm_match(lp@),
+                lp@.state() is ReadLock ==> self[index]@.read_lock_perm_match(lp@), 
+            ensures
+                ret == self[index]@@,
+        {
+            unsafe{
+                self.array.ar.index(index).borrow(Tracked(lctx), lp)
+            }
         } 
     }
 

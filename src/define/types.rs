@@ -159,7 +159,12 @@ pub enum Allocated4KPageState {
 pub enum Allocated2MPageState {
     AsContainer{container_ptr: RwLockContainerPtr},
 }
-
+#[allow(inconsistent_fields)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FreePageAllocatorState{
+    GlobalList,
+    PreCpuCache{cpu_id:CpuId},
+}
 
 #[allow(inconsistent_fields)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -169,9 +174,9 @@ pub enum PageState {
     IOMMUTable{iommu_table_root:RwLockPageTableRoot},
     Allocated4k{state: Allocated4KPageState},
     Allocated2m{state: Allocated2MPageState},
-    Free4k,
-    Free2m,
-    Free1g,
+    Free4k{allocator_ptr: RwLockPageAllocatorPtr, state: FreePageAllocatorState},
+    Free2m{allocator_ptr: RwLockPageAllocatorPtr, state: FreePageAllocatorState},
+    Free1g{allocator_ptr: RwLockPageAllocatorPtr, state: FreePageAllocatorState},
     Mapped4k,
     Mapped2m,
     Mapped1g,

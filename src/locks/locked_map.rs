@@ -112,6 +112,25 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
     }
+
+    pub fn borrow<'a>(&self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret:&'a T)
+        requires
+            self.perms_wf(),
+            self.dom().contains(key),
+            
+            self[key].locked_by(lctx),
+            self[key].is_init(),
+
+            lock_perm@.thread_id() == lctx.thread_id(),
+            lock_perm@.state() is WriteLock ==> self[key].write_lock_perm_match(lock_perm@),
+            lock_perm@.state() is ReadLock ==> self[key].read_lock_perm_match(lock_perm@), 
+        ensures
+            ret == self[key]@,
+    {
+        let tracked perm = self.map.tracked_borrow(key);
+        let ret = borrow(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        return ret;
+    }
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait> LockedMap<usize, T, NO_KILL_STATE>{

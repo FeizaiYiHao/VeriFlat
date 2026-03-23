@@ -32,7 +32,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         requires
             self.wf(),
         ensures
-            ret == self.spec_len(),
+            ret == self.len(),
     {
         self.len
     }
@@ -54,13 +54,13 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     }
 
     pub closed spec fn view(&self) -> Seq<T>
-        recommends self.wf(),
     {
         self.data@.subrange(0, self.len as int)
     }
 
 
     pub open spec fn wf(&self) -> bool {
+        &&& self.len() == self@.len()
         &&& self.len() <= self.capacity()
         &&& self.data.wf()
     }
