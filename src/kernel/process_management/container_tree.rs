@@ -20,6 +20,12 @@ verus! {
         container_perms.perms_wf()
         &&&
         containers_wlocked_or_inv(container_perms)
+        &&&
+        forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_perms.dom().contains(c_ptr), page_ptr_2m_valid(c_ptr)]
+        container_perms.dom().contains(c_ptr)
+        ==>
+        page_ptr_2m_valid(c_ptr)
     }
     pub open spec fn containers_wlocked_or_inv(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&
@@ -310,4 +316,40 @@ verus! {
         &&& container_uppertree_seq_wf(root_container, container_perms)
         &&& container_subtree_set_exclusive(root_container, container_perms)
     }
+
+#[verifier::loop_isolation(false)]
+pub fn container_tree_check_is_ancestor(Tracked(lctx): Tracked<&LocalContext>, root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, 
+        a_ptr: RwLockContainerPtr, Tracked(child_lock_perm):Tracked<&LockPerm>, child_ptr: RwLockContainerPtr) -> (ret: bool)
+    requires
+        container_perms_wf(*container_perms),
+        container_tree_wf(root_container, *container_perms),
+        container_perms@.dom().contains(a_ptr),
+        container_perms@.dom().contains(child_ptr),
+
+        container_perms.spec_index(child_ptr).locked_by(lctx),
+        container_perms.spec_index(a_ptr).locked_by(lctx) == false,
+        container_perms.spec_index(child_ptr).inv(),
+
+        child_lock_perm.thread_id() == lctx.thread_id(),
+        child_lock_perm.state() is WriteLock ==> container_perms.spec_index(child_ptr).write_lock_perm_match(child_lock_perm),
+        child_lock_perm.state() is ReadLock ==> container_perms.spec_index(child_ptr).read_lock_perm_match(child_lock_perm),
+    ensures
+        ret == container_perms[child_ptr].view().uppertree_seq@.contains(a_ptr),
+        ret == container_perms[a_ptr].view().subtree_set@.contains(child_ptr),
+{
+    let child_container_ref = container_perms.borrow(child_ptr, Tracked(lctx), Tracked(child_lock_perm));
+    let mut ret = false;
+    for i in 0..child_container_ref.uppertree_seq.len()
+        invariant
+            0 <= i <= child_container_ref.uppertree_seq.len(),
+            forall|j: usize|
+                #![auto]
+                0<= j < i ==> child_container_ref.uppertree_seq@[j as int] != a_ptr,
+    {
+        if *child_container_ref.uppertree_seq.get(i) == a_ptr {
+            return true;
+        }
+    }
+    return false;
+}
 }

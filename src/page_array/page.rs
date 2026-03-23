@@ -16,6 +16,7 @@ verus! {
         // pub io_mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
 
         pub free_list_node_storage: ExternalNode<PageIndex>,
+        pub free_list: RwLockContainerPtr,
     }
 
     impl Page{
@@ -71,9 +72,9 @@ verus! {
         }
         pub open spec fn is_free(&self) -> bool {
             match self.state{
-                PageState::Free4k 
-                |PageState::Free2m
-                |PageState::Free1g => true,
+                PageState::Free4k{ allocator_ptr: _, state: _ }
+                |PageState::Free2m{ allocator_ptr: _, state: _ }
+                |PageState::Free1g{ allocator_ptr: _, state: _ } => true,
                 _ => false,
             }
         }

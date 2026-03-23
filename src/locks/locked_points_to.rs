@@ -159,4 +159,25 @@ pub fn put<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tra
     }
 }
 
+#[verifier::external_body]
+pub fn borrow<'a, T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<& PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret:&'a T)
+    requires
+        pptr.addr() == perm.addr(),
+        perm.is_init(),
+
+        perm.value().locked_by(lctx),
+        perm.value().is_init(),
+
+        lock_perm@.thread_id() == lctx.thread_id(),
+        lock_perm@.state() is WriteLock ==> perm.value().write_lock_perm_match(lock_perm@),
+        lock_perm@.state() is ReadLock ==> perm.value().read_lock_perm_match(lock_perm@), 
+    ensures
+        ret == perm.value().view(),
+{
+     unsafe {
+        let uptr = &*(pptr.addr() as *mut RwLock<T, HasKillState>);
+        uptr.borrow(Tracked(lctx),lock_perm)
+    }
+}
+
 }

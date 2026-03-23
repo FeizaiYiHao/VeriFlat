@@ -182,6 +182,23 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
         &&&
         self.locking_thread()->Read_reader_map.dom().contains(lctx.thread_id())
     } 
+    pub open spec fn read_lock_perm_match(&self, lock_perm:&LockPerm) -> bool {
+        &&&
+        self.locking_thread() is Read
+        &&&
+        self.locking_thread()->Read_reader_map.dom().contains(lock_perm.thread_id())
+        &&&
+        self.locking_thread()->Read_reader_map.spec_index(lock_perm.thread_id()) == lock_perm.lock_id()
+    }
+    pub open spec fn write_lock_perm_match(&self, lock_perm:&LockPerm) -> bool {
+        &&&
+        self.locking_thread() is Write
+        &&&
+        self.locking_thread()->Write_thread_id == lock_perm.thread_id()
+        &&&
+        self.locking_thread()->Write_lock_id == lock_perm.lock_id()
+    }
+
     pub open spec fn wlocked(&self) -> bool{
         &&&
         self.locking_thread() is Write
@@ -298,6 +315,20 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
             put_ensures(*old(self), *self, v),
     {
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
+    }
+    #[verifier::external_body]
+    pub fn borrow<'a,>(&self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+        requires
+            self.locked_by(lctx), 
+            self.is_init() == true,
+            lp@.thread_id() == lctx.thread_id(),
+
+            lp@.state() is WriteLock ==> self.write_lock_perm_match(lp@),
+            lp@.state() is ReadLock ==> self.read_lock_perm_match(lp@), 
+    {
+        unsafe{
+            &*(&self.value as *const T)
+        }
     }
 }
 
