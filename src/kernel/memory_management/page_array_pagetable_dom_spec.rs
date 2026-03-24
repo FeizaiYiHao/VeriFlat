@@ -1,12 +1,5 @@
 use vstd::prelude::*;
-use crate::define::*;
-use crate::page_array::*;
-use crate::pagetable_map::*;
-use crate::primitive::*;
-use crate::util::page_ptr_util_u::*;
-use crate::locks::*;
-
-use super::kernel_define_spec::Kernel;
+use crate::*;
 verus! {
 
     impl Kernel{

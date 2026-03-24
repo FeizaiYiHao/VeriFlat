@@ -1245,16 +1245,18 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 target_l2i,
             ) is Some);
         }
-        self.mapping_2m = Ghost(self.mapping_2m@.insert(
-            spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
-            *target_entry,
-        ));
-        assert(
-            self.mapping_2m@ == old(self).mapping_2m@.insert(
+        proof{
+            *self.mapping_2m = self.mapping_2m@.insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
                 *target_entry,
-            )
-        );
+            );
+        }
+        // assert(
+        //     self.mapping_2m@ == old(self).mapping_2m@.insert(
+        //         spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
+        //         *target_entry,
+        //     )
+        // );
         assert(self.wf_l4());
         assert(self.wf_l3());
         assert(self.wf_l2());
@@ -1338,12 +1340,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ) ==> old(self).spec_resolve_mapping_1g_l3(l4i, l3i)
                     =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
         };
-        assert(self.user_only());
-        assert(self.rwx_upper_level_entries());
-        assert(self.present_or_zero());
-        assert(self.table_pages_wf());
+        // assert(self.user_only());
+        // assert(self.rwx_upper_level_entries());
+        // assert(self.present_or_zero());
+        // assert(self.table_pages_wf());
+        assert(self.mappings_wf()) by { broadcast use PageTable::reveal_page_table_mappings_wf; };
         // assert(self.mapping_2m() =~= old(self).mapping_2m());
         // assert(self.mapping_1g() =~= old(self).mapping_1g());
+        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
     }
 
     pub fn remove_l2_entry(
