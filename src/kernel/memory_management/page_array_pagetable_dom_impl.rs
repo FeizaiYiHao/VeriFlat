@@ -1,14 +1,5 @@
 use vstd::prelude::*;
-use crate::define::*;
-use crate::page_array::*;
-use crate::pagetable_map::*;
-use crate::primitive::*;
-use crate::util::page_ptr_util_u::*;
-use crate::locks::*;
-use crate::util::*;
-use crate::lemma::*;
-
-use super::kernel_define_spec::Kernel;
+use crate::*;
 verus! {
 
     impl Kernel{
@@ -88,7 +79,25 @@ verus! {
                 // assert(self.page_array_pagetable_dom_inv2());
                 // assert(self.pagetable_dom_page_array_inv1());
                 // assert(self.pagetable_dom_page_array_inv2());
-                assert(self.inv());
+                
+                assert(self.inv()) by {
+                    assert(self.container_pages_wf()) by {
+                        Self::container_pages_wf_proof();
+                    };
+                    assert(self.process_pages_wf()) by {
+                        Self::process_pages_wf_proof();
+                    };
+                    assert(self.allocator_pages_wf()) by {
+                        Self::allocator_pages_wf_proof();
+                    };
+                    assert(self.container_process_wf()) by {
+                        Self::container_process_wf_proof();
+                    };
+                    assert(self.process_tree_wf()) by {
+                        Self::container_process_wf_proof();
+                        Self::process_tree_wf_proof();
+                    };
+                };
                 return;
             }
             assert(page.mappings_4k@.contains((pagetable_root, vaddr)) == false);

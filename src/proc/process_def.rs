@@ -16,7 +16,7 @@ pub struct Process {
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,
     pub depth: usize,
-    pub uppertree_seq: Ghost<Seq<RwLockProcessPtr>>,
+    pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_PROCESS_TREE_DEPTH>,
     pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
 
     pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
@@ -34,6 +34,8 @@ impl Process{
         self.children.inv()
         &&&
         self.owned_threads.wf()
+        &&&
+        self.uppertree_seq.wf()
         &&&
         self.no_parent_implies_linkedlist_node_init()
         &&&
@@ -57,6 +59,40 @@ impl Process{
     pub open spec fn at_least_one_thread(&self) -> bool{
         &&&
         self.owned_threads.len() != 0
+    }
+}
+
+impl LockMajorTrait for Process {
+    open spec fn lock_major_1(&self) -> LockMajorId {
+        PROCESS_LOCK_MAJOR
+    }
+
+    open spec fn lock_major_2(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_3(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_default(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_1_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_2_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_3_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_default_predicate(&self) -> bool {
+        true
     }
 }
 

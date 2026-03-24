@@ -20,12 +20,6 @@ verus! {
         container_perms.perms_wf()
         &&&
         containers_wlocked_or_inv(container_perms)
-        &&&
-        forall|c_ptr: RwLockContainerPtr|
-        #![trigger container_perms.dom().contains(c_ptr), page_ptr_2m_valid(c_ptr)]
-        container_perms.dom().contains(c_ptr)
-        ==>
-        page_ptr_2m_valid(c_ptr)
     }
     pub open spec fn containers_wlocked_or_inv(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&

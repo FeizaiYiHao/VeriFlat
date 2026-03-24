@@ -149,15 +149,18 @@ pub enum PageType {
 #[allow(inconsistent_fields)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Allocated4KPageState {
-    AsProcess{process_ptr: RwLockProcessPtr},
-    AsThread{thread_ptr: RwLockThreadPtr},
-    AsEndpoint{endpoint_ptr: RwLockEndpointPtr},
-    AsScheduler{scheduler_ptr: RwLockSchedulerPtr},
+    AsProcess,
+    AsThread,
+    AsEndpoint,
+    AsScheduler,
+    As4KAllocator,
+    As2MAllocator,
+    As1GAllocator,
 }
 #[allow(inconsistent_fields)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Allocated2MPageState {
-    AsContainer{container_ptr: RwLockContainerPtr},
+    AsContainer,
 }
 #[allow(inconsistent_fields)]
 #[derive(Clone, Copy, Debug, PartialEq)]

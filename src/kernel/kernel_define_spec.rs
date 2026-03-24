@@ -12,12 +12,13 @@ verus! {
         pub root_container: RwLockContainerPtr, // Never dies
         pub container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,
         pub number_containers: RwLock<NumContainers, NO_KILL_STATE>,
-        pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, CONTAINER_HAS_KILL_STATE>,
+        pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, SCHEDULER_HAS_KILL_STATE>,
         pub process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>,
         pub thread_map: LockedMap<RwLockThreadPtr, Process, THREAD_HAS_KILL_STATE>,
         pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, ENDPOINT_HAS_KILL_STATE>,
-        pub allocator_4k_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, CONTAINER_HAS_KILL_STATE>,
-        pub allocator_2m_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, CONTAINER_HAS_KILL_STATE>,
+        pub allocator_4k_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, ALLOCATOR_HAS_KILL_STATE>,
+        pub allocator_2m_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, ALLOCATOR_HAS_KILL_STATE>,
+        pub allocator_1g_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, ALLOCATOR_HAS_KILL_STATE>,
 
         pub default_pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>,
     }
@@ -35,7 +36,13 @@ verus! {
             &&&
             container_perms_wf(self.container_map)
             &&&
-            self.process_perms_wf()
+            process_perms_wf(self.process_map)
+            &&&
+            allocator_perms_wf(self.allocator_4k_map)
+            &&&
+            allocator_perms_wf(self.allocator_2m_map)
+            &&&
+            allocator_perms_wf(self.allocator_1g_map)
         }
 
         pub open spec fn inv(&self) -> bool {
@@ -49,6 +56,16 @@ verus! {
             container_tree_wf(self.root_container, self.container_map)
             &&&
             self.number_containers_wf()
+            &&&
+            self.container_pages_wf()
+            &&&
+            self.process_pages_wf()
+            &&&
+            self.allocator_pages_wf()
+            &&&
+            self.container_process_wf()
+            &&&
+            self.process_tree_wf()
         }
 
         pub open spec fn number_containers_wf(&self) -> bool {
