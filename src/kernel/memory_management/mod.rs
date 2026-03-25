@@ -11,3 +11,4 @@ pub mod allocator_spec;
 pub mod huge_page_spec;
 
 pub use allocator_spec::*;
+pub use huge_page_spec::*;

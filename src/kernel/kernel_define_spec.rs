@@ -66,6 +66,10 @@ verus! {
             self.container_process_wf()
             &&&
             self.process_tree_wf()
+            &&&
+            hugepage_2m_wf(self.page_array)
+            &&&
+            hugepage_1g_wf(self.page_array)
         }
 
         pub open spec fn number_containers_wf(&self) -> bool {
