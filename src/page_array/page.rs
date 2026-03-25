@@ -54,6 +54,21 @@ verus! {
                 }
             }
         }
+
+        pub open spec fn node_storage_inv(&self) -> bool{
+            &&&
+            match self.state {
+                PageState::Free4k { .. }|
+                PageState::Free2m { .. }|
+                PageState::Free1g { .. } => {
+                    self.free_list_node_storage.is_init() == false
+                },
+                _ => {
+                    self.free_list_node_storage.is_init() == true
+                }
+            }
+        }
+
         pub open spec fn mappings_finite(&self) -> bool{
             &&&
             self.mappings_4k().finite()
@@ -72,9 +87,9 @@ verus! {
         }
         pub open spec fn is_free(&self) -> bool {
             match self.state{
-                PageState::Free4k{ allocator_ptr: _, state: _ }
-                |PageState::Free2m{ allocator_ptr: _, state: _ }
-                |PageState::Free1g{ allocator_ptr: _, state: _ } => true,
+                PageState::Free4k { allocator_ptr: _, state: _ }
+                |PageState::Free2m { allocator_ptr: _, state: _ }
+                |PageState::Free1g { allocator_ptr: _, state: _ } => true,
                 _ => false,
             }
         }
@@ -114,6 +129,8 @@ verus! {
             self.ref_count_inv()
             &&&
             self.mapped_state_inv()
+            &&&
+            self.node_storage_inv()
         }
     }
 

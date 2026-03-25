@@ -64,7 +64,7 @@ verus! {
             let vaddr = index2va((target_l4i, target_l3i, target_l2i, target_l1i));
             let Tracked(page_lock_perm) = self.page_array.wlock_page(page_index, Tracked(lctx), Ghost(LockId{container: LockOwnerId::none(), process: LockOwnerId::none(), major: MAPPED_PAGE_LOCK_MAJOR, minor: page_index}));
             let mut page = self.page_array.take(page_index, Tracked(lctx), Tracked(&page_lock_perm));
-            if page.ref_count == usize::MAX{
+            if page.ref_count == usize::MAX {
                 self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
                 self.page_array.wunlock_page(page_index, Tracked(lctx), Tracked(page_lock_perm));
                 // assert(self.page_array[page_index]@@ == old(self).page_array[page_index]@@);
@@ -97,6 +97,22 @@ verus! {
                         Self::container_process_wf_proof();
                         Self::process_tree_wf_proof();
                     };
+                    assert(hugepage_2m_wf(self.page_array)) by {
+                        page_ptr_lemma1();
+                        page_ptr_2m_lemma();
+                        page_ptr_1g_lemma();
+                        page_index_lemma();
+                        page_ptr_page_index_truncate_lemma();
+                        hugepage_2m_wf_proof();
+                    };
+                    assert(hugepage_1g_wf(self.page_array)) by {
+                        page_ptr_lemma1();
+                        page_ptr_2m_lemma();
+                        page_ptr_1g_lemma();
+                        page_index_lemma();
+                        page_ptr_page_index_truncate_lemma();
+                        hugepage_1g_wf_proof();
+                    };
                 };
                 return;
             }
@@ -128,20 +144,20 @@ verus! {
             //         ==> 
             //         self.get_cpu(cpu_id).view().tlb_dirty_bitmap.inv()
             // );
-            assert(
-                forall|cpu_id: CpuId, pcid:Pcid|
-                    #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
-                    #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
-                    cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
-                    ==> 
-                    old(self).cpu_array.get_tlb(cpu_id, pcid) == self.cpu_array.get_tlb(cpu_id, pcid)
-                    &&
-                    old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() == self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()
-                    &&
-                    self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() != pagetable_root
-                    // &&
-                    // old(self).get_pagetable(old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()) == self.get_pagetable(self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap())
-            );
+            // assert(
+            //     forall|cpu_id: CpuId, pcid:Pcid|
+            //         #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
+            //         #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
+            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
+            //         ==> 
+            //         old(self).cpu_array.get_tlb(cpu_id, pcid) == self.cpu_array.get_tlb(cpu_id, pcid)
+            //         &&
+            //         old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() == self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()
+            //         &&
+            //         self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() != pagetable_root
+            //         &&
+            //         old(self).get_pagetable(old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()) == self.get_pagetable(self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap())
+            // );
             // assert(
             //     forall|cpu_id: CpuId, pcid:Pcid|
             //         #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
@@ -152,7 +168,41 @@ verus! {
             // );
 
             // assert(self.cpu_tlb_submap_of_dirty_pagetable());
-            // assert(self.inv());
+            // // assert(self.inv());
+            // assert(self.inv()) by {
+            //     assert(self.container_pages_wf()) by {
+            //         Self::container_pages_wf_proof();
+            //     };
+            //     assert(self.process_pages_wf()) by {
+            //         Self::process_pages_wf_proof();
+            //     };
+            //     assert(self.allocator_pages_wf()) by {
+            //         Self::allocator_pages_wf_proof();
+            //     };
+            //     assert(self.container_process_wf()) by {
+            //         Self::container_process_wf_proof();
+            //     };
+            //     assert(self.process_tree_wf()) by {
+            //         Self::container_process_wf_proof();
+            //         Self::process_tree_wf_proof();
+            //     };
+            //     assert(hugepage_2m_wf(self.page_array)) by {
+            //         page_ptr_lemma1();
+            //         page_ptr_2m_lemma();
+            //         page_ptr_1g_lemma();
+            //         page_index_lemma();
+            //         page_ptr_page_index_truncate_lemma();
+            //         hugepage_2m_wf_proof();
+            //     };
+            //     assert(hugepage_1g_wf(self.page_array)) by {
+            //         page_ptr_lemma1();
+            //         page_ptr_2m_lemma();
+            //         page_ptr_1g_lemma();
+            //         page_index_lemma();
+            //         page_ptr_page_index_truncate_lemma();
+            //         hugepage_1g_wf_proof();
+            //     };
+            // };
             return;
         }
     }
