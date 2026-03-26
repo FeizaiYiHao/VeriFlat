@@ -865,7 +865,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.wf(),
             self.kernel_l4_end == old(self).kernel_l4_end,
             self.page_closure() =~= old(self).page_closure(),
-            self.mapping_4k@ == old(self).mapping_4k@.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), 
+            self.mapping_4k() == old(self).mapping_4k().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), 
                 MapEntry{
                     addr: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].addr,
                     write: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].write,
@@ -896,7 +896,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
         proof {
             self.l1_tables.borrow_mut().tracked_insert(target_l1_p, l1_perm);
-            self.mapping_4k@ = self.mapping_4k@.insert(va@, MapEntry{
+            *self.mapping_4k = self.mapping_4k@.insert(va@, MapEntry{
                     addr: self.mapping_4k@[va@].addr,
                     write: self.mapping_4k@[va@].write,
                     execute_disable: self.mapping_4k@[va@].execute_disable,
@@ -1197,7 +1197,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.wf(),
             self.kernel_l4_end == old(self).kernel_l4_end,
             self.page_closure() =~= old(self).page_closure(),
-            self.mapping_2m@ == old(self).mapping_2m@.insert(
+            self.mapping_2m() == old(self).mapping_2m().insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
                 *target_entry,
             ),

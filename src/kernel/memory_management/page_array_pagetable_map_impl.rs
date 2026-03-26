@@ -27,11 +27,11 @@ verus! {
                     ,
                 
                 forall|cpu_id:CpuId|
-                    #![trigger old(self).get_cpu(cpu_id)]
+                    #![trigger old(self).cpu_array.spec_index(cpu_id)]
                     cpu_id_valid(cpu_id) ==> 
-                    old(self).get_cpu(cpu_id).locking_thread() is None
+                    old(self).cpu_array.spec_index(cpu_id).view().locking_thread() is None
                     &&
-                    old(self).get_cpu(cpu_id).serial_num() == old(lctx).locking_serial_num()
+                    old(self).cpu_array.spec_index(cpu_id).view().serial_num() == old(lctx).locking_serial_num()
                     ,
 
                 old(self).page_array[page_index]@@.is_mapped(),
@@ -62,11 +62,11 @@ verus! {
                 page_ptr_lemma();
             }
             let vaddr = index2va((target_l4i, target_l3i, target_l2i, target_l1i));
-            let Tracked(page_lock_perm) = self.page_array.wlock_page(page_index, Tracked(lctx), Ghost(LockId{container: LockOwnerId::none(), process: LockOwnerId::none(), major: MAPPED_PAGE_LOCK_MAJOR, minor: page_index}));
+            let Tracked(page_lock_perm) = self.page_array.wlock(page_index, Tracked(lctx), Ghost(LockId{container: LockOwnerId::none(), process: LockOwnerId::none(), major: MAPPED_PAGE_LOCK_MAJOR, minor: page_index}));
             let mut page = self.page_array.take(page_index, Tracked(lctx), Tracked(&page_lock_perm));
             if page.ref_count == usize::MAX {
                 self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
-                self.page_array.wunlock_page(page_index, Tracked(lctx), Tracked(page_lock_perm));
+                self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
                 // assert(self.page_array[page_index]@@ == old(self).page_array[page_index]@@);
                 // assert(
                 //     forall|p_i:PageIndex, pt_r: RwLockPageTableRoot, va: VAddr|
@@ -80,7 +80,7 @@ verus! {
                 // assert(self.pagetable_map_page_array_inv1());
                 // assert(self.pagetable_map_page_array_inv2());
                 
-                assert(self.inv()) by {
+                // assert(self.inv()) by {
                     assert(self.container_pages_wf()) by {
                         Self::container_pages_wf_proof();
                     };
@@ -113,28 +113,25 @@ verus! {
                         page_ptr_page_index_truncate_lemma();
                         hugepage_1g_wf_proof();
                     };
-                };
+                // };
                 return;
             }
             assert(page.mappings_4k@.contains((pagetable_root, vaddr)) == false);
             page.ref_count = page.ref_count + 1;
             page.mappings_4k = Ghost(page.mappings_4k@.insert((pagetable_root, vaddr)));
             self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
-            self.pagetable_map.map_4k_page(pagetable_root, Tracked(lctx), pagetable_lock_perm,  
-                target_l4i,
-                target_l3i,
-                target_l2i,
-                target_l1i,
-                target_l1_p,
-                target_entry,);
-            self.page_array.wunlock_page(page_index, Tracked(lctx), Tracked(page_lock_perm));
+
+            let mut pagetable = self.pagetable_map.take(pagetable_root, Tracked(lctx), pagetable_lock_perm);
+            pagetable.map_4k_page(target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
+            self.pagetable_map.put(pagetable_root, Tracked(lctx), pagetable_lock_perm, pagetable);
+            self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
             // assert(
             //     forall|cpu_id: CpuId|
             //         #![auto]
             //         cpu_id_valid(cpu_id) 
             //         // && usize_in_range::<PCID_MAX>(pcid) 
             //         ==> 
-            //         old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap.inv()
+            //         old(self).cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap.inv()
             // );
             // assert(
             //     forall|cpu_id: CpuId|
@@ -142,29 +139,29 @@ verus! {
             //         cpu_id_valid(cpu_id) 
             //         // && usize_in_range::<PCID_MAX>(pcid) 
             //         ==> 
-            //         self.get_cpu(cpu_id).view().tlb_dirty_bitmap.inv()
+            //         self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap.inv()
             // );
             // assert(
             //     forall|cpu_id: CpuId, pcid:Pcid|
-            //         #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
+            //         #![trigger self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid]]
             //         #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
-            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
+            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
             //         ==> 
             //         old(self).cpu_array.get_tlb(cpu_id, pcid) == self.cpu_array.get_tlb(cpu_id, pcid)
             //         &&
-            //         old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() == self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()
+            //         old(self).cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() == self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()
             //         &&
-            //         self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() != pagetable_root
+            //         self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() != pagetable_root
             //         &&
-            //         old(self).get_pagetable(old(self).get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()) == self.get_pagetable(self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap())
+            //         old(self).get_pagetable(old(self).cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()) == self.get_pagetable(self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap())
             // );
             // assert(
             //     forall|cpu_id: CpuId, pcid:Pcid|
-            //         #![trigger self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid]]
+            //         #![trigger self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid]]
             //         #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
-            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
+            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
             //         ==> 
-            //         super::pagetable_tlb_spec::single_cpu_single_pcid_tlb_subset_of_pagetable(self.cpu_array.get_tlb(cpu_id, pcid), self.get_pagetable(self.get_cpu(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()))
+            //         super::pagetable_tlb_spec::single_cpu_single_pcid_tlb_subset_of_pagetable(self.cpu_array.get_tlb(cpu_id, pcid), self.get_pagetable(self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()))
             // );
 
             // assert(self.cpu_tlb_submap_of_dirty_pagetable());

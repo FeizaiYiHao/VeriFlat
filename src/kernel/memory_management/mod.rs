@@ -5,7 +5,7 @@ pub mod pages_process_spec;
 pub mod pages_allocator_spec;
 
 pub mod page_array_pagetable_map_spec;
-// pub mod page_array_pagetable_map_impl;
+pub mod page_array_pagetable_map_impl;
 
 pub mod pagetable_tlb_spec;
 
