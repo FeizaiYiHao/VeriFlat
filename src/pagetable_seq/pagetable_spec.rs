@@ -523,7 +523,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
     }
 
-    pub closed spec fn va_addr_valid(&self) -> bool {
+    pub open spec fn va_addr_valid(&self) -> bool {
         self.va_addr_valid_inner()
     }
 
