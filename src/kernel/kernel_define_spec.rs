@@ -57,7 +57,7 @@ verus! {
             &&&
             self.subsystems_inv()
             &&&
-            self.kernel_page_array_pagetable_map_inv()
+            page_mapping_wf(self.pagetable_map, self.page_array)
             &&&
             container_tree_wf(self.root_container, self.container_map)
             &&&
@@ -81,9 +81,7 @@ verus! {
             &&&
             process_cpu_wf(self.process_map, self.cpu_array)
             &&&
-            cpu_pagetable_wf(self.pagetable_map, self.cpu_array)
-            &&&
-            cpu_dirty_tlb_map_wf(self.cpu_array, self.cpu_tlb)
+            cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb)
             &&&
             tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)
         }

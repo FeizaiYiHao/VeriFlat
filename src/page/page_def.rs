@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 
-use crate::{define::*, primitive::*};
+use crate::{define::*, primitive::*, va_4k_valid};
 use crate::locks::*;
 use crate::linkedlist::*;
 verus! {
@@ -69,6 +69,18 @@ verus! {
             }
         }
 
+        pub open spec fn mappings_va_valid(&self) -> bool{
+            &&&
+            forall|pt_p:RwLockPageTableRoot, va:VAddr|
+                self.mappings_4k().contains((pt_p, va)) ==> va_4k_valid(va)
+            &&&
+            forall|pt_p:RwLockPageTableRoot, va:VAddr|
+                self.mappings_2m().contains((pt_p, va)) ==> crate::va_2m_valid(va)
+            &&&
+            forall|pt_p:RwLockPageTableRoot, va:VAddr|
+                self.mappings_1g().contains((pt_p, va)) ==> crate::va_1g_valid(va)
+        }
+
         pub open spec fn mappings_finite(&self) -> bool{
             &&&
             self.mappings_4k().finite()
@@ -123,6 +135,8 @@ verus! {
 
     impl LockInvTrait for Page{
         open spec fn inv(&self) -> bool{
+            &&&
+            self.mappings_va_valid()
             &&&
             self.mappings_finite()
             &&&

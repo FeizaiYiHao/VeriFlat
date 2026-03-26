@@ -11,6 +11,12 @@ pub enum  CpuState{
 }
 
 
+#[derive(Clone, Copy, Debug)]
+pub struct ProcessPageTablePair{
+    pub process_ptr: RwLockProcessPtr,
+    pub pagetable_ptr: RwLockPageTableRoot,
+}
+
 // #[derive(Clone, Copy, Debug)]
 pub struct Cpu {
     pub owning_container: RwLockContainerPtr,
@@ -22,7 +28,7 @@ pub struct Cpu {
     pub current_cr3: PageTableRoot,
     pub current_pcid: Pcid,
 
-    pub tlb_dirty_bitmap: BitMap<Option<RwLockPageTableRoot>, PCID_MAX>,
+    pub tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     pub container_depth: usize, // killing_container's depth if being killed.
     pub process_depth: usize,
 }
@@ -40,37 +46,36 @@ impl Cpu{
         self.tlb_dirty_bitmap.inv()
     }
 
-    pub open spec fn tlb_dirty_bitmap(&self) -> Map<Pcid, Option<RwLockPageTableRoot>>{
+    pub open spec fn tlb_dirty_bitmap(&self) -> Map<Pcid, Option<ProcessPageTablePair>>{
         self.tlb_dirty_bitmap@
     }
 
-    /// TCB
-    // #[verifier(external_body)]
-    pub fn set_pagetable(&mut self, pagetable_root:RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid)
-        requires
-            old(self).wf(),
-            usize_in_range::<PCID_MAX>(pcid,)
-        ensures
-            self.wf(),
-            self.owning_container == old(self).owning_container,
-            self.state == old(self).state,
-            self.current_process == old(self).current_process,
-            self.current_thread == old(self).current_thread,
-            // self.current_pagetable == old(self).current_pagetable,
-            // self.current_cr3 == old(self).current_cr3,
-            // self.current_pcid == old(self).current_pcid,
-            self.current_pagetable == pagetable_root,
-            self.current_cr3 == cr3,
-            self.current_pcid == pcid,
-            self.tlb_dirty_bitmap@ == old(self).tlb_dirty_bitmap@.insert(pcid, Some(pagetable_root)),
-            self.container_depth == old(self).container_depth,
-            self.process_depth == old(self).process_depth,
-    {
-            self.current_pagetable = pagetable_root;
-            self.current_cr3 = cr3;
-            self.current_pcid = pcid;
-            self.tlb_dirty_bitmap.update(pcid, Some(pagetable_root))
-    }
+
+    // pub fn set_process_and_pagetable(&mut self, process_pagetable_ptr: ProcessPageTablePair, cr3: PageTableRoot, pcid: Pcid)
+    //     requires
+    //         old(self).wf(),
+    //         usize_in_range::<PCID_MAX>(pcid,)
+    //     ensures
+    //         self.wf(),
+    //         self.owning_container == old(self).owning_container,
+    //         self.state == old(self).state,
+    //         self.current_process == old(self).current_process,
+    //         self.current_thread == old(self).current_thread,
+    //         // self.current_pagetable == old(self).current_pagetable,
+    //         // self.current_cr3 == old(self).current_cr3,
+    //         // self.current_pcid == old(self).current_pcid,
+    //         self.current_pagetable == process_pagetable_ptr.pagetable_ptr,
+    //         self.current_cr3 == cr3,
+    //         self.current_pcid == pcid,
+    //         self.tlb_dirty_bitmap@ == old(self).tlb_dirty_bitmap@.insert(pcid, Some(process_pagetable_ptr)),
+    //         self.container_depth == old(self).container_depth,
+    //         self.process_depth == old(self).process_depth,
+    // {
+    //         self.current_pagetable = process_pagetable_ptr.pagetable_ptr;
+    //         self.current_cr3 = cr3;
+    //         self.current_pcid = pcid;
+    //         self.tlb_dirty_bitmap.update(pcid, Some((process_ptr, pagetable_root)))
+    // }
 }
 
 impl LockInvTrait for Cpu{
