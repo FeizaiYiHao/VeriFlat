@@ -12,6 +12,9 @@ verus! {
     pub closed spec fn container_cpu_wf(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         container_cpu_wf_inner(container_perms, cpu_array)
     }
+
+    /// Container owned Cpu only runs processes and threads of the container
+    /// Container cpu bidirectly points to each other
     pub open spec fn container_cpu_wf_inner(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, cpu_i: CpuId|
@@ -47,7 +50,6 @@ verus! {
                     write_locked_by_same_thread(cpu_array.spec_index(cpu_i).view(), container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)))
                     ||
                     container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)).view().owned_cpus.view().contains(cpu_i)
-
             }
     }
 }

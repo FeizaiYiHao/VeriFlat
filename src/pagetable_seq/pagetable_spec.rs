@@ -671,7 +671,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
     }
 
-    pub open   spec fn wf_mapping_4k(&self) -> bool {
+    pub open spec fn va_addr_valid(&self) -> bool {
         &&& forall|va: VAddr|
             #![trigger va_4k_valid(va), self.mapping_4k@.dom().contains(va)]
             #![trigger self.mapping_4k@.dom().contains(va), page_ptr_valid(self.mapping_4k@[va].addr)]
@@ -680,6 +680,24 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 va_4k_valid(va)
                 &&
                 page_ptr_valid(self.mapping_4k@[va].addr)
+        &&& forall|va: VAddr|
+            #![trigger va_2m_valid(va), self.mapping_2m@.dom().contains(va)]
+            #![trigger self.mapping_2m@.dom().contains(va), page_ptr_2m_valid(self.mapping_2m@[va].addr)]
+            self.mapping_2m@.dom().contains(va) 
+                ==> 
+                va_2m_valid(va)
+                && page_ptr_2m_valid(self.mapping_2m@[va].addr)
+        &&& forall|va: VAddr|
+            #![trigger va_1g_valid(va), self.mapping_1g@.dom().contains(va)]
+            #![trigger self.mapping_1g@.dom().contains(va), page_ptr_1g_valid(self.mapping_1g@[va].addr)]
+            self.mapping_1g@.dom().contains(va) 
+                ==> 
+                va_1g_valid(va)
+                &&
+                page_ptr_1g_valid(self.mapping_1g@[va].addr)
+    }
+
+    pub open   spec fn wf_mapping_4k(&self) -> bool {
         &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
             #![trigger self.mapping_4k@[spec_index2va((l4i,l3i,l2i,l1i))]]
             #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
@@ -701,13 +719,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 
     pub open   spec fn wf_mapping_2m(&self) -> bool {
-        &&& forall|va: VAddr|
-            #![trigger va_2m_valid(va), self.mapping_2m@.dom().contains(va)]
-            #![trigger self.mapping_2m@.dom().contains(va), page_ptr_2m_valid(self.mapping_2m@[va].addr)]
-            self.mapping_2m@.dom().contains(va) 
-                ==> 
-                va_2m_valid(va)
-                && page_ptr_2m_valid(self.mapping_2m@[va].addr)
         &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger self.mapping_2m@[spec_index2va((l4i,l3i,l2i,0))]]
             #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
@@ -730,14 +741,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 
     pub open   spec fn wf_mapping_1g(&self) -> bool {
-        &&& forall|va: VAddr|
-            #![trigger va_1g_valid(va), self.mapping_1g@.dom().contains(va)]
-            #![trigger self.mapping_1g@.dom().contains(va), page_ptr_1g_valid(self.mapping_1g@[va].addr)]
-            self.mapping_1g@.dom().contains(va) 
-                ==> 
-                va_1g_valid(va)
-                &&
-                page_ptr_1g_valid(self.mapping_1g@[va].addr)
         &&& forall|l4i: L4Index, l3i: L3Index|
             #![trigger self.mapping_1g@[spec_index2va((l4i,l3i,0,0))]]
             #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)]
@@ -769,7 +772,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 == self.l4_table@[self.cr3].value()[i]
     }
 
-    pub closed   spec fn wf(&self) -> bool {
+    pub open   spec fn wf(&self) -> bool {
+        &&&
+        self.va_addr_valid()
         &&& self.levels_wf()
         &&& self.disjoint_wf()
         &&& self.mappings_wf()
@@ -805,6 +810,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub broadcast proof fn reveal_page_table_wf(&self)
         ensures
             #[trigger] self.wf() <==> {
+                &&& self.va_addr_valid()
                 &&& self.levels_wf()
                 &&& self.disjoint_wf()
                 &&& self.mappings_wf()

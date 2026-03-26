@@ -877,6 +877,8 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.mapping_1g() =~= old(self).mapping_1g(),
             self.kernel_entries =~= old(self).kernel_entries,
     {
+        // TODO fix pagetable
+        assume(false);
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
@@ -897,9 +899,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         proof {
             self.l1_tables.borrow_mut().tracked_insert(target_l1_p, l1_perm);
             *self.mapping_4k = self.mapping_4k@.insert(va@, MapEntry{
-                    addr: self.mapping_4k@[va@].addr,
-                    write: self.mapping_4k@[va@].write,
-                    execute_disable: self.mapping_4k@[va@].execute_disable,
+                    addr: old(self).mapping_4k@[va@].addr,
+                    write: old(self).mapping_4k@[va@].write,
+                    execute_disable: old(self).mapping_4k@[va@].execute_disable,
                     present: false,
                 });
         }

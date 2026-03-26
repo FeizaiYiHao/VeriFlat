@@ -116,7 +116,9 @@ verus! {
                 // };
                 return;
             }
-            assert(page.mappings_4k@.contains((pagetable_root, vaddr)) == false);
+            assert(page.mappings_4k@.contains((pagetable_root, vaddr)) == false) by {
+                mapped_4k_page_pagetable_mapping_match_proof();
+            };
             page.ref_count = page.ref_count + 1;
             page.mappings_4k = Ghost(page.mappings_4k@.insert((pagetable_root, vaddr)));
             self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
@@ -125,81 +127,6 @@ verus! {
             pagetable.map_4k_page(target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
             self.pagetable_map.put(pagetable_root, Tracked(lctx), pagetable_lock_perm, pagetable);
             self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
-            // assert(
-            //     forall|cpu_id: CpuId|
-            //         #![auto]
-            //         cpu_id_valid(cpu_id) 
-            //         // && usize_in_range::<PCID_MAX>(pcid) 
-            //         ==> 
-            //         old(self).cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap.inv()
-            // );
-            // assert(
-            //     forall|cpu_id: CpuId|
-            //         #![auto]
-            //         cpu_id_valid(cpu_id) 
-            //         // && usize_in_range::<PCID_MAX>(pcid) 
-            //         ==> 
-            //         self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap.inv()
-            // );
-            // assert(
-            //     forall|cpu_id: CpuId, pcid:Pcid|
-            //         #![trigger self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid]]
-            //         #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
-            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
-            //         ==> 
-            //         old(self).cpu_array.get_tlb(cpu_id, pcid) == self.cpu_array.get_tlb(cpu_id, pcid)
-            //         &&
-            //         old(self).cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() == self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()
-            //         &&
-            //         self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap() != pagetable_root
-            //         &&
-            //         old(self).get_pagetable(old(self).cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()) == self.get_pagetable(self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap())
-            // );
-            // assert(
-            //     forall|cpu_id: CpuId, pcid:Pcid|
-            //         #![trigger self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid]]
-            //         #![trigger cpu_id_valid(cpu_id), usize_in_range::<PCID_MAX>(pcid)]
-            //         cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid) && self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid] is Some && pcid != self.get_pagetable(pagetable_root).view().pcid_or_ioid()
-            //         ==> 
-            //         super::pagetable_tlb_spec::single_cpu_single_pcid_tlb_subset_of_pagetable(self.cpu_array.get_tlb(cpu_id, pcid), self.get_pagetable(self.cpu_array.spec_index(cpu_id).view().tlb_dirty_bitmap()[pcid].unwrap()))
-            // );
-
-            // assert(self.cpu_tlb_submap_of_dirty_pagetable());
-            // // assert(self.inv());
-            // assert(self.inv()) by {
-            //     assert(self.container_pages_wf()) by {
-            //         Self::container_pages_wf_proof();
-            //     };
-            //     assert(self.process_pages_wf()) by {
-            //         Self::process_pages_wf_proof();
-            //     };
-            //     assert(self.allocator_pages_wf()) by {
-            //         Self::allocator_pages_wf_proof();
-            //     };
-            //     assert(self.container_process_wf()) by {
-            //         Self::container_process_wf_proof();
-            //     };
-            //     assert(self.process_tree_wf()) by {
-            //         Self::container_process_wf_proof();
-            //         Self::process_tree_wf_proof();
-            //     };
-            //     assert(hugepage_2m_wf(self.page_array)) by {
-            //         page_ptr_lemma1();
-            //         page_ptr_2m_lemma();
-            //         page_ptr_1g_lemma();
-            //         page_index_lemma();
-            //         page_ptr_page_index_truncate_lemma();
-            //         hugepage_2m_wf_proof();
-            //     };
-            //     assert(hugepage_1g_wf(self.page_array)) by {
-            //         page_ptr_lemma1();
-            //         page_ptr_2m_lemma();
-            //         page_ptr_1g_lemma();
-            //         page_index_lemma();
-            //         page_ptr_page_index_truncate_lemma();
-            //         hugepage_1g_wf_proof();
-            //     };
-            // };
             return;
         }
     }
