@@ -2,32 +2,32 @@
 
 use vstd::prelude::*;
 pub mod pagetable_seq;
-pub mod pagetable_map;
+// pub mod pagetable_map;
 pub mod define;
 pub mod util;
 pub mod lemma;
 pub mod primitive;
 pub mod locks;
 pub mod concurrency;
-pub mod page_array;
+pub mod page;
 pub mod linkedlist;
-pub mod cpu_array;
+pub mod cpu;
 pub mod proc;
 pub mod allocator;
 pub mod test;
 pub mod kernel;
 
 pub use pagetable_seq::*;
-pub use pagetable_map::*;
+// pub use pagetable_map::*;
 pub use define::*;
 pub use util::*;
 pub use lemma::*;
 pub use primitive::*;
 pub use locks::*;
 pub use concurrency::*;
-pub use page_array::*;
+pub use page::*;
 pub use linkedlist::*;
-pub use cpu_array::*;
+pub use cpu::*;
 pub use proc::*;
 pub use allocator::*;
 pub use kernel::*;

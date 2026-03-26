@@ -33,7 +33,9 @@ impl Cpu{
         self.state is Off
         // || self.state is Killing
         // || self.state is Killed 
-        ==> self.current_process is None && self.current_thread is None
+        == (self.current_process is None && self.current_thread is None)
+        &&&
+        self.current_process is None == self.current_thread is None
         &&&
         self.tlb_dirty_bitmap.inv()
     }

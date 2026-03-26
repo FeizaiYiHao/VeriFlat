@@ -38,25 +38,25 @@ verus! {
                 old(lctx).lock_seq().len() != 0,
                 old(lctx).lock_seq().last() == pagetable_root.to_lock_id(),
 
-                old(self).pagetable_dom.dom().contains(pagetable_root),
-                old(self).pagetable_dom[pagetable_root].wlocked_by(old(lctx)) == true,
-                old(self).pagetable_dom[pagetable_root].inv(),
+                old(self).pagetable_map.dom().contains(pagetable_root),
+                old(self).pagetable_map[pagetable_root].wlocked_by(old(lctx)) == true,
+                old(self).pagetable_map[pagetable_root].inv(),
 
-                old(self).pagetable_dom[pagetable_root]@.kernel_l4_end <= target_l4i < 512,
+                old(self).pagetable_map[pagetable_root]@.kernel_l4_end <= target_l4i < 512,
                 0 <= target_l3i < 512,
                 0 <= target_l2i < 512,
                 0 <= target_l1i < 512,
-                old(self).pagetable_dom[pagetable_root]@.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
-                old(self).pagetable_dom[pagetable_root]@.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr
+                old(self).pagetable_map[pagetable_root]@.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+                old(self).pagetable_map[pagetable_root]@.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr
                     == target_l1_p,
-                old(self).pagetable_dom[pagetable_root]@.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
+                old(self).pagetable_map[pagetable_root]@.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
                 page_ptr_valid(target_entry.addr),
                 target_entry.present,
                 target_entry.addr == page_index2page_ptr(page_index),
 
                 pagetable_lock_perm.state() is WriteLock,
                 pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
-                pagetable_lock_perm.lock_id() == old(self).pagetable_dom[pagetable_root].locking_thread() -> Write_lock_id,
+                pagetable_lock_perm.lock_id() == old(self).pagetable_map[pagetable_root].locking_thread() -> Write_lock_id,
         {
             proof{
                 page_ptr_lemma();
@@ -75,10 +75,10 @@ verus! {
                 //         self.page_array[p_i]@@.mappings_4k@.contains((pt_r, va)) ==
                 //             old(self).page_array[p_i]@@.mappings_4k@.contains((pt_r, va))
                 // );
-                // assert(self.page_array_pagetable_dom_inv1());
-                // assert(self.page_array_pagetable_dom_inv2());
-                // assert(self.pagetable_dom_page_array_inv1());
-                // assert(self.pagetable_dom_page_array_inv2());
+                // assert(self.page_array_pagetable_map_inv1());
+                // assert(self.page_array_pagetable_map_inv2());
+                // assert(self.pagetable_map_page_array_inv1());
+                // assert(self.pagetable_map_page_array_inv2());
                 
                 assert(self.inv()) by {
                     assert(self.container_pages_wf()) by {
@@ -90,12 +90,12 @@ verus! {
                     assert(self.allocator_pages_wf()) by {
                         Self::allocator_pages_wf_proof();
                     };
-                    assert(self.container_process_wf()) by {
-                        Self::container_process_wf_proof();
+                    assert(container_process_wf(self.container_map, self.process_map)) by {
+                        container_process_wf_proof();
                     };
-                    assert(self.process_tree_wf()) by {
-                        Self::container_process_wf_proof();
-                        Self::process_tree_wf_proof();
+                    assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
+                        container_process_wf_proof();
+                        per_container_process_tree_wf_proof();
                     };
                     assert(hugepage_2m_wf(self.page_array)) by {
                         page_ptr_lemma1();
@@ -120,7 +120,7 @@ verus! {
             page.ref_count = page.ref_count + 1;
             page.mappings_4k = Ghost(page.mappings_4k@.insert((pagetable_root, vaddr)));
             self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
-            self.pagetable_dom.map_4k_page(pagetable_root, Tracked(lctx), pagetable_lock_perm,  
+            self.pagetable_map.map_4k_page(pagetable_root, Tracked(lctx), pagetable_lock_perm,  
                 target_l4i,
                 target_l3i,
                 target_l2i,

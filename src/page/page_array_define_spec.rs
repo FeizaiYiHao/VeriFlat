@@ -5,11 +5,11 @@ use crate::locks::*;
 
 verus! {
 
-pub struct PageArray{
+pub struct LockedArray<Page, NUM_PAGES, NO_KILL_STATE>{
     pub phy_pages: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>, 
 }
 
-impl PageArray{
+impl LockedArray<Page, NUM_PAGES, NO_KILL_STATE>{
     pub open spec fn pages_inv(&self) -> bool {
         &&&
         forall|p_i:PageIndex|

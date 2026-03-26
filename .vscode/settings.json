@@ -1,7 +1,7 @@
 {
     "cSpell.words": [
         "CPUS",
-        "CPUTLB",
+        "CpuTLB",
         "hugepage",
         "PCID",
         "uninterp"

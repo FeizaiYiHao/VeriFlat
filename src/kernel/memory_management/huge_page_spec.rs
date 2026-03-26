@@ -6,16 +6,16 @@ use crate::*;
 verus! {
     pub proof fn hugepage_2m_wf_proof()
         ensures 
-            forall|pa:PageArray|
+            forall|pa:LockedArray<Page, NUM_PAGES, NO_KILL_STATE>|
                 hugepage_2m_wf(pa) <==> hugepage_2m_wf_inner(pa)
     {}
 
-    pub closed spec fn hugepage_2m_wf(page_array: PageArray) -> bool {
+    pub closed spec fn hugepage_2m_wf(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         hugepage_2m_wf_inner(page_array)
     }
 
-    pub open spec fn hugepage_2m_wf_inner(page_array: PageArray) -> bool {
+    pub open spec fn hugepage_2m_wf_inner(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state]
@@ -70,17 +70,17 @@ verus! {
 
     pub proof fn hugepage_1g_wf_proof()
         ensures 
-            forall|pa:PageArray|
+            forall|pa:LockedArray<Page, NUM_PAGES, NO_KILL_STATE>|
                 hugepage_1g_wf(pa) <==> hugepage_1g_wf_inner(pa)
     {}
 
-    pub closed spec fn hugepage_1g_wf(page_array: PageArray) -> bool {
+    pub closed spec fn hugepage_1g_wf(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         hugepage_1g_wf_inner(page_array)
     }
 
 
-    pub open spec fn hugepage_1g_wf_inner(page_array: PageArray) -> bool {
+    pub open spec fn hugepage_1g_wf_inner(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state]
