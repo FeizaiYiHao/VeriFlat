@@ -124,7 +124,7 @@ verus! {
             self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
 
             let mut pagetable = self.pagetable_map.take(pagetable_root, Tracked(lctx), pagetable_lock_perm);
-            pagetable.map_4k_page(target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
+            // pagetable.map_4k_page(target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
             self.pagetable_map.put(pagetable_root, Tracked(lctx), pagetable_lock_perm, pagetable);
             self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
             return;

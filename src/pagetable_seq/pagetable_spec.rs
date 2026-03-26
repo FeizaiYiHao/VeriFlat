@@ -119,7 +119,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(ret.wf_mapping_1g());
         assert(ret.user_only());
         assert(ret.rwx_upper_level_entries());
-        assert(ret.present_or_zero());
         assert(ret.table_pages_wf());
         assert(ret.kernel_entries_wf());
         assert(ret.pcid_ioid_wf());
@@ -145,59 +144,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
     pub open   spec fn mapping_4k(&self) -> Map<VAddr, MapEntry> {
         self.mapping_4k@
-    }
 
+    }
     pub open   spec fn mapping_2m(&self) -> Map<VAddr, MapEntry> {
         self.mapping_2m@
     }
 
     pub open   spec fn mapping_1g(&self) -> Map<VAddr, MapEntry> {
         self.mapping_1g@
-    }
-
-    pub open   spec fn page_not_mapped(&self, pa: PAddr) -> bool {
-        &&& forall 
-            |va: VAddr|
-            #![trigger self.mapping_4k().dom().contains(va), self.mapping_4k()[va].addr]
-                self.mapping_4k().dom().contains(va) ==> self.mapping_4k()[va].addr != pa
-        &&& forall 
-            |va: VAddr|
-            #![trigger self.mapping_2m().dom().contains(va), self.mapping_2m()[va].addr]
-                self.mapping_2m().dom().contains(va) ==> self.mapping_2m()[va].addr != pa
-        &&& forall 
-            |va: VAddr|
-            #![trigger self.mapping_1g().dom().contains(va), self.mapping_1g()[va].addr]
-                self.mapping_1g().dom().contains(va) ==> self.mapping_1g()[va].addr != pa
-    }
-
-    pub open   spec fn mapped_4k_pages(&self) -> Set<PAddr> {
-        Set::<PAddr>::new(|pa: PAddr| self.is_4k_pa_mapped(pa))
-    }
-
-    pub open   spec fn is_4k_pa_mapped(&self, pa: PAddr) -> bool {
-        exists|va: VAddr|
-            #![auto]
-            self.mapping_4k().dom().contains(va) && self.mapping_4k()[va].addr == pa
-    }
-
-    pub open   spec fn mapped_2m_pages(&self) -> Set<PAddr> {
-        Set::<PAddr>::new(|pa: PAddr| self.is_2m_pa_mapped(pa))
-    }
-
-    pub open   spec fn is_2m_pa_mapped(&self, pa: PAddr) -> bool {
-        exists|va: VAddr|
-            #![auto]
-            self.mapping_2m().dom().contains(va) && self.mapping_2m()[va].addr == pa
-    }
-
-    pub open   spec fn mapped_1g_pages(&self) -> Set<PAddr> {
-        Set::<PAddr>::new(|pa: PAddr| self.is_1g_pa_mapped(pa))
-    }
-
-    pub open   spec fn is_1g_pa_mapped(&self, pa: PAddr) -> bool {
-        exists|va: VAddr|
-            #![auto]
-            self.mapping_1g().dom().contains(va) && self.mapping_1g()[va].addr == pa
     }
 
     pub open   spec fn pcid_ioid_wf(&self) -> bool {
@@ -215,14 +169,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         }
     }
 
-    // pub open spec fn pcid(&self) -> Pcid{
-    //     self.pcid.unwrap()
-    // }
-
-    // pub open spec fn ioid(&self) -> Pcid{
-    //     self.ioid.unwrap()
-    // }
-
     pub open   spec fn wf_l4(&self) -> bool {
         &&& self.l4_table@.dom() =~= Set::<PageMapPtr>::empty().insert(self.cr3)
         &&& self.cr3 == self.l4_table@[self.cr3].addr()
@@ -236,28 +182,10 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         self.kernel_l4_end <= i < 512 
             ==> 
             self.l4_table@[self.cr3].value()[i].perm.present ==> !self.l4_table@[self.cr3].value()[i].perm.ps
-        //L4 table only maps to L3
-        &&& forall|i: L4Index|
-         // #![trigger self.l4_table@[self.cr3].value()[i].perm.present]
-            #![trigger self.l2_tables@.dom().contains(self.l4_table@[self.cr3].value()[i].addr)]
-            #![trigger self.l1_tables@.dom().contains(self.l4_table@[self.cr3].value()[i].addr)]
-            self.kernel_l4_end <= i < 512 
-                && self.l4_table@[self.cr3].value()[i].perm.present
-                ==> 
-                self.l2_tables@.dom().contains(self.l4_table@[self.cr3].value()[i].addr) == false 
-                && self.l1_tables@.dom().contains(self.l4_table@[self.cr3].value()[i].addr) == false 
-                && self.cr3 != self.l4_table@[self.cr3].value()[i].addr
-        // no self mapping
-        &&& forall|i: L4Index|
-         // #![trigger self.l4_table@[self.cr3].value()[i].perm.present]
-            #![trigger self.l4_table@[self.cr3].value()[i].addr, self.l4_table@[self.cr3].value()[i].perm.present]
-            self.kernel_l4_end <= i < 512 
-                && self.l4_table@[self.cr3].value()[i].perm.present
-                ==> 
-                self.cr3 != self.l4_table@[self.cr3].value()[i].addr
         //all l4 points to valid l3 tables
         &&& forall|i: L4Index|
-            #![trigger self.l3_tables@.dom().contains(self.l4_table@[self.cr3].value()[i].addr)]
+            #![trigger self.l4_table@[self.cr3].value()[i].perm.present]
+            // #![trigger self.l3_tables@.dom().contains(self.l4_table@[self.cr3].value()[i].addr)]
             self.kernel_l4_end <= i < 512 
                 && self.l4_table@[self.cr3].value()[i].perm.present
                 ==> 
@@ -265,7 +193,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
     pub open   spec fn disjoint_l4(&self) -> bool {
         &&& forall|i: L4Index, j: L4Index|
-         // #![trigger self.l4_table@[self.cr3].value()[i].perm.present, self.l4_table@[self.cr3].value()[j].perm.present]
+        //  #![trigger self.l4_table@[self.cr3].value()[i].perm.present, self.l4_table@[self.cr3].value()[j].perm.present]
             #![trigger self.l4_table@[self.cr3].value()[i].addr, self.l4_table@[self.cr3].value()[j].addr]
             i != j && self.kernel_l4_end <= i < 512
                 && self.l4_table@[self.cr3].value()[i].perm.present && self.kernel_l4_end <= j < 512
@@ -299,24 +227,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.l3_tables@.dom().contains(p) && 0 <= i < 512 && self.l3_tables@[p].value()[i].perm.ps && self.l3_tables@[p].value()[i].perm.present
                 ==> 
                 self.l3_tables@[p].value()[i].perm.kernel_present
-        //L3 tables does not map to L4 or L1
         // all l3 points to valid l2 tables
-        &&& forall|p: PageMapPtr, i: L3Index|
-            // #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[i].perm.present, self.l3_tables@.dom().contains(self.l3_tables@[p].value()[i].addr)]
-            // #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[i].perm.present, self.l1_tables@.dom().contains(self.l3_tables@[p].value()[i].addr)]
-            // #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[i].perm.present, self.l3_tables@[p].value()[i].addr]
-            // #![trigger self.l2_tables@.dom().contains(self.l3_tables@[p].value()[i].addr), self.l3_tables@[p].value()[i].perm.present, self.l3_tables@[p].value()[i].addr]
-            #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[i].perm.present, self.l3_tables@.dom().contains(self.l3_tables@[p].value()[i].addr)]
-            #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[i].perm.present, self.l1_tables@.dom().contains(self.l3_tables@[p].value()[i].addr)]
-            #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[i].perm.present, self.l3_tables@[p].value()[i].addr]
-            self.l3_tables@.dom().contains(p) 
-                && 0 <= i < 512
-                && self.l3_tables@[p].value()[i].perm.present
-                && self.l3_tables@[p].value()[i].perm.ps == false
-                ==> 
-                self.l3_tables@.dom().contains(self.l3_tables@[p].value()[i].addr) == false 
-                && self.l1_tables@.dom().contains(self.l3_tables@[p].value()[i].addr) == false 
-                && self.cr3 != self.l3_tables@[p].value()[i].addr
         &&& forall|p: PageMapPtr, i: L3Index|
             // #![trigger self.l3_tables@[p].value()[i].perm.present, self.l3_tables@[p].value()[i].perm.ps, self.l2_tables@.dom().contains(self.l3_tables@[p].value()[i].addr)]
             #![trigger self.l2_tables@.dom().contains(self.l3_tables@[p].value()[i].addr)]
@@ -328,28 +239,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 
     pub open   spec fn disjoint_l3(&self) -> bool {
-            //L3 tables unique within
-        &&& forall|p: PageMapPtr, l3i: L3Index, l3j: L3Index|
-            // #![trigger self.l3_tables@.dom().contains(p), self.l3_tables@[p].value()[l3i].addr, self.l3_tables@[p].value()[l3j].addr, self.l3_tables@[p].value()[l3i].perm.ps, self.l3_tables@[p].value()[l3j].perm.ps, self.l3_tables@[p].value()[l3i].addr, self.l3_tables@[p].value()[l3j].addr]
-            // #![trigger self.l3_tables@[p].value()[l3i].perm.present, self.l3_tables@[p].value()[l3j].perm.present]
-            #![trigger self.l3_tables@[p].value()[l3i].addr, self.l3_tables@[p].value()[l3j].addr]
-            self.l3_tables@.dom().contains(p) 
-                && l3i != l3j 
-                && 0 <= l3i < 512 
-                && 0 <= l3j < 512
-                && self.l3_tables@[p].value()[l3i].perm.present
-                && self.l3_tables@[p].value()[l3j].perm.present
-                && !self.l3_tables@[p].value()[l3i].perm.ps
-                && !self.l3_tables@[p].value()[l3j].perm.ps 
-                ==> 
-                self.l3_tables@[p].value()[l3i].addr!= self.l3_tables@[p].value()[l3j].addr
-            //L3 tables are disjoint
+        //L3 tables are disjoint
         &&& forall|pi: PageMapPtr, pj: PageMapPtr, l3i: L3Index, l3j: L3Index|
             // #![trigger self.l3_tables@.dom().contains(pi), self.l3_tables@.dom().contains(pj), self.l3_tables@[pi].value()[l3i].addr, self.l3_tables@[pj].value()[l3j].addr, self.l3_tables@[pi].value()[l3i].perm.ps, self.l3_tables@[pj].value()[l3j].perm.ps, self.l3_tables@[pi].value()[l3i].perm.present, self.l3_tables@[pj].value()[l3j].perm.present]
             // #![trigger self.l3_tables@[pi].value()[l3i].perm.present, self.l3_tables@[pj].value()[l3j].perm.present]
-            #![trigger self.l3_tables@[pi].value()[l3i].addr,self.l3_tables@[pj].value()[l3j].addr]
-            pi != pj 
-                && self.l3_tables@.dom().contains(pi) 
+            #![trigger self.l3_tables@[pi].value()[l3i].addr, self.l3_tables@[pj].value()[l3j].addr]
+                self.l3_tables@.dom().contains(pi) 
                 && self.l3_tables@.dom().contains(pj)
                 && 0 <= l3i < 512 && 0 <= l3j < 512 
                 && self.l3_tables@[pi].value()[l3i].perm.present
@@ -357,7 +252,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && !self.l3_tables@[pi].value()[l3i].perm.ps
                 && !self.l3_tables@[pj].value()[l3j].perm.ps
                 ==> 
-                self.l3_tables@[pi].value()[l3i].addr != self.l3_tables@[pj].value()[l3j].addr
+                {
+                    &&&
+                    pi != pj ==> self.l3_tables@[pi].value()[l3i].addr != self.l3_tables@[pj].value()[l3j].addr
+                    &&&
+                    pi == pj && l3i != l3j ==> self.l3_tables@[pi].value()[l3i].addr != self.l3_tables@[pj].value()[l3j].addr
+                }
     }
 
     pub open   spec fn wf_l2(&self) -> bool {
@@ -380,19 +280,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && 0 <= self.l2_rev_map@[p].1 < 512 
                 && self.spec_resolve_mapping_l3(self.l2_rev_map@[p].0, self.l2_rev_map@[p].1) is Some 
                 && self.spec_resolve_mapping_l3(self.l2_rev_map@[p].0,self.l2_rev_map@[p].1,)->0.addr == p
-        // L2 does not map to L4, L3, or self
-        &&& forall|p: PageMapPtr, i: L2Index|
-            #![trigger self.l2_tables@.dom().contains(p), self.l2_tables@[p].value()[i].perm.present, self.l2_tables@.dom().contains(self.l2_tables@[p].value()[i].addr)]
-            #![trigger self.l2_tables@.dom().contains(p), self.l2_tables@[p].value()[i].perm.present, self.l3_tables@.dom().contains(self.l2_tables@[p].value()[i].addr)]
-            #![trigger self.l2_tables@.dom().contains(p), self.l2_tables@[p].value()[i].perm.present, self.l2_tables@[p].value()[i].addr]
-            self.l2_tables@.dom().contains(p) 
-                && 0 <= i < 512
-                && self.l2_tables@[p].value()[i].perm.present
-                && self.l2_tables@[p].value()[i].perm.ps == false
-                ==> 
-                self.l2_tables@.dom().contains(self.l2_tables@[p].value()[i].addr) == false 
-                && self.l3_tables@.dom().contains(self.l2_tables@[p].value()[i].addr) == false 
-                && self.cr3 != self.l2_tables@[p].value()[i].addr
         // Last level page entry must have kernel present set if it's present
         &&& forall|p: PageMapPtr, i: L2Index|
             #![trigger self.l2_tables@[p].value()[i].perm.ps, self.l2_tables@[p].value()[i].perm.present]
@@ -411,21 +298,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 
     pub open   spec fn disjoint_l2(&self) -> bool {
-            // L2 mappings are unique within
-        &&& forall|p: PageMapPtr, l2i: L2Index, l2j: L2Index|
-            #![trigger self.l2_tables@[p].value()[l2i].addr, self.l2_tables@[p].value()[l2j].addr]
-            self.l2_tables@.dom().contains(p) 
-                && l2i != l2j 
-                && 0 <= l2i < 512 
-                && 0 <= l2j < 512
-                && self.l2_tables@[p].value()[l2i].perm.present
-                && self.l2_tables@[p].value()[l2j].perm.present
-                && !self.l2_tables@[p].value()[l2i].perm.ps
-                && !self.l2_tables@[p].value()[l2j].perm.ps 
-                ==> 
-                self.l2_tables@[p].value()[l2i].addr != self.l2_tables@[p].value()[l2j].addr
-            // L2 mappings are unique
+    // L2 mappings are unique
         &&& forall|pi: PageMapPtr, pj: PageMapPtr, l2i: L2Index, l2j: L2Index|
+            // #![trigger self.l2_tables@[pi].value()[l2i].perm, self.l2_tables@[pj].value()[l2j].perm, self.l2_tables@[pi].value()[l2i].addr, self.l2_tables@[pj].value()[l2j].addr]
             #![trigger self.l2_tables@[pi].value()[l2i].addr, self.l2_tables@[pj].value()[l2j].addr]
             self.l2_tables@.dom().contains(pi) 
                 && self.l2_tables@.dom().contains(pj)
@@ -435,9 +310,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && self.l2_tables@[pj].value()[l2j].perm.present
                 && !self.l2_tables@[pi].value()[l2i].perm.ps
                 && !self.l2_tables@[pj].value()[l2j].perm.ps
-                && pi != pj 
                 ==> 
-                self.l2_tables@[pi].value()[l2i].addr != self.l2_tables@[pj].value()[l2j].addr
+                {
+                    &&&
+                    pi != pj  ==> self.l2_tables@[pi].value()[l2i].addr != self.l2_tables@[pj].value()[l2j].addr
+                    &&&
+                    pi == pj && l2i != l2j ==> self.l2_tables@[pi].value()[l2i].addr != self.l2_tables@[pj].value()[l2j].addr
+                }
     }
 
     pub open   spec fn wf_l1(&self) -> bool {
@@ -496,39 +375,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==> self.l1_tables@[p].value()[i].perm.user
     }
 
-    pub open   spec fn present_or_zero(&self) -> bool {
-        true
-        // &&& forall|i: L4Index|
-        //     #![trigger self.l4_table@[self.cr3].value()[i].is_empty()]
-        //     self.kernel_l4_end <= i < 512 && !self.l4_table@[self.cr3].value()[i].perm.present
-        //         ==> self.l4_table@[self.cr3].value()[i].is_empty()
-        // &&& forall|p: PageMapPtr, i: L3Index|
-        //     #![trigger self.l3_tables@[p].value()[i].is_empty()]
-        //     self.l3_tables@.dom().contains(p) && 0 <= i < 512
-        //         && !self.l3_tables@[p].value()[i].perm.present
-        //         ==> self.l3_tables@[p].value()[i].is_empty()
-        // &&& forall|p: PageMapPtr, i: L2Index|
-        //     #![trigger self.l2_tables@[p].value()[i].is_empty()]
-        //     self.l2_tables@.dom().contains(p) && 0 <= i < 512
-        //         && !self.l2_tables@[p].value()[i].perm.present
-        //         ==> self.l2_tables@[p].value()[i].is_empty()
-        // &&& forall|p: PageMapPtr, i: L1Index|
-        //     #![trigger self.l1_tables@[p].value()[i].is_empty()]
-        //     self.l1_tables@.dom().contains(p) && 0 <= i < 512
-        //         && !self.l1_tables@[p].value()[i].perm.present
-        //         ==> self.l1_tables@[p].value()[i].is_empty()
-    }
-
     pub open   spec fn rwx_upper_level_entries(&self) -> bool {
         &&& forall|i: L4Index|
             #![trigger self.l4_table@[self.cr3].value()[i].perm]
-            // #![trigger self.l4_table@[self.cr3].value()[i].perm.execute_disable]
             self.kernel_l4_end <= i < 512 && self.l4_table@[self.cr3].value()[i].perm.present
                 ==> self.l4_table@[self.cr3].value()[i].perm.write
                 && !self.l4_table@[self.cr3].value()[i].perm.execute_disable
         &&& forall|p: PageMapPtr, i: L3Index|
             #![trigger self.l3_tables@[p].value()[i].perm]
-            // #![trigger self.l3_tables@[p].value()[i].perm.execute_disable]
             self.l3_tables@.dom().contains(p) && 0 <= i < 512
                 && self.l3_tables@[p].value()[i].perm.present
                 && !self.l3_tables@[p].value()[i].perm.ps
@@ -536,7 +390,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && !self.l3_tables@[p].value()[i].perm.execute_disable
         &&& forall|p: PageMapPtr, i: L2Index|
             #![trigger  self.l2_tables@[p].value()[i].perm]
-            // #![trigger self.l2_tables@[p].value()[i].perm.execute_disable]
             self.l2_tables@.dom().contains(p) && 0 <= i < 512
                 && self.l2_tables@[p].value()[i].perm.present
                 && !self.l2_tables@[p].value()[i].perm.ps
@@ -569,7 +422,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         self.l2_tables@.dom().disjoint(self.l1_tables@.dom())
     }
 
-    // #[verifier(inline)]
     pub open   spec fn spec_resolve_mapping_l4(&self, l4i: L4Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i < 512,
@@ -671,10 +523,15 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
     }
 
-    pub open spec fn va_addr_valid(&self) -> bool {
+    pub closed spec fn va_addr_valid(&self) -> bool {
+        self.va_addr_valid_inner()
+    }
+
+    pub open spec fn va_addr_valid_inner(&self) -> bool {
         &&& forall|va: VAddr|
             #![trigger va_4k_valid(va), self.mapping_4k@.dom().contains(va)]
             #![trigger self.mapping_4k@.dom().contains(va), page_ptr_valid(self.mapping_4k@[va].addr)]
+            #![trigger self.mapping_4k@.dom().contains(va)]
             self.mapping_4k@.dom().contains(va) 
                 ==> 
                 va_4k_valid(va)
@@ -683,13 +540,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         &&& forall|va: VAddr|
             #![trigger va_2m_valid(va), self.mapping_2m@.dom().contains(va)]
             #![trigger self.mapping_2m@.dom().contains(va), page_ptr_2m_valid(self.mapping_2m@[va].addr)]
+            #![trigger self.mapping_2m@.dom().contains(va)]
             self.mapping_2m@.dom().contains(va) 
                 ==> 
                 va_2m_valid(va)
-                && page_ptr_2m_valid(self.mapping_2m@[va].addr)
+                && 
+                page_ptr_2m_valid(self.mapping_2m@[va].addr)
         &&& forall|va: VAddr|
             #![trigger va_1g_valid(va), self.mapping_1g@.dom().contains(va)]
             #![trigger self.mapping_1g@.dom().contains(va), page_ptr_1g_valid(self.mapping_1g@[va].addr)]
+            #![trigger self.mapping_1g@.dom().contains(va)]
             self.mapping_1g@.dom().contains(va) 
                 ==> 
                 va_1g_valid(va)
@@ -773,8 +633,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     }
 
     pub open   spec fn wf(&self) -> bool {
-        &&&
-        self.va_addr_valid()
+        &&& self.va_addr_valid()
         &&& self.levels_wf()
         &&& self.disjoint_wf()
         &&& self.mappings_wf()
@@ -802,7 +661,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub closed   spec fn additonal_wf(&self) -> bool {
         &&& self.user_only()
         &&& self.rwx_upper_level_entries()
-        &&& self.present_or_zero()
         &&& self.table_pages_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_ioid_wf()
@@ -850,7 +708,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #[trigger] self.additonal_wf() <==> {
                 &&& self.user_only()
                 &&& self.rwx_upper_level_entries()
-                &&& self.present_or_zero()
                 &&& self.table_pages_wf()
                 &&& self.kernel_entries_wf()
                 &&& self.pcid_ioid_wf()
@@ -858,11 +715,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     {
     }
 
-    // pub open   spec fn l4_kernel_entries_reserved(&self) -> bool
-    //     recommends self.wf_l4(),
-    // {
-    //     forall|l4i: L4Index| #![auto] 0<=l4i<KERNEL_MEM_END_L4INDEX ==> self.l4_table@[self.cr3]@.value->0[l4i] is None
-    // }
     pub open   spec fn l4_entry_exists(&self, l4i: L4Index) -> bool
         recommends
             self.wf(),
@@ -896,117 +748,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 }
 
 // proof
+pub proof fn va_addr_valid_proof<const TABLE_TYPE:PTType>()
+    ensures 
+        forall|pt: PageTable<TABLE_TYPE>|
+            pt.va_addr_valid() == pt.va_addr_valid_inner()
+{}
+
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
-    pub proof fn no_mapping_infer_not_mapped(&self, page_map_ptr: PageMapPtr)
-        requires
-            self.wf(),
-            forall|va: VAddr|
-                #![trigger self.mapping_4k().dom().contains(va)]
-                #![trigger self.mapping_4k()[va]]
-                self.mapping_4k().dom().contains(va) ==> self.mapping_4k()[va].addr != page_map_ptr,
-            forall|va: VAddr|
-                #![auto]
-                self.mapping_2m().dom().contains(va) ==> self.mapping_2m()[va].addr != page_map_ptr,
-            forall|va: VAddr|
-                #![auto]
-                self.mapping_1g().dom().contains(va) ==> self.mapping_1g()[va].addr != page_map_ptr,
-        ensures
-            self.page_not_mapped(page_map_ptr),
-    {
-    }
-
-    pub proof fn no_mapping_infer_no_reslove(&self)
-        requires
-            self.wf(),
-        ensures
-            self.mapping_2m().dom() =~= Set::empty() ==> forall|
-                l4i: L4Index,
-                l3i: L3Index,
-                l2i: L2Index,
-            |
-                #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512
-                    ==> self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some == false,
-            self.mapping_1g().dom() =~= Set::empty() ==> forall|l4i: L4Index, l3i: L3Index|
-                #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)]
-                self.kernel_l4_end <= l4i < 512 && 0 <= l3i < 512
-                    ==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some == false,
-    {
-    }
-
-    pub proof fn ps_entries_exist_in_mapped_pages(&self)
-        requires
-            self.wf(),
-        ensures
-            forall|p: PageMapPtr, i: L3Index|
-                #![trigger self.l3_tables@[p].value()[i].addr]
-                self.l3_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l3_tables@[p].value()[i].perm.present
-                    && self.l3_tables@[p].value()[i].perm.ps ==> self.page_not_mapped(
-                    self.l3_tables@[p].value()[i].addr) == false,
-            forall|p: PageMapPtr, i: L3Index|
-                #![trigger self.l3_tables@[p].value()[i].addr]
-                self.l3_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l3_tables@[p].value()[i].perm.present
-                    && !self.l3_tables@[p].value()[i].perm.ps ==> self.l2_tables@.dom().contains(
-                    self.l3_tables@[p].value()[i].addr,
-                ),
-            forall|p: PageMapPtr, i: L2Index|
-                #![trigger self.l2_tables@[p].value()[i].addr]
-                self.l2_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l2_tables@[p].value()[i].perm.present
-                    && self.l2_tables@[p].value()[i].perm.ps ==> self.page_not_mapped(self.l2_tables@[p].value()[i].addr,) == false,
-            forall|p: PageMapPtr, i: L2Index|
-                #![trigger self.l2_tables@[p].value()[i].addr]
-                self.l2_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l2_tables@[p].value()[i].perm.present
-                    && !self.l2_tables@[p].value()[i].perm.ps ==> self.l1_tables@.dom().contains(
-                    self.l2_tables@[p].value()[i].addr,
-                ),
-            forall|p: PageMapPtr, i: L1Index|
-                #![trigger self.l1_tables@[p].value()[i].addr]
-                self.l1_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l1_tables@[p].value()[i].perm.present
-                    ==>self.page_not_mapped(self.l1_tables@[p].value()[i].addr) == false,
-    {
-        admit();
-    }
-
-        pub proof fn ps_entries_exist_in_mapped_pages_l3(&self)
-        requires
-            self.wf_l4(),
-            self.wf_l3(),
-            self.wf_mapping_1g(),
-        ensures
-            forall|p: PageMapPtr, i: L3Index|
-                #![trigger self.l3_tables@[p].value()[i].addr]
-                self.l3_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l3_tables@[p].value()[i].perm.present
-                    && self.l3_tables@[p].value()[i].perm.ps ==> self.page_not_mapped(
-                    self.l3_tables@[p].value()[i].addr) == false,
-            forall|p: PageMapPtr, i: L3Index|
-                #![trigger self.l3_tables@[p].value()[i].addr]
-                self.l3_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l3_tables@[p].value()[i].perm.present
-                    && !self.l3_tables@[p].value()[i].perm.ps ==> self.l2_tables@.dom().contains(
-                    self.l3_tables@[p].value()[i].addr,
-                ),
-    {
-        assert(forall|p: PageMapPtr, i: L3Index|
-                #![trigger self.l3_tables@[p].value()[i].addr]
-                self.l3_tables@.dom().contains(p) && 0 <= i < 512
-                    && self.l3_tables@[p].value()[i].perm.present
-                    && self.l3_tables@[p].value()[i].perm.ps ==> 
-                    self.spec_resolve_mapping_1g_l3(self.l3_rev_map@[p], i) is Some
-                    &&
-                    self.spec_resolve_mapping_1g_l3(self.l3_rev_map@[p], i).unwrap().addr == self.l3_tables@[p].value()[i].addr
-                    &&
-                    self.mapping_1g@.dom().contains(spec_index2va((self.l3_rev_map@[p], i, 0, 0)))
-                    &&
-                    self.mapping_1g()[spec_index2va((self.l3_rev_map@[p], i, 0, 0))].addr == self.l3_tables@[p].value()[i].addr
-        );
-    }
-
     pub proof fn internal_resolve_disjoint(&self)
         requires
             self.wf(),
@@ -1022,6 +770,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     self.spec_resolve_mapping_l4(l4i)->0.addr != self.spec_resolve_mapping_l4(l4j)->0.addr,
             forall|l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index|
                 #![trigger self.spec_resolve_mapping_l3(l4i,l3i), self.spec_resolve_mapping_l3(l4j,l3j)]
+                #![trigger self.l3_tables@[self.l4_table@[self.cr3].value()[l4i].addr].value()[l3i], self.l3_tables@[self.l4_table@[self.cr3].value()[l4j].addr].value()[l3j]]
                 self.kernel_l4_end <= l4i < 512 
                     && 0 <= l3i < 512 
                     && self.kernel_l4_end <= l4j < 512
@@ -1030,9 +779,11 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     && self.spec_resolve_mapping_l3(l4i,l3i) is Some 
                     && self.spec_resolve_mapping_l3(l4j, l3j) is Some
                     ==> 
-                    self.spec_resolve_mapping_l3(l4i, l3i)->0.addr != self.spec_resolve_mapping_l3(l4j, l3j)->0.addr,
+                    self.spec_resolve_mapping_l3(l4i, l3i)->0.addr != self.spec_resolve_mapping_l3(l4j, l3j)->0.addr
+                    ,
             forall|l4i: L4Index,l3i: L3Index, l2i: L3Index, l4j: L4Index, l3j: L3Index, l2j: L2Index|
                 #![trigger self.spec_resolve_mapping_l2(l4i,l3i,l2i), self.spec_resolve_mapping_l2(l4j,l3j,l2j)]
+                #![trigger self.l2_tables@[self.l3_tables@[self.l4_table@[self.cr3].value()[l4i].addr].value()[l3i].addr].value()[l2i], self.l2_tables@[self.l3_tables@[self.l4_table@[self.cr3].value()[l4j].addr].value()[l3j].addr].value()[l2j]]
                 self.kernel_l4_end <= l4i < 512 
                     && 0 <= l3i < 512 
                     && 0 <= l2i < 512
