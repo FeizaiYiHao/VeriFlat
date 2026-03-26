@@ -8,11 +8,11 @@ use crate::locks::*;
 use crate::util::*;
 verus! {
 
-pub struct PageTableDom{
+pub struct LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>{
     pub map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>,
 }
 
-impl PageTableDom {
+impl LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE> {
     pub open spec fn inv(&self) -> bool {
         &&&
         self.perms_wf()

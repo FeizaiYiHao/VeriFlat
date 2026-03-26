@@ -31,11 +31,11 @@ impl SingleTLB{
     }
 }
  
-pub struct CPUTLB{
+pub struct CpuTLB{
     pub cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
 }
 
-impl CPUTLB{
+impl CpuTLB{
     pub closed spec fn view(&self) -> Map<(CpuId, Pcid), SingleTLB>{
         self.cpu_tlbs@
     }
