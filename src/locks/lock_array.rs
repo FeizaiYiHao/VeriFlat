@@ -105,7 +105,7 @@ verus! {
     }
 
     impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const N: usize> LockedArray<T, N, NO_KILL_STATE>{
-            #[verifier(external_body)]
+        #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires
                 old(self).inv(),

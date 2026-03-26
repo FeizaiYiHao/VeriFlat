@@ -1,6 +1,4 @@
-// pub mod page_array_define_spec;
-pub mod page;
+pub mod page_def;
 
 
-pub use page::*;
-// pub use page_array_define_spec::*;
+pub use page_def::*;
