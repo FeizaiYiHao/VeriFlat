@@ -8,11 +8,7 @@ verus! {
         forall|p_i:PageIndex|
             #![auto]
             page_index_wf(p_i)
-            ==>{
-                |||
-                page_array[p_i]@.wlocked()
-                |||
-                page_array[p_i]@.inv()
-            }
+            ==>
+            page_array[p_i]@.inv()
     }
 }

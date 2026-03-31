@@ -73,6 +73,6 @@ verus! {
             &&
             cpu_tlb.spec_index((cpu_id, pcid)).is_empty() == false
             ==>
-            single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_map.spec_index(cpu_array.spec_index(cpu_id).view().view().current_pagetable))
+            single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_map.spec_index(cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap()[pcid].unwrap().pagetable_ptr))
     }
 }

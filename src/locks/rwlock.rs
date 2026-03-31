@@ -145,6 +145,7 @@ pub open spec fn write_locked_by_same_thread<X:LockMajorTrait, Y:LockMajorTrait,
     y.locking_thread() is Write
     &&&
     x.locking_thread()->Write_thread_id == y.locking_thread()->Write_thread_id
+    // false
 }
 
 pub open spec fn write_locked_by_same_thread_xyz<X:LockMajorTrait, Y:LockMajorTrait, Z:LockMajorTrait, const HasKillStateX: bool, const HasKillStateY: bool, const HasKillStateZ: bool>
@@ -385,7 +386,9 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, const HasKillSta
     &&&
     new.modified() == old.modified()
     &&&
-    new@ == old@
+    new@ == old@    
+    &&&
+    old.locked() == false
 
     &&&
     lock_perm.state() is WriteLock

@@ -23,8 +23,6 @@ verus! {
             #![trigger self.container_map.dom().contains(page_index2page_ptr(page_index))]
             page_index_wf(page_index)
             ==>
-            self.page_array.spec_index(page_index).view().locked()
-            ||
             {
                 self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
                 ==>
@@ -40,8 +38,6 @@ verus! {
             page_ptr_2m_valid(c_ptr)
             &&
             {
-                self.page_array.spec_index(page_ptr2page_index(c_ptr)).view().locked()
-                ||
                 self.page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
             }
 

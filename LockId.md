@@ -31,8 +31,8 @@ Major Id: Process major id
 Minor Id: addr
 
 ## Thread
-Container Depth: None or killing container's depth
-Process Depth: None or killing process's depth
+Container Depth: owning_container.depth or killing container's depth
+Process Depth: owning_process.depth or killing process's depth
 Major Id: self.state (Running, Blocked, scheduled)
 Minor Id: addr
 

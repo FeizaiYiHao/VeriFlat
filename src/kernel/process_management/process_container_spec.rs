@@ -85,12 +85,7 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().owned_processes]
             container_perms.dom().contains(c_ptr)
             ==>
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
-            {
-                &&&
-                process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes@, process_perms)
-            }
+            process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes@, process_perms)
     }
     
 }

@@ -34,14 +34,10 @@ verus! {
             #![trigger self.page_array.spec_index(page_index)]
             #![trigger self.allocator_4k_map.dom().contains(page_index2page_ptr(page_index))]
             page_index_wf(page_index)
+            &&
+            (self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator})
             ==>
-            self.page_array.spec_index(page_index).view().locked()
-            ||
-            {
-                self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator}
-                ==>
-                self.allocator_4k_map.dom().contains(page_index2page_ptr(page_index))
-            }
+            self.allocator_4k_map.dom().contains(page_index2page_ptr(page_index))
 
             &&&
             forall|a_ptr:RwLockPageAllocatorPtr|
@@ -51,12 +47,7 @@ verus! {
             ==>
             page_ptr_valid(a_ptr)
             &&
-            {
-                self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().locked()
-                ||
-                self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator}
-            }
-
+            self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator}
         }
 
         pub open spec fn allocator_2m_pages_wf_inner(&self) -> bool{
@@ -65,14 +56,10 @@ verus! {
             #![trigger self.page_array.spec_index(page_index)]
             #![trigger self.allocator_2m_map.dom().contains(page_index2page_ptr(page_index))]
             page_index_wf(page_index)
+            &&
+            (self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator})
             ==>
-            self.page_array.spec_index(page_index).view().locked()
-            ||
-            {
-                self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator}
-                ==>
-                self.allocator_2m_map.dom().contains(page_index2page_ptr(page_index))
-            }
+            self.allocator_2m_map.dom().contains(page_index2page_ptr(page_index))
 
             &&&
             forall|a_ptr:RwLockPageAllocatorPtr|
@@ -82,11 +69,7 @@ verus! {
             ==>
             page_ptr_valid(a_ptr)
             &&
-            {
-                self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().locked()
-                ||
-                self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator}
-            }
+            self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator}
 
         }
 
@@ -96,14 +79,10 @@ verus! {
             #![trigger self.page_array.spec_index(page_index)]
             #![trigger self.allocator_1g_map.dom().contains(page_index2page_ptr(page_index))]
             page_index_wf(page_index)
+            &&
+            (self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator})
             ==>
-            self.page_array.spec_index(page_index).view().locked()
-            ||
-            {
-                self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator}
-                ==>
-                self.allocator_1g_map.dom().contains(page_index2page_ptr(page_index))
-            }
+            self.allocator_1g_map.dom().contains(page_index2page_ptr(page_index))
 
             &&&
             forall|a_ptr:RwLockPageAllocatorPtr|
@@ -113,11 +92,7 @@ verus! {
             ==>
             page_ptr_valid(a_ptr)
             &&
-            {
-                self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().locked()
-                ||
-                self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator}
-            }
+            self.page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator}
 
         }
     }
