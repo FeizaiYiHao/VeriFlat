@@ -532,6 +532,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger va_4k_valid(va), self.mapping_4k@.dom().contains(va)]
             #![trigger self.mapping_4k@.dom().contains(va), page_ptr_valid(self.mapping_4k@[va].addr)]
             #![trigger self.mapping_4k@.dom().contains(va)]
+            #![trigger page_ptr_valid(self.mapping_4k@[va].addr)]
             self.mapping_4k@.dom().contains(va) 
                 ==> 
                 va_4k_valid(va)

@@ -44,11 +44,42 @@ Receive
 Kill thread
 
 ## Multiple step system calls
+### Kill single process
+Lock the process
+sort threads
+lock threads
+change states to killing (first step)
+sort cpu id
+
+lock cpus
+unlock cpus (second step)
+
+sort endpoint id
+lock endpoints
+sort allocator ids
+lock allocators
+
+unlock allocators
+unlock endpoints 
+
+
+lock them,
+For each level of the threads
 ### Kill process (plus child processes and all threads)
-Lock all the processes, lock all threads and change thread states to killing. 
-Move threads up to the top process
-Kill all processes
-Kill all threads
+Lock the top killing process
+For each process tree depth level:
+    sort process pointer
+    lock processes
+    gather all threads at the level
+    sort threads
+    lock threads
+
+lock cpus
+lock endpoints
+
+unlock cpu
+unlock endpoints (second step)
+
 
 Kill container (plus child containers and all processes and threads)
 Lock all the containers, processes, threads and change thread states to killing. 

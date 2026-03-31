@@ -106,11 +106,9 @@ verus! {
             #![trigger page_array.spec_index(p_i).view().view().mappings_4k().contains((pt_ptr, va))]
             page_index_valid(p_i)
             &&
-            page_array.spec_index(p_i).view().wlocked() == false
-            &&
             page_array.spec_index(p_i).view().view().mappings_4k().contains((pt_ptr, va))
-            ==>
-            pagetable_map.dom().contains(pt_ptr)
+            ==> 
+            (pagetable_map.dom().contains(pt_ptr)
             &&
             {
                 |||
@@ -119,22 +117,19 @@ verus! {
                 pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
                 &&
                 pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr == page_index2page_ptr(p_i)
-            }
+            })
         &&&
-        forall|pt_ptr:RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr|
+        forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
+            #![trigger pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)]
             pagetable_map.dom().contains(pt_ptr)
             &&
-            pagetable_map.spec_index(pt_ptr).wlocked() == false
-            &&
             pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
-            &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr == page_ptr
             ==>
             {
                 |||
-                write_locked_by_same_thread(page_array.spec_index(page_ptr2page_index(page_ptr)).view(), pagetable_map.spec_index(pt_ptr))
+                write_locked_by_same_thread(page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr)).view(), pagetable_map.spec_index(pt_ptr))
                 |||
-                page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings_4k().contains((pt_ptr, va))
+                page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr)).view().view().mappings_4k().contains((pt_ptr, va))
             }
     }
     

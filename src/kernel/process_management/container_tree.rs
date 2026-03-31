@@ -19,15 +19,15 @@ verus! {
         &&&
         container_perms.perms_wf()
         &&&
-        containers_wlocked_or_inv(container_perms)
+        containers_or_inv(container_perms)
     }
-    pub open spec fn containers_wlocked_or_inv(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>) -> bool{
+    pub open spec fn containers_or_inv(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&
         forall|container_p:RwLockContainerPtr|
             #![auto]
             container_perms.dom().contains(container_p)
             ==>
-            container_perms[container_p].wlocked() || container_perms[container_p].inv()
+            container_perms[container_p].inv()
     }
 
     pub open spec fn container_tree_fields_wf(
@@ -41,8 +41,6 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().depth]
             container_perms.dom().contains(c_ptr) 
             ==> 
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             {
                 &&&
                 container_perms.spec_index(c_ptr).view().children.view().no_duplicates()
@@ -80,16 +78,12 @@ verus! {
             container_perms.dom().contains(c_ptr) 
             && c_ptr != root_container
             ==> 
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             container_perms.spec_index(c_ptr).view().depth != 0
         &&& forall|c_ptr: RwLockContainerPtr|
             #![trigger container_perms.dom().contains(c_ptr)]
             container_perms.dom().contains(c_ptr) 
             && c_ptr != root_container
             ==>
-            container_perms.spec_index(c_ptr).wlocked()
-            || 
             container_perms.spec_index(root_container).view().parent is Some
     }
 
@@ -111,8 +105,6 @@ verus! {
             && 
             container_perms.spec_index(c_ptr).view().children@.contains(child_c_ptr)
             ==> 
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             container_perms.dom().contains(child_c_ptr)
         &&& 
         forall|c_ptr: RwLockContainerPtr, child_c_ptr: RwLockContainerPtr|
@@ -135,8 +127,6 @@ verus! {
             && 
             container_perms.spec_index(c_ptr).view().parent is Some
             ==>
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             {
                 &&&
                 container_perms.dom().contains(container_perms.spec_index(c_ptr).view().parent.unwrap())
@@ -168,8 +158,6 @@ verus! {
             && 
             c_ptr != root_container
             ==>
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             container_perms.spec_index(c_ptr).view().parent is Some 
         &&& 
         forall|c_ptr: RwLockContainerPtr|
@@ -206,8 +194,6 @@ verus! {
             && 
             c_ptr != root_container
             ==> 
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             container_perms.spec_index(c_ptr).view().uppertree_seq@[container_perms.spec_index(c_ptr).view().depth - 1] 
                 == container_perms.spec_index(c_ptr).view().parent.unwrap()
     }
@@ -231,8 +217,6 @@ verus! {
             container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr)
             ==> 
             {
-                container_perms.spec_index(c_ptr).wlocked()
-                ||
                 container_perms.dom().contains(sub_c_ptr)
             }
             &&
@@ -268,8 +252,6 @@ verus! {
             container_perms.spec_index(c_ptr).view().uppertree_seq@.contains(u_ptr)
             ==> 
             {
-                container_perms.spec_index(c_ptr).wlocked()
-                ||
                 container_perms.dom().contains(u_ptr)
             }
             && 

@@ -23,8 +23,6 @@ verus! {
             #![trigger self.process_map.dom().contains(page_index2page_ptr(page_index))]
             page_index_wf(page_index)
             ==>
-            self.page_array.spec_index(page_index).view().wlocked()
-            ||
             {
                 self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess}
                 ==>
@@ -40,8 +38,6 @@ verus! {
             page_ptr_valid(c_ptr)
             &&
             {
-                self.page_array.spec_index(page_ptr2page_index(c_ptr)).view().wlocked()
-                ||
                 self.page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess}
             }
 

@@ -29,7 +29,7 @@ verus! {
                 page_array.spec_index(p_i).view().view().state is Mapped2m 
             }
             ==>
-            page_index_2m_valid(p_i) || page_array.spec_index(p_i).view().wlocked()
+            page_index_2m_valid(p_i)
         &&&
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_2m_vaild(p_i, p_j)]
@@ -91,7 +91,7 @@ verus! {
                 page_array.spec_index(p_i).view().view().state is Mapped1g 
             }
             ==>
-            page_index_1g_valid(p_i) || page_array.spec_index(p_i).view().wlocked()
+            page_index_1g_valid(p_i) 
         &&&
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_1g_vaild(p_i, p_j)]
@@ -114,7 +114,7 @@ verus! {
         &&&
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i) && (page_array.spec_index(p_i).view().view().state is Merged1g)
+            page_index_wf(p_i) && (page_array.spec_index(p_i).view().view().state is Merged1g)            
             ==>
             write_locked_by_same_thread(page_array.spec_index(p_i).view(), page_array.spec_index(spec_page_index_truncate_1g(p_i)).view())
             ||

@@ -10,8 +10,7 @@ verus! {
             #![auto]
             process_perms.dom().contains(p_ptr)
             ==>
-            
-            process_perms[p_ptr].wlocked() || process_perms[p_ptr].inv()
+            process_perms[p_ptr].inv()
     }
 
     pub open spec fn process_tree_fields_wf(
@@ -25,8 +24,6 @@ verus! {
             #![trigger process_perms.spec_index(p_ptr).view().depth]
             process_perms.dom().contains(p_ptr) 
             ==> 
-            process_perms.spec_index(p_ptr).wlocked()
-            ||
             {
                 &&&
                 process_perms.spec_index(p_ptr).view().children.view().no_duplicates()
@@ -66,16 +63,12 @@ verus! {
             process_tree_dom.contains(p_ptr) 
             && p_ptr != root_process
             ==> 
-            process_perms.spec_index(p_ptr).wlocked()
-            ||
             process_perms.spec_index(p_ptr).view().depth != 0
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
             process_tree_dom.contains(p_ptr) 
             && p_ptr != root_process
             ==>
-            process_perms.spec_index(p_ptr).wlocked()
-            || 
             process_perms.spec_index(root_process).view().parent is Some
     }
 
@@ -97,8 +90,6 @@ verus! {
             && 
             process_perms.spec_index(p_ptr).view().children@.contains(child_p_ptr) 
             ==> 
-            process_perms.spec_index(p_ptr).wlocked()
-            ||
             process_tree_dom.contains(child_p_ptr)
         &&& 
         forall|p_ptr: RwLockProcessPtr, child_p_ptr: RwLockProcessPtr|
@@ -119,8 +110,6 @@ verus! {
             && 
             process_perms.spec_index(p_ptr).view().parent is Some
             ==>
-            process_perms.spec_index(p_ptr).wlocked()
-            ||
             {
                 &&&
                 process_tree_dom.contains(process_perms.spec_index(p_ptr).view().parent.unwrap())
@@ -183,8 +172,6 @@ verus! {
             && 
             p_ptr != root_process
             ==> 
-            process_perms.spec_index(p_ptr).wlocked()
-            ||
             process_perms.spec_index(p_ptr).view().uppertree_seq@[process_perms.spec_index(p_ptr).view().depth - 1] 
                 == process_perms.spec_index(p_ptr).view().parent.unwrap()
     }
@@ -208,8 +195,6 @@ verus! {
             process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr)
             ==> 
             {
-                process_perms.spec_index(p_ptr).wlocked()
-                ||
                 process_tree_dom.contains(sub_p_ptr)
             }
             &&
@@ -243,8 +228,6 @@ verus! {
             process_perms.spec_index(p_ptr).view().uppertree_seq@.contains(u_ptr)
             ==> 
             {
-                process_perms.spec_index(p_ptr).wlocked()
-                ||
                 process_tree_dom.contains(u_ptr)
             }
             && 

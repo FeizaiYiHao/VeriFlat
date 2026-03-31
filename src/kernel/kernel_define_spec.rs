@@ -37,7 +37,7 @@ verus! {
             &&&
             page_array_wf(self.page_array)
             &&&
-            cpu_array_wf(self.cpu_array)
+            cpu_array_wf(self.cpu_array, self.default_pagetable)
             &&&
             self.cpu_tlb.inv()
             &&&
@@ -81,7 +81,9 @@ verus! {
             &&&
             process_cpu_wf(self.process_map, self.cpu_array)
             &&&
-            cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb)
+            process_pagetable_match(self.process_map, self.pagetable_map)
+            &&&
+            cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)
             &&&
             tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)
         }
