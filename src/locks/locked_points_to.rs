@@ -58,7 +58,7 @@ impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwL
 
 // TODO
 #[verifier::external_body]
-pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -73,7 +73,7 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<RwLo
         perm.is_init(),
 
         wlock_ensures(old(perm).value(), perm.value(), lock_id@, lctx.thread_id(), ret@),
-        lock_ensures(old(lctx), lctx, lock_id@),
+        lock_ensures(old(lctx), lctx, perm.value().view(), lock_id@),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, NO_KILL_STATE>>;
@@ -83,7 +83,7 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<RwLo
 
 // TODO
 #[verifier::external_body]
-pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -101,7 +101,7 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait>(pptr:&PPtr<Rw
         perm.value().locking_thread() is None,
 
         wunlock_ensures(old(perm).value(), perm.value()),
-        unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
+        unlock_ensures(old(lctx), lctx, perm.value().view(), lock_perm@.lock_id()),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, NO_KILL_STATE>>;

@@ -59,6 +59,12 @@ impl LockMajorTrait for AllocatorCache{
     }
 }
 
+impl LockUserVisibilityTrait for AllocatorCache{
+    open spec fn is_user_visible(&self) -> bool {
+        false
+    }
+}
+
 impl AllocatorCache{
     pub open spec fn wf(&self) -> bool{
         &&&

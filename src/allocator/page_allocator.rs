@@ -128,7 +128,7 @@ impl PageAllocator{
             wlock_requires(old(self).quota, old(lctx)),
             wlock_requires(old(self).global_poll, old(lctx)),
 
-            old(lctx).locking_state() is Lock,
+            old(lctx).kernel_view_locking_state() is Acquire,
 
             old(lctx).lock_id_acyclic(LockId{
                 container: old(self).quota.view().container_depth(),
@@ -137,7 +137,7 @@ impl PageAllocator{
                 minor: old(self).quota.view().lock_minor(),
             }),
         ensures
-            lctx.locking_state() is Unlock,
+            lctx.kernel_view_locking_state() is Release,
             ret == (old(self).quota.view().view() >= quota),
             ret == false ==> {
                 &&&

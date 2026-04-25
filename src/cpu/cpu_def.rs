@@ -33,6 +33,12 @@ pub struct Cpu {
     pub process_depth: usize,
 }
 
+impl LockUserVisibilityTrait for Cpu{
+    open spec fn is_user_visible(&self) -> bool {
+        true
+    }
+}
+
 impl Cpu{
     pub open spec fn wf(&self) -> bool{
         &&&

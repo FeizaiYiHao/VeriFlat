@@ -47,8 +47,12 @@ pub trait LockMinorTrait {
     spec fn lock_minor(&self) -> LockMinorId;
 }
 
-pub trait LockKillTrait {
-    spec fn is_being_killed(&self) -> bool;
+pub trait LockUserVisibilityTrait{
+    spec fn is_user_visible(&self) -> bool; 
 }
 
+pub trait LockRecursivelyLockedTrait{
+    spec fn partial_locked_by(&self, lctx:&LocalContext) -> bool;
+    spec fn total_locked_by(&self, lctx:&LocalContext) -> bool;
+}
 }

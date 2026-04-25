@@ -185,4 +185,10 @@ verus! {
             LockOwnerId::None
         }
     }
+
+    impl LockUserVisibilityTrait for Page {
+        open spec fn is_user_visible(&self) -> bool {
+            false
+        }
+    }
 }

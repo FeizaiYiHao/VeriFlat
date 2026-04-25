@@ -104,7 +104,7 @@ verus! {
         } 
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const N: usize> LockedArray<T, N, NO_KILL_STATE>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, const N: usize> LockedArray<T, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires
@@ -123,7 +123,7 @@ verus! {
                 self.unchanged_except(old(self), index),
 
                 wlock_ensures(old(self)[index]@, self[index]@, lock_id@, lctx.thread_id(), ret@),
-                lock_ensures(old(lctx), lctx, lock_id@),
+                lock_ensures(old(lctx), lctx, self[index]@@, lock_id@),
         {
             self.array.ar[index].wlock_external(Tracked(lctx))
         }
@@ -147,7 +147,7 @@ verus! {
                 self[index]@.locking_thread() is None,
 
                 wunlock_ensures(old(self)[index]@, self[index]@),
-                unlock_ensures(old(lctx), lctx, lock_perm@.lock_id()),
+                unlock_ensures(old(lctx), lctx, self[index]@@, lock_perm@.lock_id()),
         {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }

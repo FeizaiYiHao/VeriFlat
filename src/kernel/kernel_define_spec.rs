@@ -18,9 +18,9 @@ verus! {
         pub process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>,
         pub thread_map: LockedMap<RwLockThreadPtr, Process, THREAD_HAS_KILL_STATE>,
         pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, ENDPOINT_HAS_KILL_STATE>,
-        pub allocator_4k_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, ALLOCATOR_HAS_KILL_STATE>,
-        pub allocator_2m_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, ALLOCATOR_HAS_KILL_STATE>,
-        pub allocator_1g_map: LockedMap<RwLockPageAllocatorPtr, PageAllocator, ALLOCATOR_HAS_KILL_STATE>,
+        pub allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        pub allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        pub allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
 
         // pub container_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
 

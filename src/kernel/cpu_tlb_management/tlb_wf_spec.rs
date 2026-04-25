@@ -12,8 +12,8 @@ verus! {
     }
 
     /// For each va in the tlb
-    /// The pagetable must have that va regardless if the pagetable is locked, and the pagetable must resolve to the same va. This is to prevent the physical page being used by other meanings.
-    /// If the pagetable is locked, the va can have present bit unset, so that the tlb will not load this entry
+    /// The pagetable must have that va regardless if the pagetable is Acquireed, and the pagetable must resolve to the same va. This is to prevent the physical page being used by other meanings.
+    /// If the pagetable is Acquireed, the va can have present bit unset, so that the tlb will not load this entry
     pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>) -> bool
     {
         &&&
