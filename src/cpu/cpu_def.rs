@@ -34,7 +34,7 @@ pub struct Cpu {
 }
 
 impl LockUserVisibilityTrait for Cpu{
-    open spec fn is_user_visible(&self) -> bool {
+    open spec fn is_user_visible() -> bool {
         true
     }
 }

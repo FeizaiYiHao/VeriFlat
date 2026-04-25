@@ -48,7 +48,7 @@ pub trait LockMinorTrait {
 }
 
 pub trait LockUserVisibilityTrait{
-    spec fn is_user_visible(&self) -> bool; 
+    spec fn is_user_visible() -> bool; 
 }
 
 pub trait LockRecursivelyLockedTrait{
