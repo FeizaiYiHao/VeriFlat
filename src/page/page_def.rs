@@ -187,7 +187,7 @@ verus! {
     }
 
     impl LockUserVisibilityTrait for Page {
-        open spec fn is_user_visible(&self) -> bool {
+        open spec fn is_user_visible() -> bool {
             false
         }
     }

@@ -97,7 +97,7 @@ impl<T, const MAJOR: LockMajorId> LockMinorTrait for LinkedList<T, MAJOR>{
 }
 
 impl <T, const MAJOR: LockMajorId> LockUserVisibilityTrait for LinkedList<T, MAJOR>{
-    open spec fn is_user_visible(&self) -> bool {
+    open spec fn is_user_visible() -> bool {
         false
     }
 }

@@ -68,7 +68,7 @@ impl LocalContext{
         new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
 
         &&&
-        value.is_user_visible() ==> new.user_view_locking_state() is Release
+        T::is_user_visible() ==> new.user_view_locking_state() is Release
     }
 
 }

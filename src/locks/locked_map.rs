@@ -6,23 +6,12 @@ use crate::concurrency::*;
 verus! {
 
 #[verifier::reject_recursive_types(K)]
-pub enum MapDomainDelta<K>{
-    None,
-    Sub(Set<K>),
-    Add(Set<K>),
-}
-
-#[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
 pub struct LockedMap<K, T, const HasKillState: bool>{
     map: Tracked<Map<K, PointsTo<RwLock<T, HasKillState>>>>,
-    delta: MapDomainDelta<K>,
 }
 
 impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
-    pub closed spec fn delta(&self) -> MapDomainDelta<usize>{
-        self.delta
-    }
     pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, HasKillState>>>{
         self.map@
     }
@@ -50,9 +39,8 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
     {
         self@[key].value()
     }
+
     pub open spec fn unchanged_except(&self, old: &Self, key:usize) -> bool{
-        &&&
-        old.delta() == self.delta()
         &&&
         old.dom() == self.dom()
         &&&
@@ -61,6 +49,17 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
             old.dom().contains(k) && k != key
             ==>
             self[k] == old[k]
+    }
+
+    pub open spec fn user_view_unchanged_except(&self, old: &Self, key:usize) -> bool{
+        &&&
+        old.user_view().dom() == self.user_view().dom()
+        &&&
+        forall|k:usize|
+            #![auto]
+            old.user_view().dom().contains(k) && k != key
+            ==>
+            self.user_view()[k] == old.user_view()[k]
     }
 
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
@@ -77,6 +76,8 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
+
+            self.user_view() == old(self).user_view(),
 
             take_ensures(old(self)[key], self[key]),
 
@@ -104,6 +105,8 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
+            
+            self.user_view_unchanged_except(old(self), key),
 
             put_ensures(old(self)[key], self[key], v),
     {

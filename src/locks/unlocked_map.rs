@@ -93,14 +93,14 @@ impl<T,> UnLockedMap<usize, T>{
     // }
 }
 
-impl<T: LockRecursivelyLockedTrait> Step for UnLockedMap<usize, T>{
+impl<T: LockRecursivelyLockedTrait + Step> Step for UnLockedMap<usize, T>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
         &&&
         forall|k:usize|
             #![auto]
             old.dom().contains(k) && old[k].partial_locked_by(lctx)
             ==>
-            self.dom().contains(k) && self[k] =~= old[k]
+            self.dom().contains(k) && self[k].random_step_spec(&old[k], lctx)
     }
     proof fn random_step(&mut self, lctx: &LocalContext)
     {

@@ -374,7 +374,7 @@ pub open spec fn wlock_requires<T: LockUserVisibilityTrait, const HasKillState: 
     &&&
     lctx.kernel_view_locking_state() is Acquire
     &&&
-    old.view().is_user_visible() ==> lctx.user_view_locking_state() is Acquire
+    T::is_user_visible() ==> lctx.user_view_locking_state() is Acquire
 }
 
 pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibilityTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
