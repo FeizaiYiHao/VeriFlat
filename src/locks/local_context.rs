@@ -1,20 +1,17 @@
 use vstd::prelude::*;
-use crate::define::*;
+use crate::*;
 use core::sync::atomic::*;
 use vstd::std_specs::cmp::*;
-
-use super::LockPerm;
 
 verus! {
 
 pub ghost enum LCtxtLockState{
-    Lock,
-    Unlock,
-    // ReLock,
+    Acquire,
+    Release,
 }
 pub tracked struct LCtxtState{  
-    pub locking_state: LCtxtLockState,
-    pub serial_num: nat,
+    pub kernel_view_locking_state: LCtxtLockState,
+    pub user_view_locking_state: LCtxtLockState,
 }
 pub tracked struct LocalContext{
     thread_id: LockThreadId,
@@ -29,11 +26,11 @@ impl LocalContext{
     pub closed spec fn lock_seq(&self) -> Seq<LockId>{
         self.lock_seq
     }
-    pub closed spec fn locking_state(&self) -> LCtxtLockState{
-        self.state.locking_state
-    }
-    pub closed spec fn locking_serial_num(&self) -> nat{
-        self.state.serial_num
+    pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState{
+        self.state.kernel_view_locking_state
+    }    
+    pub closed spec fn user_view_locking_state(&self) -> LCtxtLockState{
+        self.state.user_view_locking_state
     }
     pub open spec fn wf(&self) -> bool{
         &&&
@@ -51,32 +48,27 @@ impl LocalContext{
     }
 }
 
-    pub open spec fn lock_ensures(old:&LocalContext, new:&LocalContext, lock_id: LockId) -> bool{
+    pub open spec fn lock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
-        old.locking_state() is Lock ==> new.locking_state() is Lock
-        &&&
-        old.locking_state() is Unlock ==> new.locking_state() is Lock
-        &&&
-        old.locking_state() is Lock ==> old.locking_serial_num() == new.locking_serial_num()
-        &&&
-        old.locking_state() is Unlock ==> old.locking_serial_num() + 1 == new.locking_serial_num()
+        new.kernel_view_locking_state() is Acquire
         &&&
         new.lock_seq() =~= old.lock_seq().push(lock_id)
     }
 
-    pub open spec fn unlock_ensures(old:&LocalContext, new:&LocalContext, lock_id: LockId) -> bool{
+    pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
-        old.locking_state() is Lock ==> new.locking_state() is Unlock
+        old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
         &&&
-        old.locking_state() is Unlock ==> new.locking_state() is Unlock
-        &&&
-        old.locking_serial_num() + 1 == new.locking_serial_num()
+        old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
         &&&
         new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
+
+        &&&
+        value.is_user_visible() ==> new.user_view_locking_state() is Release
     }
 
 }

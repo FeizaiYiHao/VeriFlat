@@ -65,6 +65,12 @@ impl LockOwnerIdTrait for AllocatorQuota{
     }
 }
 
+impl LockUserVisibilityTrait for AllocatorQuota{
+    open spec fn is_user_visible(&self) -> bool {
+        true
+    }
+}
+
 impl AllocatorQuota{
     pub open spec fn view(&self) -> usize{
         self.value

@@ -243,21 +243,20 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
         self.is_init@
     }
 
-    /// 
-    pub closed spec fn serial_num(&self) -> nat {
-        self.serial_num@
-    }
-
-    /// 
-    pub closed spec fn modified(&self) -> bool{
-        self.modified@
-    }
-
     pub closed spec fn view(&self) -> T
     {
         self.value
     }
 
+}
+
+impl<T: LockRecursivelyLockedTrait, const HasKillState: bool> RwLock<T, HasKillState>{
+    pub open spec fn partial_locked_by(&self, lctx:&LocalContext) -> bool{
+        self.view().partial_locked_by(lctx)
+    }    
+    pub open spec fn total_locked_by(&self, lctx:&LocalContext) -> bool{
+        self.view().total_locked_by(lctx)
+    }
 }
 
 impl<T:LockInvTrait, const HasKillState: bool> RwLock<T, HasKillState>{
@@ -333,7 +332,7 @@ impl<T, const HasKillState: bool> RwLock<T, HasKillState>{
     }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait> RwLock<T,NO_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockUserVisibilityTrait> RwLock<T,NO_KILL_STATE>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
         requires
@@ -346,7 +345,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait> RwLock
             old(lctx).lock_id_acyclic(lock_id@),
         ensures
             wlock_ensures(*old(self), *self, lock_id@, lctx.thread_id(), ret@),
-            lock_ensures(old(lctx), lctx, lock_id@),
+            lock_ensures(old(lctx), lctx, self.view(), lock_id@),
     {
         self.lock.wlock();
         Tracked::assume_new()
@@ -363,28 +362,26 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait> RwLock
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
         ensures
             wunlock_ensures(*old(self), *self),
-            unlock_ensures(old(lctx), lctx, lp@.lock_id()),
+            unlock_ensures(old(lctx), lctx, self.view(), lp@.lock_id()),
     {
         self.lock.wunlock();
     }
 
 }
-pub open spec fn wlock_requires<T, const HasKillState: bool>(old:RwLock<T, HasKillState>, lctx: &LocalContext) -> bool{
+pub open spec fn wlock_requires<T: LockUserVisibilityTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, lctx: &LocalContext) -> bool{
     &&&
     old.locked_by(lctx) == false
     &&&
-    old.serial_num() == lctx.locking_serial_num()
+    lctx.kernel_view_locking_state() is Acquire
+    &&&
+    old.view().is_user_visible() ==> lctx.user_view_locking_state() is Acquire
 }
 
-pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibilityTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
     &&&
     new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_id }
     &&&
     new.inv()
-    &&&
-    new.serial_num() == old.serial_num()
-    &&&
-    new.modified() == old.modified()
     &&&
     new@ == old@    
     &&&
@@ -398,13 +395,11 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, const HasKillSta
     lock_perm.thread_id() == thread_id
 }
 
-pub open spec fn wunlock_ensures<T:LockInvTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
+pub open spec fn wunlock_ensures<T:LockInvTrait + LockUserVisibilityTrait, const HasKillState: bool>(old:RwLock<T, HasKillState>, new:RwLock<T, HasKillState>) -> bool{
     &&&
     new.locking_thread() == RwLockState::None
     &&&
     new.inv()
-    &&&
-    new.modified() == old.modified()
     &&&
     new@ == old@
 }
@@ -415,10 +410,6 @@ pub open spec fn take_ensures<T, const HasKillState: bool>(old:RwLock<T, HasKill
     &&&
     new.is_init() == false
     &&&
-    new.serial_num() == old.serial_num()
-    &&&
-    new.modified() == old.modified()
-    &&&
     new@ == old@
 }
 
@@ -427,10 +418,6 @@ pub open spec fn put_ensures<T, const HasKillState: bool>(old:RwLock<T, HasKillS
     new.locking_thread() == old.locking_thread()
     &&&
     new.is_init() == true
-    &&&
-    new.serial_num() == old.serial_num()
-    &&&
-    new.modified() == true
     &&&
     new@ == v
 }

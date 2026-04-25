@@ -12,6 +12,8 @@ verus! {
             target_entry: &MapEntry,
             pagetable_lock_perm: Tracked<&LockPerm>)
             requires
+                old(lctx).kernel_view_locking_state() is Acquire,
+
                 cpu_id_valid(old(lctx).thread_id()),
                 old(self).inv(),
                 page_index_wf(page_index),
@@ -23,16 +25,12 @@ verus! {
                     #![trigger old(self).page_array[i]]
                     page_index_wf(i) ==> 
                     old(self).page_array[i]@.locked_by(old(lctx)) == false
-                    &&
-                    old(self).page_array[i]@.serial_num() == old(lctx).locking_serial_num()
                     ,
                 
                 forall|cpu_id:CpuId|
                     #![trigger old(self).cpu_array.spec_index(cpu_id)]
                     cpu_id_valid(cpu_id) && cpu_id != old(lctx).thread_id() ==> 
                     old(self).cpu_array.spec_index(cpu_id).view().locked_by(old(lctx)) == false
-                    &&
-                    old(self).cpu_array.spec_index(cpu_id).view().serial_num() == old(lctx).locking_serial_num()
                     ,
                 old(self).cpu_array.spec_index(old(lctx).thread_id()).view().rlocked_by(old(lctx)),
                 old(self).page_array[page_index]@@.is_mapped(),

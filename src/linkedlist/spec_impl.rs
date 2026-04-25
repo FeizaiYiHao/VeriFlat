@@ -31,6 +31,7 @@ pub struct LinkedList<T, const MAJOR: LockMajorId>{
     pub minor: Option<usize>,
 }
 
+
 impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR>{
     open spec fn container_depth(&self) -> LockOwnerId {
         if self.container_depth is Some{
@@ -94,6 +95,13 @@ impl<T, const MAJOR: LockMajorId> LockMinorTrait for LinkedList<T, MAJOR>{
         }
     }
 }
+
+impl <T, const MAJOR: LockMajorId> LockUserVisibilityTrait for LinkedList<T, MAJOR>{
+    open spec fn is_user_visible(&self) -> bool {
+        false
+    }
+}
+
 //spec
 impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     pub open spec fn view(&self) -> Seq<T>{
