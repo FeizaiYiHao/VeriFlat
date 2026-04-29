@@ -33,6 +33,13 @@ pub struct Cpu {
     pub process_depth: usize,
 }
 
+pub ghost struct CpuU {
+    pub owning_container: RwLockContainerPtr,
+    pub state: CpuState,
+    pub current_process: Option<RwLockProcessPtr>,
+    pub current_thread: Option<RwLockThreadPtr>,
+}
+
 impl LockUserVisibilityTrait for Cpu{
     open spec fn is_user_visible() -> bool {
         true
