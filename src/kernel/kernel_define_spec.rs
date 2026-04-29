@@ -16,7 +16,7 @@ verus! {
         pub number_containers: RwLock<NumContainers, NO_KILL_STATE>,
         pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, SCHEDULER_HAS_KILL_STATE>,
         pub process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>,
-        pub thread_map: LockedMap<RwLockThreadPtr, Process, THREAD_HAS_KILL_STATE>,
+        pub thread_map: LockedMap<RwLockThreadPtr, Thread, THREAD_HAS_KILL_STATE>,
         pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, ENDPOINT_HAS_KILL_STATE>,
         pub allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         pub allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,

@@ -22,6 +22,29 @@ pub struct Process {
     pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
 }
 
+pub ghost struct ProcessU {
+    pub owning_container: RwLockContainerPtr,
+    
+    pub pagetable: PageTable<PT_TYPE>,
+    // pub iommu_table: Option<PageTable<IOMMU_TYPE>>,
+
+    pub parent: Option<RwLockProcessPtr>,
+    pub children: Seq<RwLockProcessPtr>,
+    pub depth: usize,
+    pub uppertree_seq: Seq<RwLockContainerPtr>,
+    pub subtree_set: Set<RwLockProcessPtr>,
+
+    pub owned_threads: Seq<RwLockThreadPtr>,
+
+    pub killed: bool,
+}
+
+impl UserViewHasKillState for ProcessU {
+    open spec fn killed(&self) -> bool {
+        self.killed
+    }
+}
+
 impl LockInvTrait for Process {
     open spec fn inv(&self) -> bool {
         self.wf()

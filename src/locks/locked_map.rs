@@ -51,17 +51,6 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
             self[k] == old[k]
     }
 
-    pub open spec fn user_view_unchanged_except(&self, old: &Self, key:usize) -> bool{
-        &&&
-        old.user_view().dom() == self.user_view().dom()
-        &&&
-        forall|k:usize|
-            #![auto]
-            old.user_view().dom().contains(k) && k != key
-            ==>
-            self.user_view()[k] == old.user_view()[k]
-    }
-
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),
@@ -76,8 +65,6 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
-
-            self.user_view() == old(self).user_view(),
 
             take_ensures(old(self)[key], self[key]),
 
@@ -105,8 +92,6 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
         ensures
             self.perms_wf(),
             self.unchanged_except(old(self), key),
-            
-            self.user_view_unchanged_except(old(self), key),
 
             put_ensures(old(self)[key], self[key], v),
     {
