@@ -11,7 +11,6 @@ pub struct Process {
     pub pagetable: RwLockPageTableRoot,
     pub iommu_table: Option<RwLockPageTableRoot>,
 
-
     pub parent: Option<RwLockProcessPtr>,
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,

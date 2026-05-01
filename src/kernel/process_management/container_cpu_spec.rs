@@ -23,8 +23,6 @@ verus! {
             &&
             container_perms.spec_index(c_ptr).view().owned_cpus.view().contains(cpu_i)
             ==>
-            write_locked_by_same_thread(container_perms.spec_index(c_ptr), cpu_array.spec_index(cpu_i).view())
-            ||
             {
                 cpu_array.spec_index(cpu_i).view().view().owning_container == c_ptr
                 &&
@@ -41,15 +39,9 @@ verus! {
             ==>
             {
                 &&&
-                cpu_array.spec_index(cpu_i).view().wlocked() == false
-                    ==>
-                    container_perms.dom().contains(cpu_array.spec_index(cpu_i).view().view().owning_container)
-                &&&
                 container_perms.dom().contains(cpu_array.spec_index(cpu_i).view().view().owning_container)
-                    ==>
-                    write_locked_by_same_thread(cpu_array.spec_index(cpu_i).view(), container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)))
-                    ||
-                    container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)).view().owned_cpus.view().contains(cpu_i)
+                &&&
+                container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)).view().owned_cpus.view().contains(cpu_i)
             }
     }
 }

@@ -12,7 +12,7 @@ verus! {
 //     tlb_entry.write == map_entry.write
 // }
 
-// /// if the pagetable is Acquireed, the TLB can have entry in which the entry is not present
+// /// if the pagetable is Acquired, the TLB can have entry in which the entry is not present
 // /// otherwise TLB has to be a strict submap.
 // pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>) -> bool
 // {

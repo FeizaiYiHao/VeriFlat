@@ -83,23 +83,20 @@ verus! {
             &&&
             process_pagetable_match(self.process_map, self.pagetable_map)
             &&&
+            process_thread_wf_inner(self.process_map, self.thread_map)
+            &&&
             cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)
             &&&
             tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)
         }
 
         pub open spec fn number_containers_wf(&self) -> bool {
-            |||
-            self.number_containers.wlocked()
-            |||
-            {
-                &&&
-                self.number_containers.inv()
-                &&&
-                self.container_map.dom().len() == self.number_containers.view().view()
-                &&&
-                self.number_containers.view().view() <= MAX_NUM_CONTAINERS
-            }
+            &&&
+            self.number_containers.inv()
+            &&&
+            self.container_map.dom().len() == self.number_containers.view().view()
+            &&&
+            self.number_containers.view().view() <= MAX_NUM_CONTAINERS
         }
 
         pub open spec fn default_pagetable_wf(&self) -> bool {

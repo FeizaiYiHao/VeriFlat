@@ -21,8 +21,6 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().owned_processes]
             container_perms.dom().contains(c_ptr)
             ==>
-            container_perms.spec_index(c_ptr).wlocked()
-            ||
             {
                 &&&
                 process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process)
@@ -37,8 +35,6 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().owned_processes.view().contains(p_ptr)]
             container_perms.dom().contains(c_ptr) && container_perms.spec_index(c_ptr).view().owned_processes.view().contains(p_ptr)
             ==>
-            write_locked_by_same_thread(container_perms.spec_index(c_ptr), process_perms.spec_index(p_ptr))
-            ||
             {
                 &&&
                 process_perms.spec_index(p_ptr).view().owning_container == c_ptr
@@ -48,18 +44,11 @@ verus! {
             #![trigger process_perms.spec_index(p_ptr).view().owning_container]
             process_perms.dom().contains(p_ptr)
             ==>
-            process_perms.spec_index(p_ptr).wlocked()
-            ||
             {
                 &&&
                 container_perms.dom().contains(process_perms.spec_index(p_ptr).view().owning_container)
                 &&&
-                {
-                    |||
-                    write_locked_by_same_thread(container_perms.spec_index(process_perms.spec_index(p_ptr).view().owning_container), process_perms.spec_index(p_ptr))
-                    |||
-                    container_perms.spec_index(process_perms.spec_index(p_ptr).view().owning_container).view().owned_processes.view().contains(p_ptr)
-                }
+                container_perms.spec_index(process_perms.spec_index(p_ptr).view().owning_container).view().owned_processes.view().contains(p_ptr)
             }
     }
 

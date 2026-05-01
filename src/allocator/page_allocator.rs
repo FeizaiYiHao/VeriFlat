@@ -70,9 +70,6 @@ impl PageAllocator{
     }
 
     pub open spec fn quota_wf(&self) -> bool{
-        |||
-        write_locked_by_same_thread(self.global_poll, self.quota)
-        |||
         self.global_poll.view().len() + self.differential@.fold_left(0int, |sum: int, i: int| {sum + i}) == self.quota.view().view()
     }
 

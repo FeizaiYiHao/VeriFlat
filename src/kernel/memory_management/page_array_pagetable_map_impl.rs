@@ -209,6 +209,7 @@ verus! {
                     //         }
                     //     );
                 };
+                assert(process_thread_wf_inner(self.process_map, self.thread_map)) by {};
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by {
                     process_cpu_wf_proof();
                     // cpu_dirty_map_proc_pcid_match_proof();
