@@ -18,25 +18,21 @@ verus! {
             #![trigger cpu_array.spec_index(cpu_i).view().view().current_pagetable]
             cpu_id_valid(cpu_i) 
             &&
-             cpu_array.spec_index(cpu_i).view().view().current_process is Some
-                ==> 
+            cpu_array.spec_index(cpu_i).view().view().current_process is Some
+            ==> 
+            {
+                &&&
                 process_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap())
-                &&
-                {
-                    |||
-                    write_locked_by_same_thread(cpu_array.spec_index(cpu_i).view(), process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()))
-                    |||
-                    {
-                        &&&
-                        cpu_array.spec_index(cpu_i).view().view().current_pagetable ==  process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()).view().pagetable
-                        &&&
-                        cpu_array.spec_index(cpu_i).view().view().current_pcid ==  process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()).view().pcid
-                        &&&
-                        cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[cpu_array.spec_index(cpu_i).view().view().current_pcid].unwrap().process_ptr == cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()
-                        &&&
-                        cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[cpu_array.spec_index(cpu_i).view().view().current_pcid].unwrap().pagetable_ptr == cpu_array.spec_index(cpu_i).view().view().current_pagetable
-                    }
-                }
+                &&&
+                cpu_array.spec_index(cpu_i).view().view().current_pagetable ==  process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()).view().pagetable
+                &&&
+                cpu_array.spec_index(cpu_i).view().view().current_pcid ==  process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()).view().pcid
+                &&&
+                cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[cpu_array.spec_index(cpu_i).view().view().current_pcid].unwrap().process_ptr == cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()
+                &&&
+                cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[cpu_array.spec_index(cpu_i).view().view().current_pcid].unwrap().pagetable_ptr == cpu_array.spec_index(cpu_i).view().view().current_pagetable
+                
+            }
 
     }
 

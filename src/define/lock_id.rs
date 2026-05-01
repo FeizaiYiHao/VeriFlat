@@ -11,6 +11,7 @@ pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 3;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
 pub const PROCESS_LOCK_MAJOR:LockMajorId = 102;
+pub const THREAD_LOCK_MAJOR:LockMajorId = 103;
 
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 

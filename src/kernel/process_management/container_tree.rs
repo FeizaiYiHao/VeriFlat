@@ -113,8 +113,6 @@ verus! {
             &&
             container_perms.dom().contains(child_c_ptr) 
             ==> 
-            write_locked_by_same_thread(container_perms.spec_index(c_ptr), container_perms.spec_index(child_c_ptr))
-            ||
             {
                 &&&
                 container_perms.spec_index(child_c_ptr).view().parent.unwrap() == c_ptr
@@ -131,12 +129,7 @@ verus! {
                 &&&
                 container_perms.dom().contains(container_perms.spec_index(c_ptr).view().parent.unwrap())
                 &&&
-                {
-                    |||
-                    write_locked_by_same_thread(container_perms.spec_index(c_ptr), container_perms.spec_index(container_perms.spec_index(root_container).view().parent.unwrap()))
-                    |||
-                    container_perms.spec_index(container_perms.spec_index(root_container).view().parent.unwrap()).view().children.view().contains(c_ptr)
-                }
+                container_perms.spec_index(container_perms.spec_index(root_container).view().parent.unwrap()).view().children.view().contains(c_ptr)
             }
     }
 
@@ -166,8 +159,6 @@ verus! {
             &&
             container_perms.dom().contains(container_perms.spec_index(c_ptr).view().parent.unwrap())
             ==> 
-            write_locked_by_same_thread(container_perms.spec_index(c_ptr), container_perms.spec_index(container_perms.spec_index(c_ptr).view().parent.unwrap()))
-            ||
             {
                 container_perms[container_perms.spec_index(c_ptr).view().parent.unwrap()].view().children@.contains(c_ptr)
                 && 
@@ -217,19 +208,13 @@ verus! {
             container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr)
             ==> 
             {
+                &&&
                 container_perms.dom().contains(sub_c_ptr)
-            }
-            &&
-            {
-                container_perms.dom().contains(sub_c_ptr)
-                ==>
-                write_locked_by_same_thread(container_perms.spec_index(c_ptr), container_perms.spec_index(sub_c_ptr))
-                ||
-                {
-                    container_perms[sub_c_ptr].view().uppertree_seq@.len() > container_perms.spec_index(c_ptr).view().depth
-                    && 
-                    container_perms[sub_c_ptr].view().uppertree_seq@[container_perms.spec_index(c_ptr).view().depth as int] == c_ptr
-                }
+                &&&
+                container_perms[sub_c_ptr].view().uppertree_seq@.len() > container_perms.spec_index(c_ptr).view().depth
+                &&& 
+                container_perms[sub_c_ptr].view().uppertree_seq@[container_perms.spec_index(c_ptr).view().depth as int] == c_ptr
+
             }
     }
 
@@ -252,23 +237,16 @@ verus! {
             container_perms.spec_index(c_ptr).view().uppertree_seq@.contains(u_ptr)
             ==> 
             {
+                &&&
                 container_perms.dom().contains(u_ptr)
-            }
-            && 
-            {
-                container_perms.dom().contains(u_ptr)
-                ==>
-                write_locked_by_same_thread(container_perms.spec_index(c_ptr), container_perms[u_ptr])
-                ||
-                {
-                    container_perms.spec_index(root_container).view().uppertree_seq@[container_perms[u_ptr].view().depth as int] == u_ptr 
-                    && 
-                    container_perms[u_ptr].view().depth == container_perms.spec_index(root_container).view().uppertree_seq@.index_of(u_ptr)
-                    && 
-                    container_perms[u_ptr].view().subtree_set@.contains(c_ptr)
-                    && 
-                    container_perms[u_ptr].view().uppertree_seq@ =~= container_perms.spec_index(root_container).view().uppertree_seq@.subrange(0, container_perms[u_ptr].view().depth as int)
-                }
+                &&&
+                container_perms.spec_index(root_container).view().uppertree_seq@[container_perms[u_ptr].view().depth as int] == u_ptr 
+                &&& 
+                container_perms[u_ptr].view().depth == container_perms.spec_index(root_container).view().uppertree_seq@.index_of(u_ptr)
+                &&& 
+                container_perms[u_ptr].view().subtree_set@.contains(c_ptr)
+                &&&
+                container_perms[u_ptr].view().uppertree_seq@ =~= container_perms.spec_index(root_container).view().uppertree_seq@.subrange(0, container_perms[u_ptr].view().depth as int)
             }
     }
 
@@ -291,8 +269,6 @@ verus! {
             && 
             container_perms.dom().contains(sub_c_ptr) 
             ==> 
-            write_locked_by_same_thread(container_perms.spec_index(c_ptr), container_perms.spec_index(sub_c_ptr))
-            ||
             container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr) == container_perms[sub_c_ptr].view().uppertree_seq@.contains(c_ptr)
     }
 

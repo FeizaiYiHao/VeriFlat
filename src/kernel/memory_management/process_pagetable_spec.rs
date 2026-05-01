@@ -20,16 +20,11 @@ pub open spec fn process_pagetable_match_inner(process_map: LockedMap<RwLockProc
         ==>
         pagetable_map.dom().contains(process_map.spec_index(proc_ptr).view().pagetable)
         &&
-        {
-            |||
-            write_locked_by_same_thread(process_map.spec_index(proc_ptr), pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable))
-            |||
-            {
-                pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().proc_ptr == proc_ptr
-                &&
-                pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_or_ioid() == process_map.spec_index(proc_ptr).view().pcid
-            }
-        }
+        pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().proc_ptr == proc_ptr
+        &&
+        pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_or_ioid() == process_map.spec_index(proc_ptr).view().pcid
+            
+        
     &&&
     forall|pt_ptr:RwLockPageTableRoot|
         #![trigger pagetable_map.spec_index(pt_ptr).view().proc_ptr]
@@ -37,12 +32,7 @@ pub open spec fn process_pagetable_match_inner(process_map: LockedMap<RwLockProc
         ==>
         process_map.dom().contains(pagetable_map.spec_index(pt_ptr).view().proc_ptr)
         &&
-        {
-            |||
-            write_locked_by_same_thread(pagetable_map.spec_index(pt_ptr), process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr))
-            |||
-            process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
-        }
+        process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
 }
 
 }

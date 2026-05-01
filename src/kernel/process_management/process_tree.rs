@@ -96,8 +96,6 @@ verus! {
             #![trigger process_perms.spec_index(p_ptr).view().children@.contains(child_p_ptr)]
             process_tree_dom.contains(p_ptr) && process_perms.spec_index(p_ptr).view().children@.contains(child_p_ptr) 
             ==> 
-            write_locked_by_same_thread(process_perms.spec_index(p_ptr), process_perms.spec_index(child_p_ptr))
-            ||
             {
                 &&&
                 process_perms.spec_index(child_p_ptr).view().parent.unwrap() == p_ptr
@@ -144,11 +142,10 @@ verus! {
             #![trigger process_tree_dom.contains(p_ptr)]
             process_tree_dom.contains(p_ptr) && p_ptr != root_process
             ==> 
-            write_locked_by_same_thread(process_perms.spec_index(p_ptr), process_perms[process_perms.spec_index(p_ptr).view().parent.unwrap()])
-            ||
             {
+                &&&
                 process_perms[process_perms.spec_index(p_ptr).view().parent.unwrap()].view().children@.contains(p_ptr)
-                && 
+                &&& 
                 process_perms[process_perms.spec_index(p_ptr).view().parent.unwrap()].view().children.map()[p_ptr] 
                     == process_perms.spec_index(root_process).view().parent_linkedlist_node.addr()
             }
@@ -195,17 +192,12 @@ verus! {
             process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr)
             ==> 
             {
+                &&&
                 process_tree_dom.contains(sub_p_ptr)
-            }
-            &&
-            {
-                write_locked_by_same_thread(process_perms.spec_index(p_ptr), process_perms.spec_index(sub_p_ptr))
-                ||
-                {
-                    process_perms[sub_p_ptr].view().uppertree_seq@.len() > process_perms.spec_index(p_ptr).view().depth
-                    && 
-                    process_perms[sub_p_ptr].view().uppertree_seq@[process_perms.spec_index(p_ptr).view().depth as int] == p_ptr
-                }
+                &&&
+                process_perms[sub_p_ptr].view().uppertree_seq@.len() > process_perms.spec_index(p_ptr).view().depth
+                &&&
+                process_perms[sub_p_ptr].view().uppertree_seq@[process_perms.spec_index(p_ptr).view().depth as int] == p_ptr
             }
     }
 
@@ -228,21 +220,16 @@ verus! {
             process_perms.spec_index(p_ptr).view().uppertree_seq@.contains(u_ptr)
             ==> 
             {
+                &&&
                 process_tree_dom.contains(u_ptr)
-            }
-            && 
-            {
-                write_locked_by_same_thread(process_perms.spec_index(p_ptr), process_perms[u_ptr])
-                ||
-                {
-                    process_perms.spec_index(root_process).view().uppertree_seq@[process_perms[u_ptr].view().depth as int] == u_ptr 
-                    && 
-                    process_perms[u_ptr].view().depth == process_perms.spec_index(root_process).view().uppertree_seq@.index_of(u_ptr)
-                    && 
-                    process_perms[u_ptr].view().subtree_set@.contains(p_ptr)
-                    && 
-                    process_perms[u_ptr].view().uppertree_seq@ =~= process_perms.spec_index(root_process).view().uppertree_seq@.subrange(0, process_perms[u_ptr].view().depth as int)
-                }
+                &&&
+                process_perms.spec_index(root_process).view().uppertree_seq@[process_perms[u_ptr].view().depth as int] == u_ptr 
+                &&&
+                process_perms[u_ptr].view().depth == process_perms.spec_index(root_process).view().uppertree_seq@.index_of(u_ptr)
+                &&&
+                process_perms[u_ptr].view().subtree_set@.contains(p_ptr)
+                &&&
+                process_perms[u_ptr].view().uppertree_seq@ =~= process_perms.spec_index(root_process).view().uppertree_seq@.subrange(0, process_perms[u_ptr].view().depth as int)
             }
     }
 
@@ -265,8 +252,6 @@ verus! {
             && 
             process_tree_dom.contains(sub_p_ptr) 
             ==> 
-            write_locked_by_same_thread(process_perms.spec_index(p_ptr), process_perms.spec_index(sub_p_ptr))
-            ||
             process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr) == process_perms[sub_p_ptr].view().uppertree_seq@.contains(p_ptr)
     }
 

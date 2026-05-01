@@ -10,7 +10,8 @@ pub struct Thread {
     pub scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>,
 
     pub owning_proc: RwLockProcessPtr,
-    pub proc_rev_ptr: SLLIndex,
+    pub proc_pagetable_ptr: RwLockPageTableRoot,
+    pub proc_linkedlist_node: ExternalNode<RwLockThreadPtr>,
 
     pub endpoint_descriptors: Array<Option<RwLockEndpointPtr>, MAX_NUM_ENDPOINT_DESCRIPTORS>,
     pub blocking_endpoint_ptr: Option<RwLockEndpointPtr>,
@@ -26,7 +27,13 @@ pub struct Thread {
 impl LockInvTrait for Thread {
     open spec fn inv(&self) -> bool {
         &&&
-        true
+        self.endpoint_descriptors.wf()
+        &&&
+        self.state is RUNNING == self.running_cpu is Some
+        &&&
+        self.error_code is Some ==> self.state is SCHEDULED
+        &&&
+        self.state is RUNNING ==> self.trap_frame.is_none()
     }
 }
 
@@ -146,6 +153,39 @@ impl IPCPayLoad {
     //         _ => None,
     //     }
     // }
+}
+impl LockMajorTrait for Thread {
+    open spec fn lock_major_1(&self) -> LockMajorId {
+        PROCESS_LOCK_MAJOR
+    }
+
+    open spec fn lock_major_2(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_3(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_default(&self) -> LockMajorId {
+        233
+    }
+
+    open spec fn lock_major_1_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_2_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_3_predicate(&self) -> bool {
+        true
+    }
+
+    open spec fn lock_major_default_predicate(&self) -> bool {
+        true
+    }
 }
 
 } // verus!

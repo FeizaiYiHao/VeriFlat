@@ -7,15 +7,15 @@ verus! {
             &&&
             self.endpoint_map.perms_wf()
             &&&
-            self.endpoints_wlocked_or_inv()
+            self.endpoints_inv()
         }
-        pub open spec fn endpoints_wlocked_or_inv(&self) -> bool{
+        pub open spec fn endpoints_inv(&self) -> bool{
         &&&
         forall|endpoint_p:RwLockEndpointPtr|
             #![auto]
             self.endpoint_map.dom().contains(endpoint_p)
             ==>
-            self.endpoint_map[endpoint_p].wlocked() || self.endpoint_map[endpoint_p].inv()
+            self.endpoint_map[endpoint_p].inv()
     }
     }
 }

@@ -45,8 +45,6 @@ verus! {
             &&
             spec_page_index_merge_2m_vaild(p_i, p_j)
             ==>
-            write_locked_by_same_thread(page_array.spec_index(p_i).view(), page_array.spec_index(p_j).view())
-            ||
             {
                 &&&
                 page_array.spec_index(p_j).view().view().state is Merged2m
@@ -56,8 +54,6 @@ verus! {
             #![trigger page_array.spec_index(p_i).view().view().state]
             page_index_wf(p_i) && (page_array.spec_index(p_i).view().view().state is Merged2m)
             ==>
-            write_locked_by_same_thread(page_array.spec_index(p_i).view(), page_array.spec_index(spec_page_index_truncate_2m(p_i)).view())
-            ||
             {
                 |||
                 page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Free2m 
@@ -105,8 +101,6 @@ verus! {
             &&
             spec_page_index_merge_1g_vaild(p_i, p_j)
             ==>
-            write_locked_by_same_thread(page_array.spec_index(p_i).view(), page_array.spec_index(p_j).view())
-            ||
             {
                 &&&
                 page_array.spec_index(p_j).view().view().state is Merged1g
@@ -116,8 +110,6 @@ verus! {
             #![trigger page_array.spec_index(p_i).view().view().state]
             page_index_wf(p_i) && (page_array.spec_index(p_i).view().view().state is Merged1g)            
             ==>
-            write_locked_by_same_thread(page_array.spec_index(p_i).view(), page_array.spec_index(spec_page_index_truncate_1g(p_i)).view())
-            ||
             {
                 |||
                 page_array.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Free1g 
