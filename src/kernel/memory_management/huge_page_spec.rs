@@ -48,6 +48,8 @@ verus! {
             {
                 &&&
                 page_array.spec_index(p_j).view().view().state is Merged2m
+                &&&
+                page_array.spec_index(p_j).view().view().owning_container == page_array.spec_index(p_i).view().view().owning_container
             }
         &&&
         forall|p_i:PageIndex|
@@ -104,6 +106,8 @@ verus! {
             {
                 &&&
                 page_array.spec_index(p_j).view().view().state is Merged1g
+                &&&
+                page_array.spec_index(p_j).view().view().owning_container == page_array.spec_index(p_i).view().view().owning_container
             }
         &&&
         forall|p_i:PageIndex|

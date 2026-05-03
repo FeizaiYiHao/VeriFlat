@@ -2,6 +2,9 @@ pub mod pagetabel_map_spec;
 pub mod page_array_spec;
 pub mod pages_container_spec;
 pub mod pages_process_spec;
+pub mod pages_thread_spec;
+pub mod pages_endpoint_spec;
+pub mod pages_pagetable_spec;
 pub mod pages_allocator_spec;
 
 pub mod page_mapping_spec;
@@ -13,6 +16,9 @@ pub mod process_pagetable_spec;
 pub mod allocator_spec;
 pub mod huge_page_spec;
 
+pub use pages_thread_spec::*;
+pub use pages_endpoint_spec::*;
+pub use pages_pagetable_spec::*;
 
 pub use page_mapping_spec::*;
 pub use pagetabel_map_spec::*;

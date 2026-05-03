@@ -74,9 +74,16 @@ impl AllocatorCache{
         &&&
         self.linked_list.view().no_duplicates()
     }
+    pub open spec fn view(&self) -> Seq<PagePtr> {
+        self.linked_list.view()
+    }
     pub open spec fn dom(&self) -> Set<PagePtr>
     {
         self.linked_list.dom()
+    }     
+    pub open spec fn map(&self) -> Map<usize, PagePtr>
+    {
+        self.linked_list.map()
     } 
     pub open spec fn watermark_wf(&self) -> bool{
         &&&

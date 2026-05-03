@@ -96,4 +96,49 @@ verus! {
 
         }
     }
+
+    pub closed spec fn free_4k_page_allocator_wf(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>, allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool {
+        &&&
+        forall|page_index:PageIndex|
+            #![trigger page_array.spec_index(page_index).view().view().state]
+            page_index_wf(page_index)
+            &&
+            {
+                page_array.spec_index(page_index).view().view().state matches PageState::Free4k { allocator_ptr, state: FreePageAllocatorState::GlobalList }
+                ==>
+                allocator_4k_map.dom().contains(allocator_ptr)
+                &&
+                allocator_4k_map.spec_index(allocator_ptr).global_poll.view().view().contains(page_index2page_ptr(page_index))
+                &&
+                allocator_4k_map.spec_index(allocator_ptr).global_poll.view().map().spec_index(page_index2page_ptr(page_index))
+                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                &&
+                allocator_4k_map.spec_index(allocator_ptr).owning_container == page_array.spec_index(page_index).view().view().owning_container
+            }
+            &&
+            {
+                page_array.spec_index(page_index).view().view().state matches PageState::Free4k { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } }
+                ==>
+                allocator_4k_map.dom().contains(allocator_ptr)
+                &&
+                allocator_4k_map.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
+                &&
+                allocator_4k_map.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_index2page_ptr(page_index))
+                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                &&
+                allocator_4k_map.spec_index(allocator_ptr).owning_container == page_array.spec_index(page_index).view().view().owning_container
+            }
+        &&&
+        forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
+            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
+            {allocator_4k_map.dom().contains(alloc_ptr) && allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+            ==>
+            page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { allocator_ptr:alloc_ptr, state: FreePageAllocatorState::GlobalList }}
+        &&&
+        forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
+            {allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr) && 
+                allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
+            ==>
+            page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { allocator_ptr:alloc_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id }}  }
+    }
 }

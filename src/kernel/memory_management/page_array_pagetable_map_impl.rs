@@ -130,7 +130,7 @@ verus! {
             self.pagetable_map.put(pagetable_root, Tracked(lctx), pagetable_lock_perm, pagetable);
             self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
 
-            // assert(self.inv()) by {
+            assert(self.inv()) by {
                 assert(page_mapping_wf(self.pagetable_map, self.page_array)) by{
                     mapped_4k_page_pagetable_mapping_match_proof();
                 };
@@ -232,9 +232,9 @@ verus! {
                             self.pagetable_map.dom().contains(self.cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap()[pcid].unwrap().pagetable_ptr)
                             // single_cpu_single_pcid_tlb_subset_of_pagetable(self.cpu_tlb.spec_index((cpu_id, pcid)), self.pagetable_map.spec_index(self.cpu_array.spec_index(cpu_id).view().view().current_pagetable))
                     );
-                    assert(false);
+                    // assert(false);
                 };
-            // };
+            };
             return;
         }
     }

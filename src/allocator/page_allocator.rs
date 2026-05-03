@@ -9,6 +9,8 @@ pub struct PageAllocator{
     pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, NO_KILL_STATE>,
     pub quota: RwLock<AllocatorQuota, NO_KILL_STATE>,
     pub differential: Ghost<Seq<int>>,
+
+    pub owning_container: RwLockContainerPtr,
 }
 
 impl LockInvTrait for PageAllocator{
@@ -44,12 +46,7 @@ impl PageAllocator{
         #![trigger self.cpu_caches.spec_index(cpu_i).inv()]
         cpu_id_valid(cpu_i)
         ==>
-        {
-            |||
-            self.cpu_caches.spec_index(cpu_i).value().wlocked()
-            |||
-            self.cpu_caches.spec_index(cpu_i).inv()
-        }
+        self.cpu_caches.spec_index(cpu_i).inv()
     }
 
     pub open spec fn differential_wf(&self) -> bool{

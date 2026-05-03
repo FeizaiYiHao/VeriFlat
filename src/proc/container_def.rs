@@ -30,6 +30,8 @@ pub struct Container {
 
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
 
+    pub owned_pages: Ghost<Set<PagePtr>>,
+
     pub allocator_ptr_4k: RwLockPageAllocatorPtr,
     pub allocator_ptr_2m: RwLockPageAllocatorPtr,
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
