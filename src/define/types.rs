@@ -156,6 +156,8 @@ pub enum Allocated4KPageState {
     As4KAllocator,
     As2MAllocator,
     As1GAllocator,
+    AsPageTableRoot,
+    PageTable{pagetable_root:RwLockPageTableRoot},
 }
 #[allow(inconsistent_fields)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -173,7 +175,6 @@ pub enum FreePageAllocatorState{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PageState {
     Unavailable,
-    PageTable{pagetable_root:RwLockPageTableRoot},
     IOMMUTable{iommu_table_root:RwLockPageTableRoot},
     Allocated4k{state: Allocated4KPageState},
     Allocated2m{state: Allocated2MPageState},
@@ -185,7 +186,7 @@ pub enum PageState {
     Mapped1g,
     Merged2m,
     Merged1g,
-    Io,
+    // Io,
 }
 
 #[derive(Clone, Copy, Debug)]

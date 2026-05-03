@@ -8,6 +8,7 @@ verus! {
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
 pub struct LockedMap<K, T, const HasKillState: bool>{
+    x:usize,
     map: Tracked<Map<K, PointsTo<RwLock<T, HasKillState>>>>,
 }
 

@@ -7,7 +7,7 @@ verus! {
     pub struct Page {
         pub addr: PagePtr,
         pub state: PageState,
-        // pub is_io_page: bool,
+        pub is_io_page: bool,
         pub ref_count: usize,
         pub owning_container: RwLockContainerPtr,
         pub mappings_4k: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
@@ -52,6 +52,18 @@ verus! {
                 _ => {
                     self.ref_count == 0
                 }
+            }
+        }
+
+        pub open spec fn free_state_inv(&self) -> bool{
+            &&&
+            match self.state {
+                PageState::Free4k { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } }|
+                PageState::Free2m { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } }|
+                PageState::Free1g { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } } => {
+                    cpu_id_valid(cpu_id)
+                }
+                _ => true,
             }
         }
 
@@ -145,6 +157,10 @@ verus! {
             self.mapped_state_inv()
             &&&
             self.node_storage_inv()
+            &&&
+            self.free_state_inv()
+            &&&
+            self.is_io_page ==> self.state is Mapped4k || self.state is Unavailable
         }
     }
 

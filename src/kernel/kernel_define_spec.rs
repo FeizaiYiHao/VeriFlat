@@ -56,6 +56,8 @@ verus! {
         pub open spec fn inv(&self) -> bool {
             &&&
             self.subsystems_inv()
+
+            // Memory spec
             &&&
             page_mapping_wf(self.pagetable_map, self.page_array)
             &&&
@@ -65,17 +67,28 @@ verus! {
             &&&
             self.container_pages_wf()
             &&&
-            self.process_pages_wf()
+            self.process_pages_wf()            
             &&&
             self.allocator_pages_wf()
             &&&
-            container_process_wf(self.container_map, self.process_map)
+            thread_pages_wf(self.thread_map, self.page_array)
             &&&
-            per_container_process_tree_wf(self.container_map, self.process_map)
+            endpoint_pages_wf(self.endpoint_map, self.page_array)
+            &&&
+            pagetable_pages_wf_inner(self.pagetable_map, self.page_array)
+            &&&
+            self.allocator_free_pages_wf()
             &&&
             hugepage_2m_wf(self.page_array)
             &&&
             hugepage_1g_wf(self.page_array)
+
+            // Process management spec
+
+            &&&
+            container_process_wf(self.container_map, self.process_map)
+            &&&
+            per_container_process_tree_wf(self.container_map, self.process_map)
             &&&
             container_cpu_wf(self.container_map, self.cpu_array)
             &&&
@@ -84,6 +97,8 @@ verus! {
             process_pagetable_match(self.process_map, self.pagetable_map)
             &&&
             process_thread_wf_inner(self.process_map, self.thread_map)
+
+            // TLB spec
             &&&
             cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)
             &&&
@@ -106,6 +121,15 @@ verus! {
             self.default_pagetable.pcid_or_ioid() == KERNEL_DEFAULT_PCID
             &&&
             self.default_pagetable.is_empty()
+        }
+
+        pub open spec fn allocator_free_pages_wf(&self) -> bool{
+            &&&
+            allocator_free_page_ptrs_wf(self.allocator_4k_map)
+            &&&
+            allocator_free_page_ptrs_wf(self.allocator_2m_map)
+            &&&
+            allocator_free_page_ptrs_wf(self.allocator_1g_map)
         }
     }
 

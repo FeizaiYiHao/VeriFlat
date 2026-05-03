@@ -135,6 +135,7 @@ pub fn take<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tr
     }
 }
 
+
 #[verifier::external_body]
 pub fn put<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
     requires
@@ -158,7 +159,6 @@ pub fn put<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tra
         (*uptr).assume_init_mut().put(Tracked(lctx), lock_perm,v)
     }
 }
-
 #[verifier::external_body]
 pub fn borrow<'a, T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<& PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret:&'a T)
     requires
