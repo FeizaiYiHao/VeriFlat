@@ -9,12 +9,15 @@ pub struct PcidIoidAllocator{
 }
 
 // Each container uses a 2 MiB pages
+#[repr(C)]
 pub struct Container {
     pub parent: Option<RwLockContainerPtr>,
+    pub parent_external_node: ExternalNode<Option<(RwLockContainerPtr, usize)>>,
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
     pub depth: usize,
     pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_CONTAINER_TREE_DEPTH>,
+    pub uppertree_seq_ghost: Ghost<Seq<RwLockContainerPtr>>,
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
 
     pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed 

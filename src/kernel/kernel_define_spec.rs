@@ -1,6 +1,7 @@
 use cpu_tlb_management::cpu_array_wf;
 use vstd::prelude::*;
 use crate::*;
+use vstd::simple_pptr::*;
 
 verus! {
 
@@ -13,6 +14,7 @@ verus! {
 
         pub root_container: RwLockContainerPtr, // Never dies
         pub container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,        
+        pub container_parent_map: Tracked<Map<usize, PointsTo<Node<Option<(RwLockContainerPtr, usize)>>>>>,
         pub number_containers: RwLock<NumContainers, NO_KILL_STATE>,
         pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, SCHEDULER_HAS_KILL_STATE>,
         pub process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>,
