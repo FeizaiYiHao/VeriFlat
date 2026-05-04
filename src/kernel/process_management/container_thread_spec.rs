@@ -31,7 +31,7 @@ verus! {
             thread_map.spec_index(t_ptr).view().container_scheduler == container_map.spec_index(c_ptr).view().scheduler
         &&&
         forall|t_ptr:RwLockThreadPtr|
-            #![trigger container_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc)]
+            #![trigger container_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_container)]
             thread_map.dom().contains(t_ptr)
             ==>
             container_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_container)

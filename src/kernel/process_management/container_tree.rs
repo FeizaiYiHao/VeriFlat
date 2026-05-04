@@ -21,6 +21,17 @@ verus! {
         &&&
         containers_or_inv(container_perms)
     }
+    // pub open spec fn container_parent_perms_wf(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, container_parent_map: Tracked<Map<usize, PointsTo<Node<Option<(RwLockContainerPtr, usize)>>>>>) -> bool{
+    //     &&&
+    //     forall|n_ptr:usize|
+    //         #![auto]
+    //         container_parent_map.view().dom().contains(n_ptr)
+    //         ==>
+    //         container_parent_map.view().spec_index(n_ptr).is_init() &&
+    //             container_parent_map.view().spec_index(n_ptr).addr() == n_ptr
+    // }
+    // pub open 
+
     pub open spec fn containers_or_inv(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&
         forall|container_p:RwLockContainerPtr|
