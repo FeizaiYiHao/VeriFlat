@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use vstd::simple_pptr::PointsTo;
 
 verus! {
     pub struct NumContainers{
@@ -21,16 +22,61 @@ verus! {
         &&&
         containers_or_inv(container_perms)
     }
-    // pub open spec fn container_parent_perms_wf(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, container_parent_map: Tracked<Map<usize, PointsTo<Node<Option<(RwLockContainerPtr, usize)>>>>>) -> bool{
-    //     &&&
-    //     forall|n_ptr:usize|
-    //         #![auto]
-    //         container_parent_map.view().dom().contains(n_ptr)
-    //         ==>
-    //         container_parent_map.view().spec_index(n_ptr).is_init() &&
-    //             container_parent_map.view().spec_index(n_ptr).addr() == n_ptr
-    // }
-    // pub open 
+    pub open spec fn container_ro_perms_wf(container_ro_map: Tracked<Map<usize, PointsTo<ReadOnlyNode<ContainerRO>>>>) -> bool{
+        &&&
+        forall|ro_c_ptr:usize|
+            #![auto]
+            container_ro_map.view().dom().contains(ro_c_ptr)
+            ==>
+            container_ro_map.view().spec_index(ro_c_ptr).is_init() &&
+                container_ro_map.view().spec_index(ro_c_ptr).addr() == ro_c_ptr
+    }
+
+    pub proof fn container_ro_perms_match_container_perms_proof()
+        ensures
+        forall|container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,
+            container_ro_map: Tracked<Map<usize, PointsTo<ReadOnlyNode<ContainerRO>>>>|
+            container_ro_perms_match_container_perms(container_map, container_ro_map)
+            <==>
+            container_ro_perms_match_container_perms_inner(container_map, container_ro_map)
+    {}
+
+    pub closed spec fn container_ro_perms_match_container_perms(container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,
+            container_ro_map: Tracked<Map<usize, PointsTo<ReadOnlyNode<ContainerRO>>>>) -> bool 
+    {
+        &&&
+        container_ro_perms_match_container_perms_inner(container_map, container_ro_map)
+    }
+    pub open spec fn container_ro_perms_match_container_perms_inner(container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,
+            container_ro_map: Tracked<Map<usize, PointsTo<ReadOnlyNode<ContainerRO>>>>) -> bool 
+    {
+        &&&
+        forall|c_ptr:RwLockContainerPtr|
+            #![auto]
+            container_map.dom().contains(c_ptr)
+            ==>
+            container_map.spec_index(c_ptr).view().read_only_external_node.is_init() == false
+            &&
+            container_ro_map.dom().contains(container_map.spec_index(c_ptr).view().read_only_external_node.addr())
+            &&
+            container_ro_map.spec_index(
+                container_map.spec_index(c_ptr).view().read_only_external_node.addr()).value()
+                .owner_addr() == c_ptr
+            &&
+            container_ro_map.spec_index(
+                container_map.spec_index(c_ptr).view().read_only_external_node.addr()).value().view()
+                .parent == container_map.spec_index(c_ptr).view().parent
+        &&&
+        forall|c_ro_ptr:usize|
+            #![auto]
+            container_ro_map.dom().contains(c_ro_ptr)
+            ==>
+            container_map.dom().contains(container_ro_map.spec_index(c_ro_ptr).value().owner_addr())
+            &&
+            container_map.spec_index(container_ro_map.spec_index(c_ro_ptr).value().owner_addr()).view().read_only_external_node.addr() 
+                == c_ro_ptr
+            
+    }
 
     pub open spec fn containers_or_inv(container_perms: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&
@@ -294,7 +340,7 @@ verus! {
     }
 
 #[verifier::loop_isolation(false)]
-pub fn container_tree_check_is_ancestor(Tracked(lctx): Tracked<&LocalContext>, root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, 
+pub fn container_tree_check_is_ancestor_1(Tracked(lctx): Tracked<&LocalContext>, root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, 
         a_ptr: RwLockContainerPtr, Tracked(child_lock_perm):Tracked<&LockPerm>, child_ptr: RwLockContainerPtr) -> (ret: bool)
     requires
         container_perms_wf(*container_perms),
@@ -328,4 +374,42 @@ pub fn container_tree_check_is_ancestor(Tracked(lctx): Tracked<&LocalContext>, r
     }
     return false;
 }
+
+#[verifier::loop_isolation(false)]
+pub fn container_tree_check_is_ancestor(Tracked(lctx): Tracked<&LocalContext>, root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>, 
+    container_ro_map: Tracked<Map<usize, PointsTo<ReadOnlyNode<ContainerRO>>>>, 
+        a_ptr: RwLockContainerPtr, Tracked(child_lock_perm):Tracked<&LockPerm>, child_ptr: RwLockContainerPtr) -> (ret: bool)
+    requires
+        container_perms_wf(*container_perms),
+        container_tree_wf(root_container, *container_perms),
+        container_perms@.dom().contains(a_ptr),
+        container_perms@.dom().contains(child_ptr),
+
+        container_perms.spec_index(child_ptr).locked_by(lctx),
+        container_perms.spec_index(a_ptr).locked_by(lctx) == false,
+        container_perms.spec_index(child_ptr).inv(),
+
+        child_lock_perm.thread_id() == lctx.thread_id(),
+        child_lock_perm.state() is WriteLock ==> container_perms.spec_index(child_ptr).write_lock_perm_match(child_lock_perm),
+        child_lock_perm.state() is ReadLock ==> container_perms.spec_index(child_ptr).read_lock_perm_match(child_lock_perm),
+    ensures
+        ret == container_perms[child_ptr].view().uppertree_seq@.contains(a_ptr),
+        ret == container_perms[a_ptr].view().subtree_set@.contains(child_ptr),
+{
+    let child_container_ref = container_perms.borrow(child_ptr, Tracked(lctx), Tracked(child_lock_perm));
+    let mut ret = false;
+    for i in 0..child_container_ref.uppertree_seq.len()
+        invariant
+            0 <= i <= child_container_ref.uppertree_seq.len(),
+            forall|j: usize|
+                #![auto]
+                0<= j < i ==> child_container_ref.uppertree_seq@[j as int] != a_ptr,
+    {
+        if *child_container_ref.uppertree_seq.get(i) == a_ptr {
+            return true;
+        }
+    }
+    return false;
+}
+
 }

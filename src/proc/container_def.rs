@@ -12,7 +12,6 @@ pub struct PcidIoidAllocator{
 #[repr(C)]
 pub struct Container {
     pub parent: Option<RwLockContainerPtr>,
-    pub parent_external_node: ExternalNode<Option<(RwLockContainerPtr, usize)>>,
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
     pub depth: usize,
@@ -38,7 +37,14 @@ pub struct Container {
     pub allocator_ptr_4k: RwLockPageAllocatorPtr,
     pub allocator_ptr_2m: RwLockPageAllocatorPtr,
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
+
+    pub read_only_external_node: ExternalReadOnlyNode<ContainerRO>,
 }
+
+pub struct ContainerRO {
+    pub parent: Option<RwLockContainerPtr>,
+}
+
 
 impl LockInvTrait for Container {
     open spec fn inv(&self) -> bool {
@@ -46,6 +52,16 @@ impl LockInvTrait for Container {
         self.wf()
     }
 }
+
+// #[verifier(external_body)]
+// pub fn container_read_only_node_offset(ptr: RwLockContainerPtr, ) -> (ret:usize)
+//     ensures
+//         ret == self.
+// {
+
+// }
+
+pub closed spec fn 
 
 impl Container{
     pub open spec fn wf(&self) -> bool {

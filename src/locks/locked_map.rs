@@ -121,6 +121,14 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
         let ret = borrow(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         return ret;
     }
+
+    // pub proof fn tracked_borrow(&self, key:usize) -> (ret:&PointsTo<RwLock<T, HasKillState>>)
+    //     requires
+    //         self.perms_wf(),
+    //         self.dom().contains(key),
+    // {
+
+    // }
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait> LockedMap<usize, T, NO_KILL_STATE>{
