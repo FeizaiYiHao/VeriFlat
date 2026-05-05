@@ -14,7 +14,7 @@ verus! {
 
         pub root_container: RwLockContainerPtr, // Never dies
         pub container_map: LockedMap<RwLockContainerPtr, Container, CONTAINER_HAS_KILL_STATE>,        
-        pub container_parent_map: Tracked<Map<usize, PointsTo<Node<Option<(RwLockContainerPtr, usize)>>>>>,
+        pub container_ro_map: Tracked<Map<usize, PointsTo<ReadOnlyNode<ContainerRO>>>>,
         pub number_containers: RwLock<NumContainers, NO_KILL_STATE>,
         pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, SCHEDULER_HAS_KILL_STATE>,
         pub process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>,
@@ -44,6 +44,8 @@ verus! {
             self.cpu_tlb.inv()
             &&&
             container_perms_wf(self.container_map)
+            &&&
+            container_ro_perms_wf(self.container_ro_map)
             &&&
             process_perms_wf(self.process_map)
             &&&
