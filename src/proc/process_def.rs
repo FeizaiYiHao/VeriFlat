@@ -38,6 +38,13 @@ pub ghost struct ProcessU {
     pub killed: bool,
 }
 
+pub struct ProcessRO {
+    pub parent: Option<RwLockContainerPtr>,    
+    pub depth: usize,
+    pub pagetable: RwLockPageTableRoot,
+}
+
+
 impl UserViewHasKillState for ProcessU {
     open spec fn killed(&self) -> bool {
         self.killed

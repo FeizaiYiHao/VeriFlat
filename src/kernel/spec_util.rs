@@ -14,7 +14,7 @@ impl Kernel{
         recommends
             self.container_map.dom().contains(container_ptr)
     {
-        self.allocator_4k_map.spec_index(self.container_map.spec_index(container_ptr).view().allocator_ptr_4k).quota.view().value
+        self.allocator_4k_map.spec_index(self.container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value
     }
 }
 
