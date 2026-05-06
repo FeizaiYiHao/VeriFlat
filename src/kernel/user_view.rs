@@ -3,9 +3,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    pub trait UserViewHasKillState{
-        spec fn killed(&self) -> bool;
-    }
 
     /// This is a sound capture of the kernel user-level view because 
     /// LocalContext does not provide any interface that allow Lock, Operate, Unlock, Lock on user visible objects

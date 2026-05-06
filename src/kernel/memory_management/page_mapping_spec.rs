@@ -1,22 +1,22 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn page_mapping_wf(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
+    pub open spec fn page_mapping_wf(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         mapped_4k_page_pagetable_mapping_match(pagetable_map, page_array)
     }
 
     pub proof fn mapped_4k_page_pagetable_mapping_match_proof()
         ensures 
-            forall|pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>|
+            forall|pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>|
                 mapped_4k_page_pagetable_mapping_match_inner(pagetable_map, page_array) <==> mapped_4k_page_pagetable_mapping_match(pagetable_map, page_array) 
     {}
 
-    pub closed spec fn mapped_4k_page_pagetable_mapping_match(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
+    pub closed spec fn mapped_4k_page_pagetable_mapping_match(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         mapped_4k_page_pagetable_mapping_match_inner(pagetable_map, page_array) 
     }
 
-    pub open spec fn mapped_4k_page_pagetable_mapping_match_inner(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
+    pub open spec fn mapped_4k_page_pagetable_mapping_match_inner(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
             #![trigger page_array.spec_index(p_i).view().view().mappings_4k().contains((pt_ptr, va))]

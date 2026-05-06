@@ -97,7 +97,7 @@ verus! {
         }
     }
 
-    pub closed spec fn free_4k_page_allocator_wf(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>, allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool {
+    pub closed spec fn free_4k_page_allocator_wf(page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>, allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool {
         &&&
         forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]

@@ -2,6 +2,7 @@ use vstd::prelude::*;
 verus! {
 
 use crate::*;
+use core::mem::offset_of;
 
 pub struct PcidIoidAllocator{
     pub ref_counters: Array<usize, PCID_MAX>,
@@ -42,9 +43,9 @@ pub struct Container {
 }
 
 pub struct ContainerRO {
-    pub parent: Option<RwLockContainerPtr>,
+    pub parent: Option<RwLockContainerPtr>,    
+    pub depth: usize,
 }
-
 
 impl LockInvTrait for Container {
     open spec fn inv(&self) -> bool {
@@ -53,17 +54,14 @@ impl LockInvTrait for Container {
     }
 }
 
-// #[verifier(external_body)]
-// pub fn container_read_only_node_offset(ptr: RwLockContainerPtr, ) -> (ret:usize)
-//     ensures
-//         ret == self.
-// {
-
-// }
-
-pub closed spec fn 
-
 impl Container{
+    pub open spec fn to_rodata(&self) -> ContainerRO{
+        ContainerRO{
+            parent: self.parent,
+            depth: self.depth
+        }
+    }
+
     pub open spec fn wf(&self) -> bool {
         &&&
         self.children.inv()

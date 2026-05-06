@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn page_array_wf(page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
+    pub open spec fn page_array_wf(page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         page_array.inv()
         &&&

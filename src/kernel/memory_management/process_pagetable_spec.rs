@@ -4,14 +4,14 @@ verus! {
 
 pub proof fn process_pagetable_match_proof()
     ensures
-        forall|process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>|
+        forall|process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>|
             process_pagetable_match_inner(process_map, pagetable_map) <==> process_pagetable_match(process_map, pagetable_map)
 {}
-pub closed spec fn process_pagetable_match(process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>) -> bool {
+pub closed spec fn process_pagetable_match(process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>) -> bool {
     process_pagetable_match_inner(process_map, pagetable_map)
 }
 
-pub open spec fn process_pagetable_match_inner(process_map: LockedMap<RwLockProcessPtr, Process, PROCESS_HAS_KILL_STATE>, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>) -> bool {
+pub open spec fn process_pagetable_match_inner(process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>) -> bool {
 {
     &&&
     forall|proc_ptr:RwLockProcessPtr|
