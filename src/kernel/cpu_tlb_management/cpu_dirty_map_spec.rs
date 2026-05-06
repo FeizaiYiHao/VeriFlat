@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn cpu_dirty_map_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ContainerRO, CONTAINER_HAS_KILL_STATE>, process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, 
+    pub open spec fn cpu_dirty_map_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, 
         cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>, tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
     {
         &&&
@@ -16,15 +16,15 @@ verus! {
 
     pub proof fn cpu_dirty_map_contains_container_processes_proof()
         ensures
-            forall|container_perms: LockedMap<RwLockContainerPtr, Container, ContainerRO, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>|
+            forall|container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>|
                 cpu_dirty_map_contains_container_processes(container_perms, cpu_array) <==> cpu_dirty_map_contains_container_processes_inner(container_perms, cpu_array)
     {} 
-    pub closed spec fn cpu_dirty_map_contains_container_processes(container_perms: LockedMap<RwLockContainerPtr, Container, ContainerRO, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool
+    pub closed spec fn cpu_dirty_map_contains_container_processes(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool
     {
         cpu_dirty_map_contains_container_processes_inner(container_perms, cpu_array)
     }
 
-    pub open spec fn cpu_dirty_map_contains_container_processes_inner(container_perms: LockedMap<RwLockContainerPtr, Container, ContainerRO, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_contains_container_processes_inner(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
         recommends
             container_cpu_wf_inner(container_perms, cpu_array),
     {
@@ -91,14 +91,14 @@ verus! {
 
     pub proof fn cpu_dirty_map_proc_pcid_match_proof()
         ensures
-            forall|process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>|
+            forall|process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>|
                 cpu_dirty_map_proc_pcid_match_inner(process_map, cpu_array) == cpu_dirty_map_proc_pcid_match(process_map, cpu_array)
     {}
-    pub closed spec fn cpu_dirty_map_proc_pcid_match(process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn cpu_dirty_map_proc_pcid_match(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         cpu_dirty_map_proc_pcid_match_inner(process_map, cpu_array)
     }
 
-    pub open spec fn cpu_dirty_map_proc_pcid_match_inner(process_map: LockedMap<RwLockProcessPtr, Process, (), PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_proc_pcid_match_inner(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
         recommends
             process_cpu_wf_inner(process_map, cpu_array)
     {

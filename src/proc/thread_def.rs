@@ -7,10 +7,6 @@ pub struct Thread {
     pub state: ThreadState,
 
     pub owning_container: RwLockContainerPtr,
-    pub container_allocator_4k: RwLockPageAllocatorPtr,
-    pub container_allocator_2m: RwLockPageAllocatorPtr,
-    pub container_allocator_1g: RwLockPageAllocatorPtr,
-    pub container_scheduler: RwLockSchedulerPtr,
     pub scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>,
 
     pub owning_proc: RwLockProcessPtr,
