@@ -2,12 +2,13 @@ use vstd::prelude::*;
 
 use crate::*;
 use vstd::simple_pptr::*;
+
 verus! {
 
 pub struct PageAllocator{
-    pub cpu_caches: LockedArray<AllocatorCache, NUM_CPUS, NO_KILL_STATE>,
-    pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, NO_KILL_STATE>,
-    pub quota: RwLock<AllocatorQuota, NO_KILL_STATE>,
+    pub cpu_caches: LockedArray<AllocatorCache, (), NUM_CPUS, NO_KILL_STATE>,
+    pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, (), NO_KILL_STATE>,
+    pub quota: RwLock<AllocatorQuota, (), NO_KILL_STATE>,
     pub differential: Ghost<Seq<int>>,
 
     pub owning_container: RwLockContainerPtr,

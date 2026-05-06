@@ -6,16 +6,16 @@ use crate::*;
 verus! {
         pub proof fn pagetable_pages_wf_proof()
             ensures 
-                forall|pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>|
+                forall|pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>|
                     pagetable_pages_wf_inner(pagetable_map, page_array) <==> pagetable_pages_wf(pagetable_map, page_array)
         {}
 
-        pub closed spec fn pagetable_pages_wf(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool {
+        pub closed spec fn pagetable_pages_wf(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool {
             &&&
             pagetable_pages_wf_inner(pagetable_map, page_array)
         }
 
-        pub open spec fn pagetable_pages_wf_inner(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, NUM_PAGES, NO_KILL_STATE>) -> bool{
+        pub open spec fn pagetable_pages_wf_inner(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool{
             &&&
             forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index)]

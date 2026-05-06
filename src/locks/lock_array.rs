@@ -9,19 +9,19 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,const N: usize, const HasKillState: bool>{
-        array: Array<RwLock<T,HasKillState>, N>,
+    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, const N: usize, const HasKillState: bool>{
+        array: Array<RwLock<T, ROT, HasKillState>, N>,
     }
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> LockedArray<T, N, HasKillState> { 
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, const HasKillState: bool, const N: usize> LockedArray<T, ROT, N, HasKillState> { 
         pub closed spec fn inv(&self) -> bool{
             &&&
             self.array.wf()
         }
         
-        pub closed spec fn view(&self) -> Seq<RwLock<T, HasKillState>>{
+        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, HasKillState>>{
             self.array@
         }
-        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, HasKillState>
+        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, HasKillState>
             recommends
                 0 <= index < N,
         {
@@ -104,7 +104,7 @@ verus! {
         } 
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, const N: usize> LockedArray<T, N, NO_KILL_STATE>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, const N: usize> LockedArray<T, ROT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires

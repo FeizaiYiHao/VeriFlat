@@ -55,4 +55,8 @@ pub trait LockRecursivelyLockedTrait{
     spec fn partial_locked_by(&self, lctx:&LocalContext) -> bool;
     spec fn total_locked_by(&self, lctx:&LocalContext) -> bool;
 }
+
+pub trait UserViewHasKillState{
+    spec fn killed(&self) -> bool;
+}
 }

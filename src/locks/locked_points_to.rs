@@ -5,13 +5,13 @@ use super::*;
 use core::mem::MaybeUninit;
 verus! {
 
-impl<T, const HasKillState: bool> LockMinorTrait for PointsTo<RwLock<T, HasKillState>>{
+impl<T, ROT, const HasKillState: bool> LockMinorTrait for PointsTo<RwLock<T, ROT, HasKillState>>{
     open spec fn lock_minor(&self) -> LockMinorId{
         self.addr()
     }
 }
 
-impl<T:LockOwnerIdTrait, const HasKillState: bool> LockOwnerIdTrait for PointsTo<RwLock<T, HasKillState>>{
+impl<T:LockOwnerIdTrait, ROT, const HasKillState: bool> LockOwnerIdTrait for PointsTo<RwLock<T, ROT, HasKillState>>{
     open spec fn container_depth(&self) -> LockOwnerId{
         self.value()@.container_depth()
     }
@@ -19,7 +19,7 @@ impl<T:LockOwnerIdTrait, const HasKillState: bool> LockOwnerIdTrait for PointsTo
         self.value()@.process_depth()
     }
 }  
-impl<T:LockInvTrait, const HasKillState: bool> LockInvTrait for PointsTo<RwLock<T, HasKillState>>{
+impl<T:LockInvTrait, ROT, const HasKillState: bool> LockInvTrait for PointsTo<RwLock<T, ROT, HasKillState>>{
     open spec fn inv(&self) -> bool{
         &&&
         self.is_init()
@@ -27,7 +27,7 @@ impl<T:LockInvTrait, const HasKillState: bool> LockInvTrait for PointsTo<RwLock<
         self.value()@.inv()
     }
 }
-impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwLock<T, HasKillState>>{
+impl<T:LockMajorTrait, ROT, const HasKillState: bool> LockMajorTrait for PointsTo<RwLock<T, ROT, HasKillState>>{
     open spec fn lock_major_1(&self) -> LockMajorId {
         self.value()@.lock_major_1()
     }
@@ -58,7 +58,7 @@ impl<T:LockMajorTrait, const HasKillState: bool> LockMajorTrait for PointsTo<RwL
 
 // TODO
 #[verifier::external_body]
-pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT,>(pptr:&PPtr<RwLock<T, ROT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -76,14 +76,14 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibi
         lock_ensures(old(lctx), lctx, perm.value().view(), lock_id@),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, NO_KILL_STATE>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, NO_KILL_STATE>>;
         (*uptr).assume_init_mut().wlock_external(Tracked(lctx))
     }
 }
 
 // TODO
 #[verifier::external_body]
-pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait>(pptr:&PPtr<RwLock<T, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT,>(pptr:&PPtr<RwLock<T, ROT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -104,13 +104,13 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
         unlock_ensures(old(lctx), lctx, perm.value().view(), lock_perm@.lock_id()),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, NO_KILL_STATE>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, NO_KILL_STATE>>;
         (*uptr).assume_init_mut().wunlock_external(Tracked(lctx), lock_perm);
     }
 }
 
 #[verifier::external_body]
-pub fn take<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
+pub fn take<T, ROT, const HasKillState: bool>(pptr:&PPtr<RwLock<T, ROT, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -130,14 +130,14 @@ pub fn take<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tr
         ret == old(perm).value()@
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, HasKillState>>;
         (*uptr).assume_init_mut().take(Tracked(lctx),lock_perm)
     }
 }
 
 
 #[verifier::external_body]
-pub fn put<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
+pub fn put<T, ROT, const HasKillState: bool>(pptr:&PPtr<RwLock<T, ROT, HasKillState>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v: T) 
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -155,12 +155,12 @@ pub fn put<T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tra
         put_ensures(old(perm).value(), perm.value(), v),
 {
      unsafe {
-        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, HasKillState>>;
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, HasKillState>>;
         (*uptr).assume_init_mut().put(Tracked(lctx), lock_perm,v)
     }
 }
 #[verifier::external_body]
-pub fn borrow<'a, T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState>>, Tracked(perm): Tracked<& PointsTo<RwLock<T, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret:&'a T)
+pub fn borrow<'a, T, ROT, const HasKillState: bool>(pptr:&PPtr<RwLock<T, ROT, HasKillState>>, Tracked(perm): Tracked<& PointsTo<RwLock<T, ROT, HasKillState>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret:&'a T)
     requires
         pptr.addr() == perm.addr(),
         perm.is_init(),
@@ -175,9 +175,24 @@ pub fn borrow<'a, T, const HasKillState: bool>(pptr:&PPtr<RwLock<T, HasKillState
         ret == perm.value().view(),
 {
      unsafe {
-        let uptr = &*(pptr.addr() as *mut RwLock<T, HasKillState>);
+        let uptr = &*(pptr.addr() as *mut RwLock<T, ROT, HasKillState>);
         uptr.borrow(Tracked(lctx),lock_perm)
     }
 }
+
+#[verifier::external_body]
+pub fn borrow_rodata<'a, T, ROT, const HasKillState: bool>(pptr:&PPtr<RwLock<T, ROT, HasKillState>>, Tracked(perm): Tracked<&'a PointsTo<RwLock<T, ROT, HasKillState>>>) -> (ret:&'a ROT)
+    requires
+        pptr.addr() == perm.addr(),
+        perm.is_init(),
+    ensures
+        ret == perm.value().view_rodata(),
+{
+     unsafe {
+        let uptr = &*(pptr.addr() as *mut RwLock<T, ROT, HasKillState>);
+        uptr.borrow_rodata()
+    }
+}
+
 
 }

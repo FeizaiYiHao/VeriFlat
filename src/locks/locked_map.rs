@@ -7,13 +7,13 @@ verus! {
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
-pub struct LockedMap<K, T, const HasKillState: bool>{
+pub struct LockedMap<K, T, ROT, const HasKillState: bool>{
     x:usize,
-    map: Tracked<Map<K, PointsTo<RwLock<T, HasKillState>>>>,
+    map: Tracked<Map<K, PointsTo<RwLock<T, ROT, HasKillState>>>>,
 }
 
-impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
-    pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, HasKillState>>>{
+impl<T, ROT, const HasKillState: bool> LockedMap<usize, T, ROT, HasKillState>{
+    pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, ROT, HasKillState>>>{
         self.map@
     }
     // pub closed spec fn user_view(&self) -> Map<usize, >
@@ -34,7 +34,7 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
                 self@[k].addr() == k
             }
     }
-    pub open spec fn spec_index(&self, key: usize) -> RwLock<T, HasKillState>
+    pub open spec fn spec_index(&self, key: usize) -> RwLock<T, ROT, HasKillState>
         recommends
             self@.dom().contains(key),
     {
@@ -72,7 +72,7 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
             ret == old(self)[key]@,
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = take(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = take(&PPtr::<RwLock<T, ROT, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -97,7 +97,7 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
             put_ensures(old(self)[key], self[key], v),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        put(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
+        put(&PPtr::<RwLock<T, ROT, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -118,7 +118,19 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
             ret == self[key]@,
     {
         let tracked perm = self.map.tracked_borrow(key);
-        let ret = borrow(&PPtr::<RwLock<T, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = borrow(&PPtr::<RwLock<T, ROT, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        return ret;
+    }
+
+    pub fn borrow_rodata(&self, key:usize) -> (ret:&ROT)
+        requires
+            self.perms_wf(),
+            self.dom().contains(key),
+        ensures
+            ret == self[key].view_rodata(),
+    {
+        let tracked perm = self.map.tracked_borrow(key);
+        let ret = borrow_rodata(&PPtr::<RwLock<T, ROT, HasKillState>>::from_usize(key), Tracked(&perm));
         return ret;
     }
 
@@ -131,7 +143,7 @@ impl<T, const HasKillState: bool> LockedMap<usize, T, HasKillState>{
     // }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait> LockedMap<usize, T, NO_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT,> LockedMap<usize, T, ROT, NO_KILL_STATE>{
     pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
@@ -150,7 +162,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_ensures(old(lctx), lctx, self[key]@, lock_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
+        let ret = wlock(&PPtr::<RwLock<T, ROT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
         assert(perm.addr() == key);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
@@ -179,7 +191,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             unlock_ensures(old(lctx), lctx, self[key]@, lock_perm@.lock_id()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wunlock(&PPtr::<RwLock<T, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = wunlock(&PPtr::<RwLock<T, ROT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -187,7 +199,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     }
 }
 
-impl<T:LockInvTrait + LockRecursivelyLockedTrait, const HasKillState: bool> Step for LockedMap<usize, T, HasKillState>{
+impl<T:LockInvTrait + LockRecursivelyLockedTrait, ROT, const HasKillState: bool> Step for LockedMap<usize, T, ROT, HasKillState>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
         &&&
         forall|k:usize|
