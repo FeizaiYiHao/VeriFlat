@@ -10,9 +10,7 @@ verus! {
         pub is_io_page: bool,
         pub ref_count: usize,
         pub owning_container: RwLockContainerPtr,
-        pub mappings_4k: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
-        pub mappings_2m: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
-        pub mappings_1g: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
+        pub mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
         // pub io_mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
 
         pub free_list_node_storage: ExternalNode<PageIndex>,
@@ -20,34 +18,26 @@ verus! {
     }
 
     impl Page{
-        pub open spec fn mappings_4k(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
-            self.mappings_4k@
-        }
-
-        pub open spec fn mappings_2m(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
-            self.mappings_2m@
-        }
-
-        pub open spec fn mappings_1g(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
-            self.mappings_1g@
+        pub open spec fn mappings(&self) -> Set<(RwLockPageTableRoot, VAddr)> {
+            self.mappings@
         }
 
         pub open spec fn ref_count_inv(&self) -> bool{
             &&&
-            self.ref_count == self.mappings_4k@.len() + self.mappings_2m@.len() +self.mappings_1g@.len()
+            self.ref_count == self.mappings@.len()
         }
 
         pub open spec fn mapped_state_inv(&self) -> bool{
             &&&
             match self.state {
                 PageState::Mapped4k => {
-                    self.mappings_4k@.len() != 0
+                    self.ref_count != 0
                 },
                 PageState::Mapped2m => {
-                    self.mappings_2m@.len() != 0
+                    self.ref_count != 0
                 },
                 PageState::Mapped1g => {
-                    self.mappings_1g@.len() != 0
+                    self.ref_count != 0
                 },
                 _ => {
                     self.ref_count == 0
@@ -84,22 +74,18 @@ verus! {
         pub open spec fn mappings_va_valid(&self) -> bool{
             &&&
             forall|pt_p:RwLockPageTableRoot, va:VAddr|
-                self.mappings_4k().contains((pt_p, va)) ==> va_4k_valid(va)
+                self.state is Mapped4k && self.mappings().contains((pt_p, va)) ==> va_4k_valid(va)
             &&&
             forall|pt_p:RwLockPageTableRoot, va:VAddr|
-                self.mappings_2m().contains((pt_p, va)) ==> crate::va_2m_valid(va)
+                self.state is Mapped2m && self.mappings().contains((pt_p, va)) ==> crate::va_2m_valid(va)
             &&&
             forall|pt_p:RwLockPageTableRoot, va:VAddr|
-                self.mappings_1g().contains((pt_p, va)) ==> crate::va_1g_valid(va)
+                self.state is Mapped1g && self.mappings().contains((pt_p, va)) ==> crate::va_1g_valid(va)
         }
 
         pub open spec fn mappings_finite(&self) -> bool{
             &&&
-            self.mappings_4k().finite()
-            &&&
-            self.mappings_2m().finite()
-            &&&
-            self.mappings_1g().finite()
+            self.mappings().finite()
         }
         pub open spec fn is_mapped(&self) -> bool {
             match self.state{

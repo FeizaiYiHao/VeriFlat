@@ -15,7 +15,7 @@ verus! {
             #![auto]
             self.thread_map.dom().contains(thread_p)
             ==>
-            self.thread_map[thread_p].inv()
+            self.thread_map.spec_index(thread_p).inv()
     }
     }
 }

@@ -58,7 +58,9 @@ verus! {
         &&&
         process_tree_dom.subset_of(process_perms.dom())
         &&& 
-        process_perms.spec_index(root_process).view_rodata().view().depth == 0
+        process_perms.spec_index(root_process).view_rodata().view().depth == 0        
+        &&& 
+        process_perms.spec_index(root_process).view().parent_linkedlist_node.is_init()
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
@@ -66,6 +68,8 @@ verus! {
             && p_ptr != root_process
             ==> 
             process_perms.spec_index(p_ptr).view_rodata().view().depth != 0
+            &&& 
+            process_perms.spec_index(root_process).view().parent_linkedlist_node.is_init() == false
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
             process_tree_dom.contains(p_ptr) 

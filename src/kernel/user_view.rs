@@ -39,11 +39,11 @@ verus! {
             &&
             kernel_k.get_process_pagetable(ptr) == kernel_u.process_map.spec_index(ptr).pagetable
             &&
-            kernel_k.process_map.spec_index(ptr).view().parent == kernel_u.process_map.spec_index(ptr).parent
+            kernel_k.process_map.spec_index(ptr).view_rodata().view().parent == kernel_u.process_map.spec_index(ptr).parent
             &&
             kernel_k.process_map.spec_index(ptr).view().children.view() == kernel_u.process_map.spec_index(ptr).children
             &&
-            kernel_k.process_map.spec_index(ptr).view().depth == kernel_u.process_map.spec_index(ptr).depth
+            kernel_k.process_map.spec_index(ptr).view_rodata().view().depth == kernel_u.process_map.spec_index(ptr).depth
             &&
             kernel_k.process_map.spec_index(ptr).view().uppertree_seq.view() == kernel_u.process_map.spec_index(ptr).uppertree_seq
             &&

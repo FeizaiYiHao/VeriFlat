@@ -34,6 +34,18 @@ impl LockInvTrait for Thread {
         self.error_code is Some ==> self.state is SCHEDULED
         &&&
         self.state is RUNNING ==> self.trap_frame.is_none()
+        &&&
+        self.state is BLOCKED == self.blocking_endpoint_ptr is Some
+        &&&
+        self.state is BLOCKED == self.blocking_endpoint_index is Some
+        &&&
+        self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()) is Some
+        &&&
+        self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()).unwrap() == self.blocking_endpoint_ptr.unwrap()
+        &&&
+        self.state is BLOCKED == !self.endpoint_linkedlist_node.is_init()
+        &&
+        self.state is SCHEDULED == !self.scheduler_linkedlist_node.is_init()
     }
 }
 
