@@ -34,6 +34,7 @@ verus! {
                     ,
                 old(self).cpu_array.spec_index(old(lctx).thread_id()).view().rlocked_by(old(lctx)),
                 old(self).page_array[page_index]@@.is_mapped(),
+                old(self).page_array.spec_index(page_index).view().view().state is Mapped4k,
                 old(lctx).lock_seq().len() != 0,
                 old(lctx).lock_seq().last() == pagetable_root.to_lock_id(),
 
@@ -68,8 +69,8 @@ verus! {
                 self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
                 
                 // assert(self.inv()) by {
-                    assert(page_mapping_wf(self.pagetable_map, self.page_array)) by{
-                        mapped_4k_page_pagetable_mapping_match_proof();
+                    assert(page_pagetable_wf(self.pagetable_map, self.page_array)) by{
+                        mapped_4k_page_pagetable_wf_proof();
                     };
                     assert(container_tree_wf(self.root_container, self.container_map));
                     assert(self.container_pages_wf()) by {
@@ -118,11 +119,11 @@ verus! {
                 // };
                 return;
             }
-            assert(page.mappings_4k@.contains((pagetable_root, vaddr)) == false) by {
-                mapped_4k_page_pagetable_mapping_match_proof();
+            assert(page.mappings@.contains((pagetable_root, vaddr)) == false) by {
+                mapped_4k_page_pagetable_wf_proof();
             };
             page.ref_count = page.ref_count + 1;
-            page.mappings_4k = Ghost(page.mappings_4k@.insert((pagetable_root, vaddr)));
+            page.mappings = Ghost(page.mappings@.insert((pagetable_root, vaddr)));
             self.page_array.put(page_index, Tracked(lctx), Tracked(&page_lock_perm), page);
 
             let mut pagetable = self.pagetable_map.take(pagetable_root, Tracked(lctx), pagetable_lock_perm);
@@ -131,8 +132,8 @@ verus! {
             self.page_array.wunlock(page_index, Tracked(lctx), Tracked(page_lock_perm));
 
             // assert(self.inv()) by {
-                assert(page_mapping_wf(self.pagetable_map, self.page_array)) by{
-                    mapped_4k_page_pagetable_mapping_match_proof();
+                assert(page_pagetable_wf(self.pagetable_map, self.page_array)) by{
+                    mapped_4k_page_pagetable_wf_proof();
                 };
                 assert(container_tree_wf(self.root_container, self.container_map));
                 assert(self.container_pages_wf()) by {

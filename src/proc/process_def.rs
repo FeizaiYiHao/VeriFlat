@@ -11,10 +11,8 @@ pub struct Process {
     pub pagetable: RwLockPageTableRoot,
     pub iommu_table: Option<RwLockPageTableRoot>,
 
-    pub parent: Option<RwLockProcessPtr>,
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,
-    pub depth: usize,
     pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_PROCESS_TREE_DEPTH>,
     pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
 
@@ -66,16 +64,11 @@ impl Process{
         &&&
         self.uppertree_seq.wf()
         &&&
-        self.no_parent_implies_linkedlist_node_init()
-        &&&
         self.iommu_table_wf()
         &&&
         self.pagetable_iommutable_different()
         &&&
         self.at_least_one_thread()
-    }
-    pub open spec fn no_parent_implies_linkedlist_node_init(&self) -> bool{
-        self.parent is None == self.parent_linkedlist_node.is_init()
     }
     pub open spec fn iommu_table_wf(&self) -> bool {
         &&&

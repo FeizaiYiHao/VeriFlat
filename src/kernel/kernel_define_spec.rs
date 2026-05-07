@@ -60,7 +60,7 @@ verus! {
 
             // Memory spec
             &&&
-            page_mapping_wf(self.pagetable_map, self.page_array)
+            page_pagetable_wf(self.pagetable_map, self.page_array)
             &&&
             container_tree_wf(self.root_container, self.container_map)
             &&&
