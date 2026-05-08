@@ -25,7 +25,7 @@ verus! {
 
         // pub container_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
 
-        pub default_pagetable: PageTable<PT_TYPE>, // Read only
+        pub default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, // Read only
     }
 
     impl Kernel{
@@ -38,7 +38,7 @@ verus! {
             &&&
             page_array_wf(self.page_array)
             &&&
-            cpu_array_wf(self.cpu_array, self.default_pagetable)
+            cpu_array_wf(self.cpu_array, self.default_pagetable.view())
             &&&
             self.cpu_tlb.inv()
             &&&
@@ -53,52 +53,71 @@ verus! {
             allocator_perms_wf(self.allocator_1g_map)
         }
 
-        /// All spec functions under this are closed
-        pub open spec fn inv(&self) -> bool {
+        pub open spec fn memory_management_inv(&self) -> bool {
             &&&
-            self.subsystems_inv()
-
-            // Memory spec
+            allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)
+            &&&
+            container_page_owner_wf(self.container_map, self.page_array)
+            &&&
+            hugepage_2m_wf(self.page_array)
+            &&&
+            hugepage_1g_wf(self.page_array)
             &&&
             page_pagetable_wf(self.pagetable_map, self.page_array)
             &&&
-            container_tree_wf(self.root_container, self.container_map)
-            &&&
-            self.number_containers_wf()
+            container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)
             &&&
             self.container_pages_wf()
             &&&
-            self.process_pages_wf()            
+            self.process_pages_wf()       
             &&&
-            self.allocator_pages_wf()
+            pagetable_pages_wf(self.pagetable_map, self.page_array)     
             &&&
             thread_pages_wf(self.thread_map, self.page_array)
             &&&
             endpoint_pages_wf(self.endpoint_map, self.page_array)
             &&&
-            pagetable_pages_wf_inner(self.pagetable_map, self.page_array)
+            process_pagetable_match(self.process_map, self.pagetable_map)
             &&&
             self.allocator_free_pages_wf()
-            &&&
-            hugepage_2m_wf(self.page_array)
-            &&&
-            hugepage_1g_wf(self.page_array)
+        }
 
-            // Process management spec
-
+        pub open spec fn process_management_inv(&self) -> bool {
+            &&&
+            container_tree_wf(self.root_container, self.container_map)    
             &&&
             container_process_wf(self.container_map, self.process_map)
             &&&
             per_container_process_tree_wf(self.container_map, self.process_map)
             &&&
+            container_endpoint_wf(self.container_map, self.endpoint_map)
+            &&&
             container_cpu_wf(self.container_map, self.cpu_array)
+            &&&
+            thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)
+            &&&
+            thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)
+            &&&
+            container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)
+            &&&
+            container_scheduler_wf(self.container_map, self.scheduler_map)
+            &&&
+            container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)
+            &&&
+            container_thread_wf(self.container_map, self.thread_map)
             &&&
             process_cpu_wf(self.process_map, self.cpu_array)
             &&&
-            process_pagetable_match(self.process_map, self.pagetable_map)
+            process_thread_wf(self.process_map, self.thread_map)
+        }
+        /// All spec functions under this are closed
+        pub open spec fn inv(&self) -> bool {
             &&&
-            process_thread_wf_inner(self.process_map, self.thread_map)
-
+            self.subsystems_inv()
+            &&&
+            self.memory_management_inv()
+            &&&
+            self.process_management_inv()
             // TLB spec
             &&&
             cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)
@@ -106,22 +125,22 @@ verus! {
             tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)
         }
 
-        pub open spec fn number_containers_wf(&self) -> bool {
-            &&&
-            self.number_containers.inv()
-            &&&
-            self.container_map.dom().len() == self.number_containers.view().view()
-            &&&
-            self.number_containers.view().view() <= MAX_NUM_CONTAINERS
-        }
+        // pub open spec fn number_containers_wf(&self) -> bool {
+        //     &&&
+        //     self.number_containers.inv()
+        //     &&&
+        //     self.container_map.dom().len() == self.number_containers.view().view()
+        //     &&&
+        //     self.number_containers.view().view() <= MAX_NUM_CONTAINERS
+        // }
 
         pub open spec fn default_pagetable_wf(&self) -> bool {
             &&&
-            self.default_pagetable.inv()
+            self.default_pagetable.view().inv()
             &&&
-            self.default_pagetable.pcid_or_ioid() == KERNEL_DEFAULT_PCID
+            self.default_pagetable.view().pcid_or_ioid() == KERNEL_DEFAULT_PCID
             &&&
-            self.default_pagetable.is_empty()
+            self.default_pagetable.view().is_empty()
         }
 
         pub open spec fn allocator_free_pages_wf(&self) -> bool{
