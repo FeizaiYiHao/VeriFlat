@@ -48,9 +48,9 @@ verus! {
         pub open spec fn free_state_inv(&self) -> bool{
             &&&
             match self.state {
-                PageState::Free4k { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } }|
-                PageState::Free2m { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } }|
-                PageState::Free1g { allocator_ptr, state: FreePageAllocatorState::PreCpuCache { cpu_id } } => {
+                PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id } }|
+                PageState::Free2m { state: FreePageAllocatorState::PreCpuCache { cpu_id } }|
+                PageState::Free1g { state: FreePageAllocatorState::PreCpuCache { cpu_id } } => {
                     cpu_id_valid(cpu_id)
                 }
                 _ => true,
@@ -97,9 +97,9 @@ verus! {
         }
         pub open spec fn is_free(&self) -> bool {
             match self.state{
-                PageState::Free4k { allocator_ptr: _, state: _ }
-                |PageState::Free2m { allocator_ptr: _, state: _ }
-                |PageState::Free1g { allocator_ptr: _, state: _ } => true,
+                PageState::Free4k { state: _ }
+                |PageState::Free2m { state: _ }
+                |PageState::Free1g { state: _ } => true,
                 _ => false,
             }
         }

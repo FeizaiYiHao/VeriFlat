@@ -79,8 +79,8 @@ verus! {
                     assert(self.process_pages_wf()) by {
                         Self::process_pages_wf_proof();
                     };
-                    assert(self.allocator_pages_wf()) by {
-                        Self::allocator_pages_wf_proof();
+                    assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        allocator_pages_wf_proof();
                     };
                     assert(container_process_wf(self.container_map, self.process_map)) by {
                         container_process_wf_proof();
@@ -142,8 +142,8 @@ verus! {
                 assert(self.process_pages_wf()) by {
                     Self::process_pages_wf_proof();
                 };
-                assert(self.allocator_pages_wf()) by {
-                    Self::allocator_pages_wf_proof();
+                assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                    allocator_pages_wf_proof();
                 };
                 assert(container_process_wf(self.container_map, self.process_map)) by {
                     container_process_wf_proof();
@@ -210,7 +210,7 @@ verus! {
                     //         }
                     //     );
                 };
-                assert(process_thread_wf_inner(self.process_map, self.thread_map)) by {};
+                assert(process_thread_wf(self.process_map, self.thread_map)) by {};
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by {
                     process_cpu_wf_proof();
                     // cpu_dirty_map_proc_pcid_match_proof();
