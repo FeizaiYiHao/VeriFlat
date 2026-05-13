@@ -11,6 +11,10 @@ pub struct Process {
     pub pagetable: RwLockPageTableRoot,
     pub iommu_table: Option<RwLockPageTableRoot>,
 
+    pub quota_4k: usize,
+    pub quota_2m: usize,
+    pub quota_1g: usize,
+
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,
     pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_PROCESS_TREE_DEPTH>,
@@ -24,6 +28,10 @@ pub ghost struct ProcessU {
     
     pub pagetable: PageTable<PT_TYPE>,
     // pub iommu_table: Option<PageTable<IOMMU_TYPE>>,
+    
+    pub quota_4k: usize,
+    pub quota_2m: usize,
+    pub quota_1g: usize,
 
     pub parent: Option<RwLockProcessPtr>,
     pub children: Seq<RwLockProcessPtr>,

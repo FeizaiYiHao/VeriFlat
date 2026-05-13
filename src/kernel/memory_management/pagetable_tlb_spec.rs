@@ -64,7 +64,7 @@ verus! {
 //         single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb[(cpu_id, pagetable@.pcid.unwrap())], pagetable)
 // }
 
-// impl Kernel{
+// impl KernelK{
 //     pub open spec fn kernel_tlb_inv(&self) -> bool{
 //         &&&
 //         self.cpu_pagetable_pointers_wf()

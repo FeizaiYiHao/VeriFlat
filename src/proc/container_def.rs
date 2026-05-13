@@ -23,8 +23,11 @@ pub struct Container {
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
+    
+    pub quota_4k: usize,
+    pub quota_2m: usize,
+    pub quota_1g: usize,
 }
-
 pub struct ContainerRO {
     pub parent: Option<RwLockContainerPtr>,    
     pub depth: usize,

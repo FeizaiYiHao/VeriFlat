@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    impl Kernel{
+    impl KernelK{
         pub open spec fn endpoint_perms_wf(&self) -> bool{
             &&&
             self.endpoint_map.perms_wf()

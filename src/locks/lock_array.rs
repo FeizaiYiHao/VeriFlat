@@ -9,19 +9,25 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, const N: usize, const HasKillState: bool>{
-        array: Array<RwLock<T, ROT, HasKillState>, N>,
+    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HasKillState: bool>{
+        array: Array<RwLock<T, ROT, GhostT, HasKillState>, N>,
+        
+        user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HasKillState>>>,
     }
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, const HasKillState: bool, const N: usize> LockedArray<T, ROT, N, HasKillState> { 
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HasKillState: bool, const N: usize> LockedArray<T, ROT, GhostT, N, HasKillState> { 
         pub closed spec fn inv(&self) -> bool{
             &&&
             self.array.wf()
         }
         
-        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, HasKillState>>{
+        pub closed spec fn user_view(&self) -> Seq<RwLock<T, ROT, GhostT, HasKillState>>{
+            self.user_seq.view()
+        }
+
+        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HasKillState>>{
             self.array@
         }
-        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, HasKillState>
+        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, GhostT, HasKillState>
             recommends
                 0 <= index < N,
         {
@@ -38,6 +44,23 @@ verus! {
                 ==>
                 self[i] == old[i]
         }
+        
+        pub open spec fn user_view_unchanged(&self, old: &Self) -> bool {
+            &&&
+            self.user_view() == old.user_view()
+        }
+        
+        pub open spec fn user_view_unchanged_except(&self, old: &Self, index:usize) -> bool {
+            &&&
+            self.user_view().len() == old.user_view().len()
+            &&&
+            forall|i:usize|
+                #![auto]
+                0 <= i < N && i != index
+                ==>
+                self.user_view()[i as int] == old.user_view()[i as int]
+        }
+
 
         #[verifier(external_body)]
         pub fn take(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:T)
@@ -54,6 +77,7 @@ verus! {
             ensures
                 self.inv(),
                 self.unchanged_except(old(self), index),
+                self.user_view_unchanged(old(self)),
 
                 take_ensures(old(self)[index]@, self[index]@),
                 
@@ -76,6 +100,7 @@ verus! {
             ensures
                 self.inv(),
                 self.unchanged_except(old(self), index),
+                self.user_view_unchanged(old(self)),
 
                 put_ensures(old(self)[index]@, self[index]@, v),
         {
@@ -104,7 +129,7 @@ verus! {
         } 
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, const N: usize> LockedArray<T, ROT, N, NO_KILL_STATE>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, GhostT, const N: usize> LockedArray<T, ROT, GhostT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires
@@ -121,6 +146,7 @@ verus! {
             ensures
                 self.inv(),
                 self.unchanged_except(old(self), index),
+                self.user_view_unchanged(old(self)),
 
                 wlock_ensures(old(self)[index]@, self[index]@, lock_id@, lctx.thread_id(), ret@),
                 lock_ensures(old(lctx), lctx, self[index]@@, lock_id@),
@@ -143,6 +169,8 @@ verus! {
             ensures
                 self.inv(),
                 self.unchanged_except(old(self), index),
+                self.user_view_unchanged_except(old(self), index),
+                self.user_view().spec_index(index as int) == self[index]@,
 
                 self[index]@.locking_thread() is None,
 

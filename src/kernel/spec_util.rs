@@ -3,7 +3,7 @@ use crate::*;
 use super::*;
 verus! {
 
-impl Kernel{
+impl KernelK{
     pub open spec fn get_process_pagetable(&self, process_ptr:RwLockProcessPtr) -> PageTable<PT_TYPE>
         recommends
             self.process_map.dom().contains(process_ptr)
@@ -14,7 +14,7 @@ impl Kernel{
         recommends
             self.container_map.dom().contains(container_ptr)
     {
-        self.allocator_4k_map.spec_index(self.container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value
+        self.container_map.spec_index(container_ptr).view().quota_4k.view()
     }
 }
 

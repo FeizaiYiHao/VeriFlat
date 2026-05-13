@@ -12,7 +12,7 @@ verus! {
         pub process_map: Map<RwLockProcessPtr, ProcessU>,
     }
 
-    pub open spec fn map_kernel_to_user_view(kernel_k: Kernel, kernel_u: KernelU) -> bool{
+    pub open spec fn map_kernel_to_user_view(kernel_k: KernelK, kernel_u: KernelU) -> bool{
         &&&
         kernel_k.cpu_array.view().len() == kernel_u.cpu_array.len()
         &&&

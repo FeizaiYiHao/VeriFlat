@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 verus! {
 
-    impl Kernel{
+    impl KernelK{
         pub fn kernel_add_mapping_4k(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_root: RwLockPageTableRoot, page_index: PageIndex,
             target_l4i: L4Index,
             target_l3i: L3Index,
