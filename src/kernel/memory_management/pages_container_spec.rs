@@ -4,7 +4,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    impl Kernel{
+    impl KernelK{
         pub proof fn container_pages_wf_proof()
             ensures 
                 forall|s:Self|

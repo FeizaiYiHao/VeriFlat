@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    impl Kernel{
+    impl KernelK{
         pub open spec fn thread_perms_wf(&self) -> bool{
             &&&
             self.thread_map.perms_wf()

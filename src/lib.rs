@@ -15,7 +15,7 @@ pub mod cpu;
 pub mod proc;
 pub mod allocator;
 pub mod test;
-pub mod kernel;
+// pub mod kernel;
 
 pub use pagetable_seq::*;
 // pub use pagetable_map::*;
@@ -30,7 +30,7 @@ pub use linkedlist::*;
 pub use cpu::*;
 pub use proc::*;
 pub use allocator::*;
-pub use kernel::*;
+// pub use kernel::*;
 
 verus! {
 global size_of usize == 8;
