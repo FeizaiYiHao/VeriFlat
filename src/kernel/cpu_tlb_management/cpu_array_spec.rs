@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn cpu_array_wf(cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>, kernel_pagetable: PageTable<PT_TYPE>) -> bool {
+    pub open spec fn cpu_array_wf(cpu_array: LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>, kernel_pagetable: PageTable<PT_TYPE>) -> bool {
         &&&
         cpu_array.inv()
         &&&

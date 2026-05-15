@@ -7,23 +7,23 @@ verus! {
 
     pub const KERNEL_DEFAULT_PCID:Pcid = 0; 
     pub struct KernelK{
-        pub pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), PAGE_TABLE_HAS_KILL_STATE>,
-        pub page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>,
-        pub cpu_array: LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>,
+        pub pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>,
+        pub page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>,
+        pub cpu_array: LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>,
         pub cpu_tlb: CpuTLB,
 
         pub root_container: RwLockContainerPtr, // Never dies
-        pub container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>,        
-        pub number_containers: RwLock<NumContainers, (), NO_KILL_STATE>,
-        pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), SCHEDULER_HAS_KILL_STATE>,
-        pub process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>,
-        pub thread_map: LockedMap<RwLockThreadPtr, Thread, (), THREAD_HAS_KILL_STATE>,
-        pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>,
+        pub container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>,        
+        // pub number_containers: RwLock<NumContainers, (), NO_KILL_STATE>,
+        pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>,
+        pub process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
+        pub thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>,
+        pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>,
         pub allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         pub allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         pub allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
 
-        // pub container_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
+        // pub clontainer_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
 
         pub default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, // Read only
     }
@@ -81,7 +81,7 @@ verus! {
             &&&
             self.allocator_free_pages_wf()
             &&&
-            container_process_allocator_quota_wf(self.container_map, self.process_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map) 
+            container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map) 
         }
 
         pub open spec fn process_management_inv(&self) -> bool {
@@ -145,26 +145,26 @@ verus! {
             allocator_free_page_ptrs_wf(self.allocator_1g_map)
         }
 
-        pub open spec fn allocator_cpu_cache_clean(&self) -> bool{
-            &&&
-            forall|alloc_ptr: RwLockPageAllocatorPtr|
-                #![trigger self.allocator_4k_map.spec_index(alloc_ptr).local_quota_clean()]
-                self.allocator_4k_map.dom().contains(alloc_ptr)
-                ==>
-                self.allocator_4k_map.spec_index(alloc_ptr).local_quota_clean()
-            &&&
-            forall|alloc_ptr: RwLockPageAllocatorPtr|
-                #![trigger self.allocator_2m_map.spec_index(alloc_ptr).local_quota_clean()]
-                self.allocator_2m_map.dom().contains(alloc_ptr)
-                ==>
-                self.allocator_2m_map.spec_index(alloc_ptr).local_quota_clean()
-            &&&
-            forall|alloc_ptr: RwLockPageAllocatorPtr|
-                #![trigger self.allocator_1g_map.spec_index(alloc_ptr).local_quota_clean()]
-                self.allocator_1g_map.dom().contains(alloc_ptr)
-                ==>
-                self.allocator_1g_map.spec_index(alloc_ptr).local_quota_clean()
-        }
+        // pub open spec fn allocator_cpu_cache_clean(&self) -> bool{
+        //     &&&
+        //     forall|alloc_ptr: RwLockPageAllocatorPtr|
+        //         #![trigger self.allocator_4k_map.spec_index(alloc_ptr).local_quota_clean()]
+        //         self.allocator_4k_map.dom().contains(alloc_ptr)
+        //         ==>
+        //         self.allocator_4k_map.spec_index(alloc_ptr).local_quota_clean()
+        //     &&&
+        //     forall|alloc_ptr: RwLockPageAllocatorPtr|
+        //         #![trigger self.allocator_2m_map.spec_index(alloc_ptr).local_quota_clean()]
+        //         self.allocator_2m_map.dom().contains(alloc_ptr)
+        //         ==>
+        //         self.allocator_2m_map.spec_index(alloc_ptr).local_quota_clean()
+        //     &&&
+        //     forall|alloc_ptr: RwLockPageAllocatorPtr|
+        //         #![trigger self.allocator_1g_map.spec_index(alloc_ptr).local_quota_clean()]
+        //         self.allocator_1g_map.dom().contains(alloc_ptr)
+        //         ==>
+        //         self.allocator_1g_map.spec_index(alloc_ptr).local_quota_clean()
+        // }
     }
 
 }

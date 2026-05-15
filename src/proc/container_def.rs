@@ -21,12 +21,9 @@ pub struct Container {
     pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
     pub owned_cpus: ArraySet<NUM_CPUS>,
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
+    pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
-    
-    pub quota_4k: usize,
-    pub quota_2m: usize,
-    pub quota_1g: usize,
 }
 pub struct ContainerRO {
     pub parent: Option<RwLockContainerPtr>,    
@@ -96,4 +93,19 @@ impl LockMajorTrait for Container {
     }
 }
 
+impl LockUserVisibilityTrait for Container{
+    open spec fn is_user_visible() -> bool {
+        true
+    }
+}
+
+impl LockOwnerIdTrait for Container{
+    open spec fn container_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+}
 } // verus!

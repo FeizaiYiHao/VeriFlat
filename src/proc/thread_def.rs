@@ -7,9 +7,11 @@ pub struct Thread {
     pub state: ThreadState,
 
     pub owning_container: RwLockContainerPtr,
+    pub container_depth: usize,
     pub scheduler_linkedlist_node: ExternalNode<RwLockThreadPtr>,
 
     pub owning_proc: RwLockProcessPtr,
+    pub process_depth: usize,
     pub proc_pagetable_ptr: RwLockPageTableRoot,
     pub proc_linkedlist_node: ExternalNode<RwLockThreadPtr>,
 
@@ -22,6 +24,34 @@ pub struct Thread {
     pub running_cpu: Option<CpuId>,
     pub error_code: Option<RetValueType>,  //this will only be set when it comes out of endpoint and goes to scheduler.
     pub trap_frame: TrapFrameOption,
+
+    pub upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
+    pub upper_container_quota_cache_4k: Ghost<Seq<usize>>,
+    pub upper_container_quota_cache_2m: Ghost<Seq<usize>>,
+    pub upper_container_quota_cache_1g: Ghost<Seq<usize>>,
+}
+
+impl Thread{
+    pub open spec fn thread_quota_cache_clean(&self) -> bool{
+        &&&
+        forall|i:int|
+            #![trigger self.upper_container_quota_cache_4k.view().spec_index(i)]
+            0 <= i < self.upper_container_quota_cache_4k.view().len()
+            ==>
+            self.upper_container_quota_cache_4k.view().spec_index(i) == 0
+        &&&
+        forall|i:int|
+            #![trigger self.upper_container_quota_cache_2m.view().spec_index(i)]
+            0 <= i < self.upper_container_quota_cache_2m.view().len()
+            ==>
+            self.upper_container_quota_cache_2m.view().spec_index(i) == 0
+        &&&
+        forall|i:int|
+            #![trigger self.upper_container_quota_cache_1g.view().spec_index(i)]
+            0 <= i < self.upper_container_quota_cache_1g.view().len()
+            ==>
+            self.upper_container_quota_cache_1g.view().spec_index(i) == 0
+    }
 }
 
 impl LockInvTrait for Thread {
@@ -44,8 +74,16 @@ impl LockInvTrait for Thread {
         self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()).unwrap() == self.blocking_endpoint_ptr.unwrap()
         &&&
         self.state is BLOCKED == !self.endpoint_linkedlist_node.is_init()
-        &&
+        &&&
         self.state is SCHEDULED == !self.scheduler_linkedlist_node.is_init()
+        &&&
+        self.upper_container_seq.view().len() == self.container_depth
+        &&&
+        self.upper_container_seq.view().len() + 1 == self.upper_container_quota_cache_4k.view().len()
+        &&&
+        self.upper_container_seq.view().len() + 1 == self.upper_container_quota_cache_2m.view().len()
+        &&&
+        self.upper_container_seq.view().len() + 1 == self.upper_container_quota_cache_1g.view().len()
     }
 }
 

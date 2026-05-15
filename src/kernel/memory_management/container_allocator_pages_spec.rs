@@ -6,7 +6,7 @@ use crate::*;
 verus! {
         pub proof fn allocator_pages_wf_proof()
             ensures 
-                forall|page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>, 
+                forall|page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>, 
                     allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
                     allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
                     allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>|
@@ -26,7 +26,7 @@ verus! {
         {}
 
         pub closed spec fn allocator_pages_wf(
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>, 
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>, 
                     allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
                     allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
                     allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool {
@@ -39,7 +39,7 @@ verus! {
         }
 
         pub open spec fn allocator_4k_pages_wf_inner(
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>, 
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>, 
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
         ) -> bool{
             &&&
@@ -63,7 +63,7 @@ verus! {
         }
 
     pub open spec fn allocator_2m_pages_wf_inner(
-        page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>, 
+        page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>, 
         allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
     ) -> bool{
         &&&
@@ -88,7 +88,7 @@ verus! {
 
     }
 
-    pub open spec fn allocator_1g_pages_wf_inner(page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>, 
+    pub open spec fn allocator_1g_pages_wf_inner(page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>, 
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
             ) -> bool{
         &&&
@@ -115,7 +115,7 @@ verus! {
 
     pub proof fn container_allocator_proof()
         ensures
-            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
                     allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
                     allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
                     allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>|
@@ -124,7 +124,7 @@ verus! {
                 container_allocator_wf_inner(container_map, allocator_4k_map, allocator_2m_map, allocator_1g_map)
     {}
 
-    pub closed spec fn container_allocator_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub closed spec fn container_allocator_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
@@ -132,7 +132,7 @@ verus! {
         &&&
         container_allocator_wf_inner(container_map, allocator_4k_map, allocator_2m_map, allocator_1g_map)
     }
-    pub open spec fn container_allocator_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_allocator_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
@@ -153,6 +153,8 @@ verus! {
             allocator_4k_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k)
             &&
             allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).owning_container == c_ptr
+            &&
+            allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr,|
             #![trigger allocator_2m_map.spec_index(alloc_ptr).owning_container]
@@ -169,6 +171,8 @@ verus! {
             allocator_2m_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m)
             &&
             allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).owning_container == c_ptr
+            &&
+            allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr,|
             #![trigger allocator_1g_map.spec_index(alloc_ptr).owning_container]
@@ -185,26 +189,28 @@ verus! {
             allocator_1g_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g)
             &&
             allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).owning_container == c_ptr
+            &&
+            allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
     }
 
     pub proof fn container_page_owner_proof()
         ensures
-            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
-                    page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>|
+            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
+                    page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>|
                 container_page_owner_wf(container_map, page_array) 
                 <==>
                 container_page_owner_wf_inner(container_map, page_array)
     {}
 
-    pub closed spec fn container_page_owner_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+    pub closed spec fn container_page_owner_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         container_page_owner_wf_inner(container_map, page_array)
     }
     
-    pub open spec fn container_page_owner_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+    pub open spec fn container_page_owner_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, page_ptr: PagePtr|
@@ -224,16 +230,16 @@ verus! {
             container_map.spec_index(page_array.spec_index(p_i).view().view().owning_container).view().owned_pages.view().contains(page_index2page_ptr(p_i))
     }
 
-    pub closed spec fn container_allocator_free_4k_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub closed spec fn container_allocator_free_4k_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         container_allocator_free_4k_page_wf_inner(container_map, allocator_4k_map, page_array)
     }
-    pub open spec fn container_allocator_free_4k_page_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_allocator_free_4k_page_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         forall|page_index:PageIndex|
@@ -291,16 +297,16 @@ verus! {
             }
     }
 
-    pub closed spec fn container_allocator_free_2m_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub closed spec fn container_allocator_free_2m_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         container_allocator_free_2m_page_wf_inner(container_map, allocator_2m_map, page_array)
     }
-    pub open spec fn container_allocator_free_2m_page_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_allocator_free_2m_page_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         forall|page_index:PageIndex|
@@ -358,16 +364,16 @@ verus! {
             }
     }
 
-    pub closed spec fn container_allocator_free_1g_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub closed spec fn container_allocator_free_1g_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         container_allocator_free_1g_page_wf_inner(container_map, allocator_1g_map, page_array)
     }
-    pub open spec fn container_allocator_free_1g_page_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_allocator_free_1g_page_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
-            page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>
+            page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
         forall|page_index:PageIndex|

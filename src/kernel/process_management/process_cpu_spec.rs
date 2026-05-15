@@ -4,14 +4,14 @@ use crate::*;
 verus! {
    pub proof fn process_cpu_wf_proof()
         ensures
-            forall|process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>|
+            forall|process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>|
                 process_cpu_wf(process_map, cpu_array) <==> process_cpu_wf_inner(process_map, cpu_array)
     {}
 
-    pub closed spec fn process_cpu_wf(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn process_cpu_wf(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         process_cpu_wf_inner(process_map, cpu_array)
     }
-    pub open spec fn process_cpu_wf_inner(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, PROCESS_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub open spec fn process_cpu_wf_inner(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         &&&
         forall|cpu_i:CpuId|
             #![trigger cpu_array.spec_index(cpu_i).view().view().current_process]

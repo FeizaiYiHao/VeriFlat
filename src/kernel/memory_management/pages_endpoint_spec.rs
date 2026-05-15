@@ -6,16 +6,16 @@ use crate::*;
 verus! {
         pub proof fn endpoint_pages_wf_proof()
             ensures 
-                forall|endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>|
+                forall|endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>|
                     endpoint_pages_wf_inner(endpoint_map, page_array) <==> endpoint_pages_wf(endpoint_map, page_array)
         {}
 
-        pub closed spec fn endpoint_pages_wf(endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+        pub closed spec fn endpoint_pages_wf(endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
             &&&
             endpoint_pages_wf_inner(endpoint_map, page_array)
         }
 
-        pub open spec fn endpoint_pages_wf_inner(endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), NUM_PAGES, NO_KILL_STATE>) -> bool{
+        pub open spec fn endpoint_pages_wf_inner(endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>) -> bool{
             &&&
             forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index)]
