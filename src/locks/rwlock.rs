@@ -331,11 +331,9 @@ impl<T, ROT, GhostT, const HasKillState: bool> RwLock<T, ROT, GhostT, HasKillSta
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
     }
     #[verifier::external_body]
-    pub fn borrow<'a,>(&self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+    pub fn borrow<'a,>(&self, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
-            self.locked_by(lctx), 
             self.is_init() == true,
-            lp@.thread_id() == lctx.thread_id(),
 
             lp@.state() is WriteLock ==> self.write_lock_perm_match(lp@),
             lp@.state() is ReadLock ==> self.read_lock_perm_match(lp@), 

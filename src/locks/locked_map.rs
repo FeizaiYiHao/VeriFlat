@@ -141,7 +141,7 @@ impl<T, ROT, GhostT, const HasKillState: bool> LockedMap<usize, T, ROT, GhostT, 
             ret == self[key]@,
     {
         let tracked perm = self.map.tracked_borrow(key);
-        let ret = borrow(&PPtr::<RwLock<T, ROT, GhostT, HasKillState>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = borrow(&PPtr::<RwLock<T, ROT, GhostT, HasKillState>>::from_usize(key), Tracked(&mut perm), lock_perm);
         return ret;
     }
 
@@ -228,6 +228,69 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         return ret;
     }
 }
+
+// impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, GhostT,> LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE>{
+//     pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+//         requires
+//             old(self).perms_wf(),
+//             old(self).dom().contains(key),
+            
+//             old(self)@[key].lock_major_sat(lock_id@.major),
+//             old(self)@[key].lock_minor() == lock_id@.minor,
+
+//             wlock_requires(old(self)[key], old(lctx)),
+//             old(lctx).lock_id_acyclic(lock_id@),
+//         ensures
+//             self.perms_wf(),
+//             self.unchanged_except(old(self), key),
+//             self.user_view_unchanged(old(self)),
+
+//             wlock_ensures(old(self)[key], self[key], lock_id@, lctx.thread_id(), ret@),
+//             lock_ensures(old(lctx), lctx, self[key]@, lock_id@),
+//     {
+//         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+//         let ret = wlock(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
+//         assert(perm.addr() == key);
+//         proof{
+//             self.map.borrow_mut().tracked_insert(key, perm);
+//         }
+//         return ret;
+//     }
+
+//     pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+//         requires
+//             old(self).perms_wf(),
+//             old(self).dom().contains(key),
+            
+//             old(self)[key].wlocked_by(old(lctx)),
+//             old(self)[key].inv(),
+
+//             lock_perm@.state() is WriteLock,
+//             lock_perm@.thread_id() == old(lctx).thread_id(),
+//             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+//         ensures
+//             self.perms_wf(),
+//             self.unchanged_except(old(self), key),
+//             self.user_view_unchanged_except(old(self), key),
+//             self.user_view().spec_index(key) == self[key],
+
+//             self[key].locking_thread() is None,
+
+//             wunlock_ensures(old(self)[key], self[key]),
+//             unlock_ensures(old(lctx), lctx, self[key]@, lock_perm@.lock_id()),
+//     {
+//         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+//         let ret = wunlock(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+//         proof{
+//             self.map.borrow_mut().tracked_insert(key, perm);
+//         }
+//         proof{
+//             self.map_u@ = self.map_u@.insert(key, self[key]);
+//             assume(self.user_view_unchanged_except(old(self), key));
+//         }
+//         return ret;
+//     }
+// }
 
 impl<T:LockInvTrait + LockRecursivelyLockedTrait, ROT, GhostT, const HasKillState: bool> Step for LockedMap<usize, T, ROT, GhostT, HasKillState>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{

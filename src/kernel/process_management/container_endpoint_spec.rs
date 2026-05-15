@@ -4,15 +4,15 @@ use crate::*;
 verus! {
    pub proof fn container_endpoint_wf_proof()
         ensures
-            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>|
+            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>|
                 container_endpoint_wf(container_map, endpoint_map) <==> container_endpoint_wf_inner(container_map, endpoint_map)
     {}
 
-    pub closed spec fn container_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn container_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>) -> bool {
         container_endpoint_wf_inner(container_map, endpoint_map)
     }
-    pub open spec fn container_endpoint_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, CONTAINER_HAS_KILL_STATE>, 
-            endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (),  ENDPOINT_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_endpoint_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
+            endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, e_ptr:RwLockEndpointPtr|
             #![trigger container_map.spec_index(c_ptr).view().owned_endpoints.view().contains(e_ptr)]

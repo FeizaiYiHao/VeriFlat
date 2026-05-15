@@ -109,22 +109,18 @@ verus! {
 
         // @Xiangdong comeback
         #[verifier::external_body]
-        pub fn borrow<'a, 'b: 'a>(&'b self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
+        pub fn borrow<'a,>(&self, index:usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
             requires
                 self.inv(),
                 0 <= index < N,
 
-                self[index]@.locked_by(lctx), 
-                self[index]@.is_init(),
-
-                lp@.thread_id() == lctx.thread_id(),
                 lp@.state() is WriteLock ==> self[index]@.write_lock_perm_match(lp@),
                 lp@.state() is ReadLock ==> self[index]@.read_lock_perm_match(lp@), 
             ensures
                 ret == self[index]@@,
         {
             unsafe{
-                self.array.ar.index(index).borrow(Tracked(lctx), lp)
+                self.array.ar.index(index).borrow(lp)
             }
         } 
     }
