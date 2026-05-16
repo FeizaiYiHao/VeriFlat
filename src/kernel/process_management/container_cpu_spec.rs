@@ -42,6 +42,10 @@ verus! {
                 container_perms.dom().contains(cpu_array.spec_index(cpu_i).view().view().owning_container)
                 &&&
                 container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)).view().owned_cpus.view().contains(cpu_i)
+                &&&
+                container_perms.spec_index((cpu_array.spec_index(cpu_i).view().view().owning_container)).view_rodata().view().depth
+                    ==
+                    cpu_array.spec_index(cpu_i).view().view().container_depth
             }
     }
 }

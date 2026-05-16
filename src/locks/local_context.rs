@@ -44,7 +44,7 @@ impl LocalContext{
         |||
         self.lock_seq().len() == 0
         |||
-        lock_id > self.lock_seq().last()
+        lock_id.spec_gt(self.lock_seq().last())
     }
 }
 

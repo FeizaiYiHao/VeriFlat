@@ -30,59 +30,66 @@ impl RwLockInner{
     #[verifier::external_body]
     pub fn wlock(&mut self) {
         loop {
-            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.num_of_reader == 0 && self.writing == false{
-                self.writing = true;
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok(){
+                if self.num_of_reader == 0 && self.writing == false{
+                    self.writing = true;
+                    self.lock.store(false, Ordering::Release);
+                    break;
+                }
                 self.lock.store(false, Ordering::Release);
-                break;
             }
-            self.lock.store(false, Ordering::Release);
         }
     }
 
     #[verifier::external_body]
     pub fn try_wlock(&mut self) -> Result<(),KillerInfo> {
         loop {
-            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.killer_info.is_some() {
-                let ret = self.killer_info.unwrap();
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok(){
+                if self.killer_info.is_some() {
+                    let ret = self.killer_info.unwrap();
+                    self.lock.store(false, Ordering::Release);
+                    return Err(ret);
+                }
+                if self.num_of_reader == 0 && self.writing == false{
+                    self.writing = true;
+                    self.lock.store(false, Ordering::Release);
+                    return Ok(());
+                }
                 self.lock.store(false, Ordering::Release);
-                return Err(ret);
             }
-            if self.num_of_reader == 0 && self.writing == false{
-                self.writing = true;
-                self.lock.store(false, Ordering::Release);
-                return Ok(());
-            }
-            self.lock.store(false, Ordering::Release);
         }
     }
 
     #[verifier::external_body]
     pub fn try_wlock_and_mark_kill(&mut self, killer_info: KillerInfo) -> Result<(),KillerInfo> {
         loop {
-            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.killer_info.is_some() {
-                let ret = self.killer_info.unwrap();
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok(){
+                if self.killer_info.is_some() {
+                    let ret = self.killer_info.unwrap();
+                    self.lock.store(false, Ordering::Release);
+                    return Err(ret);
+                }
+                if self.num_of_reader == 0 && self.writing == false{
+                    self.writing = true;
+                    self.killer_info = Some(killer_info);
+                    self.lock.store(false, Ordering::Release);
+                    return Ok(());
+                }
                 self.lock.store(false, Ordering::Release);
-                return Err(ret);
             }
-            if self.num_of_reader == 0 && self.writing == false{
-                self.writing = true;
-                self.killer_info = Some(killer_info);
-                self.lock.store(false, Ordering::Release);
-                return Ok(());
-            }
-            self.lock.store(false, Ordering::Release);
         }
     }
 
     
     #[verifier::external_body]
     pub fn wunlock(&mut self) {
-        self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-        self.writing = false;
-        self.lock.store(false, Ordering::Release);
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok(){
+                self.writing = false;
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
     }
 
     #[verifier::external_body]
@@ -101,25 +108,31 @@ impl RwLockInner{
     #[verifier::external_body]
     pub fn try_rlock(&mut self) -> Result<(),KillerInfo> {
         loop {
-            self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-            if self.killer_info.is_some() {
-                let ret = self.killer_info.unwrap();
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok(){
+                if self.killer_info.is_some() {
+                    let ret = self.killer_info.unwrap();
+                    self.lock.store(false, Ordering::Release);
+                    return Err(ret);
+                }
+                if self.writing == false{
+                    self.num_of_reader = self.num_of_reader + 1;
+                    self.lock.store(false, Ordering::Release);
+                    return Ok(());
+                }
                 self.lock.store(false, Ordering::Release);
-                return Err(ret);
             }
-            if self.writing == false{
-                self.num_of_reader = self.num_of_reader + 1;
-                self.lock.store(false, Ordering::Release);
-                return Ok(());
-            }
-            self.lock.store(false, Ordering::Release);
         }
     }
     #[verifier::external_body]
     pub fn runlock(&mut self) {
-        self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed);
-        self.num_of_reader = self.num_of_reader - 1;
-        self.lock.store(false, Ordering::Release);
+        loop{
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok(){
+                self.num_of_reader = self.num_of_reader - 1;
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+
     }
 }
 
@@ -388,6 +401,65 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
     }
 
 }
+
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, GhostT,> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+    #[verifier::external_body]
+    pub fn try_wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
+        requires
+            old(self)@.container_depth() == lock_id@.container,
+            old(self)@.process_depth() == lock_id@.process,
+            old(self)@.lock_major_sat(lock_id@.major),
+
+            wlock_requires(*old(self), old(lctx)),
+            old(lctx).lock_id_acyclic(lock_id@),
+        ensures
+            ret.0 == false ==> 
+            {
+                &&&
+                old(self).being_killed() == true
+                &&&
+                *old(self) == *self
+                &&&
+                ret.1 is None
+            },
+            ret.0 == true ==>{
+                &&&                
+                old(self).being_killed() == false
+                &&&
+                ret.1 is Some
+                &&&
+                wlock_ensures(*old(self), *self, lock_id@, lctx.thread_id(), ret.1.unwrap()@)
+                &&&
+                lock_ensures(old(lctx), lctx, self.view(), lock_id@)
+            } 
+    {
+        if self.lock.try_wlock().is_err(){
+            (false, None)
+        }else{
+            (true, Some(Tracked::assume_new()))
+        }
+
+    }
+
+    #[verifier::external_body]
+    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
+        requires
+            old(self).wlocked_by(old(lctx)),
+            old(self).inv(),
+
+            lp@.state() is WriteLock,
+            lp@.thread_id() == old(lctx).thread_id(),
+            lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+        ensures
+            old(self).being_killed() == self.being_killed(),
+            wunlock_ensures(*old(self), *self),
+            unlock_ensures(old(lctx), lctx, self.view(), lp@.lock_id()),
+    {
+        self.lock.wunlock();
+    }
+
+}
+
 pub open spec fn wlock_requires<T: LockUserVisibilityTrait, ROT, GhostT, const HasKillState: bool>(old:RwLock<T, ROT, GhostT, HasKillState>, lctx: &LocalContext) -> bool{
     &&&
     old.locked_by(lctx) == false

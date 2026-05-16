@@ -3,6 +3,8 @@ use core::mem::MaybeUninit;
 use vstd::prelude::*;
 use vstd::simple_pptr::PointsTo;
 
+use crate::*;
+
 verus! {
 
 pub struct ReadOnlyNode<V>{
@@ -85,6 +87,16 @@ impl<T> ExternalReadOnlyNode<T>{
     {
     }
 
+}
+
+impl<V: LockOwnerIdTrait> LockOwnerIdTrait for ReadOnlyNode<V>{
+    open spec fn container_depth(&self) -> LockOwnerId {
+        self.view().container_depth()
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        self.view().process_depth()
+    }
 }
 
 }
