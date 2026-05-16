@@ -44,11 +44,11 @@ impl<T> ExternalNode<T>{
         requires
             old(self).is_init(),
         ensures
-            self.is_init() == false,
-            self.addr() == old(self).addr(),
-            self.addr() == ret.0,
+            final(self).is_init() == false,
+            final(self).addr() == old(self).addr(),
+            final(self).addr() == ret.0,
             ret.1@.is_init(),
-            ret.1@.addr() == self.addr(),
+            ret.1@.addr() == final(self).addr(),
     {
         (&self.storage as *const Node<T> as usize, Tracked::assume_new())
     }
@@ -59,8 +59,8 @@ impl<T> ExternalNode<T>{
             old(self).addr() == perm@.addr(),
             perm@.is_init(),
         ensures
-            self.is_init() == true,
-            self.addr() == old(self).addr(),
+            final(self).is_init() == true,
+            final(self).addr() == old(self).addr(),
     {
     }
 }
@@ -79,8 +79,8 @@ pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tra
             #![trigger others[k].addr()] 
             others.dom().contains(k) 
             ==> 
-            this.addr() != others[k].addr(),
-        *this == *old(this),
+            final(this).addr() != others[k].addr(),
+        *final(this) == *old(this),
 {
 }
 
@@ -90,11 +90,11 @@ pub fn node_update_value<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, v
         old(perm)@.addr() == addr,
         old(perm)@.is_init(),
     ensures
-        perm@.is_init(),
-        perm@.addr() == old(perm)@.addr(),
-        perm@.value()@ == value,
-        perm@.value().prev == old(perm)@.value().prev,
-        perm@.value().next == old(perm)@.value().next,
+        final(perm)@.is_init(),
+        final(perm)@.addr() == old(perm)@.addr(),
+        final(perm)@.value()@ == value,
+        final(perm)@.value().prev == old(perm)@.value().prev,
+        final(perm)@.value().next == old(perm)@.value().next,
 {
     unsafe {
         let uptr = addr as *mut MaybeUninit<Node<T>>;
@@ -108,11 +108,11 @@ pub fn node_update_prev<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, pr
         old(perm)@.addr() == addr,
         old(perm)@.is_init(),
     ensures
-        perm@.is_init(),
-        perm@.addr() == old(perm)@.addr(),
-        perm@.value()@ == old(perm)@.value()@,
-        perm@.value().prev == prev,
-        perm@.value().next == old(perm)@.value().next,
+        final(perm)@.is_init(),
+        final(perm)@.addr() == old(perm)@.addr(),
+        final(perm)@.value()@ == old(perm)@.value()@,
+        final(perm)@.value().prev == prev,
+        final(perm)@.value().next == old(perm)@.value().next,
 {
     unsafe {
         let uptr = addr as *mut MaybeUninit<Node<T>>;
@@ -126,11 +126,11 @@ pub fn node_update_next<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, ne
         old(perm)@.addr() == addr,
         old(perm)@.is_init(),
     ensures
-        perm@.is_init(),
-        perm@.addr() == old(perm)@.addr(),
-        perm@.value()@ == old(perm)@.value()@,
-        perm@.value().prev == old(perm)@.value().prev,
-        perm@.value().next == next,
+        final(perm)@.is_init(),
+        final(perm)@.addr() == old(perm)@.addr(),
+        final(perm)@.value()@ == old(perm)@.value()@,
+        final(perm)@.value().prev == old(perm)@.value().prev,
+        final(perm)@.value().next == next,
 {
     unsafe {
         let uptr = addr as *mut MaybeUninit<Node<T>>;

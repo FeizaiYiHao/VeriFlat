@@ -25,11 +25,11 @@ pub broadcast proof fn submap_by_transitivity<K, V>(a: Map<K, V>, b: Map<K, V>, 
         a.dom().contains(k) ==> b.dom().contains(k) && a[k] == b[k]);
 }
 
-pub proof fn page_ptr_valid_imply_MEM_valid(v: usize)
+pub proof fn page_ptr_valid_imply_mem_valid(v: usize)
     requires
         page_ptr_valid(v),
     ensures
-        MEM_valid(v),
+        mem_valid(v),
 {
     assert(v & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector)
         requires

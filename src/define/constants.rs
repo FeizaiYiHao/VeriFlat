@@ -23,11 +23,11 @@ pub const KERNEL_MEM_END_L4INDEX: usize = 1;
 //8GiB
 pub const NUM_PAGES: usize = 2 * 1024 * 1024;
 
-pub const PAGE_SZ_4k: usize = 1usize << 12;
+pub const PAGE_SZ_4K: usize = 1usize << 12;
 
-pub const PAGE_SZ_2m: usize = 1usize << 21;
+pub const PAGE_SZ_2M: usize = 1usize << 21;
 
-pub const PAGE_SZ_1g: usize = 1usize << 30;
+pub const PAGE_SZ_1G: usize = 1usize << 30;
 
 pub const MAX_USIZE: u64 = 31 * 1024 * 1024 * 1024;
 
@@ -45,11 +45,11 @@ pub const IOID_MAX: usize = 4096;
 
 pub const MEM_MASK: u64 = 0x0000_ffff_ffff_f000;
 
-pub const MEM_4k_MASK: u64 = 0x0000_ffff_ffff_f000;
+pub const MEM_4K_MASK: u64 = 0x0000_ffff_ffff_f000;
 
-pub const MEM_2m_MASK: u64 = 0x0000_ffff_ffe0_0000;
+pub const MEM_2M_MASK: u64 = 0x0000_ffff_ffe0_0000;
 
-pub const MEM_1g_MASK: u64 = 0x0000_fffc_0000_0000;
+pub const MEM_1G_MASK: u64 = 0x0000_fffc_0000_0000;
 
 pub const VA_PERM_MASK: u64 = 0x8000_0000_0000_0002;
 

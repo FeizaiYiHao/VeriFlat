@@ -9,25 +9,25 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HasKillState: bool>{
-        array: Array<RwLock<T, ROT, GhostT, HasKillState>, N>,
+    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool>{
+        array: Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>,
         
-        user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HasKillState>>>,
+        user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
     }
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HasKillState: bool, const N: usize> LockedArray<T, ROT, GhostT, N, HasKillState> { 
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool, const N: usize> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> { 
         pub closed spec fn inv(&self) -> bool{
             &&&
             self.array.wf()
         }
         
-        pub closed spec fn user_view(&self) -> Seq<RwLock<T, ROT, GhostT, HasKillState>>{
+        pub closed spec fn user_view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>{
             self.user_seq.view()
         }
 
-        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HasKillState>>{
+        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>{
             self.array@
         }
-        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, GhostT, HasKillState>
+        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
         {
@@ -75,11 +75,11 @@ verus! {
                 lock_perm@.thread_id() == lctx.thread_id(),
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
             ensures
-                self.inv(),
-                self.unchanged_except(old(self), index),
-                self.user_view_unchanged(old(self)),
+                final(self).inv(),
+                final(self).unchanged_except(old(self), index),
+                final(self).user_view_unchanged(old(self)),
 
-                take_ensures(old(self)[index]@, self[index]@),
+                take_ensures(old(self)[index]@, final(self)[index]@),
                 
                 ret == old(self)[index]@@,
         {
@@ -98,11 +98,11 @@ verus! {
                 lock_perm@.thread_id() == lctx.thread_id(),
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
             ensures
-                self.inv(),
-                self.unchanged_except(old(self), index),
-                self.user_view_unchanged(old(self)),
+                final(self).inv(),
+                final(self).unchanged_except(old(self), index),
+                final(self).user_view_unchanged(old(self)),
 
-                put_ensures(old(self)[index]@, self[index]@, v),
+                put_ensures(old(self)[index]@, final(self)[index]@, v),
         {
             self.array.ar[index].put(Tracked(lctx), lock_perm, v);
         }
@@ -119,9 +119,7 @@ verus! {
             ensures
                 ret == self[index]@@,
         {
-            unsafe{
-                self.array.ar.index(index).borrow(lp)
-            }
+            self.array.ar.index(index).borrow(lp)
         } 
     }
 
@@ -140,15 +138,15 @@ verus! {
                 wlock_requires(old(self)[index]@, old(lctx)),
                 old(lctx).lock_id_acyclic(lock_id@),
             ensures
-                self.inv(),
-                self.unchanged_except(old(self), index),
-                self.user_view_unchanged(old(self)),
+                final(self).inv(),
+                final(self).unchanged_except(old(self), index),
+                final(self).user_view_unchanged(old(self)),
 
-                lctx.kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
+                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                wlock_ensures(old(self)[index]@, self[index]@, lock_id@, lctx.thread_id(), ret@),
-                lock_ensures(old(lctx), lctx, self[index]@@, lock_id@),
+                wlock_ensures(old(self)[index]@, final(self)[index]@, lock_id@, final(lctx).thread_id(), ret@),
+                lock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_id@),
         {
             self.array.ar[index].wlock_external(Tracked(lctx))
         }
@@ -166,25 +164,25 @@ verus! {
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
             ensures
-                self.inv(),
-                self.unchanged_except(old(self), index),
-                self.user_view_unchanged_except(old(self), index),
-                self.user_view().spec_index(index as int) == self[index]@,
+                final(self).inv(),
+                final(self).unchanged_except(old(self), index),
+                final(self).user_view_unchanged_except(old(self), index),
+                final(self).user_view().spec_index(index as int) == final(self)[index]@,
 
-                self[index]@.locking_thread() is None,
+                final(self)[index]@.locking_thread() is None,
 
-                lctx.kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
+                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                wunlock_ensures(old(self)[index]@, self[index]@),
-                unlock_ensures(old(lctx), lctx, self[index]@@, lock_perm@.lock_id()),
+                wunlock_ensures(old(self)[index]@, final(self)[index]@),
+                unlock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_perm@.lock_id()),
         {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }
 
     }
 
-    // impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const HasKillState: bool, const N: usize> Step for LockedArray<T, HasKillState, N>{
+    // impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const HAS_KILL_STATE: bool, const N: usize> Step for LockedArray<T, HAS_KILL_STATE, N>{
     //     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
     //         &&&
     //         forall|i:usize|

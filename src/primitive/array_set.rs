@@ -42,8 +42,8 @@ impl <const N: usize> ArraySet<N> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
-            self@ == Set::<usize>::empty(),
+            final(self).wf(),
+            final(self)@ == Set::<usize>::empty(),
     {
             self.len = 0;
             self.set = Ghost(Set::<usize>::empty());
@@ -119,8 +119,8 @@ impl <const N: usize> ArraySet<N> {
             old(self)@.contains(v) == false,
             0 <= v < N,
         ensures
-            self.wf(),
-            self@ == old(self)@.insert(v),
+            final(self).wf(),
+            final(self)@ == old(self)@.insert(v),
     {
         proof {
             // Prove that self.len < N using our helper lemma
@@ -137,8 +137,8 @@ impl <const N: usize> ArraySet<N> {
             old(self).wf(),
             old(self)@.contains(v) == true,
         ensures
-            self.wf(),
-            self@ == old(self)@.remove(v),
+            final(self).wf(),
+            final(self)@ == old(self)@.remove(v),
     {
         self.data.set(v, false);
         self.len = self.len - 1;

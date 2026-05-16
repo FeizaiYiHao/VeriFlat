@@ -65,8 +65,8 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
             old(self).inv(),
             usize_in_range::<N>(index),
         ensures
-            self.inv(),
-            self@ == old(self)@.insert(index, value),
+            final(self).inv(),
+            final(self)@ == old(self)@.insert(index, value),
     {
         proof{
             seq_update_lemma::<T>();

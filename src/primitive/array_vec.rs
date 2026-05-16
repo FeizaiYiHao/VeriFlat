@@ -84,9 +84,9 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             old(self).wf(),
             old(self).len() < old(self).capacity(),
         ensures
-            self.wf(),
-            self@ =~= old(self)@.push(value),
-            self.len() == old(self).len() + 1,
+            final(self).wf(),
+            final(self)@ =~= old(self)@.push(value),
+            final(self).len() == old(self).len() + 1,
     {
         let index = self.len;
         self.data.set(index, value);
@@ -101,10 +101,10 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         old(self)@.no_duplicates(),
         old(self)@.contains(value) == false,
     ensures
-        self.wf(),
-        self@ =~= old(self)@.push(value),
-        self.len() == old(self).len() + 1,
-        self@.no_duplicates(),
+        final(self).wf(),
+        final(self)@ =~= old(self)@.push(value),
+        final(self).len() == old(self).len() + 1,
+        final(self)@.no_duplicates(),
     {
         let index = self.len;
         let ret = self.data.set(index, value);
@@ -125,10 +125,10 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             old(self).wf(),
             old(self).len() > 0,
         ensures
-            self.wf(),
-            self.len() == old(self).len() - 1,
+            final(self).wf(),
+            final(self).len() == old(self).len() - 1,
             ret == old(self)@[old(self).len() - 1],
-            self@ =~= old(self)@.drop_last(),
+            final(self)@ =~= old(self)@.drop_last(),
     {
         let index = self.len() - 1;
         let ret = *self.data.get(index);
@@ -144,11 +144,11 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             old(self)@.len() > 0,
             old(self)@.no_duplicates(),
         ensures
-            self.wf(),
-            self@.len() == old(self)@.len() - 1,
+            final(self).wf(),
+            final(self)@.len() == old(self)@.len() - 1,
             ret == old(self)@[old(self).len() - 1],
-            self@ =~= old(self)@.drop_last(),
-            self@.no_duplicates(),
+            final(self)@ =~= old(self)@.drop_last(),
+            final(self)@.no_duplicates(),
     {
         let index = self.len() - 1;
         let ret = self.data.get(index);
@@ -163,8 +163,8 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             old(self).wf(),
             index < old(self).len(),
         ensures
-            self.wf(),
-            self@ =~= old(self)@.update(index as int, value),
+            final(self).wf(),
+            final(self)@ =~= old(self)@.update(index as int, value),
     {
         self.data.set(index, value);
     }

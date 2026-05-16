@@ -27,11 +27,11 @@ pub type PagePtr = usize;
 
 pub type PageIndex = usize;
 
-pub type PagePerm4k = PointsTo<[u8; PAGE_SZ_4k]>;
+pub type PagePerm4k = PointsTo<[u8; PAGE_SZ_4K]>;
 
-pub type PagePerm2m = PointsTo<[u8; PAGE_SZ_2m]>;
+pub type PagePerm2m = PointsTo<[u8; PAGE_SZ_2M]>;
 
-pub type PagePerm1g = PointsTo<[u8; PAGE_SZ_1g]>;
+pub type PagePerm1g = PointsTo<[u8; PAGE_SZ_1G]>;
 
 pub type VAddr = usize;
 

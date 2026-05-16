@@ -245,7 +245,7 @@ pub open spec fn spec_usize2pa(v: usize) -> PAddr {
 pub fn usize2pa(v: usize) -> (ret: PAddr)
     ensures
         ret =~= spec_usize2pa(v),
-        MEM_valid(ret),
+        mem_valid(ret),
 {
     let ret = v & MEM_MASK as usize;
     assert(v & 0x0000_ffff_ffff_f000u64 as usize & (!0x0000_ffff_ffff_f000u64) as usize == 0)
@@ -255,7 +255,7 @@ pub fn usize2pa(v: usize) -> (ret: PAddr)
 
 pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     requires
-        MEM_valid(page_entry.addr),
+        mem_valid(page_entry.addr),
     ensures
         usize2present(ret) == page_entry.perm.present,
         usize2ps(ret) == page_entry.perm.ps,

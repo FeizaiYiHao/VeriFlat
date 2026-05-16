@@ -67,11 +67,11 @@ impl<T> ExternalReadOnlyNode<T>{
         requires
             old(self).is_init(),
         ensures
-            self.is_init() == false,
-            self.addr() == old(self).addr(),
-            self.addr() == ret.0,
+            final(self).is_init() == false,
+            final(self).addr() == old(self).addr(),
+            final(self).addr() == ret.0,
             ret.1@.is_init(),
-            ret.1@.addr() == self.addr(),
+            ret.1@.addr() == final(self).addr(),
     {
         (&self.storage as *const ReadOnlyNode<T> as usize, Tracked::assume_new())
     }
@@ -82,8 +82,8 @@ impl<T> ExternalReadOnlyNode<T>{
             old(self).addr() == perm@.addr(),
             perm@.is_init(),
         ensures
-            self.is_init() == true,
-            self.addr() == old(self).addr(),
+            final(self).is_init() == true,
+            final(self).addr() == old(self).addr(),
     {
     }
 

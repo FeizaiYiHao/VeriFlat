@@ -275,13 +275,13 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             perm@.is_init(),
             perm@.addr() == addr,
         ensures
-            self.wf(),
-            self.length == old(self).length + 1,
-            self@ == old(self)@.push(perm@.value()@),
-            self.dom() == old(self).dom().insert(addr),
-            self.map() == old(self).map().insert(addr, perm@.value()@),
-            self.container_depth == old(self).container_depth,
-            self.lock_minor() == old(self).lock_minor(),
+            final(self).wf(),
+            final(self).length == old(self).length + 1,
+            final(self)@ == old(self)@.push(perm@.value()@),
+            final(self).dom() == old(self).dom().insert(addr),
+            final(self).map() == old(self).map().insert(addr, perm@.value()@),
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
     {
         let mut perm = perm;
         if self.length == 0 {
@@ -359,13 +359,13 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             perm@.is_init(),
             perm@.addr() == addr,
         ensures
-            self.wf(),
-            self.length == old(self).length + 1,
-            self@ == old(self)@.insert(0,perm@.value()@),
-            self.dom() == old(self).dom().insert(addr),
-            self.map() == old(self).map().insert(addr, perm@.value()@),
-            self.container_depth == old(self).container_depth,
-            self.lock_minor() == old(self).lock_minor(),
+            final(self).wf(),
+            final(self).length == old(self).length + 1,
+            final(self)@ == old(self)@.insert(0,perm@.value()@),
+            final(self).dom() == old(self).dom().insert(addr),
+            final(self).map() == old(self).map().insert(addr, perm@.value()@),
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
     {
         let mut perm = perm;
         if self.length == 0 {
@@ -441,18 +441,18 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             old(self).wf(),
             old(self).length != 0,
         ensures
-            self.wf(),
-            self.dom() == old(self).dom().remove(ret.0),
-            self@ == old(self)@.skip(1),
-            self.length == old(self).length - 1,
-            self.map() == old(self).map().remove(ret.0),
+            final(self).wf(),
+            final(self).dom() == old(self).dom().remove(ret.0),
+            final(self)@ == old(self)@.skip(1),
+            final(self).length == old(self).length - 1,
+            final(self).map() == old(self).map().remove(ret.0),
 
             ret.1@.is_init(),
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self)@[0],
             ret.1@.value()@ == old(self).map()[ret.0],
-            self.container_depth == old(self).container_depth,
-            self.lock_minor() == old(self).lock_minor(),
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
     {
         if self.length != 1 {
             proof{
@@ -521,13 +521,13 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self).map()[addr],
 
-            self.wf(),
-            self.dom() == old(self).dom().remove(addr),
-            self.map() == old(self).map().remove(addr),
-            self.length == old(self).length - 1,
-            old(self)@.no_duplicates() ==> self@ == old(self)@.remove_value(old(self).map()[addr]),
-            self.container_depth == old(self).container_depth,
-            self.lock_minor() == old(self).lock_minor(),
+            final(self).wf(),
+            final(self).dom() == old(self).dom().remove(addr),
+            final(self).map() == old(self).map().remove(addr),
+            final(self).length == old(self).length - 1,
+            old(self)@.no_duplicates() ==> final(self)@ == old(self)@.remove_value(old(self).map()[addr]),
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
     {
             proof {
                 seq_remove_lemma::<usize>();
@@ -662,13 +662,13 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self).map()[addr],
 
-            self.wf(),
-            self.dom() == old(self).dom().remove(addr),
-            self.map() == old(self).map().remove(addr),
-            self.length == old(self).length - 1,
-            old(self)@.no_duplicates() ==> self@ == old(self)@.remove_value(old(self).map()[addr]),
-            self.container_depth == old(self).container_depth,
-            self.lock_minor() == old(self).lock_minor(),
+            final(self).wf(),
+            final(self).dom() == old(self).dom().remove(addr),
+            final(self).map() == old(self).map().remove(addr),
+            final(self).length == old(self).length - 1,
+            old(self)@.no_duplicates() ==> final(self)@ == old(self)@.remove_value(old(self).map()[addr]),
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
     {
         assert(self.length != 0);
         if self.length == 1 {

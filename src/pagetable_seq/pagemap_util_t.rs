@@ -23,17 +23,15 @@ pub fn page_map_set_kernel_entry_range(
         kernel_entries.wf(),
         kernel_entries@.len() == KERNEL_MEM_END_L4INDEX,
     ensures
-        page_map_perm.addr() == page_map_ptr,
-        page_map_perm.is_init(),
-        page_map_perm.value().wf(),
+        final(page_map_perm).addr() == page_map_ptr,
+        final(page_map_perm).is_init(),
+        final(page_map_perm).value().wf(),
         forall|i: usize|
-            #![trigger page_map_perm.value()[i]]
-            KERNEL_MEM_END_L4INDEX <= i < 512 ==> page_map_perm.value()[i] =~= old(
-                page_map_perm,
-            ).value()[i],
+            #![trigger final(page_map_perm).value()[i]]
+            KERNEL_MEM_END_L4INDEX <= i < 512 ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
         forall|i: usize|
-            #![trigger page_map_perm.value()[i]]
-            0 <= i < KERNEL_MEM_END_L4INDEX ==> page_map_perm.value()[i] =~= usize2page_entry(
+            #![trigger final(page_map_perm).value()[i]]
+            0 <= i < KERNEL_MEM_END_L4INDEX ==> final(page_map_perm).value()[i] =~= usize2page_entry(
                 kernel_entries@[i as int],
             ),
 {
@@ -78,15 +76,13 @@ pub fn page_map_set_no_requires(
         old(page_map_perm).value().wf(),
         0 <= index < 512,
     ensures
-        page_map_perm.addr() == page_map_ptr,
-        page_map_perm.is_init(),
-        page_map_perm.value().wf(),
+        final(page_map_perm).addr() == page_map_ptr,
+        final(page_map_perm).is_init(),
+        final(page_map_perm).value().wf(),
         forall|i: usize|
-            #![trigger page_map_perm.value()[i]]
-            0 <= i < 512 && i != index ==> page_map_perm.value()[i] =~= old(
-                page_map_perm,
-            ).value()[i],
-        page_map_perm.value()[index] =~= value,
+            #![trigger final(page_map_perm).value()[i]]
+            0 <= i < 512 && i != index ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
+        final(page_map_perm).value()[index] =~= value,
 {
     unsafe {
         let uptr = page_map_ptr as *mut MaybeUninit<PageMap>;
@@ -105,19 +101,17 @@ pub fn page_map_set(
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
         old(page_map_perm).value().wf(),
-        // value.perm.present || value.perm.kernel_present ==> MEM_valid(value.addr),
+        // value.perm.present || value.perm.kernel_present ==> mem_valid(value.addr),
         // value.perm.present == false ==> value.is_empty(),
         0 <= index < 512,
     ensures
-        page_map_perm.addr() == page_map_ptr,
-        page_map_perm.is_init(),
-        page_map_perm.value().wf(),
+        final(page_map_perm).addr() == page_map_ptr,
+        final(page_map_perm).is_init(),
+        final(page_map_perm).value().wf(),
         forall|i: usize|
-            #![trigger page_map_perm.value()[i]]
-            0 <= i < 512 && i != index ==> page_map_perm.value()[i] =~= old(
-                page_map_perm,
-            ).value()[i],
-        page_map_perm.value()[index] =~= value,
+            #![trigger final(page_map_perm).value()[i]]
+            0 <= i < 512 && i != index ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
+        final(page_map_perm).value()[index] =~= value,
 {
     unsafe {
         let uptr = page_map_ptr as *mut MaybeUninit<PageMap>;
