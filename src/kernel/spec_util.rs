@@ -34,7 +34,7 @@ impl KernelK{
             self.page_array.spec_index(p_i).view().locked_by(lctx) == false
         &&&
         forall|c_ptr:RwLockContainerPtr|
-            #![trigger self.container_map.spec_index(c_ptr).locked_by(lctx)]
+            #![trigger self.container_map.dom().contains(c_ptr)]
             self.container_map.dom().contains(c_ptr)
             ==>
             self.container_map.spec_index(c_ptr).locked_by(lctx) == false

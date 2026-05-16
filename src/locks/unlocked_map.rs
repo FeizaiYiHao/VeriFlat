@@ -12,7 +12,7 @@ pub struct UnLockedMap<K, T>{
     map: Tracked<Map<K, PointsTo<T>>>,
 }
 
-impl<T,> UnLockedMap<usize, T>{
+impl<T> UnLockedMap<usize, T>{
     pub closed spec fn view(&self) -> Map<usize, PointsTo<T>>{
         self.map@
     }
@@ -92,6 +92,7 @@ impl<T,> UnLockedMap<usize, T>{
     //     }
     // }
 }
+
 
 impl<T: LockRecursivelyLockedTrait + Step> Step for UnLockedMap<usize, T>{
     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{

@@ -108,4 +108,14 @@ impl LockOwnerIdTrait for Container{
         LockOwnerId::NotApp
     }
 }
+
+impl LockOwnerIdTrait for ContainerRO{
+    open spec fn container_depth(&self) -> LockOwnerId {
+        LockOwnerId::Some(self.depth)
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+}
 } // verus!

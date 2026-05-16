@@ -16,7 +16,7 @@ pub const THREAD_LOCK_MAJOR:LockMajorId = 103;
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
 pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
-pub const Pagetable_PAGE_MAJOR:LockMajorId = 1001;
+pub const PAGETABLE_PAGE_MAJOR:LockMajorId = 1001;
 
 pub const THREAD_RUNNING_LOCK_MAJOR:LockMajorId = 10000;
 pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
@@ -50,18 +50,6 @@ pub enum LockOwnerId{
     None,
     NotApp,
 }
-
-pub type LockMajorId = usize;
-pub type LockMinorId = usize;
-#[derive(PartialEq)]
-#[derive(Eq)]
-pub struct LockId{
-    pub container: LockOwnerId,
-    pub process: LockOwnerId,
-    pub major:LockMajorId,
-    pub minor:LockMinorId,
-}
-
 impl LockOwnerId{
     pub open spec fn none() -> Self{
         LockOwnerId::None
@@ -116,12 +104,23 @@ impl LockOwnerId{
     }
 }
 
+pub type LockMajorId = usize;
+pub type LockMinorId = usize;
+#[derive(PartialEq)]
+#[derive(Eq)]
+pub struct LockId{
+    pub container: LockOwnerId,
+    pub process: LockOwnerId,
+    pub major:LockMajorId,
+    pub minor:LockMinorId,
+}
+
 impl LockId{
     pub open spec fn spec_gt(self, other: Self) -> bool {
-        if self.container != other.container {
-            self.container > other.container
-        }else if self.process != other.process{
-            self.process > other.process
+        if self.container.spec_eq(other.container) == false {
+            self.container.spec_gt(other.container)
+        }else if self.process.spec_eq(other.process) == false {
+            self.process.spec_gt(other.process)
         }else if self.major != other.major {
             self.major > other.major
         }else{

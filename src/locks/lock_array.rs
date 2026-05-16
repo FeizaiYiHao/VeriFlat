@@ -144,6 +144,9 @@ verus! {
                 self.unchanged_except(old(self), index),
                 self.user_view_unchanged(old(self)),
 
+                lctx.kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
+
                 wlock_ensures(old(self)[index]@, self[index]@, lock_id@, lctx.thread_id(), ret@),
                 lock_ensures(old(lctx), lctx, self[index]@@, lock_id@),
         {
@@ -169,6 +172,9 @@ verus! {
                 self.user_view().spec_index(index as int) == self[index]@,
 
                 self[index]@.locking_thread() is None,
+
+                lctx.kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 wunlock_ensures(old(self)[index]@, self[index]@),
                 unlock_ensures(old(lctx), lctx, self[index]@@, lock_perm@.lock_id()),
