@@ -59,8 +59,8 @@ impl<A, const N: usize> Array<A, N> {
             0 <= i < N,
             old(self).wf(),
         ensures
-            self.seq@ =~= old(self).seq@.update(i as int, out),
-            self.wf(),
+            final(self).seq@ =~= old(self).seq@.update(i as int, out),
+            final(self).wf(),
     {
         self.ar[i] = out;
     }
@@ -73,8 +73,8 @@ impl<const N: usize> Array<u8, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] self@[index] == 0,
-            self.wf(),
+            forall|index:int| 0<= index < N ==> #[trigger] final(self)@[index] == 0,
+            final(self).wf(),
     {
         let mut i = 0;
         for i in 0..N
@@ -100,8 +100,8 @@ impl<const N: usize> Array<usize, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] self@[index] == 0,
-            self.wf(),
+            forall|index:int| 0<= index < N ==> #[trigger] final(self)@[index] == 0,
+            final(self).wf(),
     {
         let mut i = 0;
         for i in 0..N
@@ -127,8 +127,8 @@ impl<T: Copy, const N: usize> Array<Option<T>, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] self@[index] is None,
-            self.wf(),
+            forall|index:int| 0<= index < N ==> #[trigger] final(self)@[index] is None,
+            final(self).wf(),
     {
         let mut i = 0;
         for i in 0..N
@@ -154,13 +154,11 @@ impl<A:Copy, const N: usize> Array<A, N> {
             ret.wf(),
             ret@ == Seq::new(N as nat, |i:int|{v}),
     {
-        unsafe{
         let ret = Self {
             ar: [v;N],
             seq: Ghost(Seq::empty()),
         };
         ret
-        }
     }
 }
 fn test<const N: usize>(ar: &mut Array<u64, N>)

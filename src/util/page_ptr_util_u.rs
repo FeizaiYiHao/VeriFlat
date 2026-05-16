@@ -65,7 +65,7 @@ pub open spec fn page_index_1g_valid(i: usize) -> bool {
     &&& 0 <= i < NUM_PAGES
 }
 
-pub open spec fn MEM_valid(v: PAddr) -> bool {
+pub open spec fn mem_valid(v: PAddr) -> bool {
     v & (!MEM_MASK) as usize == 0
 }
 
@@ -99,7 +99,7 @@ pub fn va_4k_valid(va: usize) -> (ret: bool)
     ensures
         ret == spec_va_4k_valid(va),
 {
-    (va & (!MEM_4k_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
+    (va & (!MEM_4K_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 
@@ -131,7 +131,7 @@ pub fn va_4k_range_valid(va: usize, len: usize) -> (ret: bool)
 }
 
 pub open spec fn spec_va_4k_valid(va: usize) -> bool {
-    (va & (!MEM_4k_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
+    (va & (!MEM_4K_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 
@@ -140,12 +140,12 @@ pub fn va_2m_valid(va: usize) -> (ret: bool)
     ensures
         ret == spec_va_2m_valid(va),
 {
-    (va & (!MEM_2m_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
+    (va & (!MEM_2M_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 
 pub open spec fn spec_va_2m_valid(va: usize) -> bool {
-    (va & (!MEM_2m_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
+    (va & (!MEM_2M_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 
@@ -154,12 +154,12 @@ pub fn va_1g_valid(va: usize) -> (ret: bool)
     ensures
         ret == spec_va_1g_valid(va),
 {
-    (va & (!MEM_1g_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
+    (va & (!MEM_1G_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 
 pub open spec fn spec_va_1g_valid(va: usize) -> bool {
-    (va & (!MEM_1g_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
+    (va & (!MEM_1G_MASK) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64)
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 

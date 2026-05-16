@@ -57,8 +57,8 @@ impl TrapFrameOption {
     #[verifier(external_body)]
     pub fn set_self_fast(&mut self, src: &Registers)
         ensures
-            self.is_some(),
-            self.get_some_0() =~= src,
+            final(self).is_some(),
+            final(self).get_some_0() =~= src,
     {
         self.exist = true;
         self.reg.rbx = src.rbx;
@@ -74,8 +74,8 @@ impl TrapFrameOption {
 
     pub fn set_self(&mut self, src: &Registers)
         ensures
-            self.is_some(),
-            self.get_some_0() =~= src,
+            final(self).is_some(),
+            final(self).get_some_0() =~= src,
     {
         self.exist = true;
         self.reg = *src;
@@ -86,7 +86,7 @@ impl TrapFrameOption {
         requires
             self.is_some(),
         ensures
-            *dst =~= *self.get_some_0(),
+            *final(dst) =~= *self.get_some_0(),
     {
         dst.rbx = self.reg.rbx;
         dst.rbp = self.reg.rbp;
@@ -103,14 +103,14 @@ impl TrapFrameOption {
         requires
             self.is_some(),
         ensures
-            *dst =~= *self.get_some_0(),
+            *final(dst) =~= *self.get_some_0(),
     {
         *dst = self.reg;
     }
 
     pub fn set_to_none(&mut self)
         ensures
-            self.is_none(),
+            final(self).is_none(),
     {
         self.exist = false;
     }
@@ -157,12 +157,12 @@ impl Registers {
         unsafe { MaybeUninit::zeroed().assume_init() }
     }
 
-    #[verifier(external_body)]
-    pub fn random() -> (ret: Self) {
-        unsafe {
-            return MaybeUninit::uninit().assume_init();
-        }
-    }
+    // #[verifier(external_body)]
+    // pub fn random() -> (ret: Self) {
+    //     unsafe {
+    //         return MaybeUninit::<Self>::uninit().assume_init();
+    //     }
+    // }
 
     pub fn new_empty() -> (ret: Self) {
         let ret = Self {
@@ -224,7 +224,7 @@ impl Registers {
     #[verifier(external_body)]
     pub fn set_self_fast(&mut self, src: &Registers)
         ensures
-            *self == src,
+            *final(self) == src,
     {
         self.rbx = src.rbx;
         self.rbp = src.rbp;

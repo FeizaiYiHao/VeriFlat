@@ -8,32 +8,32 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArrayElement<T, ROT, GhostT, const HasKillState: bool>{
-        pub value: RwLock<T, ROT, GhostT, HasKillState>,
+    pub struct LockedArrayElement<T, ROT, GhostT, const HAS_KILL_STATE: bool>{
+        pub value: RwLock<T, ROT, GhostT, HAS_KILL_STATE>,
         pub lock_minor: LockMinorId, 
     }
-    impl<T, ROT, GhostT, const HasKillState: bool> LockedArrayElement<T, ROT, GhostT, HasKillState>{
-        pub open spec fn view(&self) -> RwLock<T, ROT, GhostT, HasKillState>{
+    impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>{
+        pub open spec fn view(&self) -> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
             self.value
         }
-        pub open spec fn value(&self) -> RwLock<T, ROT, GhostT, HasKillState>{
+        pub open spec fn value(&self) -> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
             self.value
         }
     }
 
-    impl<T, ROT, GhostT, const HasKillState: bool> LockMinorTrait for LockedArrayElement<T, ROT, GhostT, HasKillState>{
+    impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockMinorTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>{
         open spec fn lock_minor(&self) -> LockMinorId {
             self.lock_minor
         }
     }
 
-    impl<T:LockInvTrait, ROT, GhostT, const HasKillState: bool> LockInvTrait for LockedArrayElement<T, ROT, GhostT, HasKillState>{
+    impl<T:LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockInvTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>{
         open spec fn inv(&self) -> bool {
             self@.inv()
         }
     }
 
-    impl<T:LockMajorTrait, ROT, GhostT, const HasKillState: bool> LockMajorTrait for LockedArrayElement<T, ROT, GhostT, HasKillState>{
+    impl<T:LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockMajorTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>{
         open spec fn lock_major_1(&self) -> LockMajorId {
             self@@.lock_major_1()
         }
@@ -67,7 +67,7 @@ verus! {
         }
     }
     
-    impl<T:LockOwnerIdTrait, ROT, GhostT, const HasKillState: bool> LockOwnerIdTrait for LockedArrayElement<T, ROT, GhostT, HasKillState>{
+    impl<T:LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockOwnerIdTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>{
         open spec fn container_depth(&self) -> LockOwnerId {
             self.view().view().container_depth()
         }

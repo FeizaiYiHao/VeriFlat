@@ -376,6 +376,8 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         assert(container_perms.spec_index(container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0)).view_rodata().view().depth == 0);
     };
     if root_container == a_ptr{
+        assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0) == a_ptr);
+        assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().contains(a_ptr));
         return true;
     }
     return false;

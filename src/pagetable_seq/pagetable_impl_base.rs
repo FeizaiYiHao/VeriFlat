@@ -251,16 +251,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 #![trigger page_map_perm.value()[i].is_empty()]
                 0 <= i < 512 ==> page_map_perm.value()[i].is_empty(),
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.pcid == old(self).pcid,
-            self.page_closure() =~= old(self).page_closure().insert(page_map_ptr),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_2m() =~= old(self).mapping_2m(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.spec_resolve_mapping_l4(target_l4i) is Some,
-            self.spec_resolve_mapping_l4(target_l4i)->0.addr == page_map_ptr,
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).pcid == old(self).pcid,
+            final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l4(target_l4i) is Some,
+            final(self).spec_resolve_mapping_l4(target_l4i)->0.addr == page_map_ptr,
+            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -279,7 +279,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && page_map_perm.value()[i].perm.execute_disable == false);
         let tracked mut l4_perm = self.l4_table.borrow_mut().tracked_remove(self.cr3);
         proof {
-            page_ptr_valid_imply_MEM_valid(page_map_ptr);
+            page_ptr_valid_imply_mem_valid(page_map_ptr);
         }
         page_map_set(
             self.cr3,
@@ -377,19 +377,19 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==> 
                 page_map_perm.value()[i].is_empty(),
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure().insert(page_map_ptr),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_2m() =~= old(self).mapping_2m(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l4(target_l4i) == old(self).spec_resolve_mapping_l4(
                 target_l4i,
             ),
-            self.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
-            self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == page_map_ptr,
-            self.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            final(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == page_map_ptr,
+            final(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
+            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -416,7 +416,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
         let tracked mut l3_perm = self.l3_tables.borrow_mut().tracked_remove(target_l3_p);
         proof {
-            page_ptr_valid_imply_MEM_valid(page_map_ptr);
+            page_ptr_valid_imply_mem_valid(page_map_ptr);
         }
         page_map_set(
             target_l3_p,
@@ -519,17 +519,17 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 #![trigger page_map_perm.value()[i].is_empty()]
                 0 <= i < 512 ==> page_map_perm.value()[i].is_empty(),
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure().insert(page_map_ptr),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_2m() =~= old(self).mapping_2m(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
-            self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure().insert(page_map_ptr),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr
                 == page_map_ptr,
-            self.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
+            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -548,7 +548,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && page_map_perm.value()[i].perm.execute_disable == false
                 && page_map_perm.value()[i].perm.ps == false
                 && page_map_perm.value()[i].perm.kernel_present == false
+            )
+        by{
+            assert(
+                forall|i: usize|
+                    #![trigger page_map_perm.value()[i]]
+                    0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
             );
+        };
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && 
                 !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps && 
                  old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.write && 
@@ -560,7 +567,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
         proof {
-            page_ptr_valid_imply_MEM_valid(page_map_ptr);
+            page_ptr_valid_imply_mem_valid(page_map_ptr);
         }
         page_map_set(
             target_l2_p,
@@ -671,19 +678,19 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_ptr_valid(target_entry.addr),
             target_entry.present,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure(),
-            self.mapping_4k@ == old(self).mapping_4k@.insert(
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure(),
+            final(self).mapping_4k@ == old(self).mapping_4k@.insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
                 *target_entry,
             ),
-            self.mapping_2m() =~= old(self).mapping_2m(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
-            self.pcid_or_ioid() =~= old(self).pcid_or_ioid(),
-            self.cr3 =~= old(self).cr3,
-            self.proc_ptr =~= old(self).proc_ptr,
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
+            final(self).pcid_or_ioid() =~= old(self).pcid_or_ioid(),
+            final(self).cr3 =~= old(self).cr3,
+            final(self).proc_ptr =~= old(self).proc_ptr,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -699,7 +706,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         };
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
         proof {
-            page_ptr_valid_imply_MEM_valid(target_entry.addr);
+            page_ptr_valid_imply_mem_valid(target_entry.addr);
         }
         page_map_set(
             target_l1_p,
@@ -856,19 +863,19 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             ) == true,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure(),
-            self.mapping_4k() == old(self).mapping_4k().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), 
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure(),
+            final(self).mapping_4k() == old(self).mapping_4k().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), 
                 MapEntry{
                     addr: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].addr,
                     write: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].write,
                     execute_disable: old(self).mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))].execute_disable,
                     present: false,
                 }),
-            self.mapping_2m() =~= old(self).mapping_2m(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -1026,16 +1033,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             ) == true,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure(),
-            self.mapping_4k@ == old(self).mapping_4k@.remove(
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure(),
+            final(self).mapping_4k@ == old(self).mapping_4k@.remove(
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             ),
-            self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None,
-            self.mapping_2m() =~= old(self).mapping_2m(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None,
+            final(self).mapping_2m() =~= old(self).mapping_2m(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -1184,16 +1191,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_ptr_2m_valid(target_entry.addr),
             target_entry.present,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure(),
-            self.mapping_2m() == old(self).mapping_2m().insert(
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure(),
+            final(self).mapping_2m() == old(self).mapping_2m().insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, 0)),
                 *target_entry,
             ),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -1209,7 +1216,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         };
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
         proof {
-            page_ptr_valid_imply_MEM_valid(target_entry.addr);
+            page_ptr_valid_imply_mem_valid(target_entry.addr);
         }
         page_map_set(
             target_l2_p,
@@ -1365,13 +1372,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 i
             ) is None,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure().remove(target_l1_p),
-            self.mapping_2m() == old(self).mapping_2m(),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure().remove(target_l1_p),
+            final(self).mapping_2m() == old(self).mapping_2m(),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
             ret.0 == target_l1_p,
             ret.1@.is_init(),
             ret.1@.addr() == target_l1_p,
@@ -1566,13 +1573,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 i
             ) is None,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure().remove(target_l2_p),
-            self.mapping_2m() == old(self).mapping_2m(),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure().remove(target_l2_p),
+            final(self).mapping_2m() == old(self).mapping_2m(),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
             ret.0 == target_l2_p,
             ret.1@.is_init(),
             ret.1@.addr() == target_l2_p,
@@ -1768,13 +1775,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 i
             ) is None,
         ensures
-            self.wf(),
-            self.kernel_l4_end == old(self).kernel_l4_end,
-            self.page_closure() =~= old(self).page_closure().remove(target_l3_p),
-            self.mapping_2m() == old(self).mapping_2m(),
-            self.mapping_4k() =~= old(self).mapping_4k(),
-            self.mapping_1g() =~= old(self).mapping_1g(),
-            self.kernel_entries =~= old(self).kernel_entries,
+            final(self).wf(),
+            final(self).kernel_l4_end == old(self).kernel_l4_end,
+            final(self).page_closure() =~= old(self).page_closure().remove(target_l3_p),
+            final(self).mapping_2m() == old(self).mapping_2m(),
+            final(self).mapping_4k() =~= old(self).mapping_4k(),
+            final(self).mapping_1g() =~= old(self).mapping_1g(),
+            final(self).kernel_entries =~= old(self).kernel_entries,
             ret.0 == target_l3_p,
             ret.1@.is_init(),
             ret.1@.addr() == target_l3_p,

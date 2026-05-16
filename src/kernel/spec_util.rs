@@ -1,5 +1,3 @@
-use std::intrinsics::fabsf128;
-
 use vstd::prelude::*;
 use crate::*;
 use super::*;
