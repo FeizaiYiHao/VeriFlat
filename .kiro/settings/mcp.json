@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "verus-mcp-server": {
+      "command": "node",
+      "args": [
+        "--preserve-symlinks",
+        "--preserve-symlinks-main",
+        "/Volumes/workplace/veriflat/src/VerusAgentScripts/build/index.js"
+      ],
+      "env": {
+        "VERUS_WORKSPACE_ROOT": "/Volumes/workplace/veriflat/src"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "verify_all",
+        "verify_and_diagnose",
+        "verify_and_diagnose_with_proof_state",
+        "search_vstd_lemmas",
+        "read_verus_guide",
+        "reduce_resource_usage"
+      ]
+    }
+  }
+}

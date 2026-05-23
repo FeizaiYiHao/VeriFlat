@@ -1,0 +1,5 @@
+{
+  "trustedCommands": [
+    "./verus.sh *"
+  ]
+}
