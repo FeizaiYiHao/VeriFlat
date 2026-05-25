@@ -4,8 +4,6 @@ verus! {
 use crate::*;
 
 pub struct Process {
-    pub owning_container: RwLockContainerPtr,
-    
     pub pcid: Pcid,
     pub ioid: Option<IOid>,
     pub pagetable: RwLockPageTableRoot,
@@ -24,8 +22,6 @@ pub struct Process {
 }
 
 pub ghost struct ProcessU {
-    pub owning_container: RwLockContainerPtr,
-    
     pub pagetable: PageTable<PT_TYPE>,
     // pub iommu_table: Option<PageTable<IOMMU_TYPE>>,
     
@@ -45,7 +41,9 @@ pub ghost struct ProcessU {
 }
 
 pub struct ProcessRO {
-    pub parent: Option<RwLockContainerPtr>,    
+    pub owning_container: RwLockContainerPtr,
+    pub container_depth: usize,
+    pub parent: Option<RwLockProcessPtr>,    
     pub depth: usize,
     pub pagetable: RwLockPageTableRoot,
 }
@@ -62,7 +60,7 @@ impl LockInvTrait for Process {
         self.wf()
     }
 }
-
+ 
 impl Process{
     pub open spec fn wf(&self) -> bool {
         &&&
@@ -126,4 +124,29 @@ impl LockMajorTrait for Process {
     }
 }
 
+impl LockUserVisibilityTrait for Process{
+    open spec fn is_user_visible() -> bool {
+        true
+    }
+}
+
+impl LockOwnerIdTrait for Process{
+    open spec fn container_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+}
+
+impl LockOwnerIdTrait for ProcessRO{
+    open spec fn container_depth(&self) -> LockOwnerId {
+        LockOwnerId::Some(self.container_depth)
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::Some(self.depth)
+    }
+}
 } // verus!

@@ -38,7 +38,7 @@ impl KernelK{
             self.container_map.spec_index(c_ptr).locked_by(lctx) == false
         &&&
         forall|p_ptr:RwLockProcessPtr|
-            #![trigger self.process_map.spec_index(p_ptr).locked_by(lctx)]
+            #![trigger self.process_map.dom().contains(p_ptr)]
             self.process_map.dom().contains(p_ptr)
             ==>
             self.process_map.spec_index(p_ptr).locked_by(lctx) == false

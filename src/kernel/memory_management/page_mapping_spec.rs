@@ -164,12 +164,12 @@ verus! {
             ==> 
             {
                 |||
-                process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().owning_container
+                process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view_rodata().view().owning_container
                     ==
                     page_array.spec_index(p_i).view().view().owning_container
                 |||
                 container_map.spec_index(page_array.spec_index(p_i).view().view().owning_container).view()
-                    .subtree_set.view().contains(process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().owning_container)
+                    .subtree_set.view().contains(process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view_rodata().view().owning_container)
             }
     }
 
