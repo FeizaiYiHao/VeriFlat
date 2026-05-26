@@ -54,7 +54,17 @@ impl LocalContext{
         &&&
         new.kernel_view_locking_state() is Acquire
         &&&
+        new.user_view_locking_state() == old.user_view_locking_state()
+        &&&
         new.lock_seq() =~= old.lock_seq().push(lock_id)
+    }
+
+    pub open spec fn unlock_requires<T:LockUserVisibilityTrait>(old:&LocalContext, value:T, lock_id: LockId) -> bool{
+        // User-visible locks may only be released after the syscall has
+        // manually flipped user_view_locking_state to Release. The flip is
+        // the linearization point and captures `old_user`; without it the
+        // syscall's user-view spec is incomplete.
+        T::is_user_visible() ==> old.user_view_locking_state() is Release
     }
 
     pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId) -> bool{
@@ -65,10 +75,9 @@ impl LocalContext{
         &&&
         old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
         &&&
-        new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
-
+        new.user_view_locking_state() == old.user_view_locking_state()
         &&&
-        T::is_user_visible() ==> new.user_view_locking_state() is Release
+        new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
     }
 
 }
