@@ -75,6 +75,8 @@ verus! {
             &&&
             thread_pages_wf(self.thread_map, self.page_array)
             &&&
+            thread_owned_pages_wf(self.thread_map, self.page_array)
+            &&&
             endpoint_pages_wf(self.endpoint_map, self.page_array)
             &&&
             process_pagetable_match(self.process_map, self.pagetable_map)
