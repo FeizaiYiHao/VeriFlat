@@ -1,4 +1,6 @@
-if [ "$BASH_VERSION" ]; then
+if [ -n "$ZSH_VERSION" ]; then
+  CURRENT_DIR="$( cd "$( dirname "${(%):-%x}" )" >/dev/null 2>&1 && pwd )"
+elif [ -n "$BASH_VERSION" ]; then
   CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 else
   echo "Unknown shell; exiting."

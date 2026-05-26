@@ -1,9 +1,4 @@
-if [ "$BASH_VERSION" ]; then
-  CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-else
-  echo "Unknown shell; exiting."
-  return 1
-fi
+CURRENT_DIR="$( cd "$( dirname "$0" )" >/dev/null 2>&1 && pwd )"
 FLAGS=""
 for opt in "$@"; do
     FLAGS+=" $opt"
