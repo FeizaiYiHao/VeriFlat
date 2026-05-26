@@ -32,6 +32,10 @@ impl PageAllocator{
         // self.quota.inv()
         &&&
         self.cpu_caches_wf()
+        &&&
+        self.quota_minor_wf()
+        &&&
+        self.global_poll_minor_wf()
         // &&&
         // self.internal_lock_id_wf()
         &&&
@@ -51,10 +55,24 @@ impl PageAllocator{
         self.cpu_caches.spec_index(cpu_i).inv()
     }
 
+    /// The quota's intrinsic minor lock id is the owning container pointer.
+    /// `AllocatorQuota` sits in a bare `RwLock` (not in a wrapper that
+    /// provides a minor), so it carries its own `Ghost<LockMinorId>` field;
+    /// this invariant pins that minor to `owning_container`.
+    pub open spec fn quota_minor_wf(&self) -> bool {
+        self.quota.view().lock_minor() == self.owning_container
+    }
+
+    /// The global pool's intrinsic minor lock id is the owning container
+    /// pointer. Same reasoning as `quota_minor_wf` — `LinkedList` carries
+    /// its own minor.
+    pub open spec fn global_poll_minor_wf(&self) -> bool {
+        self.global_poll.view().lock_minor() == self.owning_container
+    }
+
     pub open spec fn differential_wf(&self) -> bool{
         forall|cpu_i: CpuId|
         #![trigger self.cpu_caches.spec_index(cpu_i).value().view().linked_list.len()]
-        #![trigger self.cpu_caches.spec_index(cpu_i).value().view().local_quota]
         #![trigger self.differential@[cpu_i as int]]
         cpu_id_valid(cpu_i)
         ==>
@@ -62,7 +80,7 @@ impl PageAllocator{
             |||
             self.cpu_caches.spec_index(cpu_i).value().wlocked()
             |||
-            self.cpu_caches.spec_index(cpu_i).value().view().linked_list.len() - self.cpu_caches.spec_index(cpu_i).value().view().local_quota
+            self.cpu_caches.spec_index(cpu_i).value().view().linked_list.len()
             ==
             self.differential@[cpu_i as int]
         }
@@ -88,15 +106,6 @@ impl PageAllocator{
     // pub open spec fn quota_unlocked(&self) -> bool{
     //     self.quota.locked() == false
     // }
-
-    pub open spec fn local_quota_clean(&self) -> bool{
-        &&&
-        forall|cpu_i: CpuId|
-        #![trigger self.cpu_caches.spec_index(cpu_i).view().view().local_quota]
-        cpu_id_valid(cpu_i)
-        ==>
-        self.cpu_caches.spec_index(cpu_i).view().view().local_quota == 0
-    } 
 
     // pub open spec fn internal_lock_id_wf(&self) -> bool{
     //     &&&
