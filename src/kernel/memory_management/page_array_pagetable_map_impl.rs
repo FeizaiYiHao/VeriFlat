@@ -70,24 +70,24 @@ verus! {
                 
                 // assert(self.inv()) by {
                     assert(page_pagetable_wf(self.pagetable_map, self.page_array)) by{
-                        mapped_4k_page_pagetable_wf_proof();
+                        reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
                     };
                     assert(container_tree_wf(self.root_container, self.container_map));
                     assert(self.container_pages_wf()) by {
-                        Self::container_pages_wf_proof();
+                        reveal(KernelK::container_pages_wf);
                     };
                     assert(self.process_pages_wf()) by {
-                        Self::process_pages_wf_proof();
+                        reveal(KernelK::process_pages_wf);
                     };
                     assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                        allocator_pages_wf_proof();
+                        reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
                     };
                     assert(container_process_wf(self.container_map, self.process_map)) by {
-                        container_process_wf_proof();
+                        reveal(container_process_wf);
                     };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
-                        container_process_wf_proof();
-                        per_container_process_tree_wf_proof();
+                        reveal(container_process_wf);
+                        reveal(per_container_process_tree_wf);
                     };
                     assert(hugepage_2m_wf(self.page_array)) by {
                         page_ptr_lemma1();
@@ -95,7 +95,7 @@ verus! {
                         page_ptr_1g_lemma();
                         page_index_lemma();
                         page_ptr_page_index_truncate_lemma();
-                        hugepage_2m_wf_proof();
+                        reveal(hugepage_2m_wf);
                     };
                     assert(hugepage_1g_wf(self.page_array)) by {
                         page_ptr_lemma1();
@@ -103,24 +103,24 @@ verus! {
                         page_ptr_1g_lemma();
                         page_index_lemma();
                         page_ptr_page_index_truncate_lemma();
-                        hugepage_1g_wf_proof();
+                        reveal(hugepage_1g_wf);
                     };
-                    assert(container_cpu_wf(self.container_map, self.cpu_array)) by {container_cpu_wf_proof();};
-                    assert(process_cpu_wf(self.process_map, self.cpu_array)) by {process_cpu_wf_proof();};
+                    assert(container_cpu_wf(self.container_map, self.cpu_array)) by {reveal(container_cpu_wf);};
+                    assert(process_cpu_wf(self.process_map, self.cpu_array)) by {reveal(process_cpu_wf);};
                     assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by {
-                        cpu_dirty_map_contains_container_processes_proof();
-                        cpu_not_in_dirty_map_imply_not_in_tlb_proof();
-                        cpu_dirty_map_proc_pcid_match_proof();
-                        cpu_dirty_map_contains_pagetable_pcid_match_proof();
+                        reveal(cpu_dirty_map_contains_container_processes);
+                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                        reveal(cpu_dirty_map_proc_pcid_match);
+                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
                     };assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by {
-                        tlb_wf_spec_proof();
+                        reveal(tlb_wf_spec);
                     };
-                    assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {process_pagetable_match_proof()};
+                    assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {reveal(process_pagetable_match)};
                 // };
                 return;
             }
             assert(page.mappings@.contains((pagetable_root, vaddr)) == false) by {
-                mapped_4k_page_pagetable_wf_proof();
+                reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
             };
             page.ref_count = page.ref_count + 1;
             page.mappings = Ghost(page.mappings@.insert((pagetable_root, vaddr)));
@@ -133,24 +133,24 @@ verus! {
 
             // assert(self.inv()) by {
                 assert(page_pagetable_wf(self.pagetable_map, self.page_array)) by{
-                    mapped_4k_page_pagetable_wf_proof();
+                    reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
                 };
                 assert(container_tree_wf(self.root_container, self.container_map));
                 assert(self.container_pages_wf()) by {
-                    Self::container_pages_wf_proof();
+                    reveal(KernelK::container_pages_wf);
                 };
                 assert(self.process_pages_wf()) by {
-                    Self::process_pages_wf_proof();
+                    reveal(KernelK::process_pages_wf);
                 };
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    allocator_pages_wf_proof();
+                    reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
                 };
                 assert(container_process_wf(self.container_map, self.process_map)) by {
-                    container_process_wf_proof();
+                    reveal(container_process_wf);
                 };
                 assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
-                    container_process_wf_proof();
-                    per_container_process_tree_wf_proof();
+                    reveal(container_process_wf);
+                    reveal(per_container_process_tree_wf);
                 };
                 assert(hugepage_2m_wf(self.page_array)) by {
                     page_ptr_lemma1();
@@ -158,7 +158,7 @@ verus! {
                     page_ptr_1g_lemma();
                     page_index_lemma();
                     page_ptr_page_index_truncate_lemma();
-                    hugepage_2m_wf_proof();
+                    reveal(hugepage_2m_wf);
                 };
                 assert(hugepage_1g_wf(self.page_array)) by {
                     page_ptr_lemma1();
@@ -166,19 +166,19 @@ verus! {
                     page_ptr_1g_lemma();
                     page_index_lemma();
                     page_ptr_page_index_truncate_lemma();
-                    hugepage_1g_wf_proof();
+                    reveal(hugepage_1g_wf);
                 };
-                assert(container_cpu_wf(self.container_map, self.cpu_array)) by {container_cpu_wf_proof();};
-                assert(process_cpu_wf(self.process_map, self.cpu_array)) by {process_cpu_wf_proof();};
+                assert(container_cpu_wf(self.container_map, self.cpu_array)) by {reveal(container_cpu_wf);};
+                assert(process_cpu_wf(self.process_map, self.cpu_array)) by {reveal(process_cpu_wf);};
                 assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb,self.pagetable_map)) by {
-                    cpu_dirty_map_contains_container_processes_proof();
-                    cpu_not_in_dirty_map_imply_not_in_tlb_proof();
-                    cpu_dirty_map_proc_pcid_match_proof();
-                    cpu_dirty_map_contains_pagetable_pcid_match_proof();
+                    reveal(cpu_dirty_map_contains_container_processes);
+                    reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                    reveal(cpu_dirty_map_proc_pcid_match);
+                    reveal(cpu_dirty_map_contains_pagetable_pcid_match);
                 };
                 
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {
-                    process_pagetable_match_proof();
+                    reveal(process_pagetable_match);
                     assert(forall|proc_ptr:RwLockProcessPtr|
                             #![trigger self.process_map.spec_index(proc_ptr).view().pagetable]
                             self.process_map.dom().contains(proc_ptr) 
@@ -212,12 +212,12 @@ verus! {
                 };
                 assert(process_thread_wf(self.process_map, self.thread_map)) by {};
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by {
-                    process_cpu_wf_proof();
-                    // cpu_dirty_map_proc_pcid_match_proof();
-                    cpu_not_in_dirty_map_imply_not_in_tlb_proof();
-                    tlb_wf_spec_proof();
-                    cpu_dirty_map_contains_pagetable_pcid_match_proof();
-                    // process_pagetable_match_proof();
+                    reveal(process_cpu_wf);
+                    // reveal(cpu_dirty_map_proc_pcid_match);
+                    reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                    reveal(tlb_wf_spec);
+                    reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+                    // reveal(process_pagetable_match);
 
                     assert(
                         forall|cpu_id:CpuId, pcid:Pcid|

@@ -51,17 +51,9 @@ verus! {
             spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g()[va], pagetable@.mapping_1g()[va])
     }
 
-    pub proof fn tlb_wf_spec_proof()
-        ensures
-            forall|cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>|
-                tlb_wf_spec_inner(cpu_tlb, pagetable_map, cpu_array) == tlb_wf_spec(cpu_tlb, pagetable_map, cpu_array)
-    {}
-    
-    pub closed spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
-        tlb_wf_spec_inner(cpu_tlb, pagetable_map, cpu_array)
-    }
     /// There is no lock involved. This has to be true all the time.
-    pub open spec fn tlb_wf_spec_inner(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    #[verifier::opaque]
+    pub open spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         &&&
         forall|cpu_id:CpuId, pcid:Pcid|
             #![trigger cpu_tlb.spec_index((cpu_id, pcid))]

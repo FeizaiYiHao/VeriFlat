@@ -61,17 +61,8 @@ verus! {
             }
     }
 
-    pub proof fn container_root_wf_imply_container_root_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            container_root_wf(root_container, container_perms) <==> container_root_wf_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn container_root_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        container_root_wf_inner(root_container, container_perms)
-    }
-
-    pub open spec fn container_root_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn container_root_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         container_perms.dom().contains(root_container)
         &&& 
@@ -95,17 +86,8 @@ verus! {
             container_perms.spec_index(c_ptr).view_rodata().view().parent is Some
     }
 
-    pub proof fn container_childern_parent_wf_imply_container_childern_parent_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            container_childern_parent_wf(root_container, container_perms) <==> container_childern_parent_wf_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn container_childern_parent_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        container_childern_parent_wf_inner(root_container, container_perms)
-    }
-
-    pub open spec fn container_childern_parent_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn container_childern_parent_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&&
         forall|c_ptr: RwLockContainerPtr, child_c_ptr: RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr)]
@@ -134,17 +116,8 @@ verus! {
             container_perms.spec_index(container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()).view().children.view().contains(c_ptr)
     }
 
-    pub proof fn containers_linkedlist_wf_imply_containers_linkedlist_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            containers_linkedlist_wf(root_container, container_perms) <==> containers_linkedlist_wf_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn containers_linkedlist_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        containers_linkedlist_wf_inner(root_container, container_perms)
-    }
-
-    pub open spec fn containers_linkedlist_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn containers_linkedlist_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view_rodata().view().parent]
@@ -168,17 +141,8 @@ verus! {
             }
     }
 
-    pub proof fn container_childern_depth_wf_imply_container_childern_depth_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            container_childern_depth_wf(root_container, container_perms) <==> container_childern_depth_wf_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn container_childern_depth_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        container_childern_depth_wf_inner(root_container, container_perms)
-    }
-
-    pub open spec fn container_childern_depth_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn container_childern_depth_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr|
             #![trigger container_perms.dom().contains(c_ptr)]
@@ -190,17 +154,8 @@ verus! {
                 == container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()
     }
 
-    pub proof fn container_subtree_set_wf_imply_container_subtree_set_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            container_subtree_set_wf(root_container, container_perms) <==> container_subtree_set_wf_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn container_subtree_set_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        container_subtree_set_wf_inner(root_container, container_perms)
-    }
-
-    pub open spec fn container_subtree_set_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn container_subtree_set_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr, sub_c_ptr: RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr)]
@@ -219,17 +174,8 @@ verus! {
             }
     }
 
-    pub proof fn container_uppertree_seq_wf_imply_container_uppertree_seq_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            container_uppertree_seq_wf(root_container, container_perms) <==> container_uppertree_seq_wf_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn container_uppertree_seq_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        container_uppertree_seq_wf_inner(root_container, container_perms)
-    }
-
-    pub open spec fn container_uppertree_seq_wf_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn container_uppertree_seq_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr, u_ptr: RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view().uppertree_seq@.contains(u_ptr)]
@@ -248,18 +194,8 @@ verus! {
             container_perms[u_ptr].view().uppertree_seq@ =~= container_perms.spec_index(c_ptr).view().uppertree_seq@.subrange(0, container_perms[u_ptr].view_rodata().view().depth as int)
     }
 
-    
-    pub proof fn container_subtree_set_exclusive_imply_container_subtree_set_exclusive_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>)
-        ensures
-            container_subtree_set_exclusive(root_container, container_perms) <==> container_subtree_set_exclusive_inner(root_container, container_perms),
-    {}
-
-    pub closed spec fn container_subtree_set_exclusive(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
-        &&&
-        container_subtree_set_exclusive_inner(root_container, container_perms)
-    }
-
-    pub open spec fn container_subtree_set_exclusive_inner(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    #[verifier::opaque]
+    pub open spec fn container_subtree_set_exclusive(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr, sub_c_ptr: RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr), container_perms[sub_c_ptr].view().uppertree_seq@.contains(c_ptr)]
@@ -280,42 +216,6 @@ verus! {
         &&& container_subtree_set_exclusive(root_container, container_perms)
     }
 
-// #[verifier::loop_isolation(false)]
-// pub fn container_tree_check_is_ancestor_1(Tracked(lctx): Tracked<&LocalContext>, root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
-//         a_ptr: RwLockContainerPtr, Tracked(child_lock_perm):Tracked<&LockPerm>, child_ptr: RwLockContainerPtr) -> (ret: bool)
-//     requires
-//         container_perms_wf(*container_perms),
-//         container_tree_wf(root_container, *container_perms),
-//         container_perms@.dom().contains(a_ptr),
-//         container_perms@.dom().contains(child_ptr),
-
-//         container_perms.spec_index(child_ptr).locked_by(lctx),
-//         container_perms.spec_index(a_ptr).locked_by(lctx) == false,
-//         container_perms.spec_index(child_ptr).inv(),
-
-//         child_lock_perm.thread_id() == lctx.thread_id(),
-//         child_lock_perm.state() is WriteLock ==> container_perms.spec_index(child_ptr).write_lock_perm_match(child_lock_perm),
-//         child_lock_perm.state() is ReadLock ==> container_perms.spec_index(child_ptr).read_lock_perm_match(child_lock_perm),
-//     ensures
-//         ret == container_perms[child_ptr].view().uppertree_seq@.contains(a_ptr),
-//         ret == container_perms[a_ptr].view().subtree_set@.contains(child_ptr),
-// {
-//     let child_container_ref = container_perms.borrow(child_ptr, Tracked(lctx), Tracked(child_lock_perm));
-//     let mut ret = false;
-//     for i in 0..child_container_ref.uppertree_seq.len()
-//         invariant
-//             0 <= i <= child_container_ref.uppertree_seq.len(),
-//             forall|j: usize|
-//                 #![auto]
-//                 0<= j < i ==> child_container_ref.uppertree_seq@[j as int] != a_ptr,
-//     {
-//         if *child_container_ref.uppertree_seq.get(i) == a_ptr {
-//             return true;
-//         }
-//     }
-//     return false;
-// }
-
 #[verifier::loop_isolation(false)]
 pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
         a_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr) -> (ret: bool)
@@ -329,6 +229,14 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         ret == container_perms[child_ptr].view().uppertree_seq@.contains(a_ptr),
         ret == container_perms[a_ptr].view().subtree_set@.contains(child_ptr),
 {
+    proof {
+        reveal(container_root_wf);
+        reveal(container_childern_parent_wf);
+        reveal(container_childern_depth_wf);
+        reveal(container_subtree_set_wf);
+        reveal(container_uppertree_seq_wf);
+        reveal(container_subtree_set_exclusive);
+    }
     let current_child_ro = container_perms.borrow_rodata(child_ptr);
     let current_c_ptr_op = current_child_ro.borrow().parent;
     let depth = current_child_ro.borrow().depth;

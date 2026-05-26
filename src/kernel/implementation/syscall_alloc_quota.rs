@@ -30,9 +30,9 @@ verus! {
                         self.container_map.spec_index(self.cpu_array.spec_index(cpu_id).view().view().owning_container).view_rodata().view().depth    
                 }
             ) by {
-                container_cpu_wf_proof();
-                process_cpu_wf_proof();
-                container_process_wf_proof();
+                reveal(container_cpu_wf);
+                reveal(process_cpu_wf);
+                reveal(container_process_wf);
             };
 
             let cpu_lock_id = Ghost(LockId{ 

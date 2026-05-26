@@ -4,16 +4,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-   pub proof fn container_thread_wf_proof()
-        ensures
-            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>|
-                container_thread_wf(container_map, thread_map) <==> container_thread_wf_inner(container_map, thread_map)
-    {}
-
-    pub closed spec fn container_thread_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>) -> bool {
-        container_thread_wf_inner(container_map, thread_map)
-    }
-    pub open spec fn container_thread_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+    #[verifier::opaque]
+    pub open spec fn container_thread_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
             thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|

@@ -4,16 +4,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-   pub proof fn process_thread_wf_proof()
-        ensures
-            forall|process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>|
-                process_thread_wf(process_map, thread_map) <==> process_thread_wf_inner(process_map, thread_map)
-    {}
-
-    pub closed spec fn process_thread_wf(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>) -> bool {
-        process_thread_wf_inner(process_map, thread_map)
-    }
-    pub open spec fn process_thread_wf_inner(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
+    #[verifier::opaque]
+    pub open spec fn process_thread_wf(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
             thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>) -> bool {
         &&&
         forall|p_ptr:RwLockProcessPtr, t_ptr:RwLockThreadPtr|

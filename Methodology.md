@@ -354,9 +354,108 @@ holding (which `LocalContext.lock_seq` already provides for any single
 syscall) rather than by ID equality alone.
 
 
+## Bi-directional relations
+
+Most kernel invariants are bi-directional relations between two object
+collections (e.g., container ↔ process, thread ↔ endpoint, page ↔ thread).
+The standard skeleton:
+
+```rust
+forall|c_ptr|
+    container_map.contains(c_ptr) ==>
+    /* forward: c.owned_processes ⊆ process_map.dom(),
+                cross-link to root_process, etc. */
+
+forall|c_ptr, p_ptr| where c.owned_processes.contains(p_ptr) ==>
+    /* derived field consistency: p.owning_container == c_ptr,
+                                  p.container_depth == c.depth, etc. */
+
+forall|p_ptr|
+    process_map.contains(p_ptr) ==>
+    /* backward: p.owning_container ∈ container_map.dom(),
+                 c[p.owning_container].owned_processes.contains(p_ptr) */
+```
+
+Three clauses, two directions. Each side independently asserts both
+directions, which is what makes the relation bi-directional.
+
+Structural pattern:
+
+- **Forward link** = ghost set/seq on the parent (e.g.,
+  `Container.owned_processes: Set<RwLockProcessPtr>`).
+- **Back link** = pointer/seq on the child, often in `view_rodata()` for
+  immutability (e.g., `ProcessRO.owning_container: RwLockContainerPtr`).
+- **Triggers** match the lookup chain: when the formula does
+  `m.spec_index(k).view().some_field`, that's the trigger.
+
+Special cases worth knowing:
+
+- **Page state-as-link.** When one side is a `Page`, the page's *address*
+  is the link. `container_map.contains(addr_of_page)` says "the container
+  exists at exactly this page's address." See `pages_container_spec.rs`
+  for the canonical shape.
+- **Page state with payload.** The new `Owned4k{thread_ptr}` pattern uses
+  `state is OwnedXk && state->OwnedXk_thread_ptr == ...` because Verus
+  doesn't allow `matches PageState::Owned4k{...}` on the LHS of `==>`.
+  Verus auto-generates the `_thread_ptr` accessor from the variant.
+- **Multi-hop / tree relations.** `container_thread_spec` uses both
+  `owned_threads` (direct) and `owned_indirect_threads` (transitive
+  closure). The back-link is a `Seq<RwLockContainerPtr>` (the thread's
+  ancestor list), not a single pointer.
+
+## Opaque spec functions
+
+Spec functions whose bodies should not be auto-unfolded by the SMT solver
+are marked `#[verifier::opaque]`. Callers who need the body unfolded write
+`reveal(spec_name);` inside a proof block.
+
+```rust
+#[verifier::opaque]
+pub open spec fn FOO(...) -> bool { /* body */ }
+
+// elsewhere:
+assert(FOO(...)) by { reveal(FOO); };
+```
+
+This is a performance/automation control mechanism — a heavy `forall` body
+unfolding everywhere causes quantifier blow-up. It's *not* about modular
+abstraction (`closed` is for that).
+
+When an exec function needs many specs unfolded, batch the reveals at the
+top:
+
+```rust
+{
+    proof {
+        reveal(spec_a);
+        reveal(spec_b);
+        reveal(spec_c);
+    }
+    // function body — all reveals stay in scope
+}
+```
+
+Use opaque on:
+
+- Bi-directional relations (`container_process_wf`, etc.)
+- Tree-shape predicates (`container_root_wf`, `container_uppertree_seq_wf`)
+- Anything with quantifier-heavy body that's used as a kernel-inv constituent
+
+Do NOT use opaque on:
+
+- Top-level conjunction wrappers like `container_tree_wf` (just ANDs the
+  parts together — the parts are opaque, the wrapper is open).
+- Simple structural predicates like `container_perms_wf` (auxiliary
+  helpers that should unfold freely inside their module).
+
+
 ## Open items
 
 - Lock ordering / deadlock freedom: `lock_seq` + `lock_id_acyclic` / `wf`.
   See `LockId.md`.
 - User-visible objects without locks (page-table user view, PCI root table) —
   trigger `inv()` immediately on update; mechanization in progress.
+- Manual user-view linearization-point flip primitive — not yet implemented.
+- Section-boundary state wipe primitive — not yet implemented.
+- `update_kernel_ghost` / `update_user_ghost` bodies — currently
+  `unimplemented!()` placeholders behind `external_body`.
