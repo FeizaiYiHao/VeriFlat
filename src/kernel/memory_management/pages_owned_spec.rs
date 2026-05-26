@@ -5,16 +5,6 @@ verus! {
 
 // ---------- 4k ----------
 
-pub proof fn thread_owned_pages_4k_wf_proof()
-    ensures
-        forall|thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>|
-            thread_owned_pages_4k_wf(thread_map, page_array) <==> thread_owned_pages_4k_wf_inner(thread_map, page_array)
-{}
-
-pub closed spec fn thread_owned_pages_4k_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
-    thread_owned_pages_4k_wf_inner(thread_map, page_array)
-}
-
 /// Bi-directional invariant for `Thread.direct_container_page_cache_4k`
 /// against `Page.state == Owned4k{thread_ptr}`.
 ///
@@ -24,7 +14,12 @@ pub closed spec fn thread_owned_pages_4k_wf(thread_map: LockedMap<RwLockThreadPt
 /// - Backward: every page in any thread's
 ///   `direct_container_page_cache_4k` is in `Owned4k` state with the
 ///   matching `thread_ptr`.
-pub open spec fn thread_owned_pages_4k_wf_inner(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+///
+/// Marked `#[verifier::opaque]` so the body is not auto-unfolded; callers
+/// who need to reason about it write `reveal(thread_owned_pages_4k_wf);`
+/// in a proof block.
+#[verifier::opaque]
+pub open spec fn thread_owned_pages_4k_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
     &&&
     // Forward: page in Owned4k{t} ==> thread t exists and contains this page.
     forall|page_index:PageIndex|
@@ -55,17 +50,8 @@ pub open spec fn thread_owned_pages_4k_wf_inner(thread_map: LockedMap<RwLockThre
 
 // ---------- 2m ----------
 
-pub proof fn thread_owned_pages_2m_wf_proof()
-    ensures
-        forall|thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>|
-            thread_owned_pages_2m_wf(thread_map, page_array) <==> thread_owned_pages_2m_wf_inner(thread_map, page_array)
-{}
-
-pub closed spec fn thread_owned_pages_2m_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
-    thread_owned_pages_2m_wf_inner(thread_map, page_array)
-}
-
-pub open spec fn thread_owned_pages_2m_wf_inner(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+#[verifier::opaque]
+pub open spec fn thread_owned_pages_2m_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
     &&&
     forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index).view().view().state]
@@ -93,17 +79,8 @@ pub open spec fn thread_owned_pages_2m_wf_inner(thread_map: LockedMap<RwLockThre
 
 // ---------- 1g ----------
 
-pub proof fn thread_owned_pages_1g_wf_proof()
-    ensures
-        forall|thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>|
-            thread_owned_pages_1g_wf(thread_map, page_array) <==> thread_owned_pages_1g_wf_inner(thread_map, page_array)
-{}
-
-pub closed spec fn thread_owned_pages_1g_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
-    thread_owned_pages_1g_wf_inner(thread_map, page_array)
-}
-
-pub open spec fn thread_owned_pages_1g_wf_inner(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+#[verifier::opaque]
+pub open spec fn thread_owned_pages_1g_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
     &&&
     forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index).view().view().state]
@@ -131,22 +108,11 @@ pub open spec fn thread_owned_pages_1g_wf_inner(thread_map: LockedMap<RwLockThre
 
 // ---------- Combined ----------
 
-pub proof fn thread_owned_pages_wf_proof()
-    ensures
-        forall|thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>|
-            thread_owned_pages_wf(thread_map, page_array)
-            <==>
-            {
-                &&& thread_owned_pages_4k_wf_inner(thread_map, page_array)
-                &&& thread_owned_pages_2m_wf_inner(thread_map, page_array)
-                &&& thread_owned_pages_1g_wf_inner(thread_map, page_array)
-            }
-{}
-
-pub closed spec fn thread_owned_pages_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
-    &&& thread_owned_pages_4k_wf_inner(thread_map, page_array)
-    &&& thread_owned_pages_2m_wf_inner(thread_map, page_array)
-    &&& thread_owned_pages_1g_wf_inner(thread_map, page_array)
+#[verifier::opaque]
+pub open spec fn thread_owned_pages_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+    &&& thread_owned_pages_4k_wf(thread_map, page_array)
+    &&& thread_owned_pages_2m_wf(thread_map, page_array)
+    &&& thread_owned_pages_1g_wf(thread_map, page_array)
 }
 
 }

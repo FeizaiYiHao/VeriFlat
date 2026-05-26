@@ -5,18 +5,8 @@ use crate::*;
 
 verus! {
     impl KernelK{
-        pub proof fn container_pages_wf_proof()
-            ensures 
-                forall|s:Self|
-                s.container_pages_wf() <==> s.container_pages_wf_inner()
-        {}
-
-        pub closed spec fn container_pages_wf(&self) -> bool {
-            &&&
-            self.container_pages_wf_inner()
-        }
-
-        pub open spec fn container_pages_wf_inner(&self) -> bool{
+        #[verifier::opaque]
+        pub open spec fn container_pages_wf(&self) -> bool{
             &&&
             forall|page_index:PageIndex|
             #![trigger self.page_array.spec_index(page_index)]
