@@ -14,7 +14,7 @@ verus! {
     /// For each va in the tlb
     /// The pagetable must have that va regardless if the pagetable is Acquired, and the pagetable must resolve to the same va. This is to prevent the physical page being used by other meanings.
     /// If the pagetable is Acquired, the va can have present bit unset, so that the tlb will not load this entry
-    pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
+    pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
     {
         &&&
         forall|va: VAddr|
@@ -53,15 +53,15 @@ verus! {
 
     pub proof fn tlb_wf_spec_proof()
         ensures
-            forall|cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>|
+            forall|cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>|
                 tlb_wf_spec_inner(cpu_tlb, pagetable_map, cpu_array) == tlb_wf_spec(cpu_tlb, pagetable_map, cpu_array)
     {}
     
-    pub closed spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         tlb_wf_spec_inner(cpu_tlb, pagetable_map, cpu_array)
     }
     /// There is no lock involved. This has to be true all the time.
-    pub open spec fn tlb_wf_spec_inner(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub open spec fn tlb_wf_spec_inner(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         &&&
         forall|cpu_id:CpuId, pcid:Pcid|
             #![trigger cpu_tlb.spec_index((cpu_id, pcid))]

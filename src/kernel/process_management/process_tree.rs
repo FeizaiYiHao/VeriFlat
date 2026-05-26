@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    pub open spec fn process_perms_wf(process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>) -> bool{
+    pub open spec fn process_perms_wf(process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>) -> bool{
         &&&
         process_perms.perms_wf()
         &&&
@@ -16,7 +16,7 @@ verus! {
     }
 
     pub open spec fn process_tree_fields_wf(
-        process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
+        process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
     ) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
@@ -42,17 +42,17 @@ verus! {
             }
     }
 
-    pub proof fn process_root_wf_imply_process_root_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn process_root_wf_imply_process_root_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             process_root_wf(root_process, process_tree_dom, process_perms) <==> process_root_wf_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         process_root_wf_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn process_root_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_root_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& 
         process_tree_dom.contains(root_process)
         &&&
@@ -78,17 +78,17 @@ verus! {
             process_perms.spec_index(p_ptr).view_rodata().view().parent is Some
     }
 
-    pub proof fn process_childern_parent_wf_imply_process_childern_parent_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn process_childern_parent_wf_imply_process_childern_parent_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             process_childern_parent_wf(root_process, process_tree_dom, process_perms) <==> process_childern_parent_wf_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn process_childern_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn process_childern_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         process_childern_parent_wf_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn process_childern_parent_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_childern_parent_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         forall|p_ptr: RwLockProcessPtr, child_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().children.view().contains(child_p_ptr)]
@@ -122,17 +122,17 @@ verus! {
             }
     }
 
-    pub proof fn processs_linkedlist_wf_imply_processs_linkedlist_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn processs_linkedlist_wf_imply_processs_linkedlist_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             processs_linkedlist_wf(root_process, process_tree_dom, process_perms) <==> processs_linkedlist_wf_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn processs_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn processs_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         processs_linkedlist_wf_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn processs_linkedlist_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn processs_linkedlist_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())]
@@ -157,17 +157,17 @@ verus! {
             }
     }
 
-    pub proof fn process_childern_depth_wf_imply_process_childern_depth_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn process_childern_depth_wf_imply_process_childern_depth_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             process_childern_depth_wf(root_process, process_tree_dom, process_perms) <==> process_childern_depth_wf_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn process_childern_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn process_childern_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         process_childern_depth_wf_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn process_childern_depth_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_childern_depth_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
@@ -179,17 +179,17 @@ verus! {
                 == process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()
     }
 
-    pub proof fn process_subtree_set_wf_imply_process_subtree_set_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn process_subtree_set_wf_imply_process_subtree_set_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             process_subtree_set_wf(root_process, process_tree_dom, process_perms) <==> process_subtree_set_wf_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         process_subtree_set_wf_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn process_subtree_set_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_subtree_set_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr, sub_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr)]
@@ -207,17 +207,17 @@ verus! {
             }
     }
 
-    pub proof fn process_uppertree_seq_wf_imply_process_uppertree_seq_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn process_uppertree_seq_wf_imply_process_uppertree_seq_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             process_uppertree_seq_wf(root_process, process_tree_dom, process_perms) <==> process_uppertree_seq_wf_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         process_uppertree_seq_wf_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn process_uppertree_seq_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_uppertree_seq_wf_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr, u_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().uppertree_seq@.contains(u_ptr)]
@@ -240,17 +240,17 @@ verus! {
     }
 
     
-    pub proof fn process_subtree_set_exclusive_imply_process_subtree_set_exclusive_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>)
+    pub proof fn process_subtree_set_exclusive_imply_process_subtree_set_exclusive_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>)
         ensures
             process_subtree_set_exclusive(root_process, process_tree_dom, process_perms) <==> process_subtree_set_exclusive_inner(root_process, process_tree_dom, process_perms),
     {}
 
-    pub closed spec fn process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub closed spec fn process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&&
         process_subtree_set_exclusive_inner(root_process, process_tree_dom, process_perms)
     }
 
-    pub open spec fn process_subtree_set_exclusive_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_subtree_set_exclusive_inner(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr, sub_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr), process_perms[sub_p_ptr].view().uppertree_seq@.contains(p_ptr)]
@@ -261,7 +261,7 @@ verus! {
             process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr) == process_perms[sub_p_ptr].view().uppertree_seq@.contains(p_ptr)
     }
 
-    pub open spec fn process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
         &&& process_root_wf(root_process, process_tree_dom, process_perms)
         &&& process_childern_parent_wf(root_process, process_tree_dom, process_perms)
         &&& processs_linkedlist_wf(root_process, process_tree_dom, process_perms)
@@ -272,7 +272,7 @@ verus! {
     }
 
 // #[verifier::loop_isolation(false)]
-// pub fn process_tree_check_is_ancestor(Tracked(lctx): Tracked<&LocalContext>, root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>, 
+// pub fn process_tree_check_is_ancestor(Tracked(lctx): Tracked<&LocalContext>, root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
 //         a_ptr: RwLockProcessPtr, Tracked(child_lock_perm):Tracked<&LockPerm>, child_ptr: RwLockProcessPtr) -> (ret: bool)
 //     requires
 //         process_perms_wf(*process_perms),
@@ -308,7 +308,7 @@ verus! {
 // }
 
 #[verifier::loop_isolation(false)]
-pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>, 
+pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
         a_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr) -> (ret: bool)
     requires
         process_perms_wf(*process_perms),

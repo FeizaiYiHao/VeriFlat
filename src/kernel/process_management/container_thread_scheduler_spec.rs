@@ -4,15 +4,15 @@ use crate::*;
 verus! {
    pub proof fn container_scheduler_wf_proof()
         ensures
-            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>|
+            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>|
                 container_scheduler_wf(container_map, scheduler_map) <==> container_scheduler_wf_inner(container_map, scheduler_map)
     {}
 
-    pub closed spec fn container_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn container_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         container_scheduler_wf_inner(container_map, scheduler_map)
     }
-    pub open spec fn container_scheduler_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
-            scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_scheduler_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+            scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr|
             #![trigger container_map.spec_index(c_ptr).view_rodata().view().scheduler]
@@ -33,17 +33,17 @@ verus! {
 
     pub proof fn container_thread_scheduler_wf_proof()
         ensures
-            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>|
+            forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>|
                 container_thread_scheduler_wf(container_map, thread_map, scheduler_map) <==> container_thread_scheduler_wf_inner(container_map, thread_map, scheduler_map)
     {}
 
-    pub closed spec fn container_thread_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>,
-        thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn container_thread_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         container_thread_scheduler_wf_inner(container_map, thread_map, scheduler_map)
     }
-    pub open spec fn container_thread_scheduler_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>,
-            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>, 
-            scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_thread_scheduler_wf_inner(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, 
+            scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         &&&
         forall|t_ptr:RwLockThreadPtr|
             #![trigger thread_map.spec_index(t_ptr).view().state]

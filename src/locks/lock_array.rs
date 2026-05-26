@@ -9,25 +9,25 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool>{
-        array: Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>,
+    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const N: usize, const HAS_KILL_STATE: bool>{
+        array: Array<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, N>,
         
-        user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
+        user_seq: Ghost<Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>,
     }
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool, const N: usize> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> { 
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, HAS_KILL_STATE> { 
         pub closed spec fn inv(&self) -> bool{
             &&&
             self.array.wf()
         }
         
-        pub closed spec fn user_view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>{
+        pub closed spec fn user_view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
             self.user_seq.view()
         }
 
-        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>{
+        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
             self.array@
         }
-        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>
+        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
         {
@@ -123,7 +123,7 @@ verus! {
         } 
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, GhostT, const N: usize> LockedArray<T, ROT, GhostT, N, NO_KILL_STATE>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
             requires
@@ -181,22 +181,5 @@ verus! {
         }
 
     }
-
-    // impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, const HAS_KILL_STATE: bool, const N: usize> Step for LockedArray<T, HAS_KILL_STATE, N>{
-    //     open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
-    //         &&&
-    //         forall|i:usize|
-    //             #![auto]
-    //             0 <= i < N && self[i]@.locked_by(lctx) == false
-    //             ==>
-    //             self[i]@.being_killed_by(lctx) == false
-    //             &&
-    //             self[i]@.serial_num() == lctx.locking_serial_num()
-    //     }
-    //     proof fn random_step(&mut self, lctx: &LocalContext)
-    //     {
-    //         admit()
-    //     }
-    // }
 
 }

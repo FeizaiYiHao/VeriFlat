@@ -5,17 +5,17 @@ verus! {
 
     pub proof fn container_cpu_wf_proof()
         ensures
-            forall|container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>|
+            forall|container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>|
                 container_cpu_wf(container_perms, cpu_array) <==> container_cpu_wf_inner(container_perms, cpu_array)
     {}
 
-    pub closed spec fn container_cpu_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub closed spec fn container_cpu_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         container_cpu_wf_inner(container_perms, cpu_array)
     }
 
     /// Container owned Cpu only runs processes and threads of the container
     /// Container cpu bidirectly points to each other
-    pub open spec fn container_cpu_wf_inner(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_cpu_wf_inner(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, cpu_i: CpuId|
             #![trigger container_perms.spec_index(c_ptr).view().owned_cpus.view().contains(cpu_i)]
