@@ -121,7 +121,7 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
 }
 
 #[verifier::external_body]
-pub fn try_wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,>(pptr:&PPtr<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: (bool, Option<Tracked<LockPerm>>))
+pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,>(pptr:&PPtr<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: (bool, Option<Tracked<LockPerm>>))
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -162,7 +162,7 @@ pub fn try_wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVi
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>;
-        (*uptr).assume_init_mut().try_wlock(Tracked(lctx), lock_id)
+        (*uptr).assume_init_mut().wlock_unless_killed(Tracked(lctx), lock_id)
     }
 }
 

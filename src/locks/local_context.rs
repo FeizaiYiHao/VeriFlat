@@ -59,11 +59,13 @@ impl LocalContext{
         new.lock_seq() =~= old.lock_seq().push(lock_id)
     }
 
-    pub open spec fn unlock_requires<T:LockUserVisibilityTrait>(old:&LocalContext, value:T, lock_id: LockId) -> bool{
-        // User-visible locks may only be released after the syscall has
-        // manually flipped user_view_locking_state to Release. The flip is
-        // the linearization point and captures `old_user`; without it the
-        // syscall's user-view spec is incomplete.
+    /// Precondition for releasing any lock guarded by `T`.
+    ///
+    /// User-visible locks may only be released after the syscall has
+    /// manually flipped `user_view_locking_state` to `Release`. That flip is
+    /// the linearization point and captures `old_user`; without it the
+    /// syscall's user-view spec is incomplete.
+    pub open spec fn unlock_requires<T:LockUserVisibilityTrait>(old:&LocalContext) -> bool{
         T::is_user_visible() ==> old.user_view_locking_state() is Release
     }
 
