@@ -6,7 +6,6 @@ verus! {
 
 pub struct AllocatorCache{
     pub linked_list: LinkedList<PagePtr, 233>,
-    pub local_quota: usize,
 }
 
 impl LockOwnerIdTrait for AllocatorCache{
@@ -70,9 +69,9 @@ impl AllocatorCache{
         &&&
         self.linked_list.wf()
         &&&
-        self.watermark_wf()
-        &&&
         self.linked_list.view().no_duplicates()
+        &&&
+        self.watermark_wf()
     }
     pub open spec fn view(&self) -> Seq<PagePtr> {
         self.linked_list.view()
@@ -87,7 +86,7 @@ impl AllocatorCache{
     } 
     pub open spec fn watermark_wf(&self) -> bool{
         &&&
-        self.local_quota <= ALLOCATOR_MAX_WATERMARK
+        ALLOCATOR_MIN_WATERMARK <= self.linked_list.view().len() <= ALLOCATOR_MAX_WATERMARK
     }
 }
 
