@@ -6,9 +6,9 @@ use crate::*;
 verus! {
         pub proof fn container_process_allocator_quota_proof()
             ensures 
-                forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
-                    process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
-                    thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>,
+                forall|container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+                    process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+                    thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>,
                     allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
                     allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
                     allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,|
@@ -25,9 +25,9 @@ verus! {
         {}
 
         pub closed spec fn container_process_allocator_quota_wf(
-                container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
-                process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
-                thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>,
+                container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+                process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+                thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>,
                 allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
                 allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
                 allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
@@ -41,9 +41,9 @@ verus! {
         }
 
     pub open spec fn container_process_allocator_quota_4k_wf_inner(
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
-            process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
-            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>,
+            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+            process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>,
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
         ) -> bool{
             &&&
@@ -62,9 +62,9 @@ verus! {
                     allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
         }
     pub open spec fn container_process_allocator_quota_2m_wf_inner(
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
-            process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
-            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>,
+            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+            process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>,
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
         ) -> bool{
             &&&
@@ -83,9 +83,9 @@ verus! {
                     allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
         }
     pub open spec fn container_process_allocator_quota_1g_wf_inner(
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), CONTAINER_HAS_KILL_STATE>, 
-            process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), PROCESS_HAS_KILL_STATE>,
-            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>,
+            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+            process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>,
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
         ) -> bool{
             &&&

@@ -142,44 +142,34 @@ pub enum RwLockState{
     None,
 }
 
+/// `RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>`
+///
+/// Whether each field is observable in the user view depends on
+/// `T::is_user_visible()`:
+///
+/// - `T`        — the lock-protected payload. Always kernel-visible; also
+///                user-visible iff `T::is_user_visible()`.
+/// - `ROT`      — read-only data alongside the value. Always kernel-visible;
+///                also user-visible iff `T::is_user_visible()`.
+/// - `KGhostT`  — ghost data restricted to the kernel view. Never visible to
+///                the user view, even when `T::is_user_visible()`. Updating
+///                it is a kernel-view Release.
+/// - `UGhostT`  — ghost data following the same visibility rule as `T`.
+///                Updating it is a kernel-view Release; if
+///                `T::is_user_visible()`, also requires user-view Release.
 #[repr(C)]
-pub struct RwLock<T, ROT, GhostT, const HAS_KILL_STATE: bool>{
+pub struct RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>{
     lock: RwLockInner,
     value: T,
     read_only_value: ROT,
-    ghost_value: Ghost<GhostT>,
+    kernel_ghost: Ghost<KGhostT>,
+    user_ghost: Ghost<UGhostT>,
 
     is_init: Ghost<bool>,
-    serial_num: Ghost<nat>,
-    modified: Ghost<bool>,
     locking_thread: Ghost<RwLockState>,
 }
 
-// pub open spec fn write_locked_by_same_thread<X:LockMajorTrait, Y:LockMajorTrait, const HAS_KILL_STATEX: bool, const HAS_KILL_STATEY: bool>(x: RwLock<X, HAS_KILL_STATEX>, y: RwLock<Y, HAS_KILL_STATEY>) -> bool{
-//     &&&
-//     x.locking_thread() is Write
-//     &&&
-//     y.locking_thread() is Write
-//     &&&
-//     x.locking_thread()->Write_thread_id == y.locking_thread()->Write_thread_id
-//     // false
-// }
-
-// pub open spec fn write_locked_by_same_thread_xyz<X:LockMajorTrait, Y:LockMajorTrait, Z:LockMajorTrait, const HAS_KILL_STATEX: bool, const HAS_KILL_STATEY: bool, const HAS_KILL_STATEZ: bool>
-//         (x: RwLock<X, HAS_KILL_STATEX>, y: RwLock<Y, HAS_KILL_STATEY>, z: RwLock<Z, HAS_KILL_STATEZ>) -> bool{
-//     &&&
-//     x.locking_thread() is Write
-//     &&&
-//     y.locking_thread() is Write
-//     &&&
-//     z.locking_thread() is Write
-//     &&&
-//     x.locking_thread()->Write_thread_id == y.locking_thread()->Write_thread_id
-//     &&&
-//     y.locking_thread()->Write_thread_id == z.locking_thread()->Write_thread_id
-// }
-
-impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread@
@@ -270,14 +260,19 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
         self.read_only_value
     }
 
-    pub closed spec fn view_ghost_data(&self) -> GhostT
+    pub closed spec fn view_kernel_ghost(&self) -> KGhostT
     {
-        self.ghost_value.view()
+        self.kernel_ghost.view()
+    }
+
+    pub closed spec fn view_user_ghost(&self) -> UGhostT
+    {
+        self.user_ghost.view()
     }
 
 }
 
-impl<T: LockRecursivelyLockedTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+impl<T: LockRecursivelyLockedTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     pub open spec fn partial_locked_by(&self, lctx:&LocalContext) -> bool{
         self.view().partial_locked_by(lctx)
     }    
@@ -286,7 +281,7 @@ impl<T: LockRecursivelyLockedTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwL
     }
 }
 
-impl<T:LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     pub open spec fn inv(&self) -> bool{
         &&&
         self.view().inv()
@@ -295,7 +290,7 @@ impl<T:LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, Gho
     }
 }
 
-impl<T, ROT, GhostT,> RwLock<T, ROT, GhostT, NO_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
     #[verifier::external_body]
         pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret:Tracked<LockPerm>)
         requires
@@ -313,7 +308,7 @@ impl<T, ROT, GhostT,> RwLock<T, ROT, GhostT, NO_KILL_STATE>{
         self.lock.wunlock();
     }
 }
-impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
     pub fn take(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>) -> (ret:T)
         requires
@@ -363,9 +358,55 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
             &*(&self.read_only_value as *const ROT)
         }
     }
+
+    /// Trusted proof primitive: replace the kernel-view-only ghost field.
+    ///
+    /// This is unconditionally a kernel-view Release because the new ghost
+    /// value can be observed by any thread that subsequently locks the
+    /// object. It does NOT need user-view Release because, by construction,
+    /// the kernel ghost is not part of the user view.
+    ///
+    /// No write lock is required — that is the whole point of having a
+    /// ghost slot that can be updated lock-free.
+    #[verifier::external_body]
+    pub proof fn update_kernel_ghost(tracked &mut self, tracked lctx: &mut LocalContext, new_kernel_ghost: KGhostT)
+        requires
+            old(lctx).kernel_view_locking_state() is Acquire,
+        ensures
+            update_kernel_ghost_ensures(*old(self), *final(self), new_kernel_ghost),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).lock_seq() == old(lctx).lock_seq(),
+            final(lctx).kernel_view_locking_state() is Release,
+            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
+    {
+        unimplemented!()
+    }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, GhostT,> RwLock<T, ROT, GhostT,NO_KILL_STATE>{
+impl<T:LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+    /// Trusted proof primitive: replace the user-view-visible ghost field.
+    ///
+    /// This is a kernel-view Release in the same sense as `update_kernel_ghost`.
+    /// In addition, if `T::is_user_visible()`, the change is observable in the
+    /// user view, so the syscall must have already manually linearized
+    /// (user_view_locking_state is Release).
+    #[verifier::external_body]
+    pub proof fn update_user_ghost(tracked &mut self, tracked lctx: &mut LocalContext, new_user_ghost: UGhostT)
+        requires
+            old(lctx).kernel_view_locking_state() is Acquire,
+            T::is_user_visible() ==> old(lctx).user_view_locking_state() is Release,
+        ensures
+            update_user_ghost_ensures(*old(self), *final(self), new_user_ghost),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).lock_seq() == old(lctx).lock_seq(),
+            final(lctx).kernel_view_locking_state() is Release,
+            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
+    {
+        unimplemented!()
+    }
+}
+
+impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
         requires
@@ -402,7 +443,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
 
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, GhostT,> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
     pub fn try_wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
         requires
@@ -460,7 +501,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
 }
 
-pub open spec fn wlock_requires<T: LockUserVisibilityTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
+pub open spec fn wlock_requires<T: LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
     &&&
     old.locked_by(lctx) == false
     &&&
@@ -469,13 +510,19 @@ pub open spec fn wlock_requires<T: LockUserVisibilityTrait, ROT, GhostT, const H
     T::is_user_visible() ==> lctx.user_view_locking_state() is Acquire
 }
 
-pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibilityTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
     &&&
     new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_id }
     &&&
     new.inv()
     &&&
     new@ == old@    
+    &&&
+    new.view_rodata() == old.view_rodata()
+    &&&
+    new.view_kernel_ghost() == old.view_kernel_ghost()
+    &&&
+    new.view_user_ghost() == old.view_user_ghost()
     &&&
     old.locked() == false
 
@@ -487,31 +534,80 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibil
     lock_perm.thread_id() == thread_id
 }
 
-pub open spec fn wunlock_ensures<T:LockInvTrait + LockUserVisibilityTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool{
+pub open spec fn wunlock_ensures<T:LockInvTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{
     &&&
     new.locking_thread() == RwLockState::None
     &&&
     new.inv()
     &&&
     new@ == old@
+    &&&
+    new.view_rodata() == old.view_rodata()
+    &&&
+    new.view_kernel_ghost() == old.view_kernel_ghost()
+    &&&
+    new.view_user_ghost() == old.view_user_ghost()
 }
 
-pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool{
+pub open spec fn take_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
     new.is_init() == false
     &&&
     new@ == old@
+    &&&
+    new.view_rodata() == old.view_rodata()
+    &&&
+    new.view_kernel_ghost() == old.view_kernel_ghost()
+    &&&
+    new.view_user_ghost() == old.view_user_ghost()
 }
 
-pub open spec fn put_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, v:T) -> bool{
+pub open spec fn put_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, v:T) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
     new.is_init() == true
     &&&
     new@ == v
+    &&&
+    new.view_rodata() == old.view_rodata()
+    &&&
+    new.view_kernel_ghost() == old.view_kernel_ghost()
+    &&&
+    new.view_user_ghost() == old.view_user_ghost()
+}
+
+pub open spec fn update_kernel_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new_kernel_ghost: KGhostT) -> bool{
+    &&&
+    new.locking_thread() == old.locking_thread()
+    &&&
+    new.is_init() == old.is_init()
+    &&&
+    new@ == old@
+    &&&
+    new.view_rodata() == old.view_rodata()
+    &&&
+    new.view_user_ghost() == old.view_user_ghost()
+    &&&
+    new.view_kernel_ghost() == new_kernel_ghost
+}
+
+pub open spec fn update_user_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new_user_ghost: UGhostT) -> bool{
+    &&&
+    new.locking_thread() == old.locking_thread()
+    &&&
+    new.is_init() == old.is_init()
+    &&&
+    new@ == old@
+    &&&
+    new.view_rodata() == old.view_rodata()
+    &&&
+    new.view_kernel_ghost() == old.view_kernel_ghost()
+    &&&
+    new.view_user_ghost() == new_user_ghost
 }
 
 }
+
