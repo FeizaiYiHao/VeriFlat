@@ -181,6 +181,13 @@ pub enum PageState {
     Free4k{state: FreePageAllocatorState},
     Free2m{state: FreePageAllocatorState},
     Free1g{state: FreePageAllocatorState},
+    /// The page was just pulled out of the allocator by `thread_ptr`, but
+    /// hasn't been wired into a page table or otherwise put to use yet.
+    /// Other threads must not lock it. The `thread_ptr` field is only
+    /// meaningful at the spec level — exec code never inspects it.
+    Owned4k{thread_ptr: RwLockThreadPtr},
+    Owned2m{thread_ptr: RwLockThreadPtr},
+    Owned1g{thread_ptr: RwLockThreadPtr},
     Mapped4k,
     Mapped2m,
     Mapped1g,

@@ -26,31 +26,39 @@ pub struct Thread {
     pub trap_frame: TrapFrameOption,
 
     pub upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
-    pub upper_container_quota_cache_4k: Ghost<Seq<usize>>,
-    pub upper_container_quota_cache_2m: Ghost<Seq<usize>>,
-    pub upper_container_quota_cache_1g: Ghost<Seq<usize>>,
+    pub direct_container_page_cache_4k: Ghost<Set<PagePtr>>,
+    pub direct_container_page_cache_2m: Ghost<Set<PagePtr>>,
+    pub direct_container_page_cache_1g: Ghost<Set<PagePtr>>,
+
+    pub direct_container_quota_cache_4k: Ghost<usize>,
+    pub direct_container_quota_cache_2m: Ghost<usize>,
+    pub direct_container_quota_cache_1g: Ghost<usize>,
+
+    pub indirect_container_quota_cache_4k: Ghost<Seq<usize>>,
+    pub indirect_container_quota_cache_2m: Ghost<Seq<usize>>,
+    pub indirect_container_quota_cache_1g: Ghost<Seq<usize>>,
 }
 
 impl Thread{
     pub open spec fn thread_quota_cache_clean(&self) -> bool{
         &&&
         forall|i:int|
-            #![trigger self.upper_container_quota_cache_4k.view().spec_index(i)]
-            0 <= i < self.upper_container_quota_cache_4k.view().len()
+            #![trigger self.indirect_container_quota_cache_4k.view().spec_index(i)]
+            0 <= i < self.indirect_container_quota_cache_4k.view().len()
             ==>
-            self.upper_container_quota_cache_4k.view().spec_index(i) == 0
+            self.indirect_container_quota_cache_4k.view().spec_index(i) == 0
         &&&
         forall|i:int|
-            #![trigger self.upper_container_quota_cache_2m.view().spec_index(i)]
-            0 <= i < self.upper_container_quota_cache_2m.view().len()
+            #![trigger self.indirect_container_quota_cache_2m.view().spec_index(i)]
+            0 <= i < self.indirect_container_quota_cache_2m.view().len()
             ==>
-            self.upper_container_quota_cache_2m.view().spec_index(i) == 0
+            self.indirect_container_quota_cache_2m.view().spec_index(i) == 0
         &&&
         forall|i:int|
-            #![trigger self.upper_container_quota_cache_1g.view().spec_index(i)]
-            0 <= i < self.upper_container_quota_cache_1g.view().len()
+            #![trigger self.indirect_container_quota_cache_1g.view().spec_index(i)]
+            0 <= i < self.indirect_container_quota_cache_1g.view().len()
             ==>
-            self.upper_container_quota_cache_1g.view().spec_index(i) == 0
+            self.indirect_container_quota_cache_1g.view().spec_index(i) == 0
     }
 }
 
@@ -79,11 +87,11 @@ impl LockInvTrait for Thread {
         &&&
         self.upper_container_seq.view().len() == self.container_depth
         &&&
-        self.upper_container_seq.view().len() + 1 == self.upper_container_quota_cache_4k.view().len()
+        self.upper_container_seq.view().len() == self.indirect_container_quota_cache_4k.view().len()
         &&&
-        self.upper_container_seq.view().len() + 1 == self.upper_container_quota_cache_2m.view().len()
+        self.upper_container_seq.view().len() == self.indirect_container_quota_cache_2m.view().len()
         &&&
-        self.upper_container_seq.view().len() + 1 == self.upper_container_quota_cache_1g.view().len()
+        self.upper_container_seq.view().len() == self.indirect_container_quota_cache_1g.view().len()
     }
 }
 

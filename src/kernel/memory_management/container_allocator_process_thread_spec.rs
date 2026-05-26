@@ -53,9 +53,9 @@ verus! {
                 ==>
                 container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_map.spec_index(p_ptr).view().quota_4k})
                     +
-                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().upper_container_quota_cache_4k.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_container_quota_cache_4k.view()})
                     +
-                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().upper_container_quota_cache_4k.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_container_quota_cache_4k.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     +
                     allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
                     == 
@@ -74,9 +74,9 @@ verus! {
                 ==>
                 container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_map.spec_index(p_ptr).view().quota_2m})                    
                     +
-                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().upper_container_quota_cache_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_container_quota_cache_2m.view()})
                     +
-                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().upper_container_quota_cache_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_container_quota_cache_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     +
                     allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                     == 
@@ -95,9 +95,9 @@ verus! {
                 ==>
                 container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_map.spec_index(p_ptr).view().quota_1g})                    
                     +
-                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().upper_container_quota_cache_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_container_quota_cache_1g.view()})
                     +
-                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().upper_container_quota_cache_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_container_quota_cache_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     +
                     allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
                     == 
