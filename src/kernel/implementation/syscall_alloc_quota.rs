@@ -53,7 +53,7 @@ verus! {
                 major: CONTAINER_LOCK_MAJOR, 
                 minor: container_ptr });
 
-            let container_res = self.container_map.try_wlock(container_ptr, Tracked(&mut lctx), container_lock_id);
+            let container_res = self.container_map.wlock_unless_killed(container_ptr, Tracked(&mut lctx), container_lock_id);
             if let (false, _) = container_res{
                 assert(self.container_map.spec_index(container_ptr).being_killed() == true);
                 return;
@@ -66,7 +66,7 @@ verus! {
                 process: self.cpu_array.spec_index(cpu_id).process_depth(), 
                 major: PROCESS_LOCK_MAJOR, 
                 minor: process_ptr });
-            let process_res = self.process_map.try_wlock(process_ptr, Tracked(&mut lctx), process_lock_id);
+            let process_res = self.process_map.wlock_unless_killed(process_ptr, Tracked(&mut lctx), process_lock_id);
 
         }
     }
