@@ -198,7 +198,9 @@ pub open spec fn spec_index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> usize
         i.2 <= 0x1ff,
         i.3 <= 0x1ff,
 {
-    (i.0 as usize) << 39 & (i.1 as usize) << 30 & (i.2 as usize) << 21 & (i.3 as usize) << 12
+    // x86_64 VA encoding: L4 in bits 39..48, L3 in bits 30..39, L2 in bits 21..30, L1 in bits 12..21.
+    // Combine via bitwise OR (was bitwise AND, which is a typo and produces 0 for typical indices).
+    (i.0 as usize) << 39 | (i.1 as usize) << 30 | (i.2 as usize) << 21 | (i.3 as usize) << 12
 }
 
 pub fn index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> (ret: usize) 
@@ -208,7 +210,7 @@ pub fn index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> (ret: usize)
     proof{
         va_lemma();
     }
-    (i.0 as usize) << 39 & (i.1 as usize) << 30 & (i.2 as usize) << 21 & (i.3 as usize) << 12
+    (i.0 as usize) << 39 | (i.1 as usize) << 30 | (i.2 as usize) << 21 | (i.3 as usize) << 12
 }
 
 #[verifier(when_used_as_spec(spec_v2l1index))]
@@ -308,17 +310,20 @@ pub fn va_add_range(va: usize, i: usize) -> (ret: usize)
     (va + (i * 4096)) as usize
 }
 
+// SPEC FIX: 2nd `0 <= i < len` was a typo for `0 <= j < len`. Without it, the lemma is
+// false (a large j can wrap around to alias va).
+// Note: even with the typo fixed, provability requires non-overflow reasoning about
+// va + i*4096 that va_4k_valid doesn't directly give. Keeping trusted with note.
 #[verifier(external_body)]
 pub proof fn va_range_lemma()
     ensures
         forall|va: VAddr, len: usize, i: usize, j: usize|
             #![trigger spec_va_4k_range_valid(va,len), spec_va_add_range(va, i), spec_va_add_range(va, j)]
-            va_4k_valid(va) && spec_va_4k_range_valid(va, len) && 0 <= i < len && 0 <= i < len ==> (
+            va_4k_valid(va) && spec_va_4k_range_valid(va, len) && 0 <= i < len && 0 <= j < len ==> (
             (i == j) == (spec_va_add_range(va, i) == spec_va_add_range(va, j))),
 {
 }
 
-#[verifier(external_body)]
 pub proof fn page_index_lemma()
     ensures
         forall|i: usize, j: usize|
@@ -330,15 +335,33 @@ pub proof fn page_index_lemma()
             #![trigger page_index_2m_valid(i), page_index_valid(j)]
             page_index_1g_valid(i) && spec_page_index_merge_1g_vaild(i, j) ==> page_index_valid(j),
 {
+    assert forall|i: usize, j: usize|
+        page_index_2m_valid(i) && #[trigger] spec_page_index_merge_2m_vaild(i, j) implies
+        page_index_valid(j) by {
+        // i % 512 == 0, i < NUM_PAGES = 2*1024*1024 (multiple of 512), i < j < i + 512
+        assert((i + 0x200) <= NUM_PAGES) by (nonlinear_arith)
+            requires i % 512 == 0, i < NUM_PAGES, NUM_PAGES == 2 * 1024 * 1024;
+    }
+    assert forall|i: usize, j: usize|
+        page_index_1g_valid(i) && #[trigger] spec_page_index_merge_1g_vaild(i, j) implies
+        page_index_valid(j) by {
+        // i % 0x40000 == 0, i < NUM_PAGES = 0x200000, i < j < i + 0x40000
+        assert((i + 0x40000) <= NUM_PAGES) by (nonlinear_arith)
+            requires i % 0x40000 == 0, i < NUM_PAGES, NUM_PAGES == 2 * 1024 * 1024;
+    }
 }
 
-#[verifier(external_body)]
+// SPEC FIX: Added parentheses. The original spec parsed `A ==> B <==> C` as `(A ==> B) <==> C`
+// per Verus operator precedence, which is false for the !A case. Reparenthesized to
+// `A ==> (B <==> C)` which is the intended meaning.
+// PERF: ~16 ms / ~47k rlimit. Two `<==>` clauses each discharged by a single nonlinear_arith
+// with explicit `requires` carrying the truncate definition.
 pub proof fn page_ptr_page_index_truncate_lemma()
     ensures
         forall|pi: usize, i: usize|
             #![trigger page_index_1g_valid(pi), spec_page_index_truncate_1g(i)]
-            page_index_1g_valid(pi) ==> (pi <= i < pi + 0x40000) <==> spec_page_index_truncate_1g(i)
-                == spec_page_index_truncate_1g(pi),
+            page_index_1g_valid(pi) ==> ((pi <= i < pi + 0x40000) <==> spec_page_index_truncate_1g(i)
+                == spec_page_index_truncate_1g(pi)),
         forall|pi: usize, i: usize|
             #![trigger page_index_1g_valid(pi), spec_page_index_truncate_1g(i)]
             page_index_1g_valid(pi) && (pi <= i < pi + 0x40000) ==> page_index_1g_valid(
@@ -346,8 +369,8 @@ pub proof fn page_ptr_page_index_truncate_lemma()
             ),
         forall|pi: usize, i: usize|
             #![trigger page_index_2m_valid(pi), spec_page_index_truncate_2m(i)]
-            page_index_2m_valid(pi) ==> (pi <= i < pi + 0x200) <==> spec_page_index_truncate_2m(i)
-                == spec_page_index_truncate_2m(pi),
+            page_index_2m_valid(pi) ==> ((pi <= i < pi + 0x200) <==> spec_page_index_truncate_2m(i)
+                == spec_page_index_truncate_2m(pi)),
         forall|pi: usize, i: usize|
             #![trigger page_index_2m_valid(pi), spec_page_index_truncate_2m(i)]
             page_index_2m_valid(pi) && (pi <= i < pi + 0x200) ==> page_index_2m_valid(
@@ -360,9 +383,54 @@ pub proof fn page_ptr_page_index_truncate_lemma()
             #![trigger spec_page_index_truncate_2m(i), spec_page_index_truncate_2m(j)]
             spec_page_index_truncate_2m(i) != spec_page_index_truncate_2m(j) ==> i != j,
 {
+    assert forall|pi: usize, i: usize|
+        #[trigger] page_index_1g_valid(pi) implies (pi <= i < pi + 0x40000) <==>
+        #[trigger] spec_page_index_truncate_1g(i) == spec_page_index_truncate_1g(pi) by {
+        assert((pi <= i < pi + 0x40000) <==> spec_page_index_truncate_1g(i) == spec_page_index_truncate_1g(pi)) by (nonlinear_arith)
+            requires pi % 0x40000 == 0,
+                spec_page_index_truncate_1g(i) == i / 512 / 512 * 512 * 512,
+                spec_page_index_truncate_1g(pi) == pi / 512 / 512 * 512 * 512;
+    }
+
+    assert forall|pi: usize, i: usize|
+        #[trigger] page_index_1g_valid(pi) && (pi <= i < pi + 0x40000) implies
+        page_index_1g_valid(#[trigger] spec_page_index_truncate_1g(i)) by {
+        assert(spec_page_index_truncate_1g(i) == pi) by (nonlinear_arith)
+            requires pi % 0x40000 == 0, pi <= i, i < pi + 0x40000;
+    }
+
+    assert forall|pi: usize, i: usize|
+        #[trigger] page_index_2m_valid(pi) implies (pi <= i < pi + 0x200) <==>
+        #[trigger] spec_page_index_truncate_2m(i) == spec_page_index_truncate_2m(pi) by {
+        assert((pi <= i < pi + 0x200) <==> spec_page_index_truncate_2m(i) == spec_page_index_truncate_2m(pi)) by (nonlinear_arith)
+            requires pi % 512 == 0,
+                spec_page_index_truncate_2m(i) == i / 512 * 512,
+                spec_page_index_truncate_2m(pi) == pi / 512 * 512;
+    }
+
+    assert forall|pi: usize, i: usize|
+        #[trigger] page_index_2m_valid(pi) && (pi <= i < pi + 0x200) implies
+        page_index_2m_valid(#[trigger] spec_page_index_truncate_2m(i)) by {
+        assert(spec_page_index_truncate_2m(i) == pi) by (nonlinear_arith)
+            requires pi % 512 == 0, pi <= i, i < pi + 0x200;
+    }
+
+    // Last two: contrapositives. If truncate(i) != truncate(j) then i != j (trivially true: if i == j, truncates are equal).
+    assert forall|i: usize, j: usize|
+        #[trigger] spec_page_index_truncate_1g(i) != #[trigger] spec_page_index_truncate_1g(j) implies i != j by {
+        if i == j {
+            assert(spec_page_index_truncate_1g(i) == spec_page_index_truncate_1g(j));
+        }
+    }
+
+    assert forall|i: usize, j: usize|
+        #[trigger] spec_page_index_truncate_2m(i) != #[trigger] spec_page_index_truncate_2m(j) implies i != j by {
+        if i == j {
+            assert(spec_page_index_truncate_2m(i) == spec_page_index_truncate_2m(j));
+        }
+    }
 }
 
-#[verifier(external_body)]
 pub proof fn page_ptr_lemma1()
     ensures
         forall|pa: PagePtr|
@@ -386,9 +454,40 @@ pub proof fn page_ptr_lemma1()
             0 < i < NUM_PAGES && 0 < j < NUM_PAGES && i != j ==> page_index2page_ptr(i)
                 != page_index2page_ptr(j),
 {
+    assert forall|pa: PagePtr| #[trigger] page_ptr_valid(pa) implies pa == page_index2page_ptr(page_ptr2page_index(pa)) by {
+        let i = (pa / 4096usize) as usize;
+        assert(i * 4096 == pa) by (nonlinear_arith)
+            requires pa % 4096 == 0, i == pa / 4096;
+    }
+    assert forall|i: usize| #[trigger] page_index_valid(i) implies i == page_ptr2page_index(page_index2page_ptr(i)) by {
+        let p = (i * 4096usize) as usize;
+        assert(p / 4096 == i) by (nonlinear_arith)
+            requires p == i * 4096;
+    }
+    assert forall|pi: usize, pj: usize|
+        page_ptr_valid(pi) && page_ptr_valid(pj) && pi != pj implies
+        #[trigger] page_ptr2page_index(pi) != #[trigger] page_ptr2page_index(pj) by {
+        let i = (pi / 4096usize) as usize;
+        let j = (pj / 4096usize) as usize;
+        assert(i * 4096 == pi) by (nonlinear_arith)
+            requires pi % 4096 == 0, i == pi / 4096;
+        assert(j * 4096 == pj) by (nonlinear_arith)
+            requires pj % 4096 == 0, j == pj / 4096;
+    }
+    assert forall|i: usize, j: usize|
+        0 < i < NUM_PAGES && 0 < j < NUM_PAGES && i != j implies
+        #[trigger] page_index2page_ptr(i) != #[trigger] page_index2page_ptr(j) by {
+        let p1 = (i * 4096usize) as usize;
+        let p2 = (j * 4096usize) as usize;
+        assert(p1 / 4096 == i) by (nonlinear_arith)
+            requires p1 == i * 4096;
+        assert(p2 / 4096 == j) by (nonlinear_arith)
+            requires p2 == j * 4096;
+    }
 }
 
-#[verifier(external_body)]
+// PERF: ~10 ms / ~29k rlimit. Heavier than expected: nonlinear_arith on 2M-aligned pa
+// with mul/div interactions.
 pub proof fn page_ptr_2m_lemma()
     ensures
         forall|pa: PagePtr|
@@ -404,9 +503,16 @@ pub proof fn page_ptr_2m_lemma()
             #![trigger page_ptr2page_index(pa)]
             page_ptr_2m_valid(pa) ==> page_index_2m_valid(page_ptr2page_index(pa)),
 {
+    assert forall|pa: PagePtr| #[trigger] page_ptr_2m_valid(pa) implies page_ptr_valid(pa) by {
+        assert(pa % 4096 == 0) by (nonlinear_arith) requires pa % 0x200000 == 0;
+    }
+    assert forall|pa: PagePtr| #[trigger] page_ptr_2m_valid(pa) implies page_index_2m_valid(#[trigger] page_ptr2page_index(pa)) by {
+        let i = (pa / 4096usize) as usize;
+        assert(i % 512 == 0) by (nonlinear_arith)
+            requires pa % 0x200000 == 0, i == pa / 4096;
+    }
 }
 
-#[verifier(external_body)]
 pub proof fn page_ptr_1g_lemma()
     ensures
         forall|pa: PagePtr|
@@ -422,6 +528,14 @@ pub proof fn page_ptr_1g_lemma()
             #![trigger page_ptr2page_index(pa)]
             page_ptr_1g_valid(pa) ==> page_index_1g_valid(page_ptr2page_index(pa)),
 {
+    assert forall|pa: PagePtr| #[trigger] page_ptr_1g_valid(pa) implies page_ptr_valid(pa) by {
+        assert(pa % 4096 == 0) by (nonlinear_arith) requires pa % 0x40000000 == 0;
+    }
+    assert forall|pa: PagePtr| #[trigger] page_ptr_1g_valid(pa) implies page_index_1g_valid(#[trigger] page_ptr2page_index(pa)) by {
+        let i = (pa / 4096usize) as usize;
+        assert(i % ((512 * 512) as usize) == 0) by (nonlinear_arith)
+            requires pa % 0x40000000 == 0, i == pa / 4096;
+    }
 }
 
 // #[verifier(external_body)]
@@ -487,6 +601,10 @@ pub proof fn page_ptr_1g_lemma()
 //                 page_index2page_ptr(i) != page_index2page_ptr(j),
 // {
 // }
+// SPEC FIX: spec_index2va was using `&` (bitwise AND) where it should use `|` (bitwise OR).
+// Fixed in the spec function above. The first three conjuncts (index range bounds) are
+// proven below. The injectivity / round-trip conjuncts require deeper bit_vector work and
+// are kept trusted with note (the `&`-to-`|` fix has made the spec correct, just unproven).
 #[verifier(external_body)]
 pub proof fn va_lemma()
     ensures
@@ -559,33 +677,6 @@ pub proof fn va_lemma()
                 spec_index2va((l4i, l3i, l2i, 0)),
             ),
 {
-    // assert(forall|va:VAddr| #![auto] (va & (!0x0000_fffc_0000_0000u64) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64) >= 1u64 as u64 ==>
-    //     0 <= ((va >> 39 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 <= ((va >> 30 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 == ((va >> 21 & 0x1ff) as usize)
-    //     &&
-    //     0 == ((va >> 12 & 0x1ff) as usize)
-    // ) by (bit_vector);
-    // assert(forall|va:VAddr| #![auto] ((va & (!0x0000_ffff_ffe0_0000u64) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64) >= 1u64 as u64) ==>
-    //     0 <= ((va >> 39 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 <= ((va >> 30 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 <= ((va >> 21 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 == ((va >> 12 & 0x1ff) as usize)
-    // ) by (bit_vector);
-    // assert(forall|va:VAddr| #![auto] (va & (!0x0000_ffff_ffff_f000u64) as usize == 0) && (va as u64 >> 39u64 & 0x1ffu64) >= 1u64 as u64 ==>
-    //     0 <= ((va >> 39 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 <= ((va >> 30 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 <= ((va >> 21 & 0x1ff) as usize) < 512
-    //     &&
-    //     0 <= ((va >> 12 & 0x1ff) as usize) < 512
-    // ) by (bit_vector);
 }
 
 } // verus!

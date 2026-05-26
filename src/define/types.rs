@@ -314,6 +314,9 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
 }
 
 impl VaRange4K {
+    // SPEC ISSUE: This lemma asserts view@[i] == spec_va_add_range(start, i), but the wf()
+    // invariant doesn't establish that relationship — view is an arbitrary ghost field.
+    // Properly fixing requires strengthening wf() to constrain view@. Out of scope here.
     #[verifier(external_body)]
     pub proof fn va_range_lemma(&self)
         requires

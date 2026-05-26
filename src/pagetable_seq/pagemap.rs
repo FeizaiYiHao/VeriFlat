@@ -119,6 +119,30 @@ impl PageMap {
         }
     }
 
+    /// Same as `set` but with weaker preconditions: only requires that `value.addr` is a
+    /// valid physical address (so the bit-encoding round-trips). Always stores `value`
+    /// exactly, including when `value.perm.kernel_present == false` and the entry has
+    /// non-zero data — useful for callers that pass user-only mappings or partial entries.
+    pub fn set_unsanitized(&mut self, index: usize, value: PageEntry)
+        requires
+            old(self).wf(),
+            0 <= index < 512,
+            mem_valid(value.addr),
+        ensures
+            final(self).wf(),
+            final(self)@ =~= old(self)@.update(index as int, value),
+    {
+        let u = page_entry2usize(&value);
+        self.ar.set(index, u);
+        proof {
+            // page_entry2usize ensures bits round-trip. Hence usize2page_entry(u) =~= value.
+            assert(usize2page_entry_perm(u) =~= value.perm);
+            assert(usize2pa(u) == value.addr);
+            assert(usize2page_entry(u) =~= value);
+            self.spec_seq@ = self.spec_seq@.update(index as int, value);
+        }
+    }
+
     pub fn index(&self, index: usize) -> (ret: PageEntry)
         requires
             self.wf(),
