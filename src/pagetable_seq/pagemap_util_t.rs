@@ -54,43 +54,27 @@ pub fn page_map_set_kernel_entry_range(
                     kernel_entries@[i as int],
                 ),
     {
-        page_map_set_no_requires(
+        let v = *kernel_entries.get(index);
+        let value = usize2page_entry(v);
+        // mem_valid(value.addr) holds because usize2pa always masks to a valid address.
+        assert(mem_valid(value.addr)) by {
+            assert((v & 0x0000_ffff_ffff_f000u64 as usize) & (!0x0000_ffff_ffff_f000u64) as usize == 0)
+                by (bit_vector);
+        }
+        page_map_set(
             page_map_ptr,
             Tracked(page_map_perm),
             index,
-            usize2page_entry(*kernel_entries.get(index)),
+            value,
         );
     }
 }
 
-#[verifier(external_body)]
-pub fn page_map_set_no_requires(
-    page_map_ptr: PageMapPtr,
-    Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
-    index: usize,
-    value: PageEntry,
-)
-    requires
-        old(page_map_perm).addr() == page_map_ptr,
-        old(page_map_perm).is_init(),
-        old(page_map_perm).value().wf(),
-        0 <= index < 512,
-    ensures
-        final(page_map_perm).addr() == page_map_ptr,
-        final(page_map_perm).is_init(),
-        final(page_map_perm).value().wf(),
-        forall|i: usize|
-            #![trigger final(page_map_perm).value()[i]]
-            0 <= i < 512 && i != index ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
-        final(page_map_perm).value()[index] =~= value,
-{
-    unsafe {
-        let uptr = page_map_ptr as *mut MaybeUninit<PageMap>;
-        (*uptr).assume_init_mut().set(index, value);
-    }
-}
-
-#[verifier(external_body)]
+// SPEC FIX: added `mem_valid(value.addr)` precondition. Without it, the spec is
+// inconsistent for the case `value.perm.kernel_present == true && !mem_valid(value.addr)`:
+// the wf() invariant requires `kernel_present[i] ==> mem_valid(addr[i])`, which together
+// with `final.value()[index] =~= value` forces `mem_valid(value.addr)`. Implementation now
+// goes through PageMap::set_unsanitized via PointsTo::borrow_mut.
 pub fn page_map_set(
     page_map_ptr: PageMapPtr,
     Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
@@ -101,9 +85,8 @@ pub fn page_map_set(
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
         old(page_map_perm).value().wf(),
-        // value.perm.present || value.perm.kernel_present ==> mem_valid(value.addr),
-        // value.perm.present == false ==> value.is_empty(),
         0 <= index < 512,
+        mem_valid(value.addr),
     ensures
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
@@ -113,10 +96,9 @@ pub fn page_map_set(
             0 <= i < 512 && i != index ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
         final(page_map_perm).value()[index] =~= value,
 {
-    unsafe {
-        let uptr = page_map_ptr as *mut MaybeUninit<PageMap>;
-        (*uptr).assume_init_mut().set(index, value);
-    }
+    let pptr: PPtr<PageMap> = PPtr::from_addr(page_map_ptr);
+    let pm: &mut PageMap = pptr.borrow_mut(Tracked(page_map_perm));
+    pm.set_unsanitized(index, value);
 }
 
 #[verifier(external_body)]
@@ -145,7 +127,9 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
     (page_ptr, Tracked::assume_new())
 }
 
-#[verifier(external_body)]  // TODO: how to prove this .....
+// PERF: ~19 ms / ~144k rlimit. Loop over NUM_CPUS with submap_by_transitivity broadcast
+// inside the body and a per-iteration assert-forall to re-establish the submap_of invariant
+// across the updated seq element.
 pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<VAddr>) -> (ret:
     Ghost<Seq<Map<VAddr, MapEntry>>>)
     requires
@@ -179,29 +163,37 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
             0 <= cpu_id <= NUM_CPUS,
             tlbmap_4k@.len() == NUM_CPUS,
             ret_map@.len() == NUM_CPUS,
-            ret_map@[0].submap_of(tlbmap_4k@[0]),
             forall|cpu_i: CpuId|
                 #![auto]
                 0 <= cpu_i < cpu_id ==> ret_map@[cpu_i as int].contains_key(va@) == false,
             forall|cpu_i: CpuId|
                 #![auto]
-                0 <= cpu_i < cpu_id ==> ret_map@[cpu_i as int].submap_of(tlbmap_4k@[cpu_i as int]),
+                0 <= cpu_i < NUM_CPUS ==> ret_map@[cpu_i as int].submap_of(tlbmap_4k@[cpu_i as int]),
     {
         proof {
-            //assert(ret_map@[cpu_id as int].submap_of(tlbmap_4k@[cpu_id as int]));
-            // prove ret_map[i] has no key va
             assert(cpu_id < ret_map@.len());
-            let tlbmap = ret_map@[cpu_id as int].remove(va@);
+            let old_at_i = ret_map@[cpu_id as int];
+            let tlbmap = old_at_i.remove(va@);
             assert(!tlbmap.contains_key(va@));
+            // tlbmap is a submap of old_at_i, which (by loop invariant) is a submap of tlbmap_4k[cpu_id]
+            assert(tlbmap.submap_of(old_at_i));
+            assert(old_at_i.submap_of(tlbmap_4k@[cpu_id as int]));
+            assert(tlbmap.submap_of(tlbmap_4k@[cpu_id as int])) by {
+                broadcast use crate::lemma::lemma_u::submap_by_transitivity;
+            }
             let tlbseq = ret_map@.update(cpu_id as int, tlbmap);
             assert(tlbseq.index(cpu_id as int) =~= tlbmap);
-            assert(tlbseq.contains(tlbmap));
             ret_map@ = tlbseq;
+            // After update, ret_map@[cpu_id] = tlbmap, all others unchanged.
             assert(!ret_map@[cpu_id as int].contains_key(va@));
-
-            // prove ret_map[i] is subset of tlbmap_4k[i]
-            // assert(ret_map@[cpu_id as int] =~= old_ret_map.remove(va@));
-            //assert(ret_map@[cpu_id as int].submap_of(tlbmap_4k@[cpu_id as int]));
+            assert forall|cpu_i: CpuId| 0 <= cpu_i < NUM_CPUS implies
+                #[trigger] ret_map@[cpu_i as int].submap_of(tlbmap_4k@[cpu_i as int]) by {
+                if cpu_i as int == cpu_id as int {
+                    assert(ret_map@[cpu_i as int] == tlbmap);
+                } else {
+                    // unchanged
+                }
+            }
         }
     }
     ret_map

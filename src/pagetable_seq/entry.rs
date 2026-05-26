@@ -177,6 +177,13 @@ pub proof fn zero_leads_is_empty_page_entry()
     assert(0usize & (0x1u64 << 52u64) as usize != 0 == false) by (bit_vector);
 }
 
+pub proof fn mem_valid_zero()
+    ensures
+        mem_valid(0),
+{
+    assert(0usize & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector);
+}
+
 pub open spec fn spec_usize2page_entry_perm(v: usize) -> PageEntryPerm {
     PageEntryPerm {
         present: usize2present(v),

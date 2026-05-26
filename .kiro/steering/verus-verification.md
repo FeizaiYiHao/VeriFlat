@@ -3,6 +3,44 @@
 When working with VeriFlat's Rust files (everything under `src/` is Verus
 code with `verus!` blocks, `requires`, `ensures`, `proof fn`, etc.).
 
+## Spec safety (read this first)
+
+**Be very, very careful when changing the spec (`requires`/`ensures`) of a
+public function** — especially anything outside a function's own module that
+callers depend on. Helper functions used only inside one module are
+lower-stakes; a public boundary function is a contract.
+
+**Always ask the user before changing an invariant or the spec of a
+public function.** This includes `requires`, `ensures`, struct invariants
+(`wf` predicates), and any opaque/closed spec that callers reason about.
+Even when a spec change looks like an obvious bug fix or strengthening,
+stop and confirm with the user first — they may have context about
+callers, design intent, or downstream consequences that aren't visible
+locally. Mention what the change is and why before making it.
+
+When you do change a public spec (with the user's go-ahead), two things
+you MUST avoid:
+
+1. **Never write contradictory `requires` or `assume`** (`requires 1 == 0`,
+   `requires false`, `assume(false)`, etc.). A `false` precondition makes
+   the function vacuously verifiable but unsound — every caller that proves
+   the precondition has actually proved `false` and can prove anything.
+2. **Never introduce a postcondition that, together with the new
+   preconditions, is unsatisfiable.** This is the same trap one indirection
+   away: an unsatisfiable spec means the function can be "proved" but
+   collapses to `false` at any call site.
+
+After changing any `requires` or `ensures`, verify the spec is still
+consistent by adding a temporary `assert(false);` as the first line of the
+function body and running `./verify.sh --verify-only-module <m>
+--verify-function <f>`. If `assert(false)` succeeds, the spec is
+inconsistent — fix it before continuing. Remove the `assert(false)` once
+verification fails as expected.
+
+This applies to lemmas (`proof fn`) too: a vacuous lemma with
+contradictory preconditions or an unsatisfiable postcondition is worse
+than no lemma — it silently corrupts every proof that uses it.
+
 ## How to verify in this project
 
 - Whole crate: `./verify.sh` from the project root. Works in bash and zsh.

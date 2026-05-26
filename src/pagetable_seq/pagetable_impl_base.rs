@@ -891,7 +891,21 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
         let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(target_l1_p).borrow(Tracked(&l1_perm));
         let mut l1_entry = l1_tbl.get(target_l1i);
+        // l1_entry came from get(...) -> usize2page_entry(...).addr = usize2pa(v) = v & MEM_MASK,
+        // which is always mem_valid. After mutation of perm.present, addr is unchanged.
+        let ghost orig_addr = l1_entry.addr;
+        assert(mem_valid(orig_addr)) by {
+            let v = l1_perm.value().ar@[target_l1i as int];
+            // wf says spec_seq@[i] =~= usize2page_entry(ar@[i])
+            assert(l1_perm.value().wf());
+            assert(usize2page_entry(v) =~= l1_perm.value().spec_seq@[target_l1i as int]);
+            assert(l1_entry =~= l1_perm.value()[target_l1i]);
+            assert(l1_perm.value()[target_l1i] == l1_perm.value().spec_seq@[target_l1i as int]);
+            assert(orig_addr == spec_usize2pa(v));
+            assert(spec_usize2pa(v) & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector);
+        }
         l1_entry.perm.present = false;
+        assert(l1_entry.addr == orig_addr);
         page_map_set(target_l1_p, Tracked(&mut l1_perm), target_l1i, l1_entry);
 
         proof {
@@ -1053,6 +1067,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         };
         assert(self.mapping_4k@.dom().contains(va@)) by { broadcast use PageTable::reveal_page_table_mappings_wf; };
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
+        proof { mem_valid_zero(); }
         page_map_set(target_l1_p, Tracked(&mut l1_perm), target_l1i, PageEntry::empty());
 
         proof {
@@ -1393,6 +1408,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             va_lemma();
         };
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
+        proof { mem_valid_zero(); }
         page_map_set(
             target_l2_p,
             Tracked(&mut l2_perm),
@@ -1591,6 +1607,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         // broadcast use PageTable::reveal_page_table_addtional_wf;
 
         let tracked mut l3_perm = self.l3_tables.borrow_mut().tracked_remove(target_l3_p);
+        proof { mem_valid_zero(); }
         page_map_set(
             target_l3_p,
             Tracked(&mut l3_perm),
@@ -1793,21 +1810,25 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         // broadcast use PageTable::reveal_page_table_addtional_wf;
 
         let tracked mut l4_perm = self.l4_table.borrow_mut().tracked_remove(self.cr3);
+        proof {
+            mem_valid_zero();
+        }
+        let zero_entry = PageEntry {
+            addr: 0,
+            perm: PageEntryPerm {
+                present: false,
+                ps: false,
+                write: false,
+                execute_disable: false,
+                user: false,
+                kernel_present: false,
+            },
+        };
         page_map_set(
             self.cr3,
             Tracked(&mut l4_perm),
             target_l4i,
-            PageEntry {
-                addr: 0,
-                perm: PageEntryPerm {
-                    present: false,
-                    ps: false,
-                    write: false,
-                    execute_disable: false,
-                    user: false,
-                    kernel_present: false,
-                },
-            },
+            zero_entry,
         );
         proof {
             self.l4_table.borrow_mut().tracked_insert(self.cr3, l4_perm);
