@@ -8,7 +8,7 @@ verus! {
                 old(self).inv(),
                 old(self).all_objects_unlocked(&lctx),
                 old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
-                lctx.lock_seq() == Seq::<LockId>::empty(),
+                lctx.lock_map() == Map::<KernelObjId, LockId>::empty(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
         {
@@ -40,8 +40,9 @@ verus! {
                 process: self.cpu_array.spec_index(cpu_id).process_depth(), 
                 major: CPU_LOCK_MAJOR_RUNNING, 
                 minor: cpu_id });
+            let cpu_obj_id = Ghost(KernelObjId::Cpu(cpu_id));
 
-            let Tracked(cpu_lock_perm) = self.cpu_array.wlock(cpu_id, Tracked(&mut lctx), cpu_lock_id);
+            let Tracked(cpu_lock_perm) = self.cpu_array.wlock(cpu_id, Tracked(&mut lctx), cpu_lock_id, cpu_obj_id);
             let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
             let thread_ptr = cpu.current_thread.unwrap();
             let process_ptr = cpu.current_process.unwrap();
@@ -52,8 +53,9 @@ verus! {
                 process: LockOwnerId::NotApp, 
                 major: CONTAINER_LOCK_MAJOR, 
                 minor: container_ptr });
+            let container_obj_id = Ghost(KernelObjId::Container(container_ptr));
 
-            let container_res = self.container_map.wlock_unless_killed(container_ptr, Tracked(&mut lctx), container_lock_id);
+            let container_res = self.container_map.wlock_unless_killed(container_ptr, Tracked(&mut lctx), container_lock_id, container_obj_id);
             if let (false, _) = container_res{
                 assert(self.container_map.spec_index(container_ptr).being_killed() == true);
                 return;
@@ -66,7 +68,8 @@ verus! {
                 process: self.cpu_array.spec_index(cpu_id).process_depth(), 
                 major: PROCESS_LOCK_MAJOR, 
                 minor: process_ptr });
-            let process_res = self.process_map.wlock_unless_killed(process_ptr, Tracked(&mut lctx), process_lock_id);
+            let process_obj_id = Ghost(KernelObjId::Process(process_ptr));
+            let process_res = self.process_map.wlock_unless_killed(process_ptr, Tracked(&mut lctx), process_lock_id, process_obj_id);
 
         }
     }

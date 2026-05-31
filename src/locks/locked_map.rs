@@ -157,7 +157,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
-    pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -169,16 +169,17 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
             wlock_requires(old(self)[key], old(lctx)),
             old(lctx).lock_id_acyclic(lock_id@),
+            old(lctx).obj_id_fresh(obj_id@),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
             final(self).user_view_unchanged(old(self)),
 
             wlock_ensures(old(self)[key], final(self)[key], lock_id@, final(lctx).thread_id(), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_id@),
+            lock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_id@, obj_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
+        let ret = wlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id, obj_id);
         assert(perm.addr() == key);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
@@ -186,7 +187,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         return ret;
     }
 
-    pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -197,6 +198,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(obj_id@),
+            old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -206,10 +210,10 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             final(self)[key].locking_thread() is None,
 
             wunlock_ensures(old(self)[key], final(self)[key]),
-            unlock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_perm@.lock_id()),
+            unlock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_perm@.lock_id(), obj_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
@@ -222,7 +226,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
-    pub fn wlock_unless_killed(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret: (bool, Option<Tracked<LockPerm>>))
+    pub fn wlock_unless_killed(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: (bool, Option<Tracked<LockPerm>>))
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -238,6 +242,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             T::is_user_visible() ==> old(lctx).user_view_locking_state() is Acquire,
 
             old(lctx).lock_id_acyclic(lock_id@),
+            old(lctx).obj_id_fresh(obj_id@),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -254,6 +259,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 old(self)[key] == final(self)[key]
                 &&&
                 ret.1 is None
+                &&&
+                final(lctx).lock_map() =~= old(lctx).lock_map()
             },
             ret.0 == true ==>{
                 &&&                
@@ -263,11 +270,11 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 wlock_ensures(old(self)[key], final(self)[key], lock_id@, final(lctx).thread_id(), ret.1.unwrap()@)
                 &&&
-                lock_ensures(old(lctx), final(lctx), old(self)[key].view(), lock_id@)
+                lock_ensures(old(lctx), final(lctx), old(self)[key].view(), lock_id@, obj_id@)
             },
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = wlock_unless_killed(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id);
+        let ret = wlock_unless_killed(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_id, obj_id);
         assert(perm.addr() == key);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
@@ -275,7 +282,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         return ret;
     }
 
-    pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -286,6 +293,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(obj_id@),
+            old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -296,10 +306,10 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self)[key].being_killed() == final(self)[key].being_killed(),
 
             wunlock_ensures(old(self)[key], final(self)[key]),
-            unlock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_perm@.lock_id()),
+            unlock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_perm@.lock_id(), obj_id@),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        let ret = has_kill_state_wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
+        let ret = has_kill_state_wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
