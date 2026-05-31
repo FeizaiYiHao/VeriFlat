@@ -30,12 +30,26 @@ you MUST avoid:
    away: an unsatisfiable spec means the function can be "proved" but
    collapses to `false` at any call site.
 
+**Exception: TCB-only gates.** A primitive declared `external_body` and
+intended to be called only by other trusted (`external_body`) wrappers may
+use `requires true == false` (or `requires false`) as a deliberate gate —
+verified code cannot prove the precondition, so it cannot call the
+primitive. This pattern is sound because:
+  - the body bypasses verification (`external_body`),
+  - verified callers are blocked at the precondition,
+  - only trusted callers reach the body, and they take responsibility.
+The pattern is in active use for `wlock_external` / `wunlock_external` in
+`src/locks/rwlock.rs`. Don't replicate it casually; ask the user before
+introducing a new TCB gate.
+
 After changing any `requires` or `ensures`, verify the spec is still
 consistent by adding a temporary `assert(false);` as the first line of the
 function body and running `./verify.sh --verify-only-module <m>
 --verify-function <f>`. If `assert(false)` succeeds, the spec is
 inconsistent — fix it before continuing. Remove the `assert(false)` once
-verification fails as expected.
+verification fails as expected. (For TCB gates with `requires false`, this
+self-check is meaningless because the body is `external_body`; skip the
+check there.)
 
 This applies to lemmas (`proof fn`) too: a vacuous lemma with
 contradictory preconditions or an unsatisfiable postcondition is worse

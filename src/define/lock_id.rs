@@ -181,4 +181,34 @@ impl ToLockId for RwLockPageTableRoot{
 }
 
 
+// -------------------- Begin of kernel obj id ----------------
+//
+// Ghost identifier of a lockable kernel object. Each variant carries enough
+// information to uniquely locate the object in the kernel. Used as a key in
+// `LocalContext::lock_map` to associate held lock ids with the objects they
+// were taken on, replacing the older `Seq<LockId>` design.
+//
+// The user passes a `Ghost<KernelObjId>` to every wlock-style call alongside
+// the `Ghost<LockId>`. The lock primitive does NOT verify the user-supplied
+// `obj_id` matches the physical object — soundness is preserved by the
+// `lock_id`'s trait-based pinning to the object, while `obj_id` only acts as
+// a fresh map key. The user must prove `obj_id` is not already in the map at
+// each acquire (collision check), which prevents a re-used key from silently
+// dropping a held lock id from the acyclic check.
+pub ghost enum KernelObjId {
+    Container(RwLockContainerPtr),
+    Process(RwLockProcessPtr),
+    Thread(RwLockThreadPtr),
+    Endpoint(RwLockEndpointPtr),
+    Scheduler(RwLockSchedulerPtr),
+    PageTable(RwLockPageTableRoot),
+    Page(PageIndex),
+    Cpu(CpuId),
+    AllocatorQuota(PageSize, RwLockPageAllocatorPtr),
+    AllocatorCache(PageSize, RwLockPageAllocatorPtr, CpuId),
+    AllocatorGlobalPoll(PageSize, RwLockPageAllocatorPtr),
+}
+// -------------------- End of kernel obj id ------------------
+
+
 }

@@ -125,7 +125,7 @@ verus! {
 
     impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
-        pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
+        pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
             requires
                 old(self).inv(),
                 0 <= index < N,
@@ -137,6 +137,7 @@ verus! {
 
                 wlock_requires(old(self)[index]@, old(lctx)),
                 old(lctx).lock_id_acyclic(lock_id@),
+                old(lctx).obj_id_fresh(obj_id@),
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
@@ -146,13 +147,13 @@ verus! {
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 wlock_ensures(old(self)[index]@, final(self)[index]@, lock_id@, final(lctx).thread_id(), ret@),
-                lock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_id@),
+                lock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_id@, obj_id@),
         {
             self.array.ar[index].wlock_external(Tracked(lctx))
         }
 
         #[verifier(external_body)]
-        pub fn wunlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm:Tracked<LockPerm>) 
+        pub fn wunlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm:Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
             requires
                 old(self).inv(),
                 0 <= index < N,
@@ -163,6 +164,9 @@ verus! {
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
+
+                old(lctx).lock_map().dom().contains(obj_id@),
+                old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
@@ -175,7 +179,7 @@ verus! {
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 wunlock_ensures(old(self)[index]@, final(self)[index]@),
-                unlock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_perm@.lock_id()),
+                unlock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_perm@.lock_id(), obj_id@),
         {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }

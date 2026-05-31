@@ -15,7 +15,7 @@ pub tracked struct LCtxtState{
 }
 pub tracked struct LocalContext{
     thread_id: LockThreadId,
-    lock_seq: Seq<LockId>,
+    lock_map: Map<KernelObjId, LockId>,
     state: LCtxtState,
 }
 
@@ -23,8 +23,8 @@ impl LocalContext{
     pub closed spec fn thread_id(&self) -> LockThreadId {
         self.thread_id
     }
-    pub closed spec fn lock_seq(&self) -> Seq<LockId>{
-        self.lock_seq
+    pub closed spec fn lock_map(&self) -> Map<KernelObjId, LockId>{
+        self.lock_map
     }
     pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState{
         self.state.kernel_view_locking_state
@@ -32,23 +32,29 @@ impl LocalContext{
     pub closed spec fn user_view_locking_state(&self) -> LCtxtLockState{
         self.state.user_view_locking_state
     }
+
     pub open spec fn wf(&self) -> bool{
-        &&&
-        forall|i:int|
-            #![trigger self.lock_seq()[i]] 
-            1<=i<self.lock_seq().len() 
-            ==> 
-            self.lock_seq()[i] > self.lock_seq()[i - 1]
-    }            
+        true
+    }
+
+    /// Predicate: `lock_id` is strictly greater than every lock id currently
+    /// held in `lock_map`. This is the deadlock-freedom check: a thread may
+    /// only acquire a lock whose id exceeds every id it already holds.
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool{
-        |||
-        self.lock_seq().len() == 0
-        |||
-        lock_id.spec_gt(self.lock_seq().last())
+        forall|k: KernelObjId|
+            #![trigger self.lock_map().dom().contains(k)]
+            self.lock_map().dom().contains(k) ==> lock_id.spec_gt(self.lock_map()[k])
+    }
+
+    /// Predicate: `obj_id` is not already a key in `lock_map`. Required at
+    /// every wlock to prevent the user from silently dropping a held lock id
+    /// by re-using its key.
+    pub open spec fn obj_id_fresh(&self, obj_id: KernelObjId) -> bool{
+        !self.lock_map().dom().contains(obj_id)
     }
 }
 
-    pub open spec fn lock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId) -> bool{
+    pub open spec fn lock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
@@ -56,7 +62,7 @@ impl LocalContext{
         &&&
         new.user_view_locking_state() == old.user_view_locking_state()
         &&&
-        new.lock_seq() =~= old.lock_seq().push(lock_id)
+        new.lock_map() =~= old.lock_map().insert(obj_id, lock_id)
     }
 
     /// Precondition for releasing any lock guarded by `T`.
@@ -69,7 +75,7 @@ impl LocalContext{
         T::is_user_visible() ==> old.user_view_locking_state() is Release
     }
 
-    pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId) -> bool{
+    pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
@@ -79,7 +85,7 @@ impl LocalContext{
         &&&
         new.user_view_locking_state() == old.user_view_locking_state()
         &&&
-        new.lock_seq() =~= old.lock_seq().remove_value(lock_id)
+        new.lock_map() =~= old.lock_map().remove(obj_id)
     }
 
 }

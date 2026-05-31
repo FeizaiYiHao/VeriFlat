@@ -387,7 +387,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         ensures
             update_kernel_ghost_ensures(*old(self), *final(self), new_kernel_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_seq() == old(lctx).lock_seq(),
+            final(lctx).lock_map() == old(lctx).lock_map(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
     {
@@ -413,7 +413,7 @@ impl<T:LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: boo
         ensures
             update_user_ghost_ensures(*old(self), *final(self), new_user_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_seq() == old(lctx).lock_seq(),
+            final(lctx).lock_map() == old(lctx).lock_map(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
     {
@@ -423,7 +423,7 @@ impl<T:LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: boo
 
 impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
     #[verifier::external_body]
-    pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:Tracked<LockPerm>)
+    pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
         requires
             old(self)@.container_depth() == lock_id@.container,
             old(self)@.process_depth() == lock_id@.process,
@@ -432,16 +432,17 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id@),
+            old(lctx).obj_id_fresh(obj_id@),
         ensures
             wlock_ensures(*old(self), *final(self), lock_id@, final(lctx).thread_id(), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self).view(), lock_id@),
+            lock_ensures(old(lctx), final(lctx), final(self).view(), lock_id@, obj_id@),
     {
         self.lock.wlock();
         Tracked::assume_new()
     }
 
     #[verifier::external_body]
-    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
         requires
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
@@ -451,9 +452,12 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
             lp@.state() is WriteLock,
             lp@.thread_id() == old(lctx).thread_id(),
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(obj_id@),
+            old(lctx).lock_map()[obj_id@] == lp@.lock_id(),
         ensures
             wunlock_ensures(*old(self), *final(self)),
-            unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id()),
+            unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id(), obj_id@),
     {
         self.lock.wunlock();
     }
@@ -462,7 +466,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
-    pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
+    pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
         requires
             old(self)@.container_depth() == lock_id@.container,
             old(self)@.process_depth() == lock_id@.process,
@@ -470,6 +474,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id@),
+            old(lctx).obj_id_fresh(obj_id@),
         ensures
             ret.0 == false ==> 
             {
@@ -479,6 +484,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 *old(self) == *final(self)
                 &&&
                 ret.1 is None
+                &&&
+                final(lctx).lock_map() =~= old(lctx).lock_map()
             },
             ret.0 == true ==>{
                 &&&                
@@ -488,7 +495,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 wlock_ensures(*old(self), *final(self), lock_id@, final(lctx).thread_id(), ret.1.unwrap()@)
                 &&&
-                lock_ensures(old(lctx), final(lctx), final(self).view(), lock_id@)
+                lock_ensures(old(lctx), final(lctx), final(self).view(), lock_id@, obj_id@)
             } 
     {
         if self.lock.wlock_unless_killed().is_err(){
@@ -500,7 +507,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     }
 
     #[verifier::external_body]
-    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
+    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
         requires
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
@@ -510,10 +517,13 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lp@.state() is WriteLock,
             lp@.thread_id() == old(lctx).thread_id(),
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(obj_id@),
+            old(lctx).lock_map()[obj_id@] == lp@.lock_id(),
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
-            unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id()),
+            unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id(), obj_id@),
     {
         self.lock.wunlock();
     }
@@ -538,7 +548,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     /// kernel-view phase to `Release`, so this does NOT compose with
     /// `lock_ensures` (which would assert the new phase is `Acquire`).
     #[verifier::external_body]
-    pub fn try_wlock_and_mark_kill(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, killer_info: KillerInfo) -> (ret:(bool, Option<Tracked<LockPerm>>))
+    pub fn try_wlock_and_mark_kill(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>, killer_info: KillerInfo) -> (ret:(bool, Option<Tracked<LockPerm>>))
         requires
             old(self)@.container_depth() == lock_id@.container,
             old(self)@.process_depth() == lock_id@.process,
@@ -546,6 +556,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id@),
+            old(lctx).obj_id_fresh(obj_id@),
 
             // Mark is a Release for the user-view too if T is user-visible.
             T::is_user_visible() ==> old(lctx).user_view_locking_state() is Release,
@@ -597,7 +608,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 final(lctx).thread_id() == old(lctx).thread_id()
                 &&&
-                final(lctx).lock_seq() =~= old(lctx).lock_seq().push(lock_id@)
+                final(lctx).lock_map() =~= old(lctx).lock_map().insert(obj_id@, lock_id@)
                 &&&
                 final(lctx).kernel_view_locking_state() is Release
                 &&&
