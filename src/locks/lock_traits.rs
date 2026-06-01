@@ -36,6 +36,22 @@ pub trait LockMajorTrait {
             false
         }
     }
+
+    /// The lock major id corresponding to the object's current state.
+    /// First state-specific predicate that holds (1, then 2, then 3) wins;
+    /// otherwise the default major. Used to infer `lock_id.major` at lock
+    /// acquire/release sites without asking the caller to construct it.
+    open spec fn current_lock_major(&self) -> LockMajorId{
+        if self.lock_major_1_predicate(){
+            self.lock_major_1()
+        } else if self.lock_major_2_predicate(){
+            self.lock_major_2()
+        } else if self.lock_major_3_predicate(){
+            self.lock_major_3()
+        } else {
+            self.lock_major_default()
+        }
+    }
 }
 
 pub trait LockOwnerIdTrait {
