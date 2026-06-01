@@ -143,6 +143,45 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         return ret;
     }
 
+    pub fn borrow_mut<'a>(&'a mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+
+            old(self)[key].wlocked_by(lctx),
+            old(self)[key].is_init(),
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == lctx.thread_id(),
+            lock_perm@.lock_id() == old(self)[key].locking_thread()->Write_lock_id,
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() == old(self).dom(),
+
+            // Other entries unchanged.
+            forall|k:usize|
+                #![auto]
+                old(self).dom().contains(k) && k != key
+                ==>
+                final(self)[k] == old(self)[k],
+
+            // Lock state of `key`'s rwlock is preserved.
+            final(self)[key].is_init(),
+            final(self)[key].view_rodata() == old(self)[key].view_rodata(),
+            final(self)[key].view_kernel_ghost() == old(self)[key].view_kernel_ghost(),
+            final(self)[key].view_user_ghost() == old(self)[key].view_user_ghost(),
+            final(self)[key].locking_thread() == old(self)[key].locking_thread(),
+            final(self)[key].being_killed() == old(self)[key].being_killed(),
+
+            // The `&mut T` linkage.
+            *ret == old(self)[key]@,
+            final(self)[key]@ == *final(ret),
+    {
+        let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
+        let ret = borrow_mut(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(perm), Tracked(lctx), lock_perm);
+        return ret;
+    }
+
     pub fn borrow_rodata(&self, key:usize) -> (ret:&ROT)
         requires
             self.perms_wf(),

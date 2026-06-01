@@ -120,6 +120,38 @@ verus! {
                 ret == self[index]@@,
         {
             self.array.ar.index(index).borrow(lp)
+        }
+
+        #[verifier::external_body]
+        pub fn borrow_mut<'a>(&'a mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+
+                old(self)[index]@.wlocked_by(lctx),
+                old(self)[index]@.is_init(),
+
+                lp@.state() is WriteLock,
+                lp@.thread_id() == lctx.thread_id(),
+                lp@.lock_id() == old(self)[index]@.locking_thread()->Write_lock_id,
+            ensures
+                final(self).inv(),
+                final(self).unchanged_except(old(self), index),
+                final(self).user_view_unchanged(old(self)),
+
+                // Lock state of the touched entry is preserved.
+                final(self)[index]@.is_init(),
+                final(self)[index]@.view_rodata() == old(self)[index]@.view_rodata(),
+                final(self)[index]@.view_kernel_ghost() == old(self)[index]@.view_kernel_ghost(),
+                final(self)[index]@.view_user_ghost() == old(self)[index]@.view_user_ghost(),
+                final(self)[index]@.locking_thread() == old(self)[index]@.locking_thread(),
+                final(self)[index]@.being_killed() == old(self)[index]@.being_killed(),
+
+                // The `&mut T` linkage.
+                *ret == old(self)[index]@@,
+                final(self)[index]@@ == *final(ret),
+        {
+            self.array.ar[index].borrow_mut(Tracked(lctx), lp)
         } 
     }
 

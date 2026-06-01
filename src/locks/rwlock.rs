@@ -356,6 +356,38 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         }
     }
 
+    /// Mutably borrow the inner value while holding a write lock.
+    ///
+    /// The returned `&mut T` lives for as long as the borrow against `&mut self`
+    /// (and against the lock perm). On drop, the inner value reflects whatever
+    /// the borrow was last set to — same `&mut`-linkage Verus uses elsewhere.
+    #[verifier::external_body]
+    pub fn borrow_mut<'a>(&'a mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
+        requires
+            old(self).wlocked_by(lctx),
+            old(self).is_init(),
+
+            lp@.state() is WriteLock,
+            lp@.thread_id() == lctx.thread_id(),
+            lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
+        ensures
+            final(self).is_init(),
+            // Invariants of the lock are preserved by the structure of the rwlock.
+            final(self).view_rodata() == old(self).view_rodata(),
+            final(self).view_kernel_ghost() == old(self).view_kernel_ghost(),
+            final(self).view_user_ghost() == old(self).view_user_ghost(),
+            final(self).locking_thread() == old(self).locking_thread(),
+            final(self).being_killed() == old(self).being_killed(),
+
+            // The `&mut T` ⇄ inner value linkage.
+            *ret == old(self).view(),
+            final(self).view() == *final(ret),
+    {
+        unsafe{
+            &mut *(&mut self.value as *mut T)
+        }
+    }
+
     #[verifier::external_body]
     pub fn borrow_rodata(&self) -> (ret: &ROT)
         ensures

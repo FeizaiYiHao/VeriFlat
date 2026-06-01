@@ -313,5 +313,42 @@ pub fn borrow_rodata<'a, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(p
     }
 }
 
+/// Mutably borrow the `T` inside the rwlock through a `&mut PointsTo<RwLock<...>>`.
+/// Caller holds a write `LockPerm`. The `&mut T` linkage is wired so that, when
+/// the borrow ends, the rwlock's view reflects the borrow's final state.
+#[verifier::external_body]
+pub fn borrow_mut<'a, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr:&PPtr<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&'a mut PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+
+        old(perm).value().wlocked_by(lctx),
+        old(perm).value().is_init(),
+
+        lock_perm@.state() is WriteLock,
+        lock_perm@.thread_id() == lctx.thread_id(),
+        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        final(perm).value().is_init(),
+
+        // The rwlock's structural state is unchanged.
+        final(perm).value().view_rodata() == old(perm).value().view_rodata(),
+        final(perm).value().view_kernel_ghost() == old(perm).value().view_kernel_ghost(),
+        final(perm).value().view_user_ghost() == old(perm).value().view_user_ghost(),
+        final(perm).value().locking_thread() == old(perm).value().locking_thread(),
+        final(perm).value().being_killed() == old(perm).value().being_killed(),
+
+        // The `&mut T` linkage.
+        *ret == old(perm).value().view(),
+        final(perm).value().view() == *final(ret),
+{
+    unsafe {
+        let uptr = &mut *(pptr.addr() as *mut RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>);
+        uptr.borrow_mut(Tracked(lctx), lock_perm)
+    }
+}
+
 
 }
