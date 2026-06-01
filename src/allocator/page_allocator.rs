@@ -123,6 +123,91 @@ impl PageAllocator{
 }
 
 impl PageAllocator{
+    /// Acquire the inner `quota` write lock.
+    ///
+    /// The caller passes the allocator's `page_size` class and pointer
+    /// (`alloc_ptr`) so the wrapper can build the right `KernelObjId`. The
+    /// rest of the lock id (container/process/major/minor) is inferred by
+    /// the underlying primitive from the quota's traits.
+    ///
+    /// Acyclic + freshness obligations on `lctx.lock_map` are passed through
+    /// to the caller — same as a direct `RwLock::wlock`.
+    pub fn wlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).wf(),
+            wlock_requires(old(self).quota, old(lctx)),
+            old(lctx).lock_id_acyclic(LockId{
+                container: old(self).quota@.container_depth(),
+                process: old(self).quota@.process_depth(),
+                major: old(self).quota@.current_lock_major(),
+                minor: old(self).quota@.lock_minor(),
+            }),
+            old(lctx).obj_id_fresh(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
+        ensures
+            final(self).wf(),
+            // Quota lock acquired.
+            wlock_ensures(old(self).quota, final(self).quota, LockId{
+                container: old(self).quota@.container_depth(),
+                process: old(self).quota@.process_depth(),
+                major: old(self).quota@.current_lock_major(),
+                minor: old(self).quota@.lock_minor(),
+            }, final(lctx).thread_id(), ret@),
+            lock_ensures(old(lctx), final(lctx), final(self).quota.view(), LockId{
+                container: old(self).quota@.container_depth(),
+                process: old(self).quota@.process_depth(),
+                major: old(self).quota@.current_lock_major(),
+                minor: old(self).quota@.lock_minor(),
+            }, KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
+            // Other fields untouched.
+            final(self).cpu_caches == old(self).cpu_caches,
+            final(self).global_poll == old(self).global_poll,
+            final(self).owning_container == old(self).owning_container,
+            final(self).differential == old(self).differential,
+            final(self).total_free_pages == old(self).total_free_pages,
+    {
+        let lock_id = Ghost(LockId{
+            container: self.quota@.container_depth(),
+            process: self.quota@.process_depth(),
+            major: self.quota@.current_lock_major(),
+            minor: self.quota@.lock_minor(),
+        });
+        self.quota.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)))
+    }
+
+    /// Release the inner `quota` write lock.
+    ///
+    /// The caller passes `page_size` and `alloc_ptr` so the wrapper can
+    /// remove the matching key from `lctx.lock_map`. The lock id stored on
+    /// `lock_perm` must match the key currently in the map — same contract
+    /// as `RwLock::wunlock`.
+    pub fn wunlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+        requires
+            old(self).wf(),
+            old(self).quota.wlocked_by(old(lctx)),
+            old(self).quota.inv(),
+
+            unlock_requires::<AllocatorQuota>(old(lctx)),
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == old(lctx).thread_id(),
+            lock_perm@.lock_id() == old(self).quota.locking_thread()->Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
+            old(lctx).lock_map()[KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)] == lock_perm@.lock_id(),
+        ensures
+            final(self).wf(),
+            wunlock_ensures(old(self).quota, final(self).quota),
+            unlock_ensures(old(lctx), final(lctx), final(self).quota.view(), lock_perm@.lock_id(), KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
+            // Other fields untouched.
+            final(self).cpu_caches == old(self).cpu_caches,
+            final(self).global_poll == old(self).global_poll,
+            final(self).owning_container == old(self).owning_container,
+            final(self).differential == old(self).differential,
+            final(self).total_free_pages == old(self).total_free_pages,
+    {
+        self.quota.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)))
+    }
+
     // pub fn try_allocate_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, quota: usize, cpu_id: CpuId) -> (ret :bool)
     //     requires
     //         old(self).wf(),
