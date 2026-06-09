@@ -61,7 +61,7 @@ impl LockOwnerIdTrait for AllocatorQuota{
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::None
+        LockOwnerId::NotApp
     }
 }
 

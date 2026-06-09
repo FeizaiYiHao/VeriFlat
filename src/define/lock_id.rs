@@ -10,8 +10,8 @@ pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
 pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 3;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
-pub const PROCESS_LOCK_MAJOR:LockMajorId = 102;
-pub const THREAD_LOCK_MAJOR:LockMajorId = 103;
+pub const PROCESS_LOCK_MAJOR:LockMajorId = 105;
+pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
 
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
@@ -31,7 +31,7 @@ pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
 pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
-pub const QUOTA_MAJOR: LockMajorId = 1;
+pub const QUOTA_MAJOR: LockMajorId = 102;
 pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = QUOTA_MAJOR + 1;
 pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 // -------------------- End of const --------------------------
