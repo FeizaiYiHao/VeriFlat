@@ -73,6 +73,12 @@ impl KernelK{
             ==>
             self.allocator_4k_map.spec_index(alloc_ptr).global_poll.locked_by(lctx) == false
         &&&
+        forall|alloc_ptr:RwLockPageAllocatorPtr|
+            #![trigger self.allocator_4k_map.spec_index(alloc_ptr).quota.locked_by(lctx)]
+            self.allocator_4k_map.dom().contains(alloc_ptr)
+            ==>
+            self.allocator_4k_map.spec_index(alloc_ptr).quota.locked_by(lctx) == false
+        &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i: CpuId|
             #![trigger self.allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by(lctx)]
             self.allocator_4k_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i)
@@ -85,6 +91,12 @@ impl KernelK{
             ==>
             self.allocator_2m_map.spec_index(alloc_ptr).global_poll.locked_by(lctx) == false
         &&&
+        forall|alloc_ptr:RwLockPageAllocatorPtr|
+            #![trigger self.allocator_2m_map.spec_index(alloc_ptr).quota.locked_by(lctx)]
+            self.allocator_2m_map.dom().contains(alloc_ptr)
+            ==>
+            self.allocator_2m_map.spec_index(alloc_ptr).quota.locked_by(lctx) == false
+        &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i: CpuId|
             #![trigger self.allocator_2m_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by(lctx)]
             self.allocator_2m_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i)
@@ -96,6 +108,12 @@ impl KernelK{
             self.allocator_1g_map.dom().contains(alloc_ptr)
             ==>
             self.allocator_1g_map.spec_index(alloc_ptr).global_poll.locked_by(lctx) == false
+        &&&
+        forall|alloc_ptr:RwLockPageAllocatorPtr|
+            #![trigger self.allocator_1g_map.spec_index(alloc_ptr).quota.locked_by(lctx)]
+            self.allocator_1g_map.dom().contains(alloc_ptr)
+            ==>
+            self.allocator_1g_map.spec_index(alloc_ptr).quota.locked_by(lctx) == false
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i: CpuId|
             #![trigger self.allocator_1g_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by(lctx)]
