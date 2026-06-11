@@ -1,11 +1,11 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn cpu_dirty_map_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
+    pub open spec fn cpu_dirty_map_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
         cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>, tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
     {
         &&&
-        cpu_dirty_map_contains_container_processes(container_perms, cpu_array)
+        cpu_dirty_map_contains_container_processes(container_map, cpu_array)
         &&&
         cpu_dirty_map_proc_pcid_match(process_map, cpu_array)
         &&&
@@ -15,13 +15,14 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_dirty_map_contains_container_processes(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_contains_container_processes(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
         recommends
-            container_cpu_wf(container_perms, cpu_array),
+            container_cpu_wf(container_map, cpu_array),
     {
         &&&
         forall|cpu_i:CpuId, pcid: Pcid|
             #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid]]
+            #![trigger cpu_id_valid(cpu_i), pcid_valid(pcid)]
             cpu_id_valid(cpu_i)
             &&
             pcid_valid(pcid)
@@ -30,7 +31,7 @@ verus! {
             &&
             cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid] is Some
             ==>
-            container_perms.spec_index(cpu_array.spec_index(cpu_i).view().view().owning_container).view().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid].unwrap().process_ptr)
+            container_map.spec_index(cpu_array.spec_index(cpu_i).view().view().owning_container).view().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid].unwrap().process_ptr)
     }
 
     #[verifier::opaque]

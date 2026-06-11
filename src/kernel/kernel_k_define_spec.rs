@@ -131,6 +131,7 @@ verus! {
             tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)
         }
 
+        #[verifier::opaque]
         pub open spec fn default_pagetable_wf(&self) -> bool {
             &&&
             self.default_pagetable.view().inv()
@@ -413,10 +414,11 @@ verus! {
             &&& self.locked_implies_lctx(lctx)
         }
 
-        /// Trusted kernel-view linearization primitive.
+        /// Trusted kernel-view step boundary.
         ///
-        /// Models "the rest of the world runs arbitrary atomic sections
-        /// while we sit between two of our own atomic sections":
+        /// Models "end the current kernel-view atomic section and begin a
+        /// new one." Between sections, the rest of the world may run
+        /// arbitrary atomic sections:
         ///   - all our held objects (those recorded in `lctx.lock_map`) keep
         ///     their state across the boundary — `view`, `view_kernel_ghost`,
         ///     `view_user_ghost`, `view_rodata`, `locking_thread`,
@@ -432,15 +434,12 @@ verus! {
         ///
         /// Preconditions:
         ///   - `inv()` holds (we entered the boundary in a wf state),
-        ///   - `kernel_view_locking_state is Release` (the syscall declared
-        ///     this is the linearization point),
+        ///   - `kernel_view_locking_state is Release` (the current section
+        ///     is done),
         ///   - `locked_objects_match_lctx(lctx)` (no stealth locks, every
         ///     `lctx.lock_map` entry corresponds to a real held lock).
-        ///
-        /// Note: this is the *kernel-view* linearization point only. The
-        /// user-view counterpart is a separate primitive (TBD).
         #[verifier::external_body]
-        pub proof fn kernel_view_linearize(tracked &mut self, tracked lctx: &mut LocalContext)
+        pub proof fn kernel_step_boundary(tracked &mut self, tracked lctx: &mut LocalContext)
             requires
                 old(self).inv(),
                 old(lctx).kernel_view_locking_state() is Release,

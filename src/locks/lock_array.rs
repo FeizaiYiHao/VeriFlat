@@ -19,14 +19,19 @@ verus! {
             &&&
             self.array.wf()
         }
-        
-        pub closed spec fn user_view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
-            self.user_seq.view()
-        }
 
         pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
             self.array@
         }
+        /// Expose the (otherwise closed) length fact: a well-formed array
+        /// has exactly `N` elements. Additive helper — does not change any
+        /// existing spec; lets clients relate `view().len()` to `N`.
+        pub proof fn lemma_view_len(&self)
+            requires
+                self.inv(),
+            ensures
+                self.view().len() == N,
+        {}
         pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
@@ -44,23 +49,6 @@ verus! {
                 ==>
                 self[i] == old[i]
         }
-        
-        pub open spec fn user_view_unchanged(&self, old: &Self) -> bool {
-            &&&
-            self.user_view() == old.user_view()
-        }
-        
-        pub open spec fn user_view_unchanged_except(&self, old: &Self, index:usize) -> bool {
-            &&&
-            self.user_view().len() == old.user_view().len()
-            &&&
-            forall|i:usize|
-                #![auto]
-                0 <= i < N && i != index
-                ==>
-                self.user_view()[i as int] == old.user_view()[i as int]
-        }
-
 
         #[verifier(external_body)]
         pub fn take(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:T)
@@ -77,7 +65,6 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
-                final(self).user_view_unchanged(old(self)),
 
                 take_ensures(old(self)[index]@, final(self)[index]@),
                 
@@ -100,7 +87,6 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
-                final(self).user_view_unchanged(old(self)),
 
                 put_ensures(old(self)[index]@, final(self)[index]@, v),
         {
@@ -137,7 +123,6 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
-                final(self).user_view_unchanged(old(self)),
 
                 // Lock state of the touched entry is preserved.
                 final(self)[index]@.is_init(),
@@ -173,7 +158,6 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
-                final(self).user_view_unchanged(old(self)),
 
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -203,6 +187,8 @@ verus! {
                 old(self)[index]@.wlocked_by(old(lctx)),
                 old(self)[index]@.being_killed() == false,
 
+                unlock_requires::<T>(old(lctx)),
+
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
@@ -212,8 +198,6 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).unchanged_except(old(self), index),
-                final(self).user_view_unchanged_except(old(self), index),
-                final(self).user_view().spec_index(index as int) == final(self)[index]@,
 
                 final(self)[index]@.locking_thread() is None,
 

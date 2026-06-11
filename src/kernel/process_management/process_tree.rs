@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+    #[verifier::opaque]
     pub open spec fn process_perms_wf(process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>) -> bool{
         &&&
         process_perms.perms_wf()
@@ -205,6 +206,37 @@ verus! {
         &&& process_subtree_set_wf(root_process, process_tree_dom, process_perms)
         &&& process_uppertree_seq_wf(root_process, process_tree_dom, process_perms)
         &&& process_subtree_set_exclusive(root_process, process_tree_dom, process_perms)
+    }
+
+    /// Framing lemma: if every process in the tree domain has an unchanged
+    /// tree-relevant view (`view()` and `view_rodata()`), then
+    /// `process_tree_wf` is preserved. Mirror of
+    /// `container_no_change_to_tree_fields_imply_wf` for callers that touch
+    /// only lock-state on the process map.
+    pub proof fn process_no_change_to_tree_fields_imply_wf(
+        root_process: RwLockProcessPtr,
+        process_tree_dom: Set<RwLockProcessPtr>,
+        old_process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+        new_process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+    )
+        requires
+            process_tree_wf(root_process, process_tree_dom, old_process_perms),
+            process_tree_dom.subset_of(new_process_perms.dom()),
+            forall|p_ptr: RwLockProcessPtr|
+                #![trigger new_process_perms.spec_index(p_ptr)]
+                process_tree_dom.contains(p_ptr) ==>
+                    new_process_perms.spec_index(p_ptr).view() == old_process_perms.spec_index(p_ptr).view()
+                    && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata(),
+        ensures
+            process_tree_wf(root_process, process_tree_dom, new_process_perms),
+    {
+        reveal(process_root_wf);
+        reveal(process_childern_parent_wf);
+        reveal(processs_linkedlist_wf);
+        reveal(process_childern_depth_wf);
+        reveal(process_subtree_set_wf);
+        reveal(process_uppertree_seq_wf);
+        reveal(process_subtree_set_exclusive);
     }
 
 #[verifier::loop_isolation(false)]
