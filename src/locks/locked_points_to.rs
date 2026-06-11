@@ -113,6 +113,8 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
         old(perm).value().wlocked_by(old(lctx)),
         old(perm).value().inv(),
 
+        unlock_requires::<T>(old(lctx)),
+
         lock_perm@.state() is WriteLock,
         lock_perm@.thread_id() == old(lctx).thread_id(),
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
@@ -207,6 +209,8 @@ pub fn has_kill_state_wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait
 
         old(perm).value().wlocked_by(old(lctx)),
         old(perm).value().inv(),
+
+        unlock_requires::<T>(old(lctx)),
 
         lock_perm@.state() is WriteLock,
         lock_perm@.thread_id() == old(lctx).thread_id(),

@@ -208,6 +208,157 @@ impl PageAllocator{
         self.quota.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)))
     }
 
+    /// Acquire the inner `global_poll` write lock. Mirrors `wlock_quota`;
+    /// builds `KernelObjId::AllocatorGlobalPoll`. The lock id is inferred
+    /// from the global pool's traits.
+    pub fn wlock_global_poll(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).wf(),
+            wlock_requires(old(self).global_poll, old(lctx)),
+            old(lctx).lock_id_acyclic(LockId{
+                container: old(self).global_poll@.container_depth(),
+                process: old(self).global_poll@.process_depth(),
+                major: old(self).global_poll@.current_lock_major(),
+                minor: old(self).global_poll@.lock_minor(),
+            }),
+            old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
+        ensures
+            final(self).wf(),
+            wlock_ensures(old(self).global_poll, final(self).global_poll, LockId{
+                container: old(self).global_poll@.container_depth(),
+                process: old(self).global_poll@.process_depth(),
+                major: old(self).global_poll@.current_lock_major(),
+                minor: old(self).global_poll@.lock_minor(),
+            }, final(lctx).thread_id(), ret@),
+            lock_ensures(old(lctx), final(lctx), final(self).global_poll.view(), LockId{
+                container: old(self).global_poll@.container_depth(),
+                process: old(self).global_poll@.process_depth(),
+                major: old(self).global_poll@.current_lock_major(),
+                minor: old(self).global_poll@.lock_minor(),
+            }, KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
+            // Other fields untouched.
+            final(self).cpu_caches == old(self).cpu_caches,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+            final(self).differential == old(self).differential,
+            final(self).total_free_pages == old(self).total_free_pages,
+    {
+        let lock_id = Ghost(LockId{
+            container: self.global_poll@.container_depth(),
+            process: self.global_poll@.process_depth(),
+            major: self.global_poll@.current_lock_major(),
+            minor: self.global_poll@.lock_minor(),
+        });
+        self.global_poll.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
+    }
+
+    /// Release the inner `global_poll` write lock. Mirrors `wunlock_quota`.
+    pub fn wunlock_global_poll(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+        requires
+            old(self).wf(),
+            old(self).global_poll.wlocked_by(old(lctx)),
+            old(self).global_poll.inv(),
+
+            unlock_requires::<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == old(lctx).thread_id(),
+            lock_perm@.lock_id() == old(self).global_poll.locking_thread()->Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
+            old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)] == lock_perm@.lock_id(),
+        ensures
+            final(self).wf(),
+            wunlock_ensures(old(self).global_poll, final(self).global_poll),
+            unlock_ensures(old(lctx), final(lctx), final(self).global_poll.view(), lock_perm@.lock_id(), KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
+            // Other fields untouched.
+            final(self).cpu_caches == old(self).cpu_caches,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+            final(self).differential == old(self).differential,
+            final(self).total_free_pages == old(self).total_free_pages,
+    {
+        self.global_poll.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
+    }
+
+    /// Acquire the per-cpu `cpu_caches[cpu_id]` write lock. Builds
+    /// `KernelObjId::AllocatorCache`. The lock id is inferred from the
+    /// array element's traits.
+    pub fn wlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).wf(),
+            cpu_id_valid(cpu_id),
+            wlock_requires(old(self).cpu_caches[cpu_id]@, old(lctx)),
+            old(lctx).lock_id_acyclic(LockId{
+                container: old(self).cpu_caches[cpu_id].container_depth(),
+                process: old(self).cpu_caches[cpu_id].process_depth(),
+                major: old(self).cpu_caches[cpu_id]@@.current_lock_major(),
+                minor: old(self).cpu_caches[cpu_id].lock_minor(),
+            }),
+            old(lctx).obj_id_fresh(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
+        ensures
+            final(self).wf(),
+            wlock_ensures(old(self).cpu_caches[cpu_id]@, final(self).cpu_caches[cpu_id]@, LockId{
+                container: old(self).cpu_caches[cpu_id].container_depth(),
+                process: old(self).cpu_caches[cpu_id].process_depth(),
+                major: old(self).cpu_caches[cpu_id]@@.current_lock_major(),
+                minor: old(self).cpu_caches[cpu_id].lock_minor(),
+            }, final(lctx).thread_id(), ret@),
+            lock_ensures(old(lctx), final(lctx), final(self).cpu_caches[cpu_id]@@, LockId{
+                container: old(self).cpu_caches[cpu_id].container_depth(),
+                process: old(self).cpu_caches[cpu_id].process_depth(),
+                major: old(self).cpu_caches[cpu_id]@@.current_lock_major(),
+                minor: old(self).cpu_caches[cpu_id].lock_minor(),
+            }, KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
+            // Other fields untouched.
+            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
+            final(self).global_poll == old(self).global_poll,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+            final(self).differential == old(self).differential,
+            final(self).total_free_pages == old(self).total_free_pages,
+    {
+        self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)))
+    }
+
+    /// Release the per-cpu `cpu_caches[cpu_id]` write lock.
+    ///
+    /// Unlike quota/global_poll, the allocator's `differential_wf` invariant
+    /// permits a locked cache to be out of sync with `differential` (first
+    /// disjunct: `wlocked()`). On unlock that disjunct disappears, so the
+    /// caller must have restored the cache so its length matches the
+    /// recorded `differential` entry before releasing.
+    pub fn wunlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+        requires
+            old(self).wf(),
+            cpu_id_valid(cpu_id),
+            old(self).cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
+            old(self).cpu_caches[cpu_id]@.being_killed() == false,
+            // Cache consistency restored before unlock (see doc comment).
+            old(self).cpu_caches[cpu_id]@.view().linked_list.len()
+                == old(self).differential@[cpu_id as int],
+
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == old(lctx).thread_id(),
+            lock_perm@.lock_id() == old(self).cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
+
+            old(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
+            old(lctx).lock_map()[KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)] == lock_perm@.lock_id(),
+        ensures
+            final(self).wf(),
+            wunlock_ensures(old(self).cpu_caches[cpu_id]@, final(self).cpu_caches[cpu_id]@),
+            unlock_ensures(old(lctx), final(lctx), final(self).cpu_caches[cpu_id]@@, lock_perm@.lock_id(), KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
+            // Other fields untouched.
+            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
+            final(self).global_poll == old(self).global_poll,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+            final(self).differential == old(self).differential,
+            final(self).total_free_pages == old(self).total_free_pages,
+    {
+        self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)))
+    }
+
     // pub fn try_allocate_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, quota: usize, cpu_id: CpuId) -> (ret :bool)
     //     requires
     //         old(self).wf(),

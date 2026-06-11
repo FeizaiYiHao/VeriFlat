@@ -14,14 +14,9 @@ pub struct LockedMap<K, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>{
 }
 
 impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
-    pub closed spec fn user_view(&self) -> Map<usize, RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
-        self.map_u.view()
-    }
-
     pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>{
         self.map@
     }
-    // pub closed spec fn user_view(&self) -> Map<usize, >
     pub open spec fn dom(&self) -> Set<usize>{
         self@.dom()
     }
@@ -57,22 +52,6 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             self[k] == old[k]
     }
 
-    pub open spec fn user_view_unchanged(&self, old: &Self,) -> bool{
-        &&&
-        self.user_view() == old.user_view()
-    }
-
-    pub open spec fn user_view_unchanged_except(&self, old: &Self, key:usize) -> bool{
-        &&&
-        self.user_view().dom() == old.user_view().dom()
-        &&&
-        forall|k:usize|
-            #![trigger self.user_view()[k]]
-            old.user_view().dom().contains(k) && k != key
-            ==>
-            self.user_view()[k] == old.user_view()[k]
-    }
-
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),
@@ -87,7 +66,6 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).user_view_unchanged(old(self)),
 
             take_ensures(old(self)[key], final(self)[key]),
 
@@ -115,7 +93,6 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).user_view_unchanged(old(self)),
 
             put_ensures(old(self)[key], final(self)[key], v),
     {
@@ -212,7 +189,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).user_view_unchanged(old(self)),
 
             wlock_ensures(old(self)[key], final(self)[key], LockId{
                 container: old(self)@[key].container_depth(),
@@ -244,6 +220,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self)[key].wlocked_by(old(lctx)),
             old(self)[key].inv(),
 
+            unlock_requires::<T>(old(lctx)),
+
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
@@ -253,8 +231,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).user_view_unchanged_except(old(self), key),
-            final(self).user_view().spec_index(key) == final(self)[key],
+            final(self).spec_index(key) == final(self)[key],
 
             final(self)[key].locking_thread() is None,
 
@@ -265,10 +242,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         let ret = wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
-        }
-        proof{
-            self.map_u@ = self.map_u@.insert(key, self[key]);
-            assume(self.user_view_unchanged_except(old(self), key));
         }
         return ret;
     }
@@ -295,7 +268,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).user_view_unchanged(old(self)),
 
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -349,6 +321,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self)[key].wlocked_by(old(lctx)),
             old(self)[key].inv(),
 
+            unlock_requires::<T>(old(lctx)),
+
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
@@ -358,8 +332,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).user_view_unchanged_except(old(self), key),
-            final(self).user_view().spec_index(key) == final(self)[key],
 
             final(self)[key].locking_thread() is None,
             old(self)[key].being_killed() == final(self)[key].being_killed(),
@@ -371,10 +343,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         let ret = has_kill_state_wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
-        }
-        proof{
-            self.map_u@ = self.map_u@.insert(key, self[key]);
-            assume(self.user_view_unchanged_except(old(self), key));
         }
         return ret;
     }

@@ -16,6 +16,7 @@ verus! {
             true
         }
     }
+    #[verifier::opaque]
     pub open spec fn container_perms_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&
         container_perms.perms_wf()
@@ -34,7 +35,8 @@ verus! {
             container_perms.spec_index(c_ptr).inv()
     }
 
-    pub closed spec fn container_tree_fields_wf(
+    #[verifier::opaque]
+    pub open spec fn container_tree_fields_wf(
         container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
     ) -> bool {
         &&& 
@@ -43,6 +45,7 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().uppertree_seq]
             #![trigger container_perms.spec_index(c_ptr).view().subtree_set]
             #![trigger container_perms.spec_index(c_ptr).view_rodata().view().depth]
+            // #![trigger container_perms.dom().contains(c_ptr)]
             container_perms.dom().contains(c_ptr) 
             ==> 
             {
@@ -216,6 +219,36 @@ verus! {
         &&& container_subtree_set_exclusive(root_container, container_perms)
     }
 
+    /// Framing lemma: if every container's tree-relevant view (the full
+    /// `view()` and `view_rodata()`) is unchanged and the domain is the same,
+    /// then `container_tree_wf` is preserved. Lets callers that only changed
+    /// lock-state (not payload) re-establish the tree invariant with a single
+    /// cheap call instead of revealing all seven parts inline.
+    pub proof fn container_no_change_to_tree_fields_imply_wf(
+        root_container: RwLockContainerPtr,
+        old_container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        new_container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    )
+        requires
+            container_tree_wf(root_container, old_container_perms),
+            old_container_perms.dom() =~= new_container_perms.dom(),
+            forall|c_ptr: RwLockContainerPtr|
+                #![trigger new_container_perms.spec_index(c_ptr)]
+                old_container_perms.dom().contains(c_ptr) ==>
+                    new_container_perms.spec_index(c_ptr).view() == old_container_perms.spec_index(c_ptr).view()
+                    && new_container_perms.spec_index(c_ptr).view_rodata() == old_container_perms.spec_index(c_ptr).view_rodata(),
+        ensures
+            container_tree_wf(root_container, new_container_perms),
+    {
+        reveal(container_root_wf);
+        reveal(container_childern_parent_wf);
+        reveal(containers_linkedlist_wf);
+        reveal(container_childern_depth_wf);
+        reveal(container_subtree_set_wf);
+        reveal(container_uppertree_seq_wf);
+        reveal(container_subtree_set_exclusive);
+    }
+
 #[verifier::loop_isolation(false)]
 pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, container_perms: &LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
         a_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr) -> (ret: bool)
@@ -230,19 +263,24 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         ret == container_perms[a_ptr].view().subtree_set@.contains(child_ptr),
 {
     proof {
+        reveal(container_perms_wf);
         reveal(container_root_wf);
         reveal(container_childern_parent_wf);
         reveal(container_childern_depth_wf);
         reveal(container_subtree_set_wf);
         reveal(container_uppertree_seq_wf);
         reveal(container_subtree_set_exclusive);
+        reveal(container_tree_fields_wf);
     }
     let current_child_ro = container_perms.borrow_rodata(child_ptr);
     let current_c_ptr_op = current_child_ro.borrow().parent;
     let depth = current_child_ro.borrow().depth;
     if depth == 0 {
         assert(child_ptr == root_container);
-        assert(container_perms[child_ptr].view().uppertree_seq@.contains(a_ptr) == false);
+        assert(container_perms[root_container].view_rodata().view().depth == 0);
+        assert(container_perms[root_container].view().uppertree_seq.view().len() == container_perms[root_container].view_rodata().view().depth);
+        assert(container_perms[root_container].view().uppertree_seq.view().len() == 0);
+        assert(container_perms[root_container].view().uppertree_seq.view().contains(a_ptr) == false);
         return false;
     }
     let mut current_c_ptr = child_ptr;

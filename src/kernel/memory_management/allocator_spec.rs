@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
+    #[verifier::opaque]
     pub open spec fn allocator_perms_wf(alloc_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool {
         &&&
         alloc_map.perms_wf()
@@ -23,8 +24,9 @@ verus! {
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
             #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
-            allocator_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr) && 
-                allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
+            allocator_map.dom().contains(alloc_ptr) && 
+            cpu_id_valid(cpu_i) &&
+            allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
             ==>
             page_ptr_valid(page_ptr)  
     }

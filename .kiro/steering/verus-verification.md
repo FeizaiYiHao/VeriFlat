@@ -260,3 +260,133 @@ errors there are inert:
 - `src/kernel/memory_management/pagetable_tlb_spec.rs` (entirely
   commented out).
 - `src/allocator/spec_define.rs` (entirely commented out).
+
+## Hard-won Verus techniques (session learnings — keep these)
+
+These are concrete, repeatedly-useful facts discovered while adding the
+user-step postcondition to `syscall_alloc_quota_4k`. They are not obvious
+from the Verus guide.
+
+### Running the verifier (the MCP tools may be broken)
+
+- The `verus-mcp-server` tools (`verify_all`, `verify_and_diagnose`, …) can
+  fail on this machine with `./verus.sh: No such file or directory`. When
+  that happens, drive Verus directly with `./verify.sh` (it forwards all
+  flags to the verifier binary).
+- Single function: `./verify.sh --verify-function NAME --verify-only-module
+  PATH`. NOTE: with `--verify-function` you MUST use `--verify-only-module`,
+  NOT `--verify-module` (the latter errors out).
+- Whole module: `./verify.sh --verify-module PATH` or
+  `--verify-only-module PATH`.
+- Add `--expand-errors` to see *which* `requires` clause / conjunct failed
+  (precondition + postcondition failures otherwise point only at the call
+  site / function header).
+- Because the MCP `verify_and_diagnose_with_proof_state` may be unavailable,
+  you often cannot see the solver's assumptions/goals. Plan proofs
+  defensively (small isolated lemmas) rather than relying on proof-state.
+
+### Threading tracked state so the POSTCONDITION can see mutations
+
+- A by-value `tracked mut x: Tracked<T>` parameter does **not** export its
+  final value: `old(x)` is rejected ("expected `&mut`, found Tracked"), and
+  an `ensures x@ …` refers to the ENTRY value, not the mutated one. Asserts
+  inside the body can pass while the identical postcondition fails — this is
+  the tell-tale sign.
+- Fix: thread the tracked state as `Tracked(x): Tracked<&mut T>` (destructured
+  param). Then in `ensures` use `final(x)` for the post-state (and `old(x)`
+  for pre). Inside the body call methods directly on `x` (it is `&mut T`).
+  This is the idiomatic mutable-tracked pattern (see Verus tests
+  `mut_refs.rs`, `wrapped_params`).
+- Call site: if the caller holds `Tracked<T>` by value, pass
+  `Tracked(caller.borrow_mut())`; if the caller already has `&mut T` (i.e. it
+  too received `Tracked(x): Tracked<&mut T>`), pass `Tracked(&mut *x)`.
+- You CANNOT reassign a `tracked` place in exec context
+  (`steps = self.helper(...)` → "cannot access proof-mode place in
+  executable context"). Use the `&mut` threading above instead of
+  returning-and-rebinding.
+- Post-state of `&mut self`: this codebase writes `final(self)` (works for
+  both exec and proof fns). For a `Tracked(g): Tracked<&mut U>` param,
+  `final(g)` is the post `U`; for `Tracked(g): Tracked<&mut int>`,
+  `*final(g)`.
+
+### closed-spec opacity across modules
+
+- A `closed spec fn` body is invisible OUTSIDE its defining module, even via
+  another closed spec. Example: `LockedArray::inv()` (= `array.wf()` =
+  `seq.len() == N`) and `LockedArray::view()` are both `closed`, so
+  `view().len() == N` is NOT derivable in client code from `inv()`.
+- Fix: add an ADDITIVE helper in the defining module that exposes the true
+  consequence, e.g.
+  `pub proof fn lemma_view_len(&self) requires self.inv() ensures self.view().len() == N {}`.
+  This changes no existing spec and is sound. (Added to `lock_array.rs`.)
+
+### Butterfly effect in spinoff_prover functions
+
+- A whole `#[verifier::spinoff_prover]` function is ONE SMT query. Adding a
+  large quantifier-heavy proof block can make a DIFFERENT, previously-passing
+  `assert` elsewhere in the same function start to fail. This is not a
+  resource limit — bumping `#[verifier::rlimit(..)]` does NOT help.
+- Fix: extract the quantifier-heavy reasoning into its own `proof fn` lemma
+  (its own query). The caller just establishes the lemma's (cheap)
+  preconditions and calls it. This is the single most effective tool for
+  taming large exec proofs.
+
+### reveal scoping
+
+- `reveal(foo)` is lexically scoped to the enclosing proof block. It does
+  NOT reliably propagate into nested `assert ... by { }` or
+  `assert forall ... by { }` sub-blocks. Re-issue `reveal(foo)` inside each
+  nested `by` block that needs it.
+
+### Extensional equality of projected sequences/maps
+
+- To prove `Seq::new(n, f) =~= Seq::new(n, g)`, prove element-wise:
+  `assert forall|i: int| 0 <= i < n implies #[trigger] f(i) == g(i) by { … }`.
+  Then `=~=` closes it. For a struct of two such fields (e.g. `KernelU`
+  with `cpu_array: Seq` + `process_map: Map`), prove each field `=~=` and
+  the struct equality follows.
+- Bridge `LockedArray::view()[i]` (Seq index, used by projections) to
+  `spec_index(i).value` / `spec_index(i)@` — they are the same underlying
+  RwLock (`spec_index` is `open` so it unfolds to `self@[i as int]`).
+- To use `unchanged_except` (quantified `0 <= i < N`) over a projection
+  range `0 <= i < view().len()`, you need `view().len() == N` — get it from
+  `lemma_view_len`.
+
+### unchanged_except → full element equality
+
+- `unchanged_except(old, key)` gives per-element equality for every
+  element except `key`. Combine with a fact about `key` itself to get FULL
+  per-element equality `forall k: self.spec_index(k) == old.spec_index(k)`.
+  Full element equality is far stronger than payload-view equality and makes
+  wf-conjuncts transfer almost trivially — prefer it whenever the operation
+  preserves the touched element (e.g. a FAILED `wlock_unless_killed` restores
+  its element: false branch gives `old[key] == final[key]` and the
+  unconditional `unchanged_except` covers the rest).
+- Payload-view equality (`spec_index(k).view() == …`) is NOT enough for
+  conjuncts that need the element's `@.inv()` (= `view().inv() && is_init()`).
+  is_init is not a function of the payload view. Either use full element
+  equality, or carry an explicit `spec_index(k).view().inv()` fact (lock
+  op ensures provide `final[key]@.inv()`).
+
+### Bidirectional invariants are the hard case
+
+- A bidirectional relation (e.g. `container_cpu_wf`: container→cpu AND
+  cpu→container) is hard to re-establish through an abstraction boundary.
+  When both related objects changed lock state, the FORWARD direction often
+  instantiates fine, but the REVERSE direction's `forall` may refuse to fire
+  even with the trigger term present and the spec `reveal`ed and asserted
+  true. This needed proof-state debugging that wasn't available. If you hit
+  this, prefer keeping the re-establishment proof in the SAME context as the
+  fresh lock-operation ensures (an inline proof, like the existing
+  `release_all_and_finish` does with a plain `reveal(container_cpu_wf)`)
+  rather than abstracting it into a lemma with view/element-equality
+  preconditions.
+
+### Never weaken soundness to make progress
+
+- Do NOT use `assume(false)`, `requires false`, or contradictory specs to
+  "stub out" an unfinished branch — it is unsound and silently corrupts
+  every caller (and the user explicitly forbade it). The sound way to defer
+  a branch that can't yet satisfy a postcondition is to NOT add that
+  postcondition yet (keep the verified property on a factored helper), or
+  implement the branch properly.
