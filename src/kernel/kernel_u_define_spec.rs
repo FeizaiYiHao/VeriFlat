@@ -57,4 +57,42 @@ verus! {
         }
     }
 
+    /// User-view delta predicate: `new_u` differs from `old_u` by exactly
+    /// `process_map[process_ptr].quota_4k` increasing by `delta`. Every
+    /// other field of `process_ptr`'s projection is preserved, every
+    /// other process's projection is preserved, the process_map domain
+    /// is preserved, and the cpu_array is preserved.
+    ///
+    /// Captures the user-visible effect of the success path of
+    /// `syscall_alloc_quota_4k`.
+    pub open spec fn kernel_u_only_process_quota_4k_changed(
+        old_u: KernelU,
+        new_u: KernelU,
+        process_ptr: RwLockProcessPtr,
+        delta: int,
+    ) -> bool {
+        &&& new_u.cpu_array == old_u.cpu_array
+        &&& new_u.process_map.dom() == old_u.process_map.dom()
+        &&& old_u.process_map.dom().contains(process_ptr)
+        // The targeted process: only `quota_4k` increased by `delta`;
+        // every other field preserved.
+        &&& new_u.process_map[process_ptr].quota_4k as int
+                == old_u.process_map[process_ptr].quota_4k as int + delta
+        &&& new_u.process_map[process_ptr].pagetable      == old_u.process_map[process_ptr].pagetable
+        &&& new_u.process_map[process_ptr].quota_2m       == old_u.process_map[process_ptr].quota_2m
+        &&& new_u.process_map[process_ptr].quota_1g       == old_u.process_map[process_ptr].quota_1g
+        &&& new_u.process_map[process_ptr].parent         == old_u.process_map[process_ptr].parent
+        &&& new_u.process_map[process_ptr].children       == old_u.process_map[process_ptr].children
+        &&& new_u.process_map[process_ptr].depth          == old_u.process_map[process_ptr].depth
+        &&& new_u.process_map[process_ptr].uppertree_seq  == old_u.process_map[process_ptr].uppertree_seq
+        &&& new_u.process_map[process_ptr].subtree_set    == old_u.process_map[process_ptr].subtree_set
+        &&& new_u.process_map[process_ptr].owned_threads  == old_u.process_map[process_ptr].owned_threads
+        &&& new_u.process_map[process_ptr].killed         == old_u.process_map[process_ptr].killed
+        // Every other process: projection unchanged.
+        &&& forall|p: RwLockProcessPtr|
+            #![trigger new_u.process_map[p]]
+            old_u.process_map.dom().contains(p) && p != process_ptr ==>
+                new_u.process_map[p] == old_u.process_map[p]
+    }
+
 }

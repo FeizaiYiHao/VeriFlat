@@ -46,7 +46,8 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         old.dom() == self.dom()
         &&&
         forall|k:usize|
-            #![auto]
+            #![trigger self.spec_index(k)]
+            #![trigger old.spec_index(k)]
             old.dom().contains(k) && k != key
             ==>
             self[k] == old[k]
@@ -269,6 +270,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
+            // A (possibly failed) lock attempt never changes the calling
+            // thread's identity (see free `wlock_unless_killed`).
+            final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 

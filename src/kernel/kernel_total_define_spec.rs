@@ -22,8 +22,19 @@ pub ghost struct KernelStep{
 /// live kernel state is never copied/compared when a step is opened or
 /// closed — the linearization primitives read `KernelK` through a shared
 /// `&` reference and only mutate this ledger and the `LocalContext` phase.
+///
+/// The `snap_shot` field tracks the user-view projection at the last
+/// "synchronization point": initialized to the projection at syscall entry
+/// (a precondition the caller must satisfy), refreshed by
+/// `end_user_view_step` to the post-step projection, and refreshed again
+/// by `kernel_step_boundary` after interleaving with concurrent threads.
+/// Any U-mutation by this thread that isn't bracketed by a
+/// `begin_user_view_step` … `end_user_view_step` pair leaves `snap_shot`
+/// stale, and is caught at the next `kernel_step_boundary` (which
+/// requires `snap_shot == kernel_k_to_kernel_u(current state)`).
 pub tracked struct KernelSteps{
     pub ghost steps: Seq<KernelStep>,
+    pub ghost snap_shot: KernelU,
 }
 
 impl KernelSteps{
@@ -37,6 +48,12 @@ impl KernelSteps{
     /// (`new_* == old_*` as a placeholder until the step is closed), and
     /// flips the `LocalContext` user-view phase to `Release` so the syscall
     /// may release its user-visible locks.
+    ///
+    /// The `snap_shot` field is preserved unchanged: at begin time, the
+    /// snap_shot already equals the current user-view projection (the
+    /// caller must arrange this; at syscall entry it's a precondition, and
+    /// inside the syscall it's maintained by `end_user_view_step` and
+    /// `kernel_step_boundary`).
     ///
     /// Preconditions:
     ///   - `kernel_k.inv()` (well-formed at the linearization point, so the
@@ -59,6 +76,9 @@ impl KernelSteps{
             final(self).steps.last().old_u == kernel_k_to_kernel_u(*kernel_k),
             final(self).steps.last().new_k == *kernel_k,
             final(self).steps.last().new_u == kernel_k_to_kernel_u(*kernel_k),
+            // Snapshot preserved across begin: the caller has arranged
+            // that snap_shot already equals the current projection.
+            final(self).snap_shot == old(self).snap_shot,
             // LocalContext: both phases change — kernel flips to Release
             // (no more locks may be acquired), user flips to Release
             // (user-visible locks may now be released).
@@ -75,6 +95,13 @@ impl KernelSteps{
     /// Overwrites the last step's `new_*` with the current (post-section)
     /// kernel state, and flips the `LocalContext` user-view phase back to
     /// `Acquire`. The step's `old_*` and all earlier steps are preserved.
+    ///
+    /// Refreshes `snap_shot` to `kernel_k_to_kernel_u(*kernel_k)` — i.e.
+    /// the user view AFTER this step's mutations. This is the mechanism
+    /// that lets a syscall mutate U-state inside a user-step without
+    /// failing the next `kernel_step_boundary` snapshot check: the
+    /// mutation is recorded in the step's `new_u`, and the snapshot is
+    /// refreshed to match.
     ///
     /// Preconditions:
     ///   - `kernel_k.inv()` (the section restored well-formedness before
@@ -97,6 +124,8 @@ impl KernelSteps{
             final(self).steps.last().old_u == old(self).steps.last().old_u,
             final(self).steps.last().new_k == *kernel_k,
             final(self).steps.last().new_u == kernel_k_to_kernel_u(*kernel_k),
+            // Snapshot refreshed to the post-step projection.
+            final(self).snap_shot == kernel_k_to_kernel_u(*kernel_k),
             // LocalContext: only the user-view phase changes (back to Acquire).
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).lock_map() == old(lctx).lock_map(),

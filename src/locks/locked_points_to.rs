@@ -154,6 +154,10 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
 
+        // A (possibly failed) lock attempt never changes the calling thread's
+        // identity. Needed so a held lock perm minted by an earlier wlock can
+        // still be matched against `lctx` after a failed `wlock_unless_killed`.
+        final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
