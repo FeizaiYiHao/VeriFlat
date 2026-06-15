@@ -8,10 +8,11 @@ Concrete things to remember when working on this codebase. Read
 - Microkernel verified with Verus, in `src/`.
 - `verus/` is a submodule; the verifier binary lives at
   `verus/source/target-verus/release/verus`.
-- Run `./verify.sh` from the project root to verify everything
-  (`./verify.sh` works in both bash and zsh).
+- Run `./verify.sh` from project root to verify everything (works in
+  both bash and zsh).
 - `./activate` sources the Verus build environment.
-- 295 verified, 0 errors is the current baseline (post-opaque refactor).
+
+**Current baseline: 402 verified, 0 errors.** Don't introduce regressions.
 
 ## Module layout
 
@@ -25,6 +26,9 @@ Concrete things to remember when working on this codebase. Read
 - `src/pagetable_seq/` — page table machinery.
 - `src/kernel/` — global kernel state and invariants.
   - `kernel_k_define_spec.rs` — `KernelK` struct and the global `inv()`.
+  - `kernel_u_define_spec.rs` — `KernelU` user-view projection.
+  - `kernel_total_define_spec.rs` — `KernelStep`, `KernelSteps` ledger.
+  - `spec_util.rs` — preservation lemmas, narrow trusted set-fold axioms.
   - `memory_management/`, `process_management/`, `cpu_tlb_management/` —
     spec files, one bidirectional relation per file.
   - `implementation/` — verified syscall implementations.
@@ -37,13 +41,12 @@ Concrete things to remember when working on this codebase. Read
 RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>
 ```
 
-- `T` — the lock-protected payload. Always kernel-visible; user-visible
-  iff `T::is_user_visible()`.
+- `T` — lock-protected payload. Always kernel-visible; user-visible iff
+  `T::is_user_visible()`.
 - `ROT` — read-only data. Same visibility as `T`. `borrow_rodata()` works
   without a lock.
 - `KGhostT` — kernel-view-only ghost. Never user-visible.
-  `update_kernel_ghost` mutates it without a lock; it's a kernel-view
-  Release operation.
+  `update_kernel_ghost` mutates without a lock; kernel-view Release op.
 - `UGhostT` — user-view-visible ghost. Same visibility as `T`.
   `update_user_ghost` mutates without a lock; kernel-view Release; if
   `T::is_user_visible()`, also requires user-view Release.
@@ -57,31 +60,136 @@ process, thread, endpoint, scheduler, page-table all use
 
 ## RwLock API split
 
-- `RwLock<…, NO_KILL_STATE>` exposes `wlock` (no kill check, would lock
-  through a tombstone — but tombstones can't exist without
-  `HAS_KILL_STATE`).
+- `RwLock<…, NO_KILL_STATE>` exposes `wlock` (no kill check).
 - `RwLock<…, HAS_KILL_STATE>` exposes `wlock_unless_killed` and
   `try_wlock_and_mark_kill`. Both fail if `killer_info.is_some()`.
 - `wlock_external` / `wunlock_external` exist for TCB construction code;
-  they have `requires true == false` to gate them. Use only inside the
-  TCB.
-- Renamed in the recent refactor: `try_wlock` → `wlock_unless_killed`,
-  `try_rlock` → `rlock_unless_killed`. `try_wlock_and_mark_kill` kept
-  the `try_` prefix.
+  gated by `requires false`. Use only inside the TCB.
 
 ## LocalContext
 
-- Tracked ghost type minted by the TCB at syscall entry, threaded
-  through every kernel call by ownership.
-- Two phase states: `kernel_view_locking_state` (per atomic section,
-  `Acquire → Release`) and `user_view_locking_state` (per syscall,
-  same shape).
+Tracked ghost type minted by the TCB at syscall entry, threaded through
+every kernel call by ownership.
+
+- `kernel_view_locking_state`: per atomic section (`Acquire → Release`).
+  Acquire = locks may be taken. Release = no more acquires; releases
+  only.
+- `user_view_locking_state`: per user-step (`Acquire → Release`). Same
+  shape. Flipped both directions by `begin/end_user_view_step`.
 - `lock_seq: Seq<LockId>` — strictly ascending under `LockId::spec_gt`,
-  enforcing global lock ordering.
-- `unlock_requires<T>(...)` says: `T::is_user_visible() ==>
+  enforcing global lock ordering for deadlock-freedom.
+- `unlock_requires<T>(...)`: `T::is_user_visible() ==>
   user_view_locking_state is Release`. Wired into both `wunlock`
   variants. The user-view linearization point is mandatory before any
   user-visible lock can be released.
+
+## KernelSteps + snap_shot discipline
+
+`KernelSteps` is a tracked ledger threaded through a syscall, recording
+user-visible atomic transitions:
+
+```rust
+pub tracked struct KernelSteps {
+    pub ghost steps: Seq<KernelStep>,
+    pub ghost snap_shot: KernelU,  // user-view at last refresh point
+}
+```
+
+Each `KernelStep` has `old_u`, `old_k`, `new_u`, `new_k`. Steps are
+opened by `begin_user_view_step` and closed by `end_user_view_step`.
+
+The `snap_shot` field is the discipline mechanism that catches
+unrecorded U-mutations:
+
+- **Syscall entry** (precondition): `old(steps).snap_shot ==
+  kernel_k_to_kernel_u(*old(self))`. Caller hands us a fresh snapshot.
+- **`begin_user_view_step`**: snap_shot preserved.
+- **`end_user_view_step`**: snap_shot refreshed to current projection
+  (the user-step's mutations are now recorded in the ledger).
+- **`kernel_step_boundary`**:
+  - requires: `kernel_k_to_kernel_u(*self) == steps.snap_shot` (no
+    unrecorded U-mutation).
+  - ensures: snap_shot refreshed to post-interleaving projection.
+
+If a syscall mutates U outside of a `begin/end_user_view_step` pair, the
+snap_shot stays stale, and the next `kernel_step_boundary` will fail to
+verify. This mechanically enforces "U-mutations only inside user-steps."
+
+## Wrapper-per-lock-op convention (CRITICAL pattern for SMT cost)
+
+Every lock primitive (`wlock_*`, `wunlock_*`, `wlock_*_unless_killed`)
+gets a wrapper method on `KernelK` that internally calls the primitive
+AND re-establishes `KernelK::inv()`. Each wrapper is
+`#[verifier::spinoff_prover]`.
+
+Live wrappers in `src/kernel/implementation/syscall_alloc_quota.rs`:
+
+- `wlock_cpu`, `wunlock_cpu`
+- `wlock_container_unless_killed`, `wunlock_container`
+- `wlock_quota_4k`, `wunlock_quota_4k`
+- `wlock_process_unless_killed`, `wunlock_process`
+
+Consumer (syscall body) becomes a sequence of wrapper calls with NO
+manual inv blocks between. Each wrapper carries its own SMT cost; the
+consumer stays light. Adopt this pattern for every new lock primitive
+introduced into the syscall layer.
+
+## Per-invariant preservation lemmas
+
+For each opaque bidirectional invariant, factor the heavy quantifier
+reasoning into a dedicated lemma. Live in
+`src/kernel/implementation/syscall_alloc_quota.rs` (private to the
+module) and `src/kernel/spec_util.rs` (cross-module):
+
+- `lemma_container_thread_wf_preserved` (4-quantifier reverse direction)
+- `lemma_container_endpoint_wf_preserved`
+- `lemma_container_scheduler_wf_preserved`
+- `lemma_release_preserves_user_view` (kernel_k_to_kernel_u preserved
+  across cpu-only release — local to the syscall file)
+- `lemma_release_with_process_preserves_user_view` (TCB axiom in
+  spec_util.rs — for per-process view-equality release paths)
+- `lemma_process_tree_wf_preserved_for_tree_fields_eq` (in spec_util.rs)
+- `lemma_container_process_allocator_quota_wf_preserved_for_*` (the two
+  fold-spec preservation lemmas)
+
+The pattern: each lemma takes a clean pre/post pair, requires what's
+relevant (per-element equalities, dom equality, etc.), ensures the
+specific wf-conjunct holds in post. Heavy reasoning is contained in
+the lemma's own SMT query.
+
+## Trusted set-fold axioms (`spec_util.rs`)
+
+The fold-based conjunct of `KernelK::inv()` is
+`container_process_allocator_quota_wf` — a forall over containers
+asserting the per-container quota equation:
+
+```
+fold(owned_processes, sum + process_map[p].view().quota_4k)
+  + fold(owned_threads, sum + thread_map[t].view().direct_cache_4k)
+  + fold(owned_indirect_threads, sum + thread_map[t].view().indirect_cache_4k[depth])
+  + allocator[c.allocator_ptr_4k].quota.view().value
+  ==
+  allocator[c.allocator_ptr_4k].total_free_pages.view()
+```
+
+Verus has no built-in extensional set-fold equality. To preserve this
+across operations, four narrow `external_body` axioms in
+`spec_util.rs`:
+
+- `lemma_process_quota_4k_fold_eq_under_view_eq` (pointwise eq → fold eq)
+- `lemma_process_quota_2m_fold_eq_under_view_eq` (same for 2m)
+- `lemma_process_quota_1g_fold_eq_under_view_eq` (same for 1g)
+- `lemma_process_quota_4k_fold_change_one` (one-element delta → fold delta)
+
+Two verified preservation lemmas build on these (no longer
+external_body):
+
+- `lemma_container_process_allocator_quota_wf_preserved_for_quota_transfer`
+- `lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op`
+
+When adding new TCB axioms, follow this pattern: NARROW axioms (one
+fact each, concrete maps, lambda body inlined verbatim), then VERIFY the
+broad lemma on top.
 
 ## Spec-design idioms
 
@@ -94,23 +202,27 @@ pub open spec fn FOO_wf(...) -> bool { /* body */ }
 
 To unfold inside a proof block: `reveal(FOO_wf);`.
 
-When an exec/proof function needs many specs unfolded, put them all in
-one `proof { reveal(...); reveal(...); }` at the top of the function
-body. Reveals stay in scope for the whole function.
+When an exec/proof function needs many specs unfolded, batch reveals at
+the top of the function body in a single `proof { ... }` block. They
+stay in scope. Re-issue inside nested `assert by { }` blocks.
 
 ### Bi-directional relation pattern
 
-For X ↔ Y:
+For X ↔ Y (mostly in `kernel/process_management/` and
+`kernel/memory_management/`):
 
 ```rust
 #[verifier::opaque]
 pub open spec fn x_y_wf(x_map, y_map) -> bool {
-    forall|x_ptr| x_map.contains(x_ptr) ==>
-        /* x's forward refs are in y_map.dom() */
-    forall|x_ptr, y_ptr| where x.refs_y(y_ptr) ==>
-        /* derived field consistency, e.g. y.parent == x_ptr */
-    forall|y_ptr| y_map.contains(y_ptr) ==>
-        /* y's back refs are in x_map.dom() */
+    // forward refs from x to y
+    forall|x_ptr| #![trigger ...]
+        x_map.contains(x_ptr) ==> /* x's forward refs are in y_map.dom() */
+    // derived field consistency
+    forall|x_ptr, y_ptr| #![trigger ...]
+        where x.refs_y(y_ptr) ==> /* y.parent == x_ptr, depth match, etc. */
+    // back refs from y to x
+    forall|y_ptr| #![trigger ...]
+        y_map.contains(y_ptr) ==> /* y's back refs are in x_map.dom() */
 }
 ```
 
@@ -120,24 +232,18 @@ that appears in the formula.
 ### Page state with ghost payload
 
 `PageState` derives `Clone, Copy, Debug, PartialEq`. Adding a variant
-with `Ghost<T>` payload breaks the derives. The pattern is to put the
-payload as a regular type (e.g., `RwLockThreadPtr` which is `usize`)
-and treat it as ghost-only at the use site. Match with
-`state is OwnedXk && state->OwnedXk_thread_ptr == ...` because
-`matches PageState::OwnedXk{thread_ptr}` doesn't compose with `==>`.
+with `Ghost<T>` payload breaks the derives. The pattern: put the payload
+as a regular type (e.g., `RwLockThreadPtr` which is `usize`) and treat
+it as ghost-only at the use site. Match with:
 
-## Tools available
+```rust
+state is OwnedXk
+    ==> { let t = state->OwnedXk_thread_ptr; ... }
+```
 
-- `./verify.sh [args]` — runs Verus on the whole crate. Pass
-  `--verify-function FOO` to focus.
-- `mcp_verus_mcp_server_verify_all` — verify whole crate or a module.
-- `mcp_verus_mcp_server_verify_and_diagnose` — verify a single function
-  with a prescriptive `nextAction`.
-- `mcp_verus_mcp_server_search_vstd_lemmas` — search standard library.
-- `mcp_verus_mcp_server_read_verus_guide` — read Verus docs.
-
-The MCP tools are auto-wired in `.kiro/settings/mcp.json`. They run on
-macOS via `./verus.sh`.
+The `_thread_ptr` accessor is auto-generated by Verus from the variant.
+Don't write `state matches PageState::OwnedXk{thread_ptr} ==> ...` —
+`matches` doesn't compose with `==>`.
 
 ## Conventions to follow
 
@@ -147,20 +253,17 @@ macOS via `./verus.sh`.
   `container_tree_wf` are plain `pub open spec` and just AND the parts.
 - **`LockMinorTrait` for objects in collections is provided by the
   wrapper** (`PointsTo::lock_minor() == addr` for `LockedMap`,
-  `LockedArrayElement::lock_minor() == index` for `LockedArray`).
-  Inner objects don't need their own minor field. Exception: objects in
-  bare `RwLock`s (e.g., `AllocatorQuota`, `LinkedList`) carry their own
+  `LockedArrayElement::lock_minor() == index` for `LockedArray`). Inner
+  objects don't need their own minor field. Exception: objects in bare
+  `RwLock`s (e.g., `AllocatorQuota`, `LinkedList`) carry their own
   `Ghost<LockMinorId>`.
 - **Triggers spell out the full chain.** `#![trigger
   m.spec_index(k).view().some_field]`, not auto.
-- **Match arms with `matches` + `==>`** need parens or use the
-  `is`/`->` accessor pattern.
-
-## Running things
-
-- Verify: `./verify.sh`
-- Verify single function: `./verify.sh --verify-function name --verify-module path::to::module`
-- Activate Verus build env: `source activate`
+- **`#[verifier::spinoff_prover]` on every helper, wrapper, lemma.**
+- **Wrapper-per-lock-op for every new lock primitive added at the
+  syscall layer.**
+- **Narrow, concrete TCB axioms only.** No spec_fn-typed parameters in
+  `external_body` axioms — Verus's higher-order matching is unreliable.
 
 ## Common gotchas
 
@@ -168,142 +271,66 @@ macOS via `./verus.sh`.
   it in `derive`d enums/structs. Use the underlying type and treat it as
   ghost at the use site.
 - macOS sed needs `-E` for extended regex and doesn't support `\b` word
-  boundaries. Use punctuation boundaries (`(`, `<`, `,`, etc.) instead.
+  boundaries. Use punctuation boundaries (`(`, `<`, `,`, etc.).
 - Reveal scope is the proof block, not the file. For exec functions
   needing many reveals, batch them at the top.
 - `cpu_tlb.rs` (in `kernel/`) and `pagetable_tlb_spec.rs` (in
   `memory_management/`) are NOT in the module tree. Don't bother fixing
   errors there — they're stale.
 - `container_tree_check_is_ancestor` and `process_tree_check_is_ancestor`
-  are exec functions that need 6 reveals each. The pattern is
-  `proof { reveal(a); reveal(b); ... }` at the top.
+  are exec functions that need 6 reveals each at the top of the body.
 
-## Recent state (as of this writing)
+## Linearization model — quick reference
 
-- 295 verified, 0 errors.
-- All `_wf_proof`/`_wf_inner`/`closed` triples have been refactored to
-  `#[verifier::opaque] pub open spec fn`.
-- `RwLock` was just split from 4 generic params (`T, ROT, GhostT,
-  HAS_KILL_STATE`) to 5 (added `UGhostT`).
-- Pages got an `Owned4k{thread_ptr}` / `Owned2m` / `Owned1g` variant
-  with bi-directional spec in `pages_owned_spec.rs`.
-- The kill-protocol's `try_wlock_and_mark_kill` has a verified outer
-  wrapper but the retype-from-object trusted primitive isn't written
-  yet.
-- `unlock_requires` is now wired into both `wunlock` impls.
+A syscall is one user-visible atomic transition. Lock acquisition order
+is deadlock-free (`LockId::spec_gt`). The user-view linearization point
+is `begin_user_view_step`; after it, no more locks may be acquired.
 
-## User-view linearization & the KernelSteps ledger (session learnings)
+The model has TWO atomicity levels:
+- **Kernel-view sections** (between `kernel_step_boundary` calls): one
+  atomic transition each. Held objects pinned; unheld objects can change.
+- **User-view steps** (between `begin_user_view_step` and
+  `end_user_view_step`): one user-visible atomic transition each. May
+  span multiple kernel sections, but our current syscalls don't.
 
-This is the model for proving syscalls are user-visibly atomic. Read
-`Methodology.md` for the "why"; this is the operational "how".
+The `KernelSteps.snap_shot` field enforces that U-mutations only happen
+inside user-steps; the boundary's snapshot check catches stragglers.
 
-### The pieces
+## syscall_alloc_quota_4k — current state (REFERENCE EXAMPLE)
 
-- `KernelU` (`src/kernel/kernel_u_define_spec.rs`) — the user-visible
-  projection of kernel state. `kernel_k_to_kernel_u(k: KernelK) -> KernelU`
-  is `pub open spec` (auto-unfolds). It reads ONLY:
-  - `k.cpu_array.view()[i].view()` (per-cpu payload: owning_container,
-    state, current_process, current_thread), for `i in 0..view().len()`, and
-  - `k.process_map` views + `k.get_process_pagetable(ptr)` (which reads
-    `process_map` + `pagetable_map`).
-  It does NOT read container_map, allocator maps, or any lock state. So any
-  operation that preserves cpu payload views + process_map + pagetable_map
-  leaves the projection unchanged.
-- `KernelStep` / `KernelSteps` (`src/kernel/kernel_total_define_spec.rs`) —
-  a tracked ledger threaded through a syscall. Each step records
-  `old_u/old_k` (at the linearization point) and `new_u/new_k` (at section
-  end).
-- `begin_user_view_step(&mut self, kernel_k: &KernelK, lctx: &mut ...)` —
-  trusted `proof fn`. Appends a step capturing current state (new_* ==
-  old_* placeholder). Requires kernel-view + user-view BOTH `Acquire`;
-  flips BOTH to `Release` (no more locks may be acquired; user-visible locks
-  may now be released). This is the linearization point.
-- `end_user_view_step(...)` — trusted `proof fn`. Overwrites the open
-  step's `new_*` with current state. Requires user-view `Release` +
-  non-empty ledger; flips user-view back to `Acquire`. Kernel-view phase
-  unchanged.
+File: `src/kernel/implementation/syscall_alloc_quota.rs`. Fully
+implemented including the success path. Reference for how to structure
+syscalls in this codebase.
 
-### Design rule (from the user)
+Path summary (all branches verified):
+- container-killed → `release_cpu_and_finish` (1 lock held)
+- quota-insufficient → `release_all_and_finish` (3 locks held)
+- process-killed → `release_all_and_finish` (3 locks held)
+- process-quota-overflow → `release_all_with_process_and_finish` (4
+  locks held)
+- all checks passed → `transfer_quota_4k_and_finish` (4 locks held;
+  opens user step, mutates, releases, closes step, returns true)
 
-When a user-view step BEGINS, no more locks may be acquired (kernel-view is
-now Release). So the section between begin and end may only RELEASE locks.
+Postconditions:
+- failure: user step recorded, `old_u == new_u` (kernel-internal failure)
+- success: user step recorded, `old_u == kernel_k_to_kernel_u(*old(self))`,
+  `new_u` differs from `old_u` exactly by `process_map[p].quota_4k +=
+  alloc_amount` (captured by the helper spec
+  `kernel_u_only_process_quota_4k_changed`).
 
-### inv() is lock-state-independent
+SMT timing reference (full call graph): ~1279 ms serial-summed across
+~17 spinoff_prover queries. The syscall body itself: 124 ms. The
+single-query monolith before factoring was ~5258 ms.
 
-`KernelK::inv()` depends on object VIEWS, not `locking_thread`. So locking or
-unlocking an object preserves `inv()` — but Verus still invalidates facts
-about the changed field, so you must RE-ESTABLISH inv() after any
-lock/unlock (the big `reveal`-laden proof block; see
-`release_all_and_finish`). That block is the canonical template: copy it and
-adapt `self`/`old(self)`.
+## Recent state (as of current writing)
 
-### KernelK fields (for framing arguments)
-
-`pagetable_map, page_array, cpu_array, cpu_tlb, root_container,
-container_map, scheduler_map, process_map, thread_map, endpoint_map,
-allocator_4k_map, allocator_2m_map, allocator_1g_map, default_pagetable`.
-A call on `self.<field>` frames all the OTHER fields (struct equality
-preserved automatically) — use this to argue most inv() conjuncts are
-unchanged.
-
-### Lock-op spec facts worth remembering
-
-- `LockedMap::wlock_unless_killed` (`src/locks/locked_map.rs`): UNCONDITIONAL
-  ensures preserve BOTH lctx phases (`kernel_view_locking_state` and
-  `user_view_locking_state` unchanged) and give `unchanged_except(old, key)`.
-  The FALSE (killed) branch additionally gives `old[key] == final[key]` and
-  `final.lock_map() == old.lock_map()` — i.e. the map is fully restored, so
-  the call is a complete no-op on `self`.
-- `wunlock_ensures` (rwlock.rs): `new.locking_thread() is None`, `new.inv()`,
-  `new@ == old@`, rodata/ghosts preserved. So a wunlock preserves the
-  payload view.
-- `cpu_array` is `LockedArray<Cpu, …, NUM_CPUS, CPU_HAS_KILL_STATE>` and is
-  unlocked with the plain `wlock`/`wunlock` (NO_KILL API), so
-  `CPU_HAS_KILL_STATE` behaves as no-kill here; cpu `being_killed()` is
-  always false.
-
-## syscall_alloc_quota_4k — current status (IMPORTANT, half-finished)
-
-File: `src/kernel/implementation/syscall_alloc_quota.rs`. Baseline is now
-**384 verified, 0 errors** (was 295 → 382 → 384; the +2 are the two lemmas
-below).
-
-DONE and verified:
-- `release_all_and_finish` — the factored quota-insufficient exit path
-  (holds cpu+container+quota locks). Opens a user step, releases the 3 locks
-  (quota→container→cpu), re-establishes `inv()`, closes the step. Carries the
-  full no-op postcondition:
-  `steps.len() > 0`, `last().new_k == final(self)`,
-  `last().new_u == kernel_k_to_kernel_u(final(self))`,
-  `last().old_u == last().new_u`. Takes steps as
-  `Tracked(steps): Tracked<&mut KernelSteps>`.
-- `lemma_view_len` (in `lock_array.rs`) and
-  `lemma_release_preserves_user_view` (projection unchanged across the
-  3-lock release) — supporting lemmas.
-- The "success" TODO path is routed through `release_all_and_finish` for now
-  (allocation not implemented; every outcome is currently a no-op
-  `return false`).
-
-NOT done (deliberately reverted to keep the crate green):
-- The SYSCALL-LEVEL `ensures` (`!ret ==> <user step recorded, old_u==new_u,
-  new_u==projection of final>`). It is achievable only once EVERY `return
-  false` path records a step.
-- The killed-container branch (`if let (false,_) = container_res`) still just
-  `return false` (TODO). To finish it you must: prove `inv()` still holds
-  (only cpu lock state changed since entry — container_map is fully restored
-  by the failed wlock), then open/close a user step while releasing the cpu
-  lock (a cpu-only analogue of `release_all_and_finish`).
-- The blocker that stopped me: re-establishing `inv()` for the killed branch
-  needs `container_cpu_wf` (a BIDIRECTIONAL container↔cpu invariant). Its
-  REVERSE direction (cpu→owning-container) would not instantiate from an
-  extracted lemma with view/element-equality preconditions, even with the
-  trigger term present and the spec revealed+asserted. Recommended next
-  approach: do the killed-branch inv re-establishment INLINE (so it sits in
-  the same SMT context as the fresh `wlock`/`wunlock` ensures, where a plain
-  `reveal(container_cpu_wf)` suffices — as it already does in
-  `release_all_and_finish`), and tame the resulting query-size butterfly by
-  extracting the OTHER, non-bidirectional conjuncts into lemmas instead.
-
-The public signature of `syscall_alloc_quota_4k` was kept as the original
-`tracked mut steps: Tracked<KernelSteps>` (by value) since, without the
-syscall-level ensures, there's no need to change the public boundary.
+- 402 verified, 0 errors.
+- `syscall_alloc_quota_4k` fully implemented, all 5 exit paths verified,
+  full pre/post including success-path delta.
+- Wrapper-per-lock-op pattern in active use (8 wrappers).
+- 4 narrow trusted set-fold axioms in `spec_util.rs`; 3 verified
+  preservation lemmas + several other helper lemmas.
+- `KernelSteps.snap_shot` field added; `kernel_step_boundary` enforces
+  the snapshot discipline.
+- `release_container_cpu_and_finish` exists but is currently unused
+  (kept as a drop-in for any future flow).

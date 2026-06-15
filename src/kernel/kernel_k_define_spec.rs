@@ -432,18 +432,34 @@ verus! {
         ///   - kernel-view phase flips back to `Acquire`, ready for the
         ///     next atomic section.
         ///
+        /// Snapshot discipline: the boundary requires
+        /// `kernel_k_to_kernel_u(*old(self)) == old(steps).snap_shot`,
+        /// i.e. since the last refresh point (syscall entry, end of last
+        /// user-step, or end of last boundary) this thread hasn't changed
+        /// the user-view projection. Any U-mutation outside a
+        /// begin/end_user_view_step pair leaves the snapshot stale and is
+        /// caught here. After interleaving, the boundary refreshes
+        /// `snap_shot` to the new projection.
+        ///
         /// Preconditions:
         ///   - `inv()` holds (we entered the boundary in a wf state),
         ///   - `kernel_view_locking_state is Release` (the current section
         ///     is done),
         ///   - `locked_objects_match_lctx(lctx)` (no stealth locks, every
-        ///     `lctx.lock_map` entry corresponds to a real held lock).
+        ///     `lctx.lock_map` entry corresponds to a real held lock),
+        ///   - `kernel_k_to_kernel_u(*self) == steps.snap_shot` (no
+        ///     unrecorded U-mutation since the last refresh point).
         #[verifier::external_body]
-        pub proof fn kernel_step_boundary(tracked &mut self, tracked lctx: &mut LocalContext)
+        pub proof fn kernel_step_boundary(
+            tracked &mut self,
+            tracked lctx: &mut LocalContext,
+            tracked steps: &mut KernelSteps,
+        )
             requires
                 old(self).inv(),
                 old(lctx).kernel_view_locking_state() is Release,
                 old(self).locked_objects_match_lctx(old(lctx)),
+                kernel_k_to_kernel_u(*old(self)) == old(steps).snap_shot,
             ensures
                 final(self).inv(),
                 // LocalContext: phase flips to Acquire; everything else preserved.
@@ -451,6 +467,10 @@ verus! {
                 final(lctx).lock_map() == old(lctx).lock_map(),
                 final(lctx).kernel_view_locking_state() is Acquire,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
+                // KernelSteps: ledger of recorded steps unchanged; snapshot
+                // refreshed to the new (post-interleaving) projection.
+                final(steps).steps == old(steps).steps,
+                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
                 // Kernel still in agreement with lctx.
                 final(self).locked_objects_match_lctx(final(lctx)),
                 // Read-only data unchanged at the kernel level.

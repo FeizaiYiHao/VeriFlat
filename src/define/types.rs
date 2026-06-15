@@ -252,6 +252,7 @@ pub enum RetValueType {
     SuccessSeqUsize { value: Ghost<Seq<usize>> },
     SuccessPairUsize { value1: usize, value2: usize },
     SuccessThreeUsize { value1: usize, value2: usize, value3: usize },
+    Success,
     ErrorNoQuota,
     ErrorVaInUse,
     CpuIdle,
@@ -259,6 +260,19 @@ pub enum RetValueType {
     Else,
     NoQuota,
     VaInUse,
+    // ---- syscall_alloc_quota_4k failure modes ----
+    /// The owning container is being torn down (`being_killed()` set on
+    /// the container's RwLock).
+    ErrorContainerKilled,
+    /// The container's 4k allocator's reservable quota is less than the
+    /// requested `alloc_amount`.
+    ErrorContainerQuotaInsufficient,
+    /// The running process is being torn down (`being_killed()` set on
+    /// the process's RwLock).
+    ErrorProcessKilled,
+    /// Adding `alloc_amount` to the running process's `quota_4k` would
+    /// overflow `usize::MAX`.
+    ErrorProcessQuotaOverflow,
 }
 pub type PTType = bool;
 
