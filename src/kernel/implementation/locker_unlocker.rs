@@ -99,11 +99,11 @@ verus! {
                 assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
                     reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
                 };
-                assert(self.container_pages_wf()) by {
-                    reveal(KernelK::container_pages_wf);
+                assert(container_pages_wf(self.page_array, self.container_map)) by {
+                    reveal(container_pages_wf);
                 };
-                assert(self.process_pages_wf()) by {
-                    reveal(KernelK::process_pages_wf);
+                assert(process_pages_wf(self.page_array, self.process_map)) by {
+                    reveal(process_pages_wf);
                 };
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                     reveal(container_process_allocator_quota_4k_wf);
@@ -114,17 +114,15 @@ verus! {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
-                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
-                container_no_change_to_tree_fields_imply_wf(self.root_container, old(self).container_map, self.container_map);
+                assert(container_tree_wf(self.root_container, self.container_map));
                 assert(container_process_wf(self.container_map, self.process_map)) by {
                     reveal(container_process_wf);
                 };
                 assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                     reveal(container_process_wf); reveal(per_container_process_tree_wf);
                 };
-                // KernelK::lemma_container_endpoint_wf_preserved(*old(self), *self);
                 assert(container_cpu_wf(self.container_map, self.cpu_array)) by {
                     reveal(container_cpu_wf);
                 };
@@ -132,11 +130,9 @@ verus! {
                     reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
                     reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
                 };
-                // KernelK::lemma_container_scheduler_wf_preserved(*old(self), *self);
                 assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by {
                     reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
                 };
-                // KernelK::lemma_container_thread_wf_preserved(*old(self), *self);
                 assert(process_cpu_wf(self.process_map, self.cpu_array)) by {
                     reveal(process_cpu_wf);
                 };
@@ -153,6 +149,201 @@ verus! {
                 assert(self.inv());
             }
             ret
+        }
+
+        
+        pub fn wlock_container_unless_killed(
+            &mut self,
+            container_ptr: RwLockContainerPtr,
+            Tracked(lctx): Tracked<&mut LocalContext>,
+        ) -> (ret: (bool, Option<Tracked<LockPerm>>))
+            requires
+                old(self).inv(),
+                old(self).container_map.dom().contains(container_ptr),
+                old(self).container_map.spec_index(container_ptr).locked_by(old(lctx)) == false,
+                old(lctx).kernel_view_locking_state() is Acquire,
+                old(lctx).user_view_locking_state() is Acquire,
+                old(lctx).lock_id_acyclic(LockId{
+                    container: old(self).container_map.spec_index(container_ptr).view().container_depth(),
+                    process: old(self).container_map.spec_index(container_ptr).view().process_depth(),
+                    major: old(self).container_map.spec_index(container_ptr).view().current_lock_major(),
+                    minor: container_ptr,
+                }),
+                old(lctx).obj_id_fresh(KernelObjId::Container(container_ptr)),
+            ensures
+                // ---- Kernel-wide invariant re-established ----
+                final(self).inv(),
+
+                // ---- Field framing: only container_map's lock state moves ----
+                final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).page_array        == old(self).page_array,
+                final(self).cpu_array         == old(self).cpu_array,
+                final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).root_container    == old(self).root_container,
+                final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).process_map       == old(self).process_map,
+                final(self).thread_map        == old(self).thread_map,
+                final(self).endpoint_map      == old(self).endpoint_map,
+                final(self).allocator_4k_map  == old(self).allocator_4k_map,
+                final(self).allocator_2m_map  == old(self).allocator_2m_map,
+                final(self).allocator_1g_map  == old(self).allocator_1g_map,
+                final(self).default_pagetable == old(self).default_pagetable,
+
+                // ---- container_map: only the targeted entry's lock state
+                // ---- (success) or nothing at all (failure) changed.
+                final(self).container_map.unchanged_except(&old(self).container_map, container_ptr),
+                final(self).container_map.perms_wf(),
+
+                // ---- LocalContext phase preservation ----
+                final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
+
+                // ---- Failure: container is being killed; complete no-op ----
+                ret.0 == false ==>
+                {
+                    &&& old(self).container_map.spec_index(container_ptr).being_killed() == true
+                    &&& final(self).container_map.spec_index(container_ptr) == old(self).container_map.spec_index(container_ptr)
+                    &&& ret.1 is None
+                    &&& final(lctx).lock_map() =~= old(lctx).lock_map()
+                },
+
+                // ---- Success: container locked by us, perm returned ----
+                ret.0 == true ==>
+                {
+                    &&& old(self).container_map.spec_index(container_ptr).being_killed() == false
+                    &&& ret.1 is Some
+                    &&& wlock_ensures(
+                        old(self).container_map.spec_index(container_ptr),
+                        final(self).container_map.spec_index(container_ptr),
+                        LockId{
+                            container: old(self).container_map.spec_index(container_ptr).container_depth(),
+                            process: old(self).container_map.spec_index(container_ptr).process_depth(),
+                            major: old(self).container_map.spec_index(container_ptr).view().current_lock_major(),
+                            minor: container_ptr,
+                        },
+                        final(lctx).thread_id(),
+                        ret.1.unwrap()@,
+                    )
+                    &&& lock_ensures(
+                        old(lctx),
+                        final(lctx),
+                        old(self).container_map.spec_index(container_ptr).view(),
+                        LockId{
+                            container: old(self).container_map.spec_index(container_ptr).container_depth(),
+                            process: old(self).container_map.spec_index(container_ptr).process_depth(),
+                            major: old(self).container_map.spec_index(container_ptr).view().current_lock_major(),
+                            minor: container_ptr,
+                        },
+                        KernelObjId::Container(container_ptr),
+                    )
+                },
+        {
+            proof {
+                reveal(cpu_array_wf);
+                reveal(container_perms_wf);
+                reveal(allocator_perms_wf);
+            }
+            let res = self.container_map.wlock_unless_killed(
+                container_ptr,
+                Tracked(&mut *lctx),
+                Ghost(KernelObjId::Container(container_ptr)),
+            );
+            proof {
+                // ---- subsystems_inv ----
+                assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
+                assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+                assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+                // ---- memory_management_inv ----
+                assert(self.memory_management_inv()) by {
+                    assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+                    };
+                    assert(container_page_owner_wf(self.container_map, self.page_array)) by {
+                        reveal(container_page_owner_wf);
+                    };
+                    assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
+                        reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
+                    };
+                    assert(container_pages_wf(self.page_array, self.container_map)) by {
+                        reveal(container_pages_wf);
+                    };
+                    assert(process_pages_wf(self.page_array, self.process_map)) by {
+                        reveal(process_pages_wf);
+                    };
+                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(container_process_allocator_quota_4k_wf);
+                        reveal(container_process_allocator_quota_2m_wf);
+                        reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf);
+                    };
+                    assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(container_allocator_wf);
+                    };
+                    assert(self.allocator_free_pages_wf());
+                    assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
+                        reveal(container_allocator_free_4k_page_wf);
+                        reveal(container_allocator_wf);
+                        reveal(container_page_owner_wf);
+                    };
+                    assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
+                        reveal(container_allocator_free_2m_page_wf);
+                        reveal(container_allocator_wf);
+                        reveal(container_page_owner_wf);
+                    };
+                    assert(container_allocator_free_1g_page_wf(self.container_map, self.allocator_1g_map, self.page_array)) by {
+                        reveal(container_allocator_free_1g_page_wf);
+                        reveal(container_allocator_wf);
+                        reveal(container_page_owner_wf);
+                    };
+                };
+                // ---- process_management_inv ----
+                assert(self.process_management_inv()) by {
+                    assert(container_tree_wf(self.root_container, self.container_map)) by {
+                        container_no_change_to_tree_fields_imply_wf(self.root_container, old(self).container_map, self.container_map);
+                    };
+                    assert(container_process_wf(self.container_map, self.process_map)) by {
+                        reveal(container_process_wf);
+                    };
+                    assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
+                        reveal(container_process_wf); reveal(per_container_process_tree_wf);
+                    };
+                    assert(container_cpu_wf(self.container_map, self.cpu_array)) by {
+                        reveal(container_cpu_wf);
+                    };
+                    assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by {
+                        reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
+                        reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
+                    };
+                    assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by {
+                        reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
+                    };
+                    assert(process_cpu_wf(self.process_map, self.cpu_array)) by {
+                        reveal(process_cpu_wf);
+                    };
+                    assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by {
+                        reveal(container_endpoint_wf);
+                    };
+                    assert(container_scheduler_wf(self.container_map, self.scheduler_map)) by {
+                        reveal(container_scheduler_wf);
+                    };
+                    assert(container_thread_wf(self.container_map, self.thread_map)) by {
+                        reveal(container_thread_wf);
+                    };
+                };
+                // ---- inv() direct conjuncts ----
+                assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by {
+                    reveal(cpu_dirty_map_contains_container_processes);
+                    reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                    reveal(cpu_dirty_map_proc_pcid_match);
+                    reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+                    reveal(container_cpu_wf);
+                };
+                assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
+                assert(self.inv());
+            }
+            res
         }
     }
 }

@@ -31,3 +31,6 @@ pub use page_array_spec::*;
 pub use allocator_spec::*;
 pub use huge_page_spec::*;
 pub use process_pagetable_spec::*;
+
+pub use pages_process_spec::*;
+pub use pages_container_spec::*;

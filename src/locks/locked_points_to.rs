@@ -11,23 +11,6 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockMinorTrait for Po
     }
 }
 
-
-impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockOwnerIdTrait for PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
-    open spec fn container_depth(&self) -> LockOwnerId{
-        if self.value().view_rodata().container_depth() != LockOwnerId::NotApp{
-            self.value().view_rodata().container_depth()
-        }else{
-            self.value()@.container_depth()
-        }
-    }
-    open spec fn process_depth(&self) -> LockOwnerId{
-        if self.value().view_rodata().process_depth() != LockOwnerId::NotApp{
-            self.value().view_rodata().process_depth()
-        }else{
-            self.value()@.process_depth()
-        }
-    }
-}  
 impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockInvTrait for PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
     open spec fn inv(&self) -> bool{
         &&&
@@ -74,9 +57,9 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibi
 
         wlock_requires(old(perm).value(), old(lctx)),
         old(lctx).lock_id_acyclic(LockId{
-            container: old(perm).container_depth(),
-            process: old(perm).process_depth(),
-            major: old(perm).value()@.current_lock_major(),
+            container: old(perm).value().container_depth(),
+            process: old(perm).value().process_depth(),
+            major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }),
         old(lctx).obj_id_fresh(obj_id@),
@@ -85,15 +68,15 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibi
         final(perm).is_init(),
 
         wlock_ensures(old(perm).value(), final(perm).value(), LockId{
-            container: old(perm).container_depth(),
-            process: old(perm).process_depth(),
-            major: old(perm).value()@.current_lock_major(),
+            container: old(perm).value().container_depth(),
+            process: old(perm).value().process_depth(),
+            major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }, final(lctx).thread_id(), ret@),
         lock_ensures(old(lctx), final(lctx), final(perm).value().view(), LockId{
-            container: old(perm).container_depth(),
-            process: old(perm).process_depth(),
-            major: old(perm).value()@.current_lock_major(),
+            container: old(perm).value().container_depth(),
+            process: old(perm).value().process_depth(),
+            major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }, obj_id@),
 {
@@ -144,9 +127,9 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
 
         wlock_requires(old(perm).value(), old(lctx)),
         old(lctx).lock_id_acyclic(LockId{
-            container: old(perm).container_depth(),
-            process: old(perm).process_depth(),
-            major: old(perm).value()@.current_lock_major(),
+            container: old(perm).value().container_depth(),
+            process: old(perm).value().process_depth(),
+            major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }),
         old(lctx).obj_id_fresh(obj_id@),
@@ -179,16 +162,16 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
             ret.1 is Some
             &&&
             wlock_ensures(old(perm).value(), final(perm).value(), LockId{
-                container: old(perm).container_depth(),
-                process: old(perm).process_depth(),
-                major: old(perm).value()@.current_lock_major(),
+                container: old(perm).value().container_depth(),
+                process: old(perm).value().process_depth(),
+                major: old(perm).value().view().current_lock_major(),
                 minor: old(perm).lock_minor(),
             }, final(lctx).thread_id(), ret.1.unwrap()@)
             &&&
             lock_ensures(old(lctx), final(lctx), final(perm).value().view(), LockId{
-                container: old(perm).container_depth(),
-                process: old(perm).process_depth(),
-                major: old(perm).value()@.current_lock_major(),
+                container: old(perm).value().container_depth(),
+                process: old(perm).value().process_depth(),
+                major: old(perm).value().view().current_lock_major(),
                 minor: old(perm).lock_minor(),
             }, obj_id@)
         },
@@ -196,9 +179,9 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>;
         let lock_id = Ghost(LockId{
-            container: perm.container_depth(),
-            process: perm.process_depth(),
-            major: perm.value()@.current_lock_major(),
+            container: perm.value().container_depth(),
+            process: perm.value().process_depth(),
+            major: perm.value().view().current_lock_major(),
             minor: perm.lock_minor(),
         });
         (*uptr).assume_init_mut().wlock_unless_killed(Tracked(lctx), lock_id, obj_id)

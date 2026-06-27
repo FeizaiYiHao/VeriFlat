@@ -25,6 +25,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         forall|k:usize| 
             #![trigger self@[k].is_init()]
             #![trigger self@[k].addr()]
+            #![trigger self@.dom().contains(k)]
             self@.dom().contains(k)
             ==>
             { 
@@ -181,9 +182,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
             wlock_requires(old(self)[key], old(lctx)),
             old(lctx).lock_id_acyclic(LockId{
-                container: old(self)@[key].container_depth(),
-                process: old(self)@[key].process_depth(),
-                major: old(self)@[key].value()@.current_lock_major(),
+                container: old(self).spec_index(key).container_depth(),
+                process: old(self).spec_index(key).process_depth(),
+                major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }),
             old(lctx).obj_id_fresh(obj_id@),
@@ -192,15 +193,15 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             final(self).unchanged_except(old(self), key),
 
             wlock_ensures(old(self)[key], final(self)[key], LockId{
-                container: old(self)@[key].container_depth(),
-                process: old(self)@[key].process_depth(),
-                major: old(self)@[key].value()@.current_lock_major(),
+                container: old(self).spec_index(key).container_depth(),
+                process: old(self).spec_index(key).process_depth(),
+                major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }, final(lctx).thread_id(), ret@),
             lock_ensures(old(lctx), final(lctx), final(self)[key]@, LockId{
-                container: old(self)@[key].container_depth(),
-                process: old(self)@[key].process_depth(),
-                major: old(self)@[key].value()@.current_lock_major(),
+                container: old(self).spec_index(key).container_depth(),
+                process: old(self).spec_index(key).process_depth(),
+                major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }, obj_id@),
     {
@@ -260,9 +261,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             T::is_user_visible() ==> old(lctx).user_view_locking_state() is Acquire,
 
             old(lctx).lock_id_acyclic(LockId{
-                container: old(self)@[key].container_depth(),
-                process: old(self)@[key].process_depth(),
-                major: old(self)@[key].value()@.current_lock_major(),
+                container: old(self).spec_index(key).view().container_depth(),
+                process: old(self).spec_index(key).view().process_depth(),
+                major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }),
             old(lctx).obj_id_fresh(obj_id@),
@@ -294,21 +295,44 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 ret.1 is Some
                 &&&
                 wlock_ensures(old(self)[key], final(self)[key], LockId{
-                    container: old(self)@[key].container_depth(),
-                    process: old(self)@[key].process_depth(),
-                    major: old(self)@[key].value()@.current_lock_major(),
+                    container: old(self).spec_index(key).container_depth(),
+                    process: old(self).spec_index(key).process_depth(),
+                    major: old(self).spec_index(key).view().current_lock_major(),
                     minor: key,
                 }, final(lctx).thread_id(), ret.1.unwrap()@)
                 &&&
                 lock_ensures(old(lctx), final(lctx), old(self)[key].view(), LockId{
-                    container: old(self)@[key].container_depth(),
-                    process: old(self)@[key].process_depth(),
-                    major: old(self)@[key].value()@.current_lock_major(),
+                    container: old(self).spec_index(key).container_depth(),
+                    process: old(self).spec_index(key).process_depth(),
+                    major: old(self).spec_index(key).view().current_lock_major(),
                     minor: key,
                 }, obj_id@)
             },
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        assert(perm.value() == old(self).spec_index(key));
+        assert(perm.value().container_depth() == old(self).spec_index(key).container_depth());
+        assert(perm.value().process_depth() == old(self).spec_index(key).process_depth());
+        assert(perm.value().view().current_lock_major() == old(self).spec_index(key).view().current_lock_major());
+        assert(perm.lock_minor() == key);
+        proof{
+            lock_id_fields_eq_imply_eq();
+            lctx.lemma_lock_id_eq_imply_acyclic_eq();
+        }
+        // assert(LockId{
+        //         container: old(self).spec_index(key).view().container_depth(),
+        //         process: old(self).spec_index(key).view().process_depth(),
+        //         major: old(self).spec_index(key).view().current_lock_major(),
+        //         minor: key,
+        //     }
+        //     ==
+        //     LockId{
+        //         container: perm.value().container_depth(),
+        //         process: perm.value().process_depth(),
+        //         major: perm.value().view().current_lock_major(),
+        //         minor: perm.lock_minor(),
+        //     }
+        // );
         let ret = wlock_unless_killed(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);
         assert(perm.addr() == key);
         proof{

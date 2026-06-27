@@ -43,6 +43,7 @@ impl LocalContext{
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool{
         forall|k: KernelObjId|
             #![trigger self.lock_map().dom().contains(k)]
+            #![trigger self.lock_map()[k]]
             self.lock_map().dom().contains(k) ==> lock_id.spec_gt(self.lock_map()[k])
     }
 
@@ -51,6 +52,21 @@ impl LocalContext{
     /// by re-using its key.
     pub open spec fn obj_id_fresh(&self, obj_id: KernelObjId) -> bool{
         !self.lock_map().dom().contains(obj_id)
+    }
+
+    pub proof fn lemma_lock_id_eq_imply_acyclic_eq(&self)
+        ensures
+            forall|lock_id1: LockId, lock_id2: LockId|
+                #![trigger self.lock_id_acyclic(lock_id1), self.lock_id_acyclic(lock_id2)]                
+                {
+                    &&& lock_id1.container == lock_id2.container
+                    &&& lock_id1.process == lock_id2.process
+                    &&& lock_id1.major == lock_id2.major
+                    &&& lock_id1.minor == lock_id2.minor
+                }
+                ==>
+                self.lock_id_acyclic(lock_id1) == self.lock_id_acyclic(lock_id2)
+    {
     }
 }
 

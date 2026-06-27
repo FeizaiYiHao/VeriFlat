@@ -4,33 +4,32 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    impl KernelK{
-        #[verifier::opaque]
-        pub open spec fn container_pages_wf(&self) -> bool{
-            &&&
-            forall|page_index:PageIndex|
-            #![trigger self.page_array.spec_index(page_index)]
-            #![trigger self.container_map.dom().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
+    #[verifier::opaque]
+    pub open spec fn container_pages_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>, container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>) -> bool{
+        &&&
+        forall|page_index:PageIndex|
+        #![trigger page_array.spec_index(page_index)]
+        #![trigger container_map.dom().contains(page_index2page_ptr(page_index))]
+        page_index_wf(page_index)
+        ==>
+        {
+            page_array.spec_index(page_index).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
             ==>
-            {
-                self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
-                ==>
-                self.container_map.dom().contains(page_index2page_ptr(page_index))
-            }
-
-            &&&
-            forall|c_ptr:RwLockContainerPtr|
-            #![trigger self.page_array.spec_index(page_ptr2page_index(c_ptr))]
-            #![trigger self.container_map.dom().contains(c_ptr)]
-            self.container_map.dom().contains(c_ptr)
-            ==>
-            page_ptr_2m_valid(c_ptr)
-            &&
-            {
-                self.page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
-            }
-
+            container_map.dom().contains(page_index2page_ptr(page_index))
         }
+
+        &&&
+        forall|c_ptr:RwLockContainerPtr|
+        #![trigger page_array.spec_index(page_ptr2page_index(c_ptr))]
+        #![trigger container_map.dom().contains(c_ptr)]
+        container_map.dom().contains(c_ptr)
+        ==>
+        page_ptr_2m_valid(c_ptr)
+        &&
+        {
+            page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
+        }
+
     }
+    
 }
