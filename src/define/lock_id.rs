@@ -120,14 +120,28 @@ impl LockOwnerId{
 
 pub type LockMajorId = usize;
 pub type LockMinorId = usize;
-#[derive(PartialEq)]
-#[derive(Eq)]
+// #[derive(PartialEq)]
+// #[derive(Eq)]
 pub struct LockId{
     pub container: LockOwnerId,
     pub process: LockOwnerId,
     pub major:LockMajorId,
     pub minor:LockMinorId,
 }
+
+#[verifier(external_body)]
+pub proof fn lock_id_fields_eq_imply_eq()
+    ensures 
+        forall|lock_id1: LockId, lock_id2: LockId|
+            {
+                &&& lock_id1.container == lock_id2.container
+                &&& lock_id1.process == lock_id2.process
+                &&& lock_id1.major == lock_id2.major
+                &&& lock_id1.minor == lock_id2.minor
+            }
+            ==>
+            lock_id1 == lock_id2
+{}
 
 impl LockId{
     pub open spec fn spec_gt(self, other: Self) -> bool {

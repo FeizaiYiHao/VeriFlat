@@ -776,5 +776,22 @@ pub open spec fn update_user_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS_K
     new.killer_info_inner() == old.killer_info_inner()
 }
 
+impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockOwnerIdTrait for RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+    open spec fn container_depth(&self) -> LockOwnerId{
+        if self.view_rodata().container_depth() != LockOwnerId::NotApp{
+            self.view_rodata().container_depth()
+        }else{
+            self.view().container_depth()
+        }
+    }
+    open spec fn process_depth(&self) -> LockOwnerId{
+        if self.view_rodata().process_depth() != LockOwnerId::NotApp{
+            self.view_rodata().process_depth()
+        }else{
+            self.view().process_depth()
+        }
+    }
+}  
+
 }
 

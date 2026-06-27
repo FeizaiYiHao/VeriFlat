@@ -4,33 +4,31 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    impl KernelK{
-        #[verifier::opaque]
-        pub open spec fn process_pages_wf(&self) -> bool{
-            &&&
-            forall|page_index:PageIndex|
-            #![trigger self.page_array.spec_index(page_index)]
-            #![trigger self.process_map.dom().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
+    #[verifier::opaque]
+    pub open spec fn process_pages_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>, process_map: ProcessLockedMap) -> bool{
+        &&&
+        forall|page_index:PageIndex|
+        #![trigger page_array.spec_index(page_index)]
+        #![trigger process_map.dom().contains(page_index2page_ptr(page_index))]
+        page_index_wf(page_index)
+        ==>
+        {
+            page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess}
             ==>
-            {
-                self.page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess}
-                ==>
-                self.process_map.dom().contains(page_index2page_ptr(page_index))
-            }
-
-            &&&
-            forall|c_ptr:RwLockContainerPtr|
-            #![trigger self.page_array.spec_index(page_ptr2page_index(c_ptr))]
-            #![trigger self.process_map.dom().contains(c_ptr)]
-            self.process_map.dom().contains(c_ptr)
-            ==>
-            page_ptr_valid(c_ptr)
-            &&
-            {
-                self.page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess}
-            }
-
+            process_map.dom().contains(page_index2page_ptr(page_index))
         }
+
+        &&&
+        forall|c_ptr:RwLockContainerPtr|
+        #![trigger page_array.spec_index(page_ptr2page_index(c_ptr))]
+        #![trigger process_map.dom().contains(c_ptr)]
+        process_map.dom().contains(c_ptr)
+        ==>
+        page_ptr_valid(c_ptr)
+        &&
+        {
+            page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsProcess}
+        }
+
     }
 }

@@ -325,9 +325,9 @@ verus! {
             &&&
             container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)
             &&&
-            self.container_pages_wf()
+            container_pages_wf(self.page_array, self.container_map)
             &&&
-            self.process_pages_wf()       
+            process_pages_wf(self.page_array, self.process_map)
             &&&
             pagetable_pages_wf(self.pagetable_map, self.page_array)     
             &&&
