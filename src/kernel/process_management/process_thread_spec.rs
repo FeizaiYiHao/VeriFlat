@@ -5,8 +5,8 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn process_thread_wf(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
-            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>) -> bool {
+    pub open spec fn process_thread_wf(process_map: ProcessLockedMap, 
+            thread_map: ThreadLockedMap) -> bool {
         &&&
         forall|p_ptr:RwLockProcessPtr, t_ptr:RwLockThreadPtr|
             #![trigger process_map.spec_index(p_ptr).view(), thread_map.spec_index(t_ptr).view()]

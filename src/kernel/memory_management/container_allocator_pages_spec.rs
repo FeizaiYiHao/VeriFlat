@@ -180,10 +180,23 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_free_4k_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
-            allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
+    pub open spec fn container_allocator_free_4k_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
-        ) -> bool {
+        ) -> bool
+        // This predicate dereferences a page's owning_container into
+        // `container_map` and that container's `allocator_ptr_4k` into
+        // `allocator_4k_map`; it is only meaningful when those lookups land in
+        // their maps. `container_page_owner_wf` gives owner ∈ container_map.dom();
+        // `page_array_wf` gives each Free4k{PreCpuCache} page a valid cpu_id.
+        // (The companion `container_allocator_wf`, which gives
+        // c.allocator_ptr_4k ∈ allocator_4k_map.dom(), also belongs here but
+        // can't be named — it requires the 2m/1g allocator maps that aren't
+        // parameters of this predicate.)
+        recommends
+            container_page_owner_wf(container_map, page_array),
+            page_array_wf(page_array),
+    {
         &&&
         forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
@@ -195,9 +208,16 @@ verus! {
                 allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
                     .global_poll.view().view().contains(page_index2page_ptr(page_index))
                 &&
+                // The node stored at the page's free_list_node_storage address
+                // holds this page's pointer as its value. (Key = node address,
+                // value = page pointer — was swapped.) The key is live in the
+                // map (dom membership), so the value-equality is meaningful.
                 allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
-                    .global_poll.view().map().spec_index(page_index2page_ptr(page_index))
-                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                    .global_poll.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                &&
+                allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
+                    .global_poll.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    == page_index2page_ptr(page_index)
                 &&
                 allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
                     .owning_container == page_array.spec_index(page_index).view().view().owning_container
@@ -212,8 +232,11 @@ verus! {
                     .cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
                 &&
                 allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
-                    .cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_index2page_ptr(page_index))
-                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                    .cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                &&
+                allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
+                    .cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    == page_index2page_ptr(page_index)
                 &&
                 allocator_4k_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k)
                     .owning_container == page_array.spec_index(page_index).view().view().owning_container
@@ -230,21 +253,40 @@ verus! {
             }
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
+            #![trigger allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             {
-                allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr) && 
+                // A page in a cpu cache is `Free4k{PreCpuCache}`. (The antecedent
+                // is membership in the cache only — a page is in exactly one place,
+                // never both a cache and the global pool, so the old
+                // `global_poll.contains(page_ptr) &&` conjunct made this clause
+                // vacuous. Guards mirror the global-poll-reverse clause above.)
+                allocator_4k_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i) &&
                     allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
                 ==>
-                (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id }})
+                (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id: _cpu_id }})
+                &&
+                // The recorded cpu_id must equal the cache index cpu_i: a page in
+                // cache[cpu_i] records PreCpuCache{cpu_i}. A `matches` pattern only
+                // BINDS a fresh var (its binding doesn't even scope across `&&`),
+                // so the equality is a separate conjunct using the field accessors
+                // — without it a page in cache[5] could record PreCpuCache{3} and,
+                // via the forward clause, sit in two caches at once.
+                page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Free4k_state->PreCpuCache_cpu_id == cpu_i
                 &&
                 page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_4k_map.spec_index(alloc_ptr).owning_container
             }
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_free_2m_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
-            allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
+    pub open spec fn container_allocator_free_2m_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
-        ) -> bool {
+        ) -> bool
+        // See `container_allocator_free_4k_page_wf` recommends note.
+        recommends
+            container_page_owner_wf(container_map, page_array),
+            page_array_wf(page_array),
+    {
         &&&
         forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
@@ -256,9 +298,13 @@ verus! {
                 allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
                     .global_poll.view().view().contains(page_index2page_ptr(page_index))
                 &&
+                // Key = node address, value = page pointer (was swapped); key live.
                 allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
-                    .global_poll.view().map().spec_index(page_index2page_ptr(page_index))
-                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                    .global_poll.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                &&
+                allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
+                    .global_poll.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    == page_index2page_ptr(page_index)
                 &&
                 allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
                     .owning_container == page_array.spec_index(page_index).view().view().owning_container
@@ -273,8 +319,11 @@ verus! {
                     .cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
                 &&
                 allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
-                    .cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_index2page_ptr(page_index))
-                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                    .cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                &&
+                allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
+                    .cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    == page_index2page_ptr(page_index)
                 &&
                 allocator_2m_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_2m)
                     .owning_container == page_array.spec_index(page_index).view().view().owning_container
@@ -291,21 +340,31 @@ verus! {
             }
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
+            #![trigger allocator_2m_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             {
-                allocator_2m_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr) && 
+                // See 4k clause: cache membership only; no spurious global_poll conjunct.
+                allocator_2m_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i) &&
                     allocator_2m_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
                 ==>
-                (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free2m { state: FreePageAllocatorState::PreCpuCache { cpu_id }})
+                (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free2m { state: FreePageAllocatorState::PreCpuCache { cpu_id: _cpu_id }})
+                &&
+                // Recorded cpu_id == cache index cpu_i (see 4k clause).
+                page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Free2m_state->PreCpuCache_cpu_id == cpu_i
                 &&
                 page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_2m_map.spec_index(alloc_ptr).owning_container
             }
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_free_1g_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
-            allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
+    pub open spec fn container_allocator_free_1g_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
-        ) -> bool {
+        ) -> bool
+        // See `container_allocator_free_4k_page_wf` recommends note.
+        recommends
+            container_page_owner_wf(container_map, page_array),
+            page_array_wf(page_array),
+    {
         &&&
         forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
@@ -317,9 +376,13 @@ verus! {
                 allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
                     .global_poll.view().view().contains(page_index2page_ptr(page_index))
                 &&
+                // Key = node address, value = page pointer (was swapped); key live.
                 allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
-                    .global_poll.view().map().spec_index(page_index2page_ptr(page_index))
-                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                    .global_poll.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                &&
+                allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
+                    .global_poll.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    == page_index2page_ptr(page_index)
                 &&
                 allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
                     .owning_container == page_array.spec_index(page_index).view().view().owning_container
@@ -334,8 +397,11 @@ verus! {
                     .cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
                 &&
                 allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
-                    .cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_index2page_ptr(page_index))
-                    == page_array.spec_index(page_index).view().view().free_list_node_storage.addr()
+                    .cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                &&
+                allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
+                    .cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    == page_index2page_ptr(page_index)
                 &&
                 allocator_1g_map.spec_index(container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_1g)
                     .owning_container == page_array.spec_index(page_index).view().view().owning_container
@@ -352,11 +418,16 @@ verus! {
             }
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
+            #![trigger allocator_1g_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             {
-                allocator_1g_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr) && 
+                // See 4k clause: cache membership only; no spurious global_poll conjunct.
+                allocator_1g_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i) &&
                     allocator_1g_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
                 ==>
-                (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free1g { state: FreePageAllocatorState::PreCpuCache { cpu_id }}) 
+                (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free1g { state: FreePageAllocatorState::PreCpuCache { cpu_id: _cpu_id }})
+                &&
+                // Recorded cpu_id == cache index cpu_i (see 4k clause).
+                page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Free1g_state->PreCpuCache_cpu_id == cpu_i
                 &&
                 page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_1g_map.spec_index(alloc_ptr).owning_container
             }

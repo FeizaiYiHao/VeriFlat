@@ -10,11 +10,11 @@ pub struct AllocatorCache{
 
 impl LockOwnerIdTrait for AllocatorCache{
     open spec fn container_depth(&self) -> LockOwnerId {
-        self.linked_list.container_depth()
+        LockOwnerId::NotApp
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        self.linked_list.process_depth()
+        LockOwnerId::NotApp
     }
 }
 

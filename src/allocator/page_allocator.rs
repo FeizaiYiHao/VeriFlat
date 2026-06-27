@@ -9,11 +9,13 @@ pub struct PageAllocator{
     pub cpu_caches: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
     pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, (), (), (), NO_KILL_STATE>,
     pub quota: RwLock<AllocatorQuota, (), (), (), NO_KILL_STATE>,
-    pub differential: Ghost<Seq<int>>,
     pub total_free_pages: Ghost<usize>,
 
     pub owning_container: RwLockContainerPtr,
 }
+
+// The `total_free_pages_wf` fold lemmas (`lemma_cache_len_fold_congruence`,
+// `lemma_cache_len_fold_change_one`) live in `lemma::lemma_t::seq_fold`.
 
 impl LockInvTrait for PageAllocator{
     open spec fn inv(&self) -> bool {
@@ -39,11 +41,7 @@ impl PageAllocator{
         // &&&
         // self.internal_lock_id_wf()
         &&&
-        self.differential_wf()
-        &&&
         self.total_free_pages_wf()
-        &&&
-        self.differential@.len() == NUM_CPUS
     }
 
     pub open spec fn cpu_caches_wf(&self) -> bool {
@@ -70,24 +68,8 @@ impl PageAllocator{
         self.global_poll.view().lock_minor() == self.owning_container
     }
 
-    pub open spec fn differential_wf(&self) -> bool{
-        forall|cpu_i: CpuId|
-        #![trigger self.cpu_caches.spec_index(cpu_i).value().view().linked_list.len()]
-        #![trigger self.differential@[cpu_i as int]]
-        cpu_id_valid(cpu_i)
-        ==>
-        {
-            |||
-            self.cpu_caches.spec_index(cpu_i).value().wlocked()
-            |||
-            self.cpu_caches.spec_index(cpu_i).value().view().linked_list.len()
-            ==
-            self.differential@[cpu_i as int]
-        }
-    }
-
     pub open spec fn total_free_pages_wf(&self) -> bool{
-        self.global_poll.view().len() + self.differential@.fold_left(0int, |sum: int, i: int| {sum + i}) == self.total_free_pages.view()
+        self.global_poll.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
     }
 
     pub open spec fn cpu_caches_unlocked(&self) -> bool {
@@ -121,7 +103,7 @@ impl PageAllocator{
     //         self.cpu_caches.spec_index(cpu_i).process_depth() == self.quota.view().process_depth()
     // }
 }
-
+/* 
 impl PageAllocator{
     /// Acquire the inner `quota` write lock.
     ///
@@ -162,7 +144,6 @@ impl PageAllocator{
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).global_poll == old(self).global_poll,
             final(self).owning_container == old(self).owning_container,
-            final(self).differential == old(self).differential,
             final(self).total_free_pages == old(self).total_free_pages,
     {
         let lock_id = Ghost(LockId{
@@ -202,7 +183,6 @@ impl PageAllocator{
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).global_poll == old(self).global_poll,
             final(self).owning_container == old(self).owning_container,
-            final(self).differential == old(self).differential,
             final(self).total_free_pages == old(self).total_free_pages,
     {
         self.quota.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)))
@@ -240,7 +220,6 @@ impl PageAllocator{
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
-            final(self).differential == old(self).differential,
             final(self).total_free_pages == old(self).total_free_pages,
     {
         let lock_id = Ghost(LockId{
@@ -275,7 +254,6 @@ impl PageAllocator{
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
-            final(self).differential == old(self).differential,
             final(self).total_free_pages == old(self).total_free_pages,
     {
         self.global_poll.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
@@ -315,28 +293,42 @@ impl PageAllocator{
             final(self).global_poll == old(self).global_poll,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
-            final(self).differential == old(self).differential,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)))
+        let ghost old_caches = self.cpu_caches;
+        let ret = self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)));
+        proof {
+            // total_free_pages_wf: the fold over cache lengths is preserved.
+            // wlock only moves cpu_caches[cpu_id]'s lock state; its payload
+            // view() (hence linked_list.len()) is preserved (wlock_ensures),
+            // and every other slot is unchanged (unchanged_except).
+            old_caches.lemma_view_len();
+            self.cpu_caches.lemma_view_len();
+            assert forall|i: int| 0 <= i < old_caches.view().len()
+                implies #[trigger] old_caches.view()[i].view().linked_list.len()
+                    == self.cpu_caches.view()[i].view().linked_list.len()
+            by {
+                if i != cpu_id as int {
+                    assert(self.cpu_caches[i as usize] === old_caches[i as usize]);
+                }
+            };
+            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
+        }
+        ret
     }
 
     /// Release the per-cpu `cpu_caches[cpu_id]` write lock.
     ///
-    /// Unlike quota/global_poll, the allocator's `differential_wf` invariant
-    /// permits a locked cache to be out of sync with `differential` (first
-    /// disjunct: `wlocked()`). On unlock that disjunct disappears, so the
-    /// caller must have restored the cache so its length matches the
-    /// recorded `differential` entry before releasing.
+    /// `total_free_pages_wf` folds over live cache lengths, and `wunlock`
+    /// preserves the cache's payload `view()` (only lock state changes), so
+    /// the fold — and thus `wf()` — is preserved across unlock with no
+    /// caller-side length-consistency obligation.
     pub fn wunlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
             cpu_id_valid(cpu_id),
             old(self).cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
             old(self).cpu_caches[cpu_id]@.being_killed() == false,
-            // Cache consistency restored before unlock (see doc comment).
-            old(self).cpu_caches[cpu_id]@.view().linked_list.len()
-                == old(self).differential@[cpu_id as int],
 
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
@@ -353,10 +345,25 @@ impl PageAllocator{
             final(self).global_poll == old(self).global_poll,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
-            final(self).differential == old(self).differential,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)))
+        let ghost old_caches = self.cpu_caches;
+        self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)));
+        proof {
+            // total_free_pages_wf: fold preserved — wunlock keeps the payload
+            // view() (wunlock_ensures) and every other slot (unchanged_except).
+            old_caches.lemma_view_len();
+            self.cpu_caches.lemma_view_len();
+            assert forall|i: int| 0 <= i < old_caches.view().len()
+                implies #[trigger] old_caches.view()[i].view().linked_list.len()
+                    == self.cpu_caches.view()[i].view().linked_list.len()
+            by {
+                if i != cpu_id as int {
+                    assert(self.cpu_caches[i as usize] === old_caches[i as usize]);
+                }
+            };
+            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
+        }
     }
 
     // pub fn try_allocate_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, quota: usize, cpu_id: CpuId) -> (ret :bool)
@@ -454,5 +461,6 @@ impl PageAllocator{
     //     true
     // }
 }
+*/
 
 }

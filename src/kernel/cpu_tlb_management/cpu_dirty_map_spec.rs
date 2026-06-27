@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn cpu_dirty_map_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
+    pub open spec fn cpu_dirty_map_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, process_map: ProcessLockedMap, 
         cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>, tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
     {
         &&&
@@ -66,7 +66,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_dirty_map_proc_pcid_match(process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_proc_pcid_match(process_map: ProcessLockedMap, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
         recommends
             process_cpu_wf(process_map, cpu_array)
     {

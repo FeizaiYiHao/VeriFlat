@@ -13,6 +13,12 @@ pub struct Process {
     pub quota_2m: usize,
     pub quota_1g: usize,
 
+    /// Pages pulled from the allocator, not yet retyped. Only non-empty while
+    /// the process write-lock is held; flushed before wunlock.
+    pub temp_alloc_cache_4k: Ghost<Set<PagePtr>>,
+    pub temp_alloc_cache_2m: Ghost<Set<PagePtr>>,
+    pub temp_alloc_cache_1g: Ghost<Set<PagePtr>>,
+
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,
     pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_PROCESS_TREE_DEPTH>,
@@ -20,6 +26,9 @@ pub struct Process {
 
     pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
 }
+
+pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
+pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
     pub pagetable: PageTable<PT_TYPE>,
@@ -149,4 +158,40 @@ impl LockOwnerIdTrait for ProcessRO{
         LockOwnerId::Some(self.depth)
     }
 }
+
+impl Process {
+    pub open spec fn temp_alloc_clean(&self) -> bool {
+        &&& self.temp_alloc_cache_4k.view().len() == 0
+        &&& self.temp_alloc_cache_2m.view().len() == 0
+        &&& self.temp_alloc_cache_1g.view().len() == 0
+    }
+}
+
+/// Effective quota counted in the container conservation law: nominal quota
+/// minus pages temporarily staged in `temp_alloc_cache` (not yet retyped).
+pub open spec fn process_effective_quota_4k(proc_lock: ProcessRwLock) -> int {
+    proc_lock.view().quota_4k as int - proc_lock.view().temp_alloc_cache_4k.view().len() as int
+}
+
+pub open spec fn process_effective_quota_2m(proc_lock: ProcessRwLock) -> int {
+    proc_lock.view().quota_2m as int - proc_lock.view().temp_alloc_cache_2m.view().len() as int
+}
+
+pub open spec fn process_effective_quota_1g(proc_lock: ProcessRwLock) -> int {
+    proc_lock.view().quota_1g as int - proc_lock.view().temp_alloc_cache_1g.view().len() as int
+}
+
+/// temp_alloc_cache is empty unless the process is write-locked.
+#[verifier::opaque]
+pub open spec fn process_temp_alloc_empty_unless_wlocked(
+    process_map: ProcessLockedMap,
+) -> bool {
+    forall|p_ptr: RwLockProcessPtr|
+        #![trigger process_map.spec_index(p_ptr).locking_thread()]
+        process_map.dom().contains(p_ptr)
+        ==>
+        !(process_map.spec_index(p_ptr).locking_thread() is Write) ==>
+            process_map.spec_index(p_ptr).view().temp_alloc_clean()
+}
+
 } // verus!

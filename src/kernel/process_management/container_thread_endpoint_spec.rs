@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn thread_endpoint_ref_counter_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
+    pub open spec fn thread_endpoint_ref_counter_wf(thread_map: ThreadLockedMap, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
     {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
@@ -24,7 +24,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn thread_endpoint_queue_wf(thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
+    pub open spec fn thread_endpoint_queue_wf(thread_map: ThreadLockedMap, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
         recommends
         //     threads_inv(thread_map), @Xiangdong TODO
             thread_endpoint_ref_counter_wf(thread_map, endpoint_map)
@@ -53,7 +53,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_thread_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
+    pub open spec fn container_thread_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, thread_map: ThreadLockedMap, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
     {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|

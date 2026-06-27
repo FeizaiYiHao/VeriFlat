@@ -70,8 +70,9 @@ or which `&&` conjunct of an ensures failed.
 Module paths follow the file tree: `src/kernel/spec_util.rs` →
 `kernel::spec_util`, `src/locks/rwlock.rs` → `locks::rwlock`.
 
-Current baseline: **402 verified, 0 errors**. Don't introduce
-regressions. Run `./verify.sh` after any non-trivial change.
+Current verified count: see `current-work.md` § Recent state (single source of
+truth). Don't introduce regressions. Run `./verify.sh` after any non-trivial
+change.
 
 ## Verification-cost reduction tactics (THE CORE PLAYBOOK)
 
@@ -434,22 +435,13 @@ NOT propagate into nested `assert ... by { }` or `assert forall ... by
 { }` sub-blocks. Re-issue `reveal(foo)` inside each nested `by` block
 that needs it.
 
-## Linearization model — quick reference
+## Linearization model
 
-The model has TWO atomicity levels:
-- **Kernel-view** (`kernel_view_locking_state`): Acquire/Release per atomic
-  section. Acquire = locks may be taken. Release = no more lock acquires;
-  only releases. Flipped by `begin_user_view_step`.
-- **User-view** (`user_view_locking_state`): Acquire/Release per syscall.
-  Same shape. Flipped both directions by begin/end_user_view_step.
-- `kernel_step_boundary`: ends a kernel section, lets concurrent threads
-  run, starts a new section. Held objects pinned across boundary; unheld
-  objects can change arbitrarily.
-
-The `KernelSteps` ledger tracks user-view atomic transitions, with a
-`snap_shot: KernelU` field that catches U-mutations not bracketed by
-`begin/end_user_view_step`. See `veriflat-project-notes.md` for the
-operational details.
+Two atomicity levels (kernel-view sections + user-view steps), the
+`LocalContext` Acquire/Release discipline, `kernel_step_boundary`, and the
+`KernelSteps.snap_shot` mechanism are documented in full in
+`veriflat-project-notes.md` § "Linearization model — quick reference" and
+§ "KernelSteps + snap_shot discipline". Not duplicated here.
 
 ## Project resources
 

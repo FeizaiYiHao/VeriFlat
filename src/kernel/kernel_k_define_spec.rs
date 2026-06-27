@@ -16,8 +16,8 @@ verus! {
         pub container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,        
         // pub number_containers: RwLock<NumContainers, (), (), NO_KILL_STATE>,
         pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>,
-        pub process_map: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
-        pub thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>,
+        pub process_map: ProcessLockedMap,
+        pub thread_map: ThreadLockedMap,
         pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
         pub allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         pub allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
@@ -26,6 +26,262 @@ verus! {
         // pub clontainer_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
 
         pub default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, // Read only
+    }
+
+    // ============================================================
+    //   Lock-map / kernel-state agreement — per-object-kind pieces
+    // ============================================================
+    //
+    // `lctx_implies_locked` / `locked_implies_lctx` were two single ~150-line
+    // methods, each ANDing one quantifier per object kind across opposite
+    // directions. They are now folded into ONE opaque, BIDIRECTIONAL
+    // `open spec fn` per map/array: `{kind}_locked_match_lctx` ANDs both the
+    // forward (lctx entry ⟹ object locked, with matching lock id) and the
+    // reverse (object locked by this thread ⟹ recorded in lctx) facts for that
+    // one kind. Keeping each piece opaque means a consumer that only touches,
+    // say, the page array reveals just `page_locked_match_lctx` instead of
+    // seeding the proof context with all ~20 quantifiers. `locked_objects_match_lctx`
+    // (below) is the `open` wrapper that ANDs the pieces, so the (external-body)
+    // `kernel_step_boundary` contract — which names only `locked_objects_match_lctx`
+    // — is unchanged.
+    //
+    // The allocator piece takes the map + its `PageSize` tag explicitly; the
+    // wrapper instantiates it at (4k, SZ4k) / (2m, SZ2m) / (1g, SZ1g). Since
+    // `PageSize` has exactly those three variants, the three concrete calls are
+    // logically the old single `forall|sz: PageSize|` (whose body selected the
+    // map by `sz`).
+
+    #[verifier::opaque]
+    pub open spec fn container_locked_match_lctx(
+        container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        lctx: &LocalContext,
+    ) -> bool {
+        // forward
+        &&& (forall|c: RwLockContainerPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Container(c))]
+            lctx.lock_map().dom().contains(KernelObjId::Container(c))
+            ==>
+            container_map.dom().contains(c)
+            && container_map[c].locked_by(lctx)
+            && container_map[c].locking_thread() is Write
+            && container_map[c].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Container(c)])
+        // reverse
+        &&& (forall|c: RwLockContainerPtr|
+            #![trigger container_map.dom().contains(c)]
+            container_map.dom().contains(c) && container_map[c].locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Container(c)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn process_locked_match_lctx(process_map: ProcessLockedMap, lctx: &LocalContext) -> bool {
+        &&& (forall|p: RwLockProcessPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Process(p))]
+            lctx.lock_map().dom().contains(KernelObjId::Process(p))
+            ==>
+            process_map.dom().contains(p)
+            && process_map[p].locked_by(lctx)
+            && process_map[p].locking_thread() is Write
+            && process_map[p].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Process(p)])
+        &&& (forall|p: RwLockProcessPtr|
+            #![trigger process_map.dom().contains(p)]
+            process_map.dom().contains(p) && process_map[p].locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Process(p)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn thread_locked_match_lctx(thread_map: ThreadLockedMap, lctx: &LocalContext) -> bool {
+        &&& (forall|t: RwLockThreadPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Thread(t))]
+            lctx.lock_map().dom().contains(KernelObjId::Thread(t))
+            ==>
+            thread_map.dom().contains(t)
+            && thread_map[t].locked_by(lctx)
+            && thread_map[t].locking_thread() is Write
+            && thread_map[t].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Thread(t)])
+        &&& (forall|t: RwLockThreadPtr|
+            #![trigger thread_map.dom().contains(t)]
+            thread_map.dom().contains(t) && thread_map[t].locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Thread(t)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn endpoint_locked_match_lctx(
+        endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
+        lctx: &LocalContext,
+    ) -> bool {
+        &&& (forall|e: RwLockEndpointPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))]
+            lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))
+            ==>
+            endpoint_map.dom().contains(e)
+            && endpoint_map[e].locked_by(lctx)
+            && endpoint_map[e].locking_thread() is Write
+            && endpoint_map[e].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Endpoint(e)])
+        &&& (forall|e: RwLockEndpointPtr|
+            #![trigger endpoint_map.dom().contains(e)]
+            endpoint_map.dom().contains(e) && endpoint_map[e].locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Endpoint(e)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn scheduler_locked_match_lctx(
+        scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>,
+        lctx: &LocalContext,
+    ) -> bool {
+        &&& (forall|s: RwLockSchedulerPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))]
+            lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))
+            ==>
+            scheduler_map.dom().contains(s)
+            && scheduler_map[s].locked_by(lctx)
+            && scheduler_map[s].locking_thread() is Write
+            && scheduler_map[s].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Scheduler(s)])
+        &&& (forall|s: RwLockSchedulerPtr|
+            #![trigger scheduler_map.dom().contains(s)]
+            scheduler_map.dom().contains(s) && scheduler_map[s].locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Scheduler(s)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn pagetable_locked_match_lctx(
+        pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>,
+        lctx: &LocalContext,
+    ) -> bool {
+        &&& (forall|pt: RwLockPageTableRoot|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))]
+            lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))
+            ==>
+            pagetable_map.dom().contains(pt)
+            && pagetable_map[pt].locked_by(lctx)
+            && pagetable_map[pt].locking_thread() is Write
+            && pagetable_map[pt].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::PageTable(pt)])
+        &&& (forall|pt: RwLockPageTableRoot|
+            #![trigger pagetable_map.dom().contains(pt)]
+            pagetable_map.dom().contains(pt) && pagetable_map[pt].locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::PageTable(pt)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn page_locked_match_lctx(
+        page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        lctx: &LocalContext,
+    ) -> bool {
+        &&& (forall|i: PageIndex|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Page(i))]
+            lctx.lock_map().dom().contains(KernelObjId::Page(i))
+            ==>
+            page_index_wf(i)
+            && page_array[i]@.locked_by(lctx)
+            && page_array[i]@.locking_thread() is Write
+            && page_array[i]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Page(i)]
+            // Pinned recorded lock id (full id; sound because every field is
+            // STABLE while the page is held): owner ids are the page's constant
+            // `None/None`, the minor is the page's (fixed) array index, and the
+            // recorded major is one of Page's DECLARED majors. Crucially the
+            // major is pinned to the constant SET {FREE, MAPPED, MERGED,
+            // ALLOCATED} — NOT to `current_lock_major()` — because a held page
+            // may change state (e.g. Free4k→Owned4k) while locked, which would
+            // move `current_lock_major()` but never the recorded id. All four
+            // page majors are ≥ ALLOCATED_PAGE_MAJOR (1000), which lets callers
+            // holding only sub-1000-major locks (e.g. a cpu cache at major 106)
+            // derive that NO page is held — hence a fresh page index to lock.
+            && page_array[i]@.locking_thread()->Write_lock_id.container == LockOwnerId::None
+            && page_array[i]@.locking_thread()->Write_lock_id.process == LockOwnerId::None
+            && page_array[i]@.locking_thread()->Write_lock_id.minor == i
+            && {
+                let mj = page_array[i]@.locking_thread()->Write_lock_id.major;
+                ||| mj == FREE_PAGE_LOCK_MAJOR
+                ||| mj == MAPPED_PAGE_LOCK_MAJOR
+                ||| mj == MERGED_PAGE_LOCK_MAJOR
+                ||| mj == ALLOCATED_PAGE_MAJOR
+            })
+        &&& (forall|i: PageIndex|
+            #![trigger page_array[i]@.locked_by(lctx)]
+            page_index_wf(i) && page_array[i]@.locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Page(i)))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn cpu_locked_match_lctx(
+        cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>,
+        lctx: &LocalContext,
+    ) -> bool {
+        &&& (forall|c: CpuId|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Cpu(c))]
+            lctx.lock_map().dom().contains(KernelObjId::Cpu(c))
+            ==>
+            cpu_id_valid(c)
+            && cpu_array[c]@.locked_by(lctx)
+            && cpu_array[c]@.locking_thread() is Write
+            && cpu_array[c]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Cpu(c)])
+        &&& (forall|c: CpuId|
+            #![trigger cpu_array[c]@.locked_by(lctx)]
+            cpu_id_valid(c) && cpu_array[c]@.locked_by(lctx)
+            ==> lctx.lock_map().dom().contains(KernelObjId::Cpu(c)))
+    }
+
+    /// Bidirectional agreement for one allocator map, tagged by its `PageSize`.
+    #[verifier::opaque]
+    pub open spec fn allocator_locked_match_lctx(
+        alloc_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        sz: PageSize,
+        lctx: &LocalContext,
+    ) -> bool {
+        // forward: quota / cache / global_poll
+        &&& (forall|p: RwLockPageAllocatorPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
+            ==>
+            alloc_map.dom().contains(p)
+            && alloc_map[p].quota.locked_by(lctx)
+            && alloc_map[p].quota.locking_thread() is Write
+            && alloc_map[p].quota.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorQuota(sz, p)])
+        &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
+            ==>
+            alloc_map.dom().contains(p)
+            && cpu_id_valid(c)
+            && alloc_map[p].cpu_caches[c]@.locked_by(lctx)
+            && alloc_map[p].cpu_caches[c]@.locking_thread() is Write
+            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorCache(sz, p, c)]
+            // Pinned recorded lock id (sound: every field is STABLE while the
+            // cache is held). An `AllocatorCache` has constant `NotApp/NotApp`
+            // owner ids, its array minor is the (fixed) cpu index `c`, and its
+            // `current_lock_major` is ALWAYS `ALLOCATOR_CACHE_MAJOR` (the cache's
+            // `lock_major_1_predicate` is `true`, so the major never moves with
+            // state). Pinning these lets a caller holding only this-or-lower
+            // locks prove the cache is NOT already held — i.e. it is fresh to
+            // re-lock. (The owners are `NotApp` wildcards, so the freshness
+            // contradiction is decided by major/minor: a held cache would force
+            // `cache_id.spec_gt(cache_id)`, which is false.)
+            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.container == LockOwnerId::NotApp
+            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.process == LockOwnerId::NotApp
+            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.minor == c
+            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.major == ALLOCATOR_CACHE_MAJOR)
+        &&& (forall|p: RwLockPageAllocatorPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
+            ==>
+            alloc_map.dom().contains(p)
+            && alloc_map[p].global_poll.locked_by(lctx)
+            && alloc_map[p].global_poll.locking_thread() is Write
+            && alloc_map[p].global_poll.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)])
+        // reverse: any locked piece of any allocator is recorded
+        &&& (forall|p: RwLockPageAllocatorPtr|
+            #![trigger alloc_map.dom().contains(p)]
+            alloc_map.dom().contains(p)
+            ==>
+            {
+                &&& alloc_map[p].quota.locked_by(lctx)
+                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
+                &&& alloc_map[p].global_poll.locked_by(lctx)
+                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
+                &&& forall|c: CpuId|
+                    #![trigger alloc_map[p].cpu_caches[c]@.locked_by(lctx)]
+                    cpu_id_valid(c) && alloc_map[p].cpu_caches[c]@.locked_by(lctx)
+                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
+            })
     }
 
     impl KernelK{
@@ -45,6 +301,8 @@ verus! {
             container_perms_wf(self.container_map)
             &&&
             process_perms_wf(self.process_map)
+            &&&
+            self.thread_perms_wf()
             &&&
             allocator_perms_wf(self.allocator_4k_map)
             &&&
@@ -75,7 +333,7 @@ verus! {
             &&&
             thread_pages_wf(self.thread_map, self.page_array)
             &&&
-            thread_owned_pages_wf(self.thread_map, self.page_array)
+            process_staged_pages_wf(self.process_map, self.page_array)
             &&&
             endpoint_pages_wf(self.endpoint_map, self.page_array)
             &&&
@@ -86,6 +344,12 @@ verus! {
             container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map) 
             &&&
             container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)
+            &&&
+            container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)
+            &&&
+            container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)
+            &&&
+            container_allocator_free_1g_page_wf(self.container_map, self.allocator_1g_map, self.page_array)
         }
 
         pub open spec fn process_management_inv(&self) -> bool {
@@ -181,237 +445,27 @@ verus! {
         // Bidirectional: any locked object held by this thread must be
         // recorded in `lctx.lock_map`. This is the "no stealth locks" rule.
 
-        /// Forward direction: every entry in `lctx.lock_map` corresponds to
-        /// a real, currently-locked object whose lock id matches the map.
-        pub open spec fn lctx_implies_locked(&self, lctx: &LocalContext) -> bool {
-            &&&
-            forall|c: RwLockContainerPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Container(c))]
-                lctx.lock_map().dom().contains(KernelObjId::Container(c))
-                ==>
-                self.container_map.dom().contains(c)
-                && self.container_map[c].locked_by(lctx)
-                && self.container_map[c].locking_thread() is Write
-                && self.container_map[c].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Container(c)]
-            &&&
-            forall|p: RwLockProcessPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Process(p))]
-                lctx.lock_map().dom().contains(KernelObjId::Process(p))
-                ==>
-                self.process_map.dom().contains(p)
-                && self.process_map[p].locked_by(lctx)
-                && self.process_map[p].locking_thread() is Write
-                && self.process_map[p].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Process(p)]
-            &&&
-            forall|t: RwLockThreadPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Thread(t))]
-                lctx.lock_map().dom().contains(KernelObjId::Thread(t))
-                ==>
-                self.thread_map.dom().contains(t)
-                && self.thread_map[t].locked_by(lctx)
-                && self.thread_map[t].locking_thread() is Write
-                && self.thread_map[t].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Thread(t)]
-            &&&
-            forall|e: RwLockEndpointPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))]
-                lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))
-                ==>
-                self.endpoint_map.dom().contains(e)
-                && self.endpoint_map[e].locked_by(lctx)
-                && self.endpoint_map[e].locking_thread() is Write
-                && self.endpoint_map[e].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Endpoint(e)]
-            &&&
-            forall|s: RwLockSchedulerPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))]
-                lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))
-                ==>
-                self.scheduler_map.dom().contains(s)
-                && self.scheduler_map[s].locked_by(lctx)
-                && self.scheduler_map[s].locking_thread() is Write
-                && self.scheduler_map[s].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Scheduler(s)]
-            &&&
-            forall|pt: RwLockPageTableRoot|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))]
-                lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))
-                ==>
-                self.pagetable_map.dom().contains(pt)
-                && self.pagetable_map[pt].locked_by(lctx)
-                && self.pagetable_map[pt].locking_thread() is Write
-                && self.pagetable_map[pt].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::PageTable(pt)]
-            &&&
-            forall|i: PageIndex|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Page(i))]
-                lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                ==>
-                page_index_wf(i)
-                && self.page_array[i]@.locked_by(lctx)
-                && self.page_array[i]@.locking_thread() is Write
-                && self.page_array[i]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Page(i)]
-            &&&
-            forall|c: CpuId|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Cpu(c))]
-                lctx.lock_map().dom().contains(KernelObjId::Cpu(c))
-                ==>
-                cpu_id_valid(c)
-                && self.cpu_array[c]@.locked_by(lctx)
-                && self.cpu_array[c]@.locking_thread() is Write
-                && self.cpu_array[c]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Cpu(c)]
-            &&&
-            forall|sz: PageSize, p: RwLockPageAllocatorPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))]
-                lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
-                ==>
-                {
-                    let m = match sz {
-                        PageSize::SZ4k => self.allocator_4k_map,
-                        PageSize::SZ2m => self.allocator_2m_map,
-                        PageSize::SZ1g => self.allocator_1g_map,
-                    };
-                    &&& m.dom().contains(p)
-                    &&& m[p].quota.locked_by(lctx)
-                    &&& m[p].quota.locking_thread() is Write
-                    &&& m[p].quota.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorQuota(sz, p)]
-                }
-            &&&
-            forall|sz: PageSize, p: RwLockPageAllocatorPtr, c: CpuId|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
-                lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
-                ==>
-                {
-                    let m = match sz {
-                        PageSize::SZ4k => self.allocator_4k_map,
-                        PageSize::SZ2m => self.allocator_2m_map,
-                        PageSize::SZ1g => self.allocator_1g_map,
-                    };
-                    &&& m.dom().contains(p)
-                    &&& cpu_id_valid(c)
-                    &&& m[p].cpu_caches[c]@.locked_by(lctx)
-                    &&& m[p].cpu_caches[c]@.locking_thread() is Write
-                    &&& m[p].cpu_caches[c]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorCache(sz, p, c)]
-                }
-            &&&
-            forall|sz: PageSize, p: RwLockPageAllocatorPtr|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))]
-                lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
-                ==>
-                {
-                    let m = match sz {
-                        PageSize::SZ4k => self.allocator_4k_map,
-                        PageSize::SZ2m => self.allocator_2m_map,
-                        PageSize::SZ1g => self.allocator_1g_map,
-                    };
-                    &&& m.dom().contains(p)
-                    &&& m[p].global_poll.locked_by(lctx)
-                    &&& m[p].global_poll.locking_thread() is Write
-                    &&& m[p].global_poll.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)]
-                }
-        }
-
-        /// Reverse direction: every kernel object currently held by `lctx`
-        /// is recorded in `lctx.lock_map`. (No stealth locks.)
-        pub open spec fn locked_implies_lctx(&self, lctx: &LocalContext) -> bool {
-            &&&
-            forall|c: RwLockContainerPtr|
-                #![trigger self.container_map.dom().contains(c)]
-                self.container_map.dom().contains(c) && self.container_map[c].locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Container(c))
-            &&&
-            forall|p: RwLockProcessPtr|
-                #![trigger self.process_map.dom().contains(p)]
-                self.process_map.dom().contains(p) && self.process_map[p].locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Process(p))
-            &&&
-            forall|t: RwLockThreadPtr|
-                #![trigger self.thread_map.dom().contains(t)]
-                self.thread_map.dom().contains(t) && self.thread_map[t].locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Thread(t))
-            &&&
-            forall|e: RwLockEndpointPtr|
-                #![trigger self.endpoint_map.dom().contains(e)]
-                self.endpoint_map.dom().contains(e) && self.endpoint_map[e].locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))
-            &&&
-            forall|s: RwLockSchedulerPtr|
-                #![trigger self.scheduler_map.dom().contains(s)]
-                self.scheduler_map.dom().contains(s) && self.scheduler_map[s].locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))
-            &&&
-            forall|pt: RwLockPageTableRoot|
-                #![trigger self.pagetable_map.dom().contains(pt)]
-                self.pagetable_map.dom().contains(pt) && self.pagetable_map[pt].locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))
-            &&&
-            forall|i: PageIndex|
-                #![trigger self.page_array[i]@.locked_by(lctx)]
-                page_index_wf(i) && self.page_array[i]@.locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Page(i))
-            &&&
-            forall|c: CpuId|
-                #![trigger self.cpu_array[c]@.locked_by(lctx)]
-                cpu_id_valid(c) && self.cpu_array[c]@.locked_by(lctx)
-                ==> lctx.lock_map().dom().contains(KernelObjId::Cpu(c))
-            &&&
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger self.allocator_4k_map.dom().contains(p)]
-                self.allocator_4k_map.dom().contains(p)
-                ==>
-                {
-                    &&&
-                    self.allocator_4k_map[p].quota.locked_by(lctx)
-                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(PageSize::SZ4k, p))
-                    &&&
-                    self.allocator_4k_map[p].global_poll.locked_by(lctx)
-                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p))
-                    &&&
-                    forall|c: CpuId|
-                        #![trigger self.allocator_4k_map[p].cpu_caches[c]@.locked_by(lctx)]
-                        cpu_id_valid(c) && self.allocator_4k_map[p].cpu_caches[c]@.locked_by(lctx)
-                        ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, p, c))
-                }
-            &&&
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger self.allocator_2m_map.dom().contains(p)]
-                self.allocator_2m_map.dom().contains(p)
-                ==>
-                {
-                    &&&
-                    self.allocator_2m_map[p].quota.locked_by(lctx)
-                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(PageSize::SZ2m, p))
-                    &&&
-                    self.allocator_2m_map[p].global_poll.locked_by(lctx)
-                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p))
-                    &&&
-                    forall|c: CpuId|
-                        #![trigger self.allocator_2m_map[p].cpu_caches[c]@.locked_by(lctx)]
-                        cpu_id_valid(c) && self.allocator_2m_map[p].cpu_caches[c]@.locked_by(lctx)
-                        ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ2m, p, c))
-                }
-            &&&
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger self.allocator_1g_map.dom().contains(p)]
-                self.allocator_1g_map.dom().contains(p)
-                ==>
-                {
-                    &&&
-                    self.allocator_1g_map[p].quota.locked_by(lctx)
-                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(PageSize::SZ1g, p))
-                    &&&
-                    self.allocator_1g_map[p].global_poll.locked_by(lctx)
-                    ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p))
-                    &&&
-                    forall|c: CpuId|
-                        #![trigger self.allocator_1g_map[p].cpu_caches[c]@.locked_by(lctx)]
-                        cpu_id_valid(c) && self.allocator_1g_map[p].cpu_caches[c]@.locked_by(lctx)
-                        ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ1g, p, c))
-                }
-        }
-
         /// Bidirectional agreement: kernel locks and `lctx.lock_map` are
-        /// exact mirrors of each other. Used as a precondition for the
-        /// kernel-view linearization point.
+        /// exact mirrors of each other ("no stealth locks", and every lock-map
+        /// entry is a real held lock with matching id). Used as a precondition
+        /// for the kernel-view linearization point.
+        ///
+        /// ANDs the per-object-kind bidirectional opaque pieces defined above
+        /// the impl block. A consumer re-establishing this after touching one
+        /// map reveals only that map's piece (e.g. `page_locked_match_lctx`),
+        /// not all ~20 quantifiers.
         pub open spec fn locked_objects_match_lctx(&self, lctx: &LocalContext) -> bool {
-            &&& self.lctx_implies_locked(lctx)
-            &&& self.locked_implies_lctx(lctx)
+            &&& container_locked_match_lctx(self.container_map, lctx)
+            &&& process_locked_match_lctx(self.process_map, lctx)
+            &&& thread_locked_match_lctx(self.thread_map, lctx)
+            &&& endpoint_locked_match_lctx(self.endpoint_map, lctx)
+            &&& scheduler_locked_match_lctx(self.scheduler_map, lctx)
+            &&& pagetable_locked_match_lctx(self.pagetable_map, lctx)
+            &&& page_locked_match_lctx(self.page_array, lctx)
+            &&& cpu_locked_match_lctx(self.cpu_array, lctx)
+            &&& allocator_locked_match_lctx(self.allocator_4k_map, PageSize::SZ4k, lctx)
+            &&& allocator_locked_match_lctx(self.allocator_2m_map, PageSize::SZ2m, lctx)
+            &&& allocator_locked_match_lctx(self.allocator_1g_map, PageSize::SZ1g, lctx)
         }
 
         /// Trusted kernel-view step boundary.

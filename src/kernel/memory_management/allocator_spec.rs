@@ -13,7 +13,7 @@ verus! {
             alloc_map.spec_index(a_ptr).inv()
     }
 
-
+    #[verifier::opaque]
     pub open spec fn allocator_free_page_ptrs_wf(allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool{
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|

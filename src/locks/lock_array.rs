@@ -47,8 +47,10 @@ verus! {
                 #![auto]
                 0 <= i < N && i != index
                 ==>
-                self[i] == old[i]
+                self[i] === old[i]
         }
+
+        /// Bridge between `spec_index(i).value` and `view()[i]`.
 
         #[verifier(external_body)]
         pub fn take(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:T)
@@ -64,17 +66,18 @@ verus! {
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
             ensures
                 final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
                 take_ensures(old(self)[index]@, final(self)[index]@),
-                
+
                 ret == old(self)[index]@@,
         {
             self.array.ar[index].take(Tracked(lctx), lock_perm)
-        } 
+        }
 
         #[verifier(external_body)]
-        pub fn put(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>, v:T) 
+        pub fn put(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>, v:T)
             requires
                 old(self).inv(),
                 0 <= index < N,
@@ -86,6 +89,7 @@ verus! {
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
             ensures
                 final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
                 put_ensures(old(self)[index]@, final(self)[index]@, v),
@@ -122,6 +126,7 @@ verus! {
                 lp@.lock_id() == old(self)[index]@.locking_thread()->Write_lock_id,
             ensures
                 final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
                 // Lock state of the touched entry is preserved.
@@ -157,6 +162,7 @@ verus! {
                 old(lctx).obj_id_fresh(obj_id@),
             ensures
                 final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -197,13 +203,17 @@ verus! {
                 old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
             ensures
                 final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
                 final(self)[index]@.locking_thread() is None,
 
-                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
-
+                // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
+                // it contradicts `unlock_ensures` (which transitions Acquire →
+                // Release), making the postcondition `false` in an Acquire
+                // section. `unlock_ensures` is the source of truth for the phase
+                // transition (matches `LockedMap::wunlock`). user_view is
+                // separately preserved by unlock_ensures.
                 wunlock_ensures(old(self)[index]@, final(self)[index]@),
                 unlock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_perm@.lock_id(), obj_id@),
         {

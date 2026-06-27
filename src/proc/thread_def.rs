@@ -26,40 +26,61 @@ pub struct Thread {
     pub trap_frame: TrapFrameOption,
 
     pub upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
-    pub direct_container_page_cache_4k: Ghost<Set<PagePtr>>,
-    pub direct_container_page_cache_2m: Ghost<Set<PagePtr>>,
-    pub direct_container_page_cache_1g: Ghost<Set<PagePtr>>,
 
-    pub direct_container_quota_cache_4k: Ghost<usize>,
-    pub direct_container_quota_cache_2m: Ghost<usize>,
-    pub direct_container_quota_cache_1g: Ghost<usize>,
+    /// Pages freed to the direct container whose quota has not yet been
+    /// batch-returned (free path; batched on wunlock).
+    pub direct_free_quota_pending_4k: Ghost<usize>,
+    pub direct_free_quota_pending_2m: Ghost<usize>,
+    pub direct_free_quota_pending_1g: Ghost<usize>,
 
-    pub indirect_container_quota_cache_4k: Ghost<Seq<usize>>,
-    pub indirect_container_quota_cache_2m: Ghost<Seq<usize>>,
-    pub indirect_container_quota_cache_1g: Ghost<Seq<usize>>,
+    /// Per upper-container depth: pages freed to indirect containers whose
+    /// quota has not yet been batch-returned.
+    pub indirect_free_quota_pending_4k: Ghost<Seq<usize>>,
+    pub indirect_free_quota_pending_2m: Ghost<Seq<usize>>,
+    pub indirect_free_quota_pending_1g: Ghost<Seq<usize>>,
 }
 
+pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
+pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>;
+
 impl Thread{
-    pub open spec fn thread_quota_cache_clean(&self) -> bool{
+    pub open spec fn free_quota_pending_clean(&self) -> bool{
+        &&& self.direct_free_quota_pending_4k.view() == 0
+        &&& self.direct_free_quota_pending_2m.view() == 0
+        &&& self.direct_free_quota_pending_1g.view() == 0
         &&&
         forall|i:int|
-            #![trigger self.indirect_container_quota_cache_4k.view().spec_index(i)]
-            0 <= i < self.indirect_container_quota_cache_4k.view().len()
+            #![trigger self.indirect_free_quota_pending_4k.view().spec_index(i)]
+            0 <= i < self.indirect_free_quota_pending_4k.view().len()
             ==>
-            self.indirect_container_quota_cache_4k.view().spec_index(i) == 0
+            self.indirect_free_quota_pending_4k.view().spec_index(i) == 0
         &&&
         forall|i:int|
-            #![trigger self.indirect_container_quota_cache_2m.view().spec_index(i)]
-            0 <= i < self.indirect_container_quota_cache_2m.view().len()
+            #![trigger self.indirect_free_quota_pending_2m.view().spec_index(i)]
+            0 <= i < self.indirect_free_quota_pending_2m.view().len()
             ==>
-            self.indirect_container_quota_cache_2m.view().spec_index(i) == 0
+            self.indirect_free_quota_pending_2m.view().spec_index(i) == 0
         &&&
         forall|i:int|
-            #![trigger self.indirect_container_quota_cache_1g.view().spec_index(i)]
-            0 <= i < self.indirect_container_quota_cache_1g.view().len()
+            #![trigger self.indirect_free_quota_pending_1g.view().spec_index(i)]
+            0 <= i < self.indirect_free_quota_pending_1g.view().len()
             ==>
-            self.indirect_container_quota_cache_1g.view().spec_index(i) == 0
+            self.indirect_free_quota_pending_1g.view().spec_index(i) == 0
     }
+}
+
+/// Free-quota pending counters must be zero unless the thread is write-locked.
+/// Syscalls accumulate pending frees only under wlock; flushed before wunlock.
+#[verifier::opaque]
+pub open spec fn thread_free_quota_pending_empty_unless_wlocked(
+    thread_map: ThreadLockedMap,
+) -> bool {
+    forall|t_ptr: RwLockThreadPtr|
+        #![trigger thread_map.spec_index(t_ptr).locking_thread()]
+        thread_map.dom().contains(t_ptr)
+        ==>
+        !(thread_map.spec_index(t_ptr).locking_thread() is Write) ==>
+            thread_map.spec_index(t_ptr).view().free_quota_pending_clean()
 }
 
 impl LockInvTrait for Thread {
@@ -87,11 +108,11 @@ impl LockInvTrait for Thread {
         &&&
         self.upper_container_seq.view().len() == self.container_depth
         &&&
-        self.upper_container_seq.view().len() == self.indirect_container_quota_cache_4k.view().len()
+        self.upper_container_seq.view().len() == self.indirect_free_quota_pending_4k.view().len()
         &&&
-        self.upper_container_seq.view().len() == self.indirect_container_quota_cache_2m.view().len()
+        self.upper_container_seq.view().len() == self.indirect_free_quota_pending_2m.view().len()
         &&&
-        self.upper_container_seq.view().len() == self.indirect_container_quota_cache_1g.view().len()
+        self.upper_container_seq.view().len() == self.indirect_free_quota_pending_1g.view().len()
     }
 }
 

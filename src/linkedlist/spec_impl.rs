@@ -34,16 +34,11 @@ pub struct LinkedList<T, const MAJOR: LockMajorId>{
 
 impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR>{
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.container_depth is Some{
-            LockOwnerId::Some(self.container_depth.unwrap())
-        }
-        else{
-            LockOwnerId::None
-        }
+        LockOwnerId::NotApp
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::None
+        LockOwnerId::NotApp
     }
 }
 impl<T, const MAJOR: LockMajorId> LockInvTrait for LinkedList<T, MAJOR>{
@@ -130,10 +125,84 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
     #[verifier(when_used_as_spec(spec_len))]
     pub fn len(&self) -> (ret:usize)
-        ensures 
+        ensures
             ret == self.len()
     {
         self.length
+    }
+
+    /// Expose the (otherwise closed-`wf`) fact that the stored `length` equals
+    /// the view length. Additive helper — mirrors `LockedArray::lemma_view_len`.
+    pub proof fn lemma_len_view(&self)
+        requires
+            self.wf(),
+        ensures
+            self.view().len() == self.spec_len(),
+    {
+    }
+
+    /// Expose (past closed `wf`) that the map domain is the perms domain and
+    /// equals the address-list membership. Additive helper.
+    pub proof fn lemma_map_dom(&self)
+        requires
+            self.wf(),
+        ensures
+            self.map().dom() == self.perms@.dom(),
+            forall|a: usize| #![trigger self.map().dom().contains(a)]
+                self.map().dom().contains(a) == self.addr_list@.contains(a),
+    {
+    }
+
+    /// Address ↔ value uniqueness: in a wf list whose VALUES have no
+    /// duplicates, the address holding a given value is unique. Concretely,
+    /// any two in-domain addresses mapping to the same value are equal.
+    ///
+    /// Proof idiom (per remove_helper): materialize each address's position in
+    /// `addr_list`, push the value equality through `wf_value_list` so both
+    /// positions hold the same `view()` element, then `no_duplicates` on the
+    /// values forces the positions — hence the addresses — equal.
+    pub proof fn lemma_value_addr_unique(&self, a: usize, b: usize)
+        requires
+            self.wf(),
+            self.view().no_duplicates(),
+            self.map().dom().contains(a),
+            self.map().dom().contains(b),
+            self.map()[a] == self.map()[b],
+        ensures
+            a == b,
+    {
+        // a, b are in addr_list (wf_perms: perms.dom == addr_list membership).
+        assert(self.perms@.dom().contains(a));
+        assert(self.perms@.dom().contains(b));
+        assert(self.addr_list@.contains(a));
+        assert(self.addr_list@.contains(b));
+        let ia = self.addr_list@.index_of(a);
+        let ib = self.addr_list@.index_of(b);
+        // index_of lands in range and recovers the element.
+        assert(0 <= ia < self.length) by {
+            let k = choose|k: int| 0 <= k < self.addr_list@.len() && self.addr_list@[k] == a;
+            assert(self.addr_list@[k] == a);
+        }
+        assert(0 <= ib < self.length) by {
+            let k = choose|k: int| 0 <= k < self.addr_list@.len() && self.addr_list@[k] == b;
+            assert(self.addr_list@[k] == b);
+        }
+        assert(self.addr_list@[ia] == a);
+        assert(self.addr_list@[ib] == b);
+        // wf_value_list: view()[i] == perms[addr_list[i]].value()@; wf_map:
+        // map[addr] == perms[addr].value()@. So both positions hold the value.
+        assert(self.view()[ia] == self.perms@[a].value()@);
+        assert(self.view()[ib] == self.perms@[b].value()@);
+        assert(self.map()[a] == self.perms@[a].value()@);
+        assert(self.map()[b] == self.perms@[b].value()@);
+        assert(self.view()[ia] == self.view()[ib]);
+        // values have no duplicates ⟹ equal value at two positions ⟹ ia == ib.
+        if ia != ib {
+            assert(self.view()[ia] != self.view()[ib]);
+        }
+        assert(ia == ib);
+        assert(a == self.addr_list@[ia]);
+        assert(b == self.addr_list@[ib]);
     }
 
     pub open spec fn wf_perms(&self) -> bool{
@@ -436,6 +505,36 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         }
     }
 
+    /// Non-mutating read of the head node's address and stored value. Lets a
+    /// caller learn the head's payload (and node address) WITHOUT popping, so it
+    /// can act on that page (e.g. lock its slot) while the list still satisfies
+    /// `wf()`. The returned value/address match what a subsequent `pop_head`
+    /// would yield.
+    pub fn peek_head(&self) -> (ret: (usize, T))
+        where T: Copy
+        requires
+            self.wf(),
+            self.length != 0,
+        ensures
+            // address is the head, in the (current) domain.
+            ret.0 == self.addr_list@[0],
+            self.dom().contains(ret.0),
+            self.map().dom().contains(ret.0),
+            // value is the head element, == map[head].
+            ret.1 == self@[0],
+            ret.1 == self.map()[ret.0],
+    {
+        let head_addr = self.head.unwrap();
+        let tracked head_perm = self.perms.borrow().tracked_borrow(head_addr);
+        let node: &Node<T> = PPtr::<Node<T>>::from_usize(head_addr).borrow(Tracked(head_perm));
+        proof {
+            // wf_head: addr_list[0] == head; wf_map / wf_value_list tie the
+            // borrowed node's value to view()[0] and map()[head].
+            self.lemma_map_dom();
+        }
+        (head_addr, node.value)
+    }
+
     pub fn pop_head(&mut self) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).wf(),
@@ -451,6 +550,10 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.1@.addr() == ret.0,
             ret.1@.value()@ == old(self)@[0],
             ret.1@.value()@ == old(self).map()[ret.0],
+            // The popped node was the head — hence in the pre-pop domain. (Used
+            // by callers that need map[ret.0] to be a live entry.)
+            old(self).dom().contains(ret.0),
+            ret.0 == old(self).addr_list@[0],
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
     {

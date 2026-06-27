@@ -2,48 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 verus! {
     impl KernelK{
-        // #[verifier::rlimit(600)]
-        //
-        // syscall_alloc_quota_4k: the calling thread asks to reserve
-        // `alloc_amount` 4k pages of quota from its container's 4k page
-        // allocator into its running process. Returns `true` on success,
-        // `false` on any failure (container being torn down, process being
-        // torn down, insufficient container quota, or per-process quota
-        // overflow).
-        //
-        // Concurrency model (see veriflat-project-notes.md "User-view
-        // linearization"): the syscall runs as one user-visible atomic
-        // transition. It acquires locks in the deadlock-free order
-        //   cpu  ->  container  ->  4k-allocator-quota  ->  process
-        // (ascending LockId; see LockId.md), reads/decides, then RELEASES
-        // every lock before returning. Somewhere in the section it
-        // "linearizes" by opening a user-view step (begin_user_view_step),
-        // which flips both lctx phases to Release; from that point no more
-        // locks may be acquired, only released. The step is closed
-        // (end_user_view_step) once inv() is re-established, recording the
-        // post-section user view.
-        //
-        // Every exit path records exactly one user step:
-        //  - FAILURE paths route through a `release_*_and_finish` helper;
-        //    no kernel state changed, so `old_u == new_u` (a user-visible
-        //    no-op).
-        //  - SUCCESS path routes through `transfer_quota_4k_and_finish`
-        //    which performs the transfer (`process.quota_4k += alloc_amount`,
-        //    `quota.value -= alloc_amount`) before releasing. Since
-        //    `kernel_k_to_kernel_u` reads `process.view().quota_4k`, the
-        //    user view changes — `old_u` captures the pre-transfer
-        //    projection and `new_u` the post-transfer one.
-        //
-        // Path summary (all branches verified):
-        //  - container-killed → `release_cpu_and_finish` (1 lock held)
-        //  - quota-insufficient → `release_all_and_finish` (3 locks held)
-        //  - process-killed → `release_all_and_finish` (3 locks held; the
-        //    failed wlock_process_unless_killed is a no-op on `self`)
-        //  - process-quota-overflow → `release_all_with_process_and_finish`
-        //    (4 locks held)
-        //  - all checks passed → `transfer_quota_4k_and_finish` (4 locks
-        //    held; opens user step, mutates, releases, closes step,
-        //    returns true)
         #[verifier::spinoff_prover]
         pub fn syscall_alloc_quota_4k(&mut self, tracked mut lctx: Tracked<LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, alloc_amount: usize) -> (ret: RetValueType)
             requires
@@ -55,47 +13,19 @@ verus! {
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
                 old(steps).steps.len() == 0,
-                // Snapshot precondition: the caller hands us a fresh
-                // snapshot equal to the syscall-entry user view. Anything
-                // we do that mutates U has to be bracketed by
-                // `begin/end_user_view_step` (which refresh the snapshot)
-                // for the next `kernel_step_boundary` snapshot check to
-                // succeed.
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
             ensures
-                // The syscall linearizes as exactly one user-view atomic
-                // step. The return value classifies the outcome:
-                //
-                //  - `Success`: quota transferred (`process.quota_4k +=
-                //    alloc_amount`); user view changes by exactly that
-                //    bump on the running process.
-                //  - `ErrorContainerKilled`: container being torn down;
-                //    user-visible no-op.
-                //  - `ErrorContainerQuotaInsufficient`: container's 4k
-                //    allocator has < alloc_amount; user-visible no-op.
-                //  - `ErrorProcessKilled`: process being torn down;
-                //    user-visible no-op.
-                //  - `ErrorProcessQuotaOverflow`: adding alloc_amount to
-                //    process.quota_4k would overflow `usize::MAX`;
-                //    user-visible no-op.
-                //
-                // Every outcome records exactly one user step. Failure
-                // outcomes are user-visible no-ops (`old_u == new_u`).
-                // Success records the genuine quota_4k delta.
                 final(steps).steps.len() == 1,
                 final(steps).steps.last().new_k == *final(self),
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
-                // The result must be one of these specific variants.
                 ret is Success
                     || ret is ErrorContainerKilled
                     || ret is ErrorContainerQuotaInsufficient
                     || ret is ErrorProcessKilled
                     || ret is ErrorProcessQuotaOverflow,
-                // Failure: user view unchanged.
                 !(ret is Success) ==> {
                     &&& final(steps).steps.last().old_u == final(steps).steps.last().new_u
                 },
-                // Success: the transfer's exact user-view delta.
                 ret is Success ==> {
                     let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
                     &&& final(steps).steps.last().old_u == kernel_k_to_kernel_u(*old(self))
@@ -107,11 +37,6 @@ verus! {
                         )
                 },
         {
-            // Lock preconditions and several reconstruction asserts need the
-            // `subsystems_inv` conjuncts and the `all_objects_unlocked` pieces
-            // for cpu_array / container / allocator / process. Revealing them
-            // once here (function-wide) is markedly faster than re-revealing
-            // per use.
             proof {
                 reveal(cpu_array_wf);
                 reveal(container_perms_wf);
@@ -126,13 +51,6 @@ verus! {
                 reveal(allocator_objects_unlocked);
                 reveal(process_objects_unlocked);
             }
-            // Establish the entry well-formedness facts derived from the
-            // global invariant: the running cpu's owning container exists,
-            // it has a current process that exists, and the cpu/process/
-            // container depth fields agree. These come from the bidirectional
-            // container<->cpu, process<->cpu, and container<->process specs
-            // (revealed in the `by` block) and are needed both for the lock
-            // ordering below and for re-establishing inv() on the exit paths.
             assert(
                 {
                     &&&
@@ -155,45 +73,14 @@ verus! {
                 reveal(process_cpu_wf);
                 reveal(container_process_wf);
             };
-
-            // Snapshot the entry LocalContext so we can refer back to the
-            // "all objects unlocked at entry" precondition after `lctx` has
-            // been threaded through the lock/unlock calls. `thread_id` is
-            // preserved by every op, so the entry unlocked-ness transfers.
             let ghost entry_lctx = lctx@;
-
-            // ---- Acquire lock #1: the running cpu (lowest in lock order). ----
-            // `wlock_cpu` is a thin wrapper around `LockedArray::wlock` for
-            // `cpu_array` that re-establishes `inv()` after the lock — so no
-            // manual inv block needed here.
             let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut lctx));
             let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
             let thread_ptr = cpu.current_thread.unwrap();
             let process_ptr = cpu.current_process.unwrap();
             let container_ptr = cpu.owning_container;
-
-            // ---- Re-establish inv() after the cpu wlock, before invoking the
-            // container wrapper.
-            //
-            // Now that `wlock_cpu` is a wrapper that re-establishes `inv()`
-            // for us, this manual block is no longer needed — leaving the
-            // explanatory comment as a marker.
-
-            // ---- Acquire lock #2: the owning container, UNLESS it is being
-            // killed. `wlock_container_unless_killed` is a thin wrapper around
-            // `LockedMap::wlock_unless_killed` for `container_map` that
-            // re-establishes `inv()` after the lock attempt — see its contract
-            // for the full pre/post breakdown. On the killed-branch it's a
-            // complete no-op on `self`, both lctx phases are preserved
-            // (Acquire/Acquire), and `lctx.lock_map` is unchanged.
             let container_res = self.wlock_container_unless_killed(container_ptr, Tracked(&mut lctx));
             if let (false, _) = container_res{
-                // ===== CONTAINER-KILLED EXIT =====
-                // The container is being torn down, so the syscall fails. Only
-                // the cpu lock is held; hand off to `release_cpu_and_finish`,
-                // which opens the user step, releases the cpu lock,
-                // re-establishes inv() post-unlock, and closes the step —
-                // recording a user-visible no-op.
                 assert(self.container_map.spec_index(container_ptr).being_killed() == true);
                 proof {
                     // The cpu lock is the only one held.
@@ -207,24 +94,9 @@ verus! {
                 );
                 return RetValueType::ErrorContainerKilled;
             }
-            // ===== CONTAINER ACQUIRED =====
-            // The container is alive and now write-locked by us (cpu + container
-            // held). Read the container's 4k page allocator pointer from
-            // rodata, take lock #3 on its quota, and decide whether the
-            // requested `alloc_amount` fits.
-            //
-            // Lock order recap (deadlock-free; see LockId.md):
-            //   cpu (held)  ->  container (held)  ->  quota (about to take).
             let Tracked(container_lock_perm) = container_res.1.unwrap();
             let container_ro = self.container_map.borrow_rodata(container_ptr);
             let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
-
-            // `container_allocator_wf` gives, for the container's
-            // `allocator_ptr_4k`: the entry exists in the 4k map, is wf, and
-            // its quota's `container_depth` matches the container's depth
-            // (needed below for the `lock_id_acyclic` ordering check). The
-            // unlocked-ness fact is transferred from the entry precondition
-            // `all_objects_unlocked` via the entry-lctx snapshot.
             assert(
                 {
                     &&&
@@ -243,29 +115,19 @@ verus! {
                 assert(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locked_by(&entry_lctx) == false);
             };
 
-            // ---- Acquire lock #3: the container's 4k allocator quota
-            // (via wrapper, which re-establishes inv() for us). ----
             let Tracked(quota_lock_perm) = self.wlock_quota_4k(alloc_ptr_4k, Tracked(&mut lctx));
 
             proof {
-                // The 3 locks are the only ones held now.
                 assert(lctx@.lock_map().dom() =~= set![
                     KernelObjId::Cpu(cpu_id),
                     KernelObjId::Container(container_ptr),
                     KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
                 ]);
             }
-
-            // Read the quota's value via a SHARED borrow (no `&mut self`
-            // invalidation, so the inv() fact above carries through).
             let quota_ref = self.allocator_4k_map.borrow_quota(
                 alloc_ptr_4k, Tracked(&quota_lock_perm),
             );
             if quota_ref.value < alloc_amount {
-                // ===== INSUFFICIENT QUOTA =====
-                // Fail the syscall and release all 3 locks. Still a
-                // user-visible no-op (the user view doesn't include the
-                // allocator quota).
                 self.release_all_and_finish(
                     Tracked(lctx.get()),
                     Tracked(&mut *steps),
@@ -276,14 +138,6 @@ verus! {
                 );
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
-
-            // ===== QUOTA SUFFICIENT — now check the running process's quota.
-            // Lock the running process to read its current quota_4k. Lock
-            // ordering: cpu(1) < container(101) < quota(102) < process(105),
-            // so process is acquired LAST. Use the kill-aware wrapper:
-            // a concurrent teardown could be racing with us, in which case
-            // we treat the process as gone and bail out via the existing
-            // 3-lock release helper.
             assert(
                 {
                     &&& self.process_map.dom().contains(process_ptr)
@@ -295,11 +149,6 @@ verus! {
             };
             let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut lctx));
             if let (false, _) = process_res {
-                // ===== PROCESS KILLED =====
-                // The process is being torn down. The wrapper restored the
-                // process_map (false branch is a no-op on `self`), so only
-                // cpu+container+quota are still held. Route through the
-                // 3-lock release helper.
                 self.release_all_and_finish(
                     Tracked(lctx.get()),
                     Tracked(&mut *steps),
@@ -311,18 +160,9 @@ verus! {
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.1.unwrap();
-
-            // Read the process's existing 4k quota, then check whether
-            // adding `alloc_amount` would overflow `usize::MAX`. The check
-            // is written as `alloc_amount > usize::MAX - process.quota_4k`
-            // to avoid the overflow itself.
             let process_ref = self.process_map.borrow(process_ptr, Tracked(&process_lock_perm));
             let process_quota_4k = process_ref.quota_4k;
             if alloc_amount > usize::MAX - process_quota_4k {
-                // ===== PROCESS QUOTA OVERFLOW =====
-                // Adding `alloc_amount` to this process's `quota_4k` would
-                // overflow. Fail the syscall and release all 4 locks. Still
-                // a user-visible no-op (no allocator/process state changed).
                 self.release_all_with_process_and_finish(
                     Tracked(lctx.get()),
                     Tracked(&mut *steps),
@@ -334,29 +174,12 @@ verus! {
                 );
                 return RetValueType::ErrorProcessQuotaOverflow;
             }
-
-            // ===== ALL CHECKS PASSED — perform the quota transfer =====
-            // Hand off to the success-path helper, which performs the
-            // mutations (process.quota_4k += alloc_amount, quota.value -=
-            // alloc_amount), releases all 4 locks, and closes the
-            // user-view atomic step. The bookkeeping facts the helper
-            // requires (process_ptr ∈ container.owned_processes,
-            // container's allocator_ptr_4k == alloc_ptr_4k) are derivable
-            // from the running cpu's bidirectional invariants here.
             proof {
                 reveal(process_cpu_wf);
                 reveal(container_process_wf);
                 assert(self.container_map.spec_index(container_ptr).view().owned_processes@.contains(process_ptr)) by {
                     assert(self.process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr);
                 };
-                // Bridge: `kernel_k_to_kernel_u` reads only cpu_array
-                // payload views, process_map views/rodata/being_killed,
-                // and pagetable_map. None of those are affected by the 4
-                // wlock acquisitions (which only changed lock state), so
-                // the user-view projection is preserved across them.
-                // Used downstream to lift the helper's
-                // `old_u == kernel_k_to_kernel_u(*old(helper))` ensure
-                // up to `*old(syscall)`.
                 reveal(cpu_array_wf);
                 assert(self.cpu_array.inv());
                 assert(old(self).cpu_array.inv());
@@ -370,8 +193,11 @@ verus! {
                 implies
                     self.process_map.spec_index(p_ptr).view() == old(self).process_map.spec_index(p_ptr).view()
                     && self.process_map.spec_index(p_ptr).view_rodata() == old(self).process_map.spec_index(p_ptr).view_rodata()
-                by {};
-                lemma_release_with_process_preserves_user_view(*old(self), *self, cpu_id);
+                    && self.process_map.spec_index(p_ptr).being_killed() == old(self).process_map.spec_index(p_ptr).being_killed()
+                by {
+                    assert(self.process_map.unchanged_except(&old(self).process_map, process_ptr));
+                };
+                // lemma_release_with_process_preserves_user_view(*old(self), *self, cpu_id);
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self)));
             }
             return self.transfer_quota_4k_and_finish(
@@ -385,12 +211,6 @@ verus! {
             );
         }
 
-        /// Lemma: `container_thread_wf` is preserved when every container
-        /// `view`/`view_rodata` is unchanged and the thread map is untouched
-        /// (i.e. only container *lock state* moved). Isolated into its own
-        /// proof query: this 4-quantifier reverse-direction reasoning is too
-        /// heavy to discharge reliably inside the large `syscall_alloc_quota_4k`
-        /// SMT query when the container is held write-locked.
         proof fn lemma_container_thread_wf_preserved(pre: KernelK, post: KernelK)
             requires
                 container_thread_wf(pre.container_map, pre.thread_map),
@@ -563,37 +383,6 @@ verus! {
                 =~= kernel_k_to_kernel_u(post).process_map);
         }
 
-        /// Wrapper around `LockedMap::wlock_unless_killed` for `container_map`
-        /// that re-establishes the kernel-wide `inv()` after the lock attempt.
-        ///
-        /// The motivation: post-`wlock_unless_killed`, every caller has to run
-        /// the same large reveal-laden proof block to lift `unchanged_except`
-        /// (lock state on one container changed) back to `KernelK::inv()`.
-        /// That block reveals every bidirectional `container ↔ X` invariant
-        /// and calls the cpu-independent `lemma_container_*_wf_preserved`
-        /// helpers below. Factoring it into this wrapper means call sites just
-        /// dispatch on the returned `bool` — no proof block needed.
-        ///
-        /// Behaviour exactly mirrors `LockedMap::wlock_unless_killed`:
-        ///  * SUCCESS (`ret.0 == true`): the container is now write-locked by
-        ///    the calling thread; `lctx.lock_map` gained the new entry; the
-        ///    returned perm carries the write-lock witness; every kernel field
-        ///    other than `container_map` is byte-for-byte unchanged; only
-        ///    `container_map[container_ptr]`'s lock state moved (view, rodata,
-        ///    every other entry preserved).
-        ///  * FAILURE (`ret.0 == false`): the container is being killed; the
-        ///    `LockedMap` is fully restored to its entry value (no-op on
-        ///    `self`); `lctx.lock_map` is unchanged; the returned `Option`
-        ///    is `None`. Every other field is also unchanged.
-        ///
-        /// Both branches preserve `lctx.kernel_view_locking_state()` and
-        /// `lctx.user_view_locking_state()` (Acquire ↔ Acquire / Release ↔
-        /// Release), and preserve `lctx.thread_id()`.
-        ///
-        /// Preconditions match `wlock_unless_killed` plus `self.inv()`. The
-        /// `lock_id_acyclic` clause is unavoidable — it encodes the global
-        /// lock-ordering check, which depends on what locks the caller already
-        /// holds, so the caller must establish it.
         #[verifier::spinoff_prover]
         pub fn wlock_container_unless_killed(
             &mut self,
@@ -708,6 +497,7 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -734,6 +524,7 @@ verus! {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 container_no_change_to_tree_fields_imply_wf(self.root_container, old(self).container_map, self.container_map);
@@ -874,6 +665,7 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -900,6 +692,7 @@ verus! {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 container_no_change_to_tree_fields_imply_wf(self.root_container, old(self).container_map, self.container_map);
@@ -1044,6 +837,7 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -1070,6 +864,7 @@ verus! {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 container_no_change_to_tree_fields_imply_wf(self.root_container, old(self).container_map, self.container_map);
@@ -1194,6 +989,7 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -1220,6 +1016,7 @@ verus! {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 container_no_change_to_tree_fields_imply_wf(self.root_container, old(self).container_map, self.container_map);
@@ -1364,6 +1161,17 @@ verus! {
                         },
                         KernelObjId::Process(process_ptr),
                     )
+                    // The just-locked process has a clean temp-alloc cache: a
+                    // successful wlock proves the lock was previously free
+                    // (`wlock_ensures` gives `old.locked() == false`), and the
+                    // entry invariant's `process_temp_alloc_empty_unless_wlocked`
+                    // then forces cleanliness for any non-write-locked process.
+                    // `wlock_ensures` preserves the payload (`new@ == old@`), so
+                    // it carries to the post-lock view. Callers need this to
+                    // discharge `wunlock_process`'s temp-alloc precondition (the
+                    // "flushed before wunlock" protocol) for syscalls that never
+                    // stage pages.
+                    &&& final(self).process_map.spec_index(process_ptr).view().temp_alloc_clean()
                 },
         {
             proof {
@@ -1403,7 +1211,28 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
+                assert(process_perms_wf(self.process_map)) by {
+                    assert(self.process_map.perms_wf());
+                    assert(self.process_map.spec_index(process_ptr).inv());
+                    assert(self.process_map.unchanged_except(&old(self).process_map, process_ptr));
+                    // Temp-alloc disjunct on the target: it is either still
+                    // write-locked (clause vacuous) or its cache is clean. On
+                    // a successful wlock it is Write; on a wlock no-op the entry
+                    // is unchanged from pre (where `process_perms_wf` held); on
+                    // a wunlock the new `temp_alloc_clean` precondition + payload
+                    // preservation give cleanness.
+                    assert(self.process_map.spec_index(process_ptr).locking_thread() is Write
+                        || self.process_map.spec_index(process_ptr).view().temp_alloc_clean()) by {
+                        reveal(process_perms_wf);
+                        reveal(process_temp_alloc_empty_unless_wlocked);
+                    };
+                    // lemma_process_perms_wf_preserved_for_process_lock_op(
+                    //     old(self).process_map,
+                    //     self.process_map,
+                    //     process_ptr,
+                    // );
+                };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -1423,7 +1252,7 @@ verus! {
                     reveal(KernelK::process_pages_wf);
                 };
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
+                    // lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
                 };
                 assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
@@ -1432,6 +1261,16 @@ verus! {
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {
                     reveal(process_pagetable_match);
                 };
+                assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
+                    reveal(KernelK::memory_management_inv);
+                    assert(process_staged_pages_wf(old(self).process_map, old(self).page_array));
+                    lemma_process_staged_pages_wf_preserved_for_view_eq(
+                        old(self).process_map,
+                        self.process_map,
+                        self.page_array,
+                    );
+                };
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 assert(container_tree_wf(self.root_container, self.container_map));
@@ -1442,7 +1281,7 @@ verus! {
                     reveal(container_process_wf); reveal(per_container_process_tree_wf);
                     // pre.inv() gives the pre-state spec; bring it into scope explicitly.
                     assert(per_container_process_tree_wf(old(self).container_map, old(self).process_map));
-                    assert forall|c_ptr: RwLockContainerPtr|
+                    assert forall|c_ptr: RwLockContainerPtr| #![auto]
                         self.container_map.dom().contains(c_ptr)
                     implies
                         process_tree_wf(
@@ -1501,6 +1340,21 @@ verus! {
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
                 assert(self.inv());
             }
+            // Success-only ensures: the just-locked process has a clean
+            // temp-alloc cache. From `old(self).inv()` the entry-pre invariant
+            // `process_temp_alloc_empty_unless_wlocked` holds; the pre-lock
+            // process was NOT write-locked (a successful wlock requires
+            // `wlock_requires`, i.e. `old.locked() == false`), so the clause
+            // forces `temp_alloc_clean` pre-lock; `wlock_ensures` preserves the
+            // payload (`new@ == old@`), so it carries to the post-lock view.
+            proof {
+                if res.0 == true {
+                    reveal(process_perms_wf);
+                    reveal(process_temp_alloc_empty_unless_wlocked);
+                    assert(old(self).process_map.spec_index(process_ptr).locking_thread() is Write == false);
+                    assert(old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean());
+                }
+            }
             res
         }
 
@@ -1534,6 +1388,14 @@ verus! {
                 lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 old(lctx).lock_map().dom().contains(KernelObjId::Process(process_ptr)),
                 old(lctx).lock_map()[KernelObjId::Process(process_ptr)] == lock_perm@.lock_id(),
+                // The "flushed before wunlock" protocol (see Process docs): the
+                // caller must have drained the process's temp-alloc cache before
+                // releasing the write lock, because once unlocked the global
+                // invariant `process_temp_alloc_empty_unless_wlocked` demands the
+                // cache be clean. Held-but-clean is the caller's obligation; the
+                // process write-lock is the only thing that licenses a non-empty
+                // cache, and dropping it requires emptiness.
+                old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -1600,7 +1462,28 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
+                assert(process_perms_wf(self.process_map)) by {
+                    assert(self.process_map.perms_wf());
+                    assert(self.process_map.spec_index(process_ptr).inv());
+                    assert(self.process_map.unchanged_except(&old(self).process_map, process_ptr));
+                    // Temp-alloc disjunct on the target: it is either still
+                    // write-locked (clause vacuous) or its cache is clean. On
+                    // a successful wlock it is Write; on a wlock no-op the entry
+                    // is unchanged from pre (where `process_perms_wf` held); on
+                    // a wunlock the new `temp_alloc_clean` precondition + payload
+                    // preservation give cleanness.
+                    assert(self.process_map.spec_index(process_ptr).locking_thread() is Write
+                        || self.process_map.spec_index(process_ptr).view().temp_alloc_clean()) by {
+                        reveal(process_perms_wf);
+                        reveal(process_temp_alloc_empty_unless_wlocked);
+                    };
+                    // lemma_process_perms_wf_preserved_for_process_lock_op(
+                    //     old(self).process_map,
+                    //     self.process_map,
+                    //     process_ptr,
+                    // );
+                };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -1620,7 +1503,7 @@ verus! {
                     reveal(KernelK::process_pages_wf);
                 };
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
+                    // lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
                 };
                 assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
@@ -1629,6 +1512,25 @@ verus! {
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {
                     reveal(process_pagetable_match);
                 };
+                // `process_staged_pages_wf` reads only per-process temp-alloc
+                // caches (process `view()`) and `page_array` states. wunlock
+                // preserves the full process payload and leaves `page_array`
+                // untouched, so the invariant carries over. Bridge it via the
+                // view-equality preservation lemma (same one the wlock wrapper
+                // uses) to keep the proof robust under the added temp-alloc
+                // reasoning above.
+                assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
+                    assert(self.page_array == old(self).page_array);
+                    assert(process_staged_pages_wf(old(self).process_map, old(self).page_array)) by {
+                        reveal(KernelK::memory_management_inv);
+                    };
+                    lemma_process_staged_pages_wf_preserved_for_view_eq(
+                        old(self).process_map,
+                        self.process_map,
+                        self.page_array,
+                    );
+                };
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 assert(container_tree_wf(self.root_container, self.container_map));
@@ -1638,7 +1540,7 @@ verus! {
                 assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                     reveal(container_process_wf); reveal(per_container_process_tree_wf);
                     assert(per_container_process_tree_wf(old(self).container_map, old(self).process_map));
-                    assert forall|c_ptr: RwLockContainerPtr|
+                    assert forall|c_ptr: RwLockContainerPtr| #![auto]
                         self.container_map.dom().contains(c_ptr)
                     implies
                         process_tree_wf(
@@ -1705,7 +1607,7 @@ verus! {
         ///    are all preserved.
         ///  * Every other entry of `allocator_4k_map` is byte-equal pre/post.
         ///  * The touched allocator's other fields (cpu_caches, global_poll,
-        ///    owning_container, differential, total_free_pages) are byte-equal.
+        ///    owning_container, total_free_pages) are byte-equal.
         ///  * Every other `KernelK` field is byte-equal pre/post.
         ///  * `lctx.lock_map` gains the entry for
         ///    `KernelObjId::AllocatorQuota(SZ4k, alloc_ptr_4k)`; lock_seq
@@ -1754,7 +1656,6 @@ verus! {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).differential == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).differential,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
@@ -1807,7 +1708,8 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
+                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -1826,13 +1728,14 @@ verus! {
                 // allocator_4k_map per-allocator quota.view() and total_free_pages preserved
                 // (lock-state-only change at alloc_ptr_4k); allocator_2m/1g maps fully equal.
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
+                    // lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
                 };
                 assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(container_tree_wf(self.root_container, self.container_map));
@@ -1915,7 +1818,6 @@ verus! {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).differential == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).differential,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
@@ -1948,7 +1850,8 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
+                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -1964,13 +1867,14 @@ verus! {
                 assert(self.container_pages_wf()) by { reveal(KernelK::container_pages_wf); };
                 assert(self.process_pages_wf()) by { reveal(KernelK::process_pages_wf); };
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
+                    // lemma_container_process_allocator_quota_wf_preserved_for_process_lock_op(*old(self), *self);
                 };
                 assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
                 };
                 assert(self.allocator_free_pages_wf());
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 assert(container_tree_wf(self.root_container, self.container_map));
@@ -2209,6 +2113,9 @@ verus! {
                 old(self).process_map.spec_index(process_ptr).wlocked_by(&lctx),
                 old(self).process_map.spec_index(process_ptr).inv(),
                 old(self).process_map.perms_wf(),
+                // Temp-alloc must be drained before the process is unlocked (the
+                // "flushed before wunlock" protocol; required by wunlock_process).
+                old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
             ensures
                 final(steps).steps.len() == old(steps).steps.len() + 1,
                 final(steps).steps.last().new_k == *final(self),
@@ -2256,6 +2163,7 @@ verus! {
                 implies
                     self.process_map.spec_index(p_ptr).view() == old(self).process_map.spec_index(p_ptr).view()
                     && self.process_map.spec_index(p_ptr).view_rodata() == old(self).process_map.spec_index(p_ptr).view_rodata()
+                    && self.process_map.spec_index(p_ptr).being_killed() == old(self).process_map.spec_index(p_ptr).being_killed()
                 by {};
                 assert(self.pagetable_map == old(self).pagetable_map);
                 assert(self.cpu_array.unchanged_except(&cpu_array_before_unlock, cpu_id));
@@ -2263,7 +2171,7 @@ verus! {
                 assert(self.cpu_array.spec_index(cpu_id).view().view()
                     == old(self).cpu_array.spec_index(cpu_id).view().view());
                 assert(self.cpu_array.inv()) by { reveal(cpu_array_wf); };
-                lemma_release_with_process_preserves_user_view(*old(self), *self, cpu_id);
+                // lemma_release_with_process_preserves_user_view(*old(self), *self, cpu_id);
                 assert(kernel_k_to_kernel_u(*old(self))
                     == kernel_k_to_kernel_u(*self));
             }
@@ -2363,6 +2271,9 @@ verus! {
                 old(self).process_map.spec_index(process_ptr).wlocked_by(&lctx),
                 old(self).process_map.spec_index(process_ptr).inv(),
                 old(self).process_map.perms_wf(),
+                // Temp-alloc must be drained before the process is unlocked (the
+                // "flushed before wunlock" protocol; required by wunlock_process).
+                old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
                 // Bookkeeping for the transfer:
                 //   * process_ptr is owned by container_ptr;
                 //   * container_ptr's 4k allocator is alloc_ptr_4k.
@@ -2452,7 +2363,8 @@ verus! {
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
+                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
+                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
@@ -2472,18 +2384,25 @@ verus! {
                 // `container_ptr.allocator_ptr_4k == alloc_ptr_4k` come
                 // from the function's preconditions directly.
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    lemma_container_process_allocator_quota_wf_preserved_for_quota_transfer(
-                        entry_self, post_transfer_self,
-                        process_ptr, container_ptr, alloc_ptr_4k, alloc_amount,
-                    );
+                    // lemma_container_process_allocator_quota_wf_preserved_for_quota_transfer(
+                    //     entry_self, post_transfer_self,
+                    //     process_ptr, container_ptr, alloc_ptr_4k, alloc_amount,
+                    // );
                 };
                 assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
                 };
-                assert(self.allocator_free_pages_wf());
+                assert(self.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {
                     reveal(process_pagetable_match);
                 };
+                assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
+                    reveal(process_staged_pages_wf);
+                    reveal(process_staged_pages_4k_wf);
+                    reveal(process_staged_pages_2m_wf);
+                    reveal(process_staged_pages_1g_wf);
+                };
+                // lemma_container_allocator_free_pages_wf_preserved_for_lock_op(*old(self), *self);
                 assert(self.memory_management_inv());
                 // ---- process_management_inv ----
                 assert(container_tree_wf(self.root_container, self.container_map));
@@ -2493,7 +2412,7 @@ verus! {
                 assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                     reveal(container_process_wf); reveal(per_container_process_tree_wf);
                     assert(per_container_process_tree_wf(entry_self.container_map, entry_self.process_map));
-                    assert forall|c_ptr: RwLockContainerPtr|
+                    assert forall|c_ptr: RwLockContainerPtr| #![auto]
                         self.container_map.dom().contains(c_ptr)
                     implies
                         process_tree_wf(
@@ -2506,12 +2425,12 @@ verus! {
                         // Tree fields and view_rodata() are unchanged, so the
                         // tree-fields-only preservation lemma applies for every
                         // container's process tree.
-                        lemma_process_tree_wf_preserved_for_tree_fields_eq(
-                            self.container_map.spec_index(c_ptr).view().root_process,
-                            self.container_map.spec_index(c_ptr).view().owned_processes@,
-                            entry_self.process_map,
-                            self.process_map,
-                        );
+                        // lemma_process_tree_wf_preserved_for_tree_fields_eq(
+                        //     self.container_map.spec_index(c_ptr).view().root_process,
+                        //     self.container_map.spec_index(c_ptr).view().owned_processes@,
+                        //     entry_self.process_map,
+                        //     self.process_map,
+                        // );
                     };
                 };
                 assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by { reveal(container_endpoint_wf); };
@@ -2526,7 +2445,20 @@ verus! {
                 };
                 assert(container_thread_wf(self.container_map, self.thread_map)) by { reveal(container_thread_wf); };
                 assert(process_cpu_wf(self.process_map, self.cpu_array)) by { reveal(process_cpu_wf); };
-                assert(process_thread_wf(self.process_map, self.thread_map)) by { reveal(process_thread_wf); };
+                assert(process_thread_wf(self.process_map, self.thread_map)) by {
+                    reveal(process_thread_wf);
+                    // process_thread_wf reads only owned_threads + pagetable of each
+                    // process view (and thread_map), all unchanged by the quota_4k
+                    // transfer. thread_map == entry; per-process owned_threads/
+                    // pagetable == entry. Supply the frame so this discharges
+                    // regardless of full-crate prover budget/order.
+                    assert(process_thread_wf(entry_self.process_map, entry_self.thread_map)) by { reveal(process_thread_wf); };
+                    assert(self.thread_map == entry_self.thread_map);
+                    assert(forall|p: RwLockProcessPtr| #![trigger self.process_map.spec_index(p).view()]
+                        self.process_map.dom().contains(p) ==>
+                            self.process_map.spec_index(p).view().owned_threads == entry_self.process_map.spec_index(p).view().owned_threads
+                            && self.process_map.spec_index(p).view().pagetable == entry_self.process_map.spec_index(p).view().pagetable);
+                };
                 assert(self.process_management_inv());
                 // ---- inv() direct conjuncts ----
                 assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by {
@@ -2565,6 +2497,7 @@ verus! {
                 implies
                     self.process_map.spec_index(p_ptr).view() == post_transfer_self.process_map.spec_index(p_ptr).view()
                     && self.process_map.spec_index(p_ptr).view_rodata() == post_transfer_self.process_map.spec_index(p_ptr).view_rodata()
+                    && self.process_map.spec_index(p_ptr).being_killed() == post_transfer_self.process_map.spec_index(p_ptr).being_killed()
                 by {};
                 assert(self.pagetable_map == post_transfer_self.pagetable_map);
                 assert(self.cpu_array.unchanged_except(&cpu_array_before_unlock, cpu_id));
@@ -2573,7 +2506,7 @@ verus! {
                     == post_transfer_self.cpu_array.spec_index(cpu_id).view().view());
                 assert(self.cpu_array.inv()) by { reveal(cpu_array_wf); };
                 assert(post_transfer_self.cpu_array.inv()) by { reveal(cpu_array_wf); };
-                lemma_release_with_process_preserves_user_view(post_transfer_self, *self, cpu_id);
+                // lemma_release_with_process_preserves_user_view(post_transfer_self, *self, cpu_id);
                 assert(kernel_k_to_kernel_u(post_transfer_self) == kernel_k_to_kernel_u(*self));
             }
             // Close the user-view step.
@@ -2707,7 +2640,7 @@ verus! {
         /// in the same context as the fresh `wunlock` ensures, where it
         /// instantiates — see veriflat-project-notes.md).
         #[verifier::spinoff_prover]
-        fn release_cpu_and_finish(
+        pub(crate) fn release_cpu_and_finish(
             &mut self,
             tracked mut lctx: Tracked<LocalContext>,
             Tracked(steps): Tracked<&mut KernelSteps>,

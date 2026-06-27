@@ -32,7 +32,7 @@ pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
 pub const QUOTA_MAJOR: LockMajorId = 102;
-pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = QUOTA_MAJOR + 1;
+pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = PROCESS_LOCK_MAJOR + 1;
 pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 // -------------------- End of const --------------------------
 
@@ -61,17 +61,28 @@ impl LockOwnerId{
         self is NotApp || other is NotApp 
     }
     pub open spec fn spec_gt(self, other: Self) -> bool {
+        // Owner-id order (high → low): None > Some(big) > … > Some(small) > High.
+        //   - `None` is the MAX: a `None`-owner object (a Free page, pagetable)
+        //     is locked LAST in an atomic section — once one is held, nothing
+        //     with a concrete (`Some`) owner is acquired afterward.
+        //   - `High` is the MIN: an `Owned` object (the intended owner-id for a
+        //     page once it leaves the allocator) can only be acquired when NO
+        //     `Some`-owner lock is held. Since the protocol always locks the CPU
+        //     / process (a `Some` owner) first, a `High`-owner object can never
+        //     be locked on top of it — i.e. owned pages are effectively private.
+        //   - `NotApp` is a wildcard (spec_eq with anything), so its rows never
+        //     decide an ordering — the LockId comparison skips to the next field.
         match (self, other){
             (LockOwnerId::NotApp, _) => false,
             (_, LockOwnerId::NotApp) => false,
             (LockOwnerId::High, LockOwnerId::High) => false,
-            (LockOwnerId::High, LockOwnerId::Some(_)) => true,
-            (LockOwnerId::High, LockOwnerId::None) => true,
-            (LockOwnerId::Some(_), LockOwnerId::High) => false,
+            (LockOwnerId::High, LockOwnerId::Some(_)) => false,
+            (LockOwnerId::High, LockOwnerId::None) => false,
+            (LockOwnerId::Some(_), LockOwnerId::High) => true,
             (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x > y,
-            (LockOwnerId::Some(_), LockOwnerId::None) => true,
-            (LockOwnerId::None, LockOwnerId::High) => false,
-            (LockOwnerId::None, LockOwnerId::Some(_)) => false,
+            (LockOwnerId::Some(_), LockOwnerId::None) => false,
+            (LockOwnerId::None, LockOwnerId::High) => true,
+            (LockOwnerId::None, LockOwnerId::Some(_)) => true,
             (LockOwnerId::None, LockOwnerId::None) => false,
         }
     }
@@ -82,17 +93,20 @@ impl LockOwnerId{
         self > other
     }    
     pub open spec fn spec_lt(self, other: Self) -> bool {
+        // Mirror of spec_gt: a < b iff b > a (NotApp rows stay false). Order
+        // high → low is None > Some(big) > Some(small) > High, so `None` is
+        // never less than anything and `High` is less than everything.
         match (self, other){
             (LockOwnerId::NotApp, _) => false,
             (_, LockOwnerId::NotApp) => false,
             (LockOwnerId::High, LockOwnerId::High) => false,
-            (LockOwnerId::High, LockOwnerId::Some(_)) => false,
-            (LockOwnerId::High, LockOwnerId::None) => false,
-            (LockOwnerId::Some(_), LockOwnerId::High) => true,
+            (LockOwnerId::High, LockOwnerId::Some(_)) => true,
+            (LockOwnerId::High, LockOwnerId::None) => true,
+            (LockOwnerId::Some(_), LockOwnerId::High) => false,
             (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x < y,
-            (LockOwnerId::Some(_), LockOwnerId::None) => false,
-            (LockOwnerId::None, LockOwnerId::High) => true,
-            (LockOwnerId::None, LockOwnerId::Some(_)) => true,
+            (LockOwnerId::Some(_), LockOwnerId::None) => true,
+            (LockOwnerId::None, LockOwnerId::High) => false,
+            (LockOwnerId::None, LockOwnerId::Some(_)) => false,
             (LockOwnerId::None, LockOwnerId::None) => false,
         }
     }
