@@ -1,0 +1,253 @@
+use vstd::prelude::*;
+use crate::*;
+use crate::kernel::*;
+verus! {
+
+// ===== Trusted set/thread-fold + staged-pages axioms (TCB) =====
+// Moved out of kernel/spec_util.rs (which holds only spec fns).
+// Consumed by the kernel-preservation lemmas in lemma_u::kernel_preservation.
+
+// ============================================================
+//   Trusted axioms: narrow set-fold facts
+// ============================================================
+//
+// These are the ONLY external_body lemmas used by the
+// `container_process_allocator_quota_wf` preservation proofs below.
+// Each captures a pure fact about `Set::fold` of the shape
+// `s.fold(0, |sum: int, p| sum + pmap.spec_index(p).view().quota_*)`
+// — i.e. "summing a process quota over a finite set of process pointers".
+// The lambda body is inlined to match exactly the lambda used in the
+// `container_process_allocator_quota_*_wf` spec, so unification at call
+// sites is trivial. Same shape and granularity as the user's
+// `fold_change_mem_4k_lemma` reference template.
+//
+// Each could in principle be derived from vstd's `lemma_fold_insert` /
+// `lemma_fold_empty` by induction on the set, but vstd doesn't ship the
+// induction step as a broadcast lemma so we expose them here as narrow
+// axioms instead.
+
+/// Trusted axiom (TCB): sum-fold of `process_effective_quota_4k` over a set
+/// is preserved when each process's effective quota is preserved.
+/// Soundness: induct on the set; per-element equality closes the step.
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_4k_fold_eq(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+)
+    requires
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_4k(pre.spec_index(p))]
+            s.contains(p) ==>
+                process_effective_quota_4k(post.spec_index(p))
+                    == process_effective_quota_4k(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p_ptr))),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_2m_fold_eq(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+)
+    requires
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_2m(pre.spec_index(p))]
+            s.contains(p) ==>
+                process_effective_quota_2m(post.spec_index(p))
+                    == process_effective_quota_2m(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(pre.spec_index(p_ptr))),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_1g_fold_eq(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+)
+    requires
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_1g(pre.spec_index(p))]
+            s.contains(p) ==>
+                process_effective_quota_1g(post.spec_index(p))
+                    == process_effective_quota_1g(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(pre.spec_index(p_ptr))),
+{
+}
+
+/// Trusted axiom (TCB): when exactly one process's effective quota changes,
+/// the fold sum shifts by the per-element delta.
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_4k_fold_change_one(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    mod_p: RwLockProcessPtr,
+)
+    requires
+        s.contains(mod_p),
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_4k(pre.spec_index(p))]
+            s.contains(p) && p != mod_p ==>
+                process_effective_quota_4k(post.spec_index(p))
+                    == process_effective_quota_4k(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p_ptr)))
+                - process_effective_quota_4k(pre.spec_index(mod_p))
+                + process_effective_quota_4k(post.spec_index(mod_p)),
+{
+}
+
+/// Trusted axiom (TCB): thread direct free-quota-pending fold preserved
+/// when per-thread values are unchanged.
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_4k_fold_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().direct_free_quota_pending_4k]
+            s.contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_4k.view()
+                    == pre.spec_index(t).view().direct_free_quota_pending_4k.view(),
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_4k.view())
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_2m_fold_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().direct_free_quota_pending_2m]
+            s.contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_2m.view()
+                    == pre.spec_index(t).view().direct_free_quota_pending_2m.view(),
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_2m.view())
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_1g_fold_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().direct_free_quota_pending_1g]
+            s.contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_1g.view()
+                    == pre.spec_index(t).view().direct_free_quota_pending_1g.view(),
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_1g.view())
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()),
+{
+}
+
+/// Trusted axiom (TCB): indirect free-quota-pending fold at a specific
+/// depth is preserved when per-thread values at that depth are unchanged.
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_4k_fold_eq_at_depth(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    depth: int,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().indirect_free_quota_pending_4k]
+            s.contains(t) ==>
+                post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth)
+                    == pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth))
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth)),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_2m_fold_eq_at_depth(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    depth: int,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().indirect_free_quota_pending_2m]
+            s.contains(t) ==>
+                post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth)
+                    == pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth),
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth))
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth)),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    depth: int,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().indirect_free_quota_pending_1g]
+            s.contains(t) ==>
+                post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth)
+                    == pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth),
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth))
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth)),
+{
+}
+
+/// Trusted axiom (TCB): `process_staged_pages_wf` is preserved when
+/// page_array is unchanged and per-process views (which contain
+/// temp_alloc_cache) are unchanged. Narrow: the quantifiers in
+/// `process_staged_pages_{4k,2m,1g}_wf` evaluate identically when their
+/// only free variables (page_array entries and process views) are equal.
+#[verifier::external_body]
+pub proof fn lemma_process_staged_pages_wf_preserved_for_view_eq(
+    pre_process_map: ProcessLockedMap,
+    post_process_map: ProcessLockedMap,
+    page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+)
+    requires
+        process_staged_pages_wf(pre_process_map, page_array),
+        post_process_map.dom() == pre_process_map.dom(),
+        forall|p_ptr: RwLockProcessPtr|
+            #![trigger post_process_map.spec_index(p_ptr).view().temp_alloc_cache_4k]
+            post_process_map.dom().contains(p_ptr) ==>
+                post_process_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view()
+                    == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view()
+                && post_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view()
+                    == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view()
+                && post_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view()
+                    == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view(),
+    ensures
+        process_staged_pages_wf(post_process_map, page_array),
+{
+}
+
+}

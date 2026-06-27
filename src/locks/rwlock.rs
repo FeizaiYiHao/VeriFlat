@@ -671,13 +671,15 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibil
     &&&
     new.inv()
     &&&
-    new@ == old@    
+    new@ == old@
     &&&
     new.view_rodata() == old.view_rodata()
     &&&
     new.view_kernel_ghost() == old.view_kernel_ghost()
     &&&
     new.view_user_ghost() == old.view_user_ghost()
+    &&&
+    new.being_killed() == old.being_killed()
     &&&
     old.locked() == false
 
@@ -702,6 +704,8 @@ pub open spec fn wunlock_ensures<T:LockInvTrait + LockUserVisibilityTrait, ROT, 
     new.view_kernel_ghost() == old.view_kernel_ghost()
     &&&
     new.view_user_ghost() == old.view_user_ghost()
+    &&&
+    new.being_killed() == old.being_killed()
 }
 
 pub open spec fn take_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{

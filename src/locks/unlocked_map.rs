@@ -171,7 +171,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].global_poll == old(self)[alloc_ptr].global_poll,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             // The `&mut AllocatorQuota` ⇄ inner-value linkage.
             *ret == old(self)[alloc_ptr].quota.view(),
@@ -231,7 +230,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             // The `&mut LinkedList` ⇄ inner-value linkage.
             *ret == old(self)[alloc_ptr].global_poll.view(),
@@ -293,7 +291,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].global_poll == old(self)[alloc_ptr].global_poll,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             // The `&mut AllocatorCache` ⇄ inner-value linkage.
             *ret == old(self)[alloc_ptr].cpu_caches[cpu_id]@@,
@@ -316,6 +313,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     // helpers.
     // ====================================================================
 
+    /* 
     /// Acquire the quota lock of the allocator at `alloc_ptr`.
     pub fn wlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires
@@ -350,7 +348,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].global_poll == old(self)[alloc_ptr].global_poll,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             // Other map entries untouched.
             forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self)[k] == old(self)[k],
@@ -382,7 +379,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].global_poll == old(self)[alloc_ptr].global_poll,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self)[k] == old(self)[k],
     {
@@ -423,7 +419,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self)[k] == old(self)[k],
     {
@@ -454,7 +449,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self)[k] == old(self)[k],
     {
@@ -497,7 +491,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].global_poll == old(self)[alloc_ptr].global_poll,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self)[k] == old(self)[k],
     {
@@ -506,8 +499,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     }
 
     /// Release the per-cpu cache lock of the allocator at `alloc_ptr`.
-    /// Caller must have restored the cache's length to match the recorded
-    /// `differential` entry (see `PageAllocator::wunlock_cache`).
+    /// `wf()` is preserved across unlock with no length-consistency obligation
+    /// (see `PageAllocator::wunlock_cache`).
     pub fn wunlock_cache(&mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>)
         requires
             old(self).perms_wf(),
@@ -516,8 +509,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             cpu_id_valid(cpu_id),
             old(self)[alloc_ptr].cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
             old(self)[alloc_ptr].cpu_caches[cpu_id]@.being_killed() == false,
-            old(self)[alloc_ptr].cpu_caches[cpu_id]@.view().linked_list.len()
-                == old(self)[alloc_ptr].differential@[cpu_id as int],
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[alloc_ptr].cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
@@ -533,13 +524,13 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self)[alloc_ptr].global_poll == old(self)[alloc_ptr].global_poll,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
             final(self)[alloc_ptr].owning_container == old(self)[alloc_ptr].owning_container,
-            final(self)[alloc_ptr].differential == old(self)[alloc_ptr].differential,
             final(self)[alloc_ptr].total_free_pages == old(self)[alloc_ptr].total_free_pages,
             forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self)[k] == old(self)[k],
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_cache(cpu_id, Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
+    */
 }
 
 

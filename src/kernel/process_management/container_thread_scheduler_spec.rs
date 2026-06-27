@@ -25,7 +25,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn container_thread_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-            thread_map: LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>, 
+            thread_map: ThreadLockedMap, 
             scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         &&&
         forall|t_ptr:RwLockThreadPtr|

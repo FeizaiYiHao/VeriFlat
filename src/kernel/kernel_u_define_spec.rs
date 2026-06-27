@@ -23,9 +23,9 @@ verus! {
     pub open spec fn kernel_k_to_kernel_u(kernel_k: KernelK) -> KernelU {
         KernelU {
             cpu_array: Seq::new(
-                kernel_k.cpu_array.view().len(),
+                NUM_CPUS as nat,
                 |i: int| {
-                    let c = kernel_k.cpu_array.view()[i].view();
+                    let c = kernel_k.cpu_array.spec_index(i as usize).value.view();
                     CpuU {
                         owning_container: c.owning_container,
                         state: c.state,

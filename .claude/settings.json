@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git stash *)",
+      "Bash(head *)",
+      "Bash(sleep *)",
+      "Bash(./verify.sh *)",
+      "Bash(./verify.sh --verify-function lemma_release_with_process_preserves_user_view)",
+      "Bash(./verus/source/target-verus/release/verus --help)",
+      "Bash(awk 'NR>=1525 && NR<=1545' /Volumes/workplace/veriflat/VeriFlat/src/kernel/implementation/syscall_alloc_quota.rs)",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Bash(sed *)",
+      "Bash(git *)",
+      "Bash(./verify.sh *)",
+      "Bash(cd *)",
+      "Bash(perl *)",
+      "Bash(awk *)",
+      "Bash(echo *)",
+      "Read(//tmp/**)",
+      "Bash(find *)",
+      "Bash(./verify.sh > /tmp/verify_warns2.log 2>&1; echo \"=== warnings ===\"; grep -c \"automatically chose triggers\" /tmp/verify_warns2.log; echo \"=== result ===\"; tail -n 1 /tmp/verify_warns2.log)",
+      "Bash(./verify.sh >*)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(wc *)",
+      "Bash(tail *)"
+    ]
+  }
+}

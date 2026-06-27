@@ -3,11 +3,13 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn process_perms_wf(process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>) -> bool{
+    pub open spec fn process_perms_wf(process_perms: ProcessLockedMap) -> bool{
         &&&
         process_perms.perms_wf()
         &&&
         process_tree_fields_wf(process_perms)
+        &&&
+        process_temp_alloc_empty_unless_wlocked(process_perms)
         &&&
         forall|p_ptr:RwLockProcessPtr|
             #![auto]
@@ -17,7 +19,7 @@ verus! {
     }
 
     pub open spec fn process_tree_fields_wf(
-        process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+        process_perms: ProcessLockedMap,
     ) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
@@ -37,6 +39,16 @@ verus! {
                 &&&
                 process_perms.spec_index(p_ptr).view().subtree_set.view().finite()
                 &&&
+                // The temp-alloc caches are finite: their `.len()` feeds
+                // process_effective_quota_* and the conservation law, which are
+                // only meaningful for finite sets, and staging a page (Set::insert)
+                // must grow the length by exactly 1.
+                process_perms.spec_index(p_ptr).view().temp_alloc_cache_4k.view().finite()
+                &&&
+                process_perms.spec_index(p_ptr).view().temp_alloc_cache_2m.view().finite()
+                &&&
+                process_perms.spec_index(p_ptr).view().temp_alloc_cache_1g.view().finite()
+                &&&
                 process_perms.spec_index(p_ptr).view().uppertree_seq.view().len()
                     ==
                     process_perms.spec_index(p_ptr).view_rodata().view().depth
@@ -44,7 +56,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         process_tree_dom.contains(root_process)
         &&&
@@ -71,7 +83,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_childern_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_childern_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&&
         forall|p_ptr: RwLockProcessPtr, child_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().children.view().contains(child_p_ptr)]
@@ -106,7 +118,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn processs_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn processs_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())]
@@ -132,7 +144,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_childern_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_childern_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
@@ -145,7 +157,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr, sub_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr)]
@@ -164,7 +176,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr, u_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().uppertree_seq@.contains(u_ptr)]
@@ -187,7 +199,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr, sub_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr), process_perms[sub_p_ptr].view().uppertree_seq@.contains(p_ptr)]
@@ -198,7 +210,7 @@ verus! {
             process_perms.spec_index(p_ptr).view().subtree_set@.contains(sub_p_ptr) == process_perms[sub_p_ptr].view().uppertree_seq@.contains(p_ptr)
     }
 
-    pub open spec fn process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& process_root_wf(root_process, process_tree_dom, process_perms)
         &&& process_childern_parent_wf(root_process, process_tree_dom, process_perms)
         &&& processs_linkedlist_wf(root_process, process_tree_dom, process_perms)
@@ -216,8 +228,8 @@ verus! {
     pub proof fn process_no_change_to_tree_fields_imply_wf(
         root_process: RwLockProcessPtr,
         process_tree_dom: Set<RwLockProcessPtr>,
-        old_process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
-        new_process_perms: LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>,
+        old_process_perms: ProcessLockedMap,
+        new_process_perms: ProcessLockedMap,
     )
         requires
             process_tree_wf(root_process, process_tree_dom, old_process_perms),
@@ -240,7 +252,7 @@ verus! {
     }
 
 #[verifier::loop_isolation(false)]
-pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>, 
+pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &ProcessLockedMap, 
         a_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr) -> (ret: bool)
     requires
         process_perms_wf(*process_perms),
