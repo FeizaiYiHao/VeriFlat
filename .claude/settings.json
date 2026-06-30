@@ -3,6 +3,9 @@
     "allow": [
       "Bash(git stash *)",
       "Bash(head *)",
+      "Bash(shasum *)",
+      "Bash(source *)",
+      "Bash(./activate *)",
       "Bash(sleep *)",
       "Bash(./verify.sh *)",
       "Bash(./verify.sh --verify-function lemma_release_with_process_preserves_user_view)",
@@ -26,7 +29,8 @@
       "Bash(ls *)",
       "Bash(cat *)",
       "Bash(wc *)",
-      "Bash(tail *)"
+      "Bash(tail *)",
+      "Bash(source *)"
     ]
   }
 }

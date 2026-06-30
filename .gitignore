@@ -28,3 +28,14 @@
 
 *.txt
 lib
+
+# smt_times.sh transient outputs (the script's own temp JSON + row file, plus
+# the hand-run extraction/sort artifacts). The script + parser themselves
+# (smt_times.sh, smt_parse.py) are tracked; only their generated data is not.
+.smt_times.json
+.smt_times.json.rows
+.smt_rows.tsv
+.smt_sorted.tsv
+smt_pt.json
+smt_report.txt
+tmp.rs

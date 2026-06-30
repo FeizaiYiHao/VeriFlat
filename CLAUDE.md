@@ -12,12 +12,11 @@ fresh session loads them automatically:
   gotchas, and the reference syscall example. Stable; rarely edited.
 - **verus-verification.md** — the transferable "how to verify" playbook
   (cost tactics, proof patterns, TCB axiom design, failure strategies).
-- **current-work.md** — fast-moving state: current verified count, in-progress
-  functions, pointers to history. Update this as work lands.
-
-`.kiro/HISTORY.md` is deliberately NOT imported — it holds spec/proof history
-(the "why" behind clauses) and is read on demand, not every session.
+- **verus-style.md** — the code-style signature: layout, naming, idiom, and
+  the concrete proof-structure patterns (nested inv() re-establishment, the
+  lock-wrapper-per-object pattern, fold-conjunct discipline). Write edits that
+  match it.
 
 @.kiro/steering/veriflat-project-notes.md
 @.kiro/steering/verus-verification.md
-@.kiro/steering/current-work.md
+@.kiro/steering/verus-style.md

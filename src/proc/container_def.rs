@@ -36,6 +36,28 @@ pub struct ContainerRO {
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
 }
 
+pub ghost struct ContainerU {
+    pub children: LinkedList<RwLockContainerPtr, 233>,
+    pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
+    pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
+    pub root_process: RwLockProcessPtr,
+    pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
+    pub owned_cpus: ArraySet<NUM_CPUS>,
+    pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
+    pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
+    pub owned_pages: Ghost<Set<PagePtr>>,
+    pub parent: Option<RwLockContainerPtr>,    
+    pub depth: usize,
+    pub scheduler: RwLockSchedulerPtr,
+    pub pcid_allocator: PcidIoidAllocator,
+    pub ioid_allocator: PcidIoidAllocator,
+    pub allocator_ptr_4k: RwLockPageAllocatorPtr,
+    pub allocator_ptr_2m: RwLockPageAllocatorPtr,
+    pub allocator_ptr_1g: RwLockPageAllocatorPtr,
+
+    pub killed: bool,
+}
+
 impl LockInvTrait for Container {
     open spec fn inv(&self) -> bool {
         &&&

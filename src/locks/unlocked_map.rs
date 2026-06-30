@@ -302,18 +302,19 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
         alloc.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lp)
     }
 
-    // ====================================================================
-    // Field-level lock / unlock helpers at the map level.
-    //
-    // Each routes `borrow_mut(alloc_ptr)` into the corresponding
-    // `PageAllocator` field lock helper and frames the rest of the map
-    // (domain, other entries) plus this allocator's untouched fields.
-    // The `lctx.lock_map` obligations (acyclic / fresh on acquire; matching
-    // key on release) flow straight through from the `PageAllocator`
-    // helpers.
-    // ====================================================================
+}
 
-    /* 
+// ====================================================================
+// Field-level lock / unlock helpers at the map level.
+//
+// Each routes `borrow_mut(alloc_ptr)` into the corresponding
+// `PageAllocator` field lock helper and frames the rest of the map
+// (domain, other entries) plus this allocator's untouched fields.
+// The `lctx.lock_map` obligations (acyclic / fresh on acquire; matching
+// key on release) flow straight through from the `PageAllocator`
+// helpers.
+// ====================================================================
+impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     /// Acquire the quota lock of the allocator at `alloc_ptr`.
     pub fn wlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires
@@ -355,7 +356,9 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wlock_quota(Tracked(lctx), page_size, Ghost(alloc_ptr))
     }
+}
 
+impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     /// Release the quota lock of the allocator at `alloc_ptr`.
     pub fn wunlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>)
         requires
@@ -385,7 +388,10 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_quota(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
+}
 
+impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
+    /*
     /// Acquire the global-pool lock of the allocator at `alloc_ptr`.
     pub fn wlock_global_poll(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires

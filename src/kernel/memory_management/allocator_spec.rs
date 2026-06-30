@@ -17,12 +17,14 @@ verus! {
     pub open spec fn allocator_free_page_ptrs_wf(allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool{
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
+            #![trigger allocator_map.spec_index(alloc_ptr), page_ptr_valid(page_ptr)]
             #![trigger allocator_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
             allocator_map.dom().contains(alloc_ptr) && allocator_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
             ==>
             page_ptr_valid(page_ptr)
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
+            #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), page_ptr_valid(page_ptr)]
             #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             allocator_map.dom().contains(alloc_ptr) && 
             cpu_id_valid(cpu_i) &&

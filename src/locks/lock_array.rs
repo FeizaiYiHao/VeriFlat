@@ -146,6 +146,15 @@ verus! {
     }
 
     impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
+        pub open spec fn lock_id_by_index(&self, index:usize) -> LockId
+            recommends
+                0 <= index < N,
+        {
+            self.spec_index(index).lock_id()
+        }
+    }
+
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
             requires
@@ -153,12 +162,7 @@ verus! {
                 0 <= index < N,
 
                 wlock_requires(old(self)[index]@, old(lctx)),
-                old(lctx).lock_id_acyclic(LockId{
-                    container: old(self)[index].container_depth(),
-                    process: old(self)[index].process_depth(),
-                    major: old(self)[index]@@.current_lock_major(),
-                    minor: old(self)[index].lock_minor(),
-                }),
+                old(lctx).lock_id_acyclic(old(self).lock_id_by_index(index)),
                 old(lctx).obj_id_fresh(obj_id@),
             ensures
                 final(self).inv(),
@@ -168,18 +172,8 @@ verus! {
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                wlock_ensures(old(self)[index]@, final(self)[index]@, LockId{
-                    container: old(self)[index].container_depth(),
-                    process: old(self)[index].process_depth(),
-                    major: old(self)[index]@@.current_lock_major(),
-                    minor: old(self)[index].lock_minor(),
-                }, final(lctx).thread_id(), ret@),
-                lock_ensures(old(lctx), final(lctx), final(self)[index]@@, LockId{
-                    container: old(self)[index].container_depth(),
-                    process: old(self)[index].process_depth(),
-                    major: old(self)[index]@@.current_lock_major(),
-                    minor: old(self)[index].lock_minor(),
-                }, obj_id@),
+                wlock_ensures(old(self)[index]@, final(self)[index]@, old(self).lock_id_by_index(index), final(lctx).thread_id(), ret@),
+                lock_ensures(old(lctx), final(lctx), final(self)[index]@@, old(self).lock_id_by_index(index), obj_id@),
         {
             self.array.ar[index].wlock_external(Tracked(lctx))
         }

@@ -107,6 +107,82 @@ pub proof fn lemma_process_effective_quota_4k_fold_change_one(
 {
 }
 
+/// Trusted axiom (TCB): when exactly one process's effective quota changes by
+/// `x` (e.g. its `quota_4k` shifts by `x` with `temp_alloc_cache_4k`
+/// unchanged), the fold sum shifts by the same `x`. The explicit-`x` form of
+/// `lemma_process_effective_quota_4k_fold_change_one`, for callers that know
+/// the increment directly.
+/// Soundness: induct on the set; the one changed element contributes `+x`,
+/// every other element is unchanged.
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_4k_fold_change_by(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    mod_p: RwLockProcessPtr,
+    x: int,
+)
+    requires
+        s.contains(mod_p),
+        process_effective_quota_4k(post.spec_index(mod_p))
+            == process_effective_quota_4k(pre.spec_index(mod_p)) + x,
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_4k(pre.spec_index(p))]
+            s.contains(p) && p != mod_p ==>
+                process_effective_quota_4k(post.spec_index(p))
+                    == process_effective_quota_4k(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p_ptr))) + x,
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_2m_fold_change_by(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    mod_p: RwLockProcessPtr,
+    x: int,
+)
+    requires
+        s.contains(mod_p),
+        process_effective_quota_2m(post.spec_index(mod_p))
+            == process_effective_quota_2m(pre.spec_index(mod_p)) + x,
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_2m(pre.spec_index(p))]
+            s.contains(p) && p != mod_p ==>
+                process_effective_quota_2m(post.spec_index(p))
+                    == process_effective_quota_2m(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(pre.spec_index(p_ptr))) + x,
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_1g_fold_change_by(
+    s: Set<RwLockProcessPtr>,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    mod_p: RwLockProcessPtr,
+    x: int,
+)
+    requires
+        s.contains(mod_p),
+        process_effective_quota_1g(post.spec_index(mod_p))
+            == process_effective_quota_1g(pre.spec_index(mod_p)) + x,
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_1g(pre.spec_index(p))]
+            s.contains(p) && p != mod_p ==>
+                process_effective_quota_1g(post.spec_index(p))
+                    == process_effective_quota_1g(pre.spec_index(p)),
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(post.spec_index(p_ptr)))
+            == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(pre.spec_index(p_ptr))) + x,
+{
+}
+
 /// Trusted axiom (TCB): thread direct free-quota-pending fold preserved
 /// when per-thread values are unchanged.
 #[verifier::external_body]

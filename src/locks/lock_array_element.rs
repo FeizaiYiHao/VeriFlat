@@ -76,5 +76,16 @@ verus! {
             self.view().view().process_depth()
         }
     }
+
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+        pub open spec fn lock_id(&self) -> LockId {
+            LockId{
+                container: self.container_depth(),
+                process: self.process_depth(),
+                major: self.view().view().current_lock_major(),
+                minor: self.lock_minor(),
+            }
+        }
+    }
     
 }

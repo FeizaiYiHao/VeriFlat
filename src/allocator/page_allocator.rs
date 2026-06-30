@@ -103,7 +103,7 @@ impl PageAllocator{
     //         self.cpu_caches.spec_index(cpu_i).process_depth() == self.quota.view().process_depth()
     // }
 }
-/* 
+
 impl PageAllocator{
     /// Acquire the inner `quota` write lock.
     ///
@@ -114,53 +114,45 @@ impl PageAllocator{
     ///
     /// Acyclic + freshness obligations on `lctx.lock_map` are passed through
     /// to the caller — same as a direct `RwLock::wlock`.
+    ///
+    /// `wf()` re-establishes for free: only `quota`'s lock state moves
+    /// (`wlock_ensures` preserves `quota.view()`), and the only fold conjunct
+    /// `total_free_pages_wf` folds over `cpu_caches` + `global_poll` — both
+    /// untouched here — so no fold lemma is needed.
     pub fn wlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
             wlock_requires(old(self).quota, old(lctx)),
-            old(lctx).lock_id_acyclic(LockId{
-                container: old(self).quota@.container_depth(),
-                process: old(self).quota@.process_depth(),
-                major: old(self).quota@.current_lock_major(),
-                minor: old(self).quota@.lock_minor(),
-            }),
+            old(lctx).lock_id_acyclic(old(self).quota.lock_id()),
             old(lctx).obj_id_fresh(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
         ensures
             final(self).wf(),
             // Quota lock acquired.
-            wlock_ensures(old(self).quota, final(self).quota, LockId{
-                container: old(self).quota@.container_depth(),
-                process: old(self).quota@.process_depth(),
-                major: old(self).quota@.current_lock_major(),
-                minor: old(self).quota@.lock_minor(),
-            }, final(lctx).thread_id(), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self).quota.view(), LockId{
-                container: old(self).quota@.container_depth(),
-                process: old(self).quota@.process_depth(),
-                major: old(self).quota@.current_lock_major(),
-                minor: old(self).quota@.lock_minor(),
-            }, KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
+            wlock_ensures(old(self).quota, final(self).quota, old(self).quota.lock_id(), final(lctx).thread_id(), ret@),
+            lock_ensures(old(lctx), final(lctx), final(self).quota.view(), old(self).quota.lock_id(), KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).global_poll == old(self).global_poll,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        let lock_id = Ghost(LockId{
-            container: self.quota@.container_depth(),
-            process: self.quota@.process_depth(),
-            major: self.quota@.current_lock_major(),
-            minor: self.quota@.lock_minor(),
-        });
+        let lock_id = Ghost(old(self).quota.lock_id());
         self.quota.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)))
     }
+}
 
+impl PageAllocator{
     /// Release the inner `quota` write lock.
     ///
     /// The caller passes `page_size` and `alloc_ptr` so the wrapper can
     /// remove the matching key from `lctx.lock_map`. The lock id stored on
     /// `lock_perm` must match the key currently in the map — same contract
     /// as `RwLock::wunlock`.
+    ///
+    /// `wf()` re-establishes for free: only `quota`'s lock state moves
+    /// (`wunlock_ensures` preserves `quota.view()`), and the only fold conjunct
+    /// `total_free_pages_wf` folds over `cpu_caches` + `global_poll` — both
+    /// untouched here — so no fold lemma is needed.
     pub fn wunlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
@@ -187,7 +179,10 @@ impl PageAllocator{
     {
         self.quota.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)))
     }
+}
 
+/*
+impl PageAllocator{
     /// Acquire the inner `global_poll` write lock. Mirrors `wlock_quota`;
     /// builds `KernelObjId::AllocatorGlobalPoll`. The lock id is inferred
     /// from the global pool's traits.
