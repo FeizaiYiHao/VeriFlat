@@ -220,11 +220,17 @@ verus! {
         &&& process_subtree_set_exclusive(root_process, process_tree_dom, process_perms)
     }
 
-    /// Framing lemma: if every process in the tree domain has an unchanged
-    /// tree-relevant view (`view()` and `view_rodata()`), then
-    /// `process_tree_wf` is preserved. Mirror of
-    /// `container_no_change_to_tree_fields_imply_wf` for callers that touch
-    /// only lock-state on the process map.
+    /// Framing lemma: if every process in the tree domain has unchanged
+    /// tree-relevant fields, then `process_tree_wf` is preserved. Unlike a
+    /// `Container`, a `Process.view()` also carries non-tree state
+    /// (`quota_*`, `temp_alloc_cache_*`, `pagetable`, `owned_threads`) that
+    /// `process_tree_wf` never reads, so requiring full `view()` equality (as
+    /// `container_no_change_to_tree_fields_imply_wf` does) would needlessly
+    /// shut out callers that stage pages or adjust quota while leaving the tree
+    /// intact. We require equality only on the fields `process_tree_wf` reads:
+    /// `children`, `parent_linkedlist_node`, `uppertree_seq`, `subtree_set`
+    /// (off `view()`) and the whole read-only `view_rodata()` (immutable, so
+    /// always equal — `depth`/`parent` are the parts the tree invariant uses).
     pub proof fn process_no_change_to_tree_fields_imply_wf(
         root_process: RwLockProcessPtr,
         process_tree_dom: Set<RwLockProcessPtr>,
@@ -237,7 +243,10 @@ verus! {
             forall|p_ptr: RwLockProcessPtr|
                 #![trigger new_process_perms.spec_index(p_ptr)]
                 process_tree_dom.contains(p_ptr) ==>
-                    new_process_perms.spec_index(p_ptr).view() == old_process_perms.spec_index(p_ptr).view()
+                    new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
+                    && new_process_perms.spec_index(p_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(p_ptr).view().parent_linkedlist_node
+                    && new_process_perms.spec_index(p_ptr).view().uppertree_seq == old_process_perms.spec_index(p_ptr).view().uppertree_seq
+                    && new_process_perms.spec_index(p_ptr).view().subtree_set == old_process_perms.spec_index(p_ptr).view().subtree_set
                     && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata(),
         ensures
             process_tree_wf(root_process, process_tree_dom, new_process_perms),

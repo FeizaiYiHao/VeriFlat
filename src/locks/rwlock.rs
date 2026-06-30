@@ -793,5 +793,11 @@ impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT, const HAS_KILL
     }
 }  
 
+impl<T:LockIdTrait, const HAS_KILL_STATE: bool> LockIdTrait for RwLock<T, (), (), (), HAS_KILL_STATE>{
+    open spec fn lock_id(&self) -> LockId {
+        self.view().lock_id()
+    }
+}
+
 }
 

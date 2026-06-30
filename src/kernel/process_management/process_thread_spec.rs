@@ -20,7 +20,7 @@ verus! {
                 == thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr()
         &&&
         forall|t_ptr:RwLockThreadPtr|
-            #![trigger process_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc)]
+            #![trigger thread_map.spec_index(t_ptr).view().owning_proc]
             thread_map.dom().contains(t_ptr)
             ==>
             process_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc)

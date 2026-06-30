@@ -75,4 +75,9 @@ pub trait LockRecursivelyLockedTrait{
 pub trait UserViewHasKillState{
     spec fn killed(&self) -> bool;
 }
+
+pub trait LockIdTrait {
+    spec fn lock_id(&self) -> LockId;
+}
+
 }

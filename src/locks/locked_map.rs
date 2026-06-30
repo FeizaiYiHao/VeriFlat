@@ -174,6 +174,16 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
     }
 }
 
+
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+    pub open spec fn lock_id_by_key(&self, key: usize) -> LockId
+        recommends
+            self.dom().contains(key)
+    {
+        self.view().spec_index(key).lock_id()
+    }
+}
+
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
     pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
@@ -260,12 +270,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(lctx).kernel_view_locking_state() is Acquire,
             T::is_user_visible() ==> old(lctx).user_view_locking_state() is Acquire,
 
-            old(lctx).lock_id_acyclic(LockId{
-                container: old(self).spec_index(key).view().container_depth(),
-                process: old(self).spec_index(key).view().process_depth(),
-                major: old(self).spec_index(key).view().current_lock_major(),
-                minor: key,
-            }),
+            old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
             old(lctx).obj_id_fresh(obj_id@),
         ensures
             final(self).perms_wf(),
@@ -294,19 +299,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 ret.1 is Some
                 &&&
-                wlock_ensures(old(self)[key], final(self)[key], LockId{
-                    container: old(self).spec_index(key).container_depth(),
-                    process: old(self).spec_index(key).process_depth(),
-                    major: old(self).spec_index(key).view().current_lock_major(),
-                    minor: key,
-                }, final(lctx).thread_id(), ret.1.unwrap()@)
+                wlock_ensures(old(self)[key], final(self)[key], old(self).lock_id_by_key(key), final(lctx).thread_id(), ret.1.unwrap()@)
                 &&&
-                lock_ensures(old(lctx), final(lctx), old(self)[key].view(), LockId{
-                    container: old(self).spec_index(key).container_depth(),
-                    process: old(self).spec_index(key).process_depth(),
-                    major: old(self).spec_index(key).view().current_lock_major(),
-                    minor: key,
-                }, obj_id@)
+                lock_ensures(old(lctx), final(lctx), old(self)[key].view(), old(self).lock_id_by_key(key), obj_id@)
             },
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);

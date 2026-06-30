@@ -57,42 +57,76 @@ verus! {
         }
     }
 
-    /// User-view delta predicate: `new_u` differs from `old_u` by exactly
-    /// `process_map[process_ptr].quota_4k` increasing by `delta`. Every
-    /// other field of `process_ptr`'s projection is preserved, every
-    /// other process's projection is preserved, the process_map domain
-    /// is preserved, and the cpu_array is preserved.
-    ///
-    /// Captures the user-visible effect of the success path of
-    /// `syscall_alloc_quota_4k`.
-    pub open spec fn kernel_u_only_process_quota_4k_changed(
-        old_u: KernelU,
-        new_u: KernelU,
-        process_ptr: RwLockProcessPtr,
-        delta: int,
-    ) -> bool {
-        &&& new_u.cpu_array == old_u.cpu_array
-        &&& new_u.process_map.dom() == old_u.process_map.dom()
-        &&& old_u.process_map.dom().contains(process_ptr)
-        // The targeted process: only `quota_4k` increased by `delta`;
-        // every other field preserved.
-        &&& new_u.process_map[process_ptr].quota_4k as int
-                == old_u.process_map[process_ptr].quota_4k as int + delta
-        &&& new_u.process_map[process_ptr].pagetable      == old_u.process_map[process_ptr].pagetable
-        &&& new_u.process_map[process_ptr].quota_2m       == old_u.process_map[process_ptr].quota_2m
-        &&& new_u.process_map[process_ptr].quota_1g       == old_u.process_map[process_ptr].quota_1g
-        &&& new_u.process_map[process_ptr].parent         == old_u.process_map[process_ptr].parent
-        &&& new_u.process_map[process_ptr].children       == old_u.process_map[process_ptr].children
-        &&& new_u.process_map[process_ptr].depth          == old_u.process_map[process_ptr].depth
-        &&& new_u.process_map[process_ptr].uppertree_seq  == old_u.process_map[process_ptr].uppertree_seq
-        &&& new_u.process_map[process_ptr].subtree_set    == old_u.process_map[process_ptr].subtree_set
-        &&& new_u.process_map[process_ptr].owned_threads  == old_u.process_map[process_ptr].owned_threads
-        &&& new_u.process_map[process_ptr].killed         == old_u.process_map[process_ptr].killed
-        // Every other process: projection unchanged.
-        &&& forall|p: RwLockProcessPtr|
-            #![trigger new_u.process_map[p]]
-            old_u.process_map.dom().contains(p) && p != process_ptr ==>
-                new_u.process_map[p] == old_u.process_map[p]
+    /// Framing lemma: `kernel_k_to_kernel_u` reads only a handful of per-element
+    /// projections, NOT whole fields. So the user-view projections of two
+    /// `KernelK`s are equal whenever they agree on exactly those projections:
+    ///   - per cpu slot, the payload `value.view()`;
+    ///   - per process, `view()` / `view_rodata()` / `being_killed()`, plus the
+    ///     process domain;
+    ///   - per pagetable entry, `view()` (the only thing `get_process_pagetable`
+    ///     reads — lock state is irrelevant).
+    /// Stated per-element (not as `process_map == ..` / `pagetable_map == ..`)
+    /// so a caller that moved lock state on a held pagetable / process — which
+    /// leaves the WHOLE map unequal but every `.view()` intact — can still use
+    /// it. Mirror of `container_no_change_to_tree_fields_imply_wf`.
+    pub proof fn kernel_no_change_to_user_view_fields_imply_kernel_u_eq(pre: &KernelK, post: &KernelK)
+        requires
+            // pagetable_map: only the per-entry `view()` is read (via
+            // `get_process_pagetable`), not lock state.
+            forall|pt: RwLockPageTableRoot|
+                #![trigger post.pagetable_map.spec_index(pt).view()]
+                post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view(),
+            // process_map: same domain, and per process only `view()` /
+            // `view_rodata()` / `being_killed()` are read.
+            post.process_map.dom() =~= pre.process_map.dom(),
+            forall|ptr: RwLockProcessPtr|
+                #![trigger post.process_map.spec_index(ptr)]
+                pre.process_map.dom().contains(ptr) ==>
+                    post.process_map.spec_index(ptr).view() == pre.process_map.spec_index(ptr).view()
+                    && post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata()
+                    && post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed(),
+            // cpu_array: per-slot payload `view()`.
+            forall|i: int|
+                #![trigger post.cpu_array.spec_index(i as usize).value.view()]
+                0 <= i < NUM_CPUS ==>
+                    post.cpu_array.spec_index(i as usize).value.view()
+                        == pre.cpu_array.spec_index(i as usize).value.view(),
+        ensures
+            kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
+    {
+        let pre_u = kernel_k_to_kernel_u(*pre);
+        let post_u = kernel_k_to_kernel_u(*post);
+        // cpu_array: element-wise, from the per-slot payload-view equality.
+        assert(post_u.cpu_array =~= pre_u.cpu_array) by {
+            assert forall|i: int|
+                0 <= i < NUM_CPUS
+                implies #[trigger] post_u.cpu_array[i] == pre_u.cpu_array[i]
+            by {
+                assert(post.cpu_array.spec_index(i as usize).value.view()
+                    == pre.cpu_array.spec_index(i as usize).value.view());
+            }
+        };
+        // process_map: same domain, and each projection reads only this process's
+        // `view()` / `view_rodata()` / `being_killed()` plus the pointed-to
+        // pagetable's `view()` (via `get_process_pagetable`).
+        assert(post_u.process_map =~= pre_u.process_map) by {
+            assert(post_u.process_map.dom() =~= pre_u.process_map.dom());
+            assert forall|ptr: RwLockProcessPtr|
+                #[trigger] post_u.process_map.dom().contains(ptr)
+                implies post_u.process_map[ptr] == pre_u.process_map[ptr]
+            by {
+                assert(pre.process_map.dom().contains(ptr));
+                assert(post.process_map.spec_index(ptr).view() == pre.process_map.spec_index(ptr).view());
+                assert(post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata());
+                assert(post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed());
+                // Same `.view()` ==> same pagetable ptr; that entry's `view()` is equal.
+                let pt = post.process_map.spec_index(ptr).view().pagetable;
+                assert(post.get_process_pagetable(ptr) == pre.get_process_pagetable(ptr)) by {
+                    assert(post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view());
+                };
+            }
+        };
+        assert(post_u == pre_u);
     }
 
 }

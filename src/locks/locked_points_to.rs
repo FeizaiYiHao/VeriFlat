@@ -47,6 +47,19 @@ impl<T:LockMajorTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockMa
     }
 }  
 
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,>
+LockIdTrait for PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>
+{
+    open spec fn lock_id(&self) -> LockId{
+        LockId{
+            container: self.value().container_depth(),
+            process: self.value().process_depth(),
+            major: self.value().view().current_lock_major(),
+            minor: self.lock_minor(),
+        }
+    }
+}
+
 
 // TODO
 #[verifier::external_body]
@@ -126,20 +139,12 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
         old(perm).is_init(),
 
         wlock_requires(old(perm).value(), old(lctx)),
-        old(lctx).lock_id_acyclic(LockId{
-            container: old(perm).value().container_depth(),
-            process: old(perm).value().process_depth(),
-            major: old(perm).value().view().current_lock_major(),
-            minor: old(perm).lock_minor(),
-        }),
+        old(lctx).lock_id_acyclic(old(perm).lock_id()),
         old(lctx).obj_id_fresh(obj_id@),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
 
-        // A (possibly failed) lock attempt never changes the calling thread's
-        // identity. Needed so a held lock perm minted by an earlier wlock can
-        // still be matched against `lctx` after a failed `wlock_unless_killed`.
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),

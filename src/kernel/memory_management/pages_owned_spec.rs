@@ -106,7 +106,6 @@ pub open spec fn process_staged_pages_1g_wf(
 
 // ---------- Combined ----------
 
-#[verifier::opaque]
 pub open spec fn process_staged_pages_wf(
     process_map: ProcessLockedMap,
     page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
