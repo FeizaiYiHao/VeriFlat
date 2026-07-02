@@ -39,3 +39,7 @@ lib
 smt_pt.json
 smt_report.txt
 tmp.rs
+
+# style-gate.sh sentinel: /style-check touches this on a clean pass to clear the
+# Stop hook. Per-checkout state, not source — the hooks/command/steering are tracked.
+.claude/.style-checked

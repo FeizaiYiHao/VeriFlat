@@ -5,6 +5,17 @@ the SURFACE-STYLE delta over `verus-verification.md` (which covers the cost
 playbook & TCB-axiom design); this covers layout, naming, idiom, and the
 concrete proof-structure patterns that recur across the lock wrappers.
 
+**Canonical style references — mirror these, they are HIS code:**
+`kernel/implementation/syscall_alloc_quota.rs` (the `syscall_alloc_quota_4k`
+syscall + `commit_alloc_quota_4k` helper) and the `kernel/implementation/
+locker_unlocker.rs` wrappers (`wlock_cpu`, `wunlock_quota_4k`, `wunlock_process`,
+…). When in doubt about layout, comment density, banner form, `requires`/`ensures`
+shape, or trigger idiom, open the nearest LIVE function in these two files and
+copy its shape. Do NOT calibrate against commented-out/`/* */` code or the dead
+templates (`finish_empty_user_step`, `release_cpu_and_finish`) — those are not
+his current style. The rules below are extracted FROM these files; the files win
+if they ever disagree.
+
 ## Match these
 
 - **Layout:** `&&&` / `|||` connector ALONE on its own line before each
@@ -19,7 +30,20 @@ concrete proof-structure patterns that recur across the lock wrappers.
 - **Decompose:** many tiny `#[verifier::opaque] pub open spec fn` sub-preds;
   a NON-opaque combiner `&&&`s them. Never one monolithic invariant.
 - **Triggers:** hand-written `#![trigger ...]` on the deepest lookup chain of
-  every quantifier; re-issue `reveal()` inside every nested `by` block.
+  every DEEP invariant quantifier; re-issue `reveal()` inside every nested `by`
+  block. For a SHALLOW framing forall (the "every other entry unchanged" shape,
+  `forall|k| dom.contains(k) && k != touched ==> self[k] == old[k]`) use
+  `#![auto]` — that's the LIVE idiom in `wunlock_quota_4k`. NEVER `#![all_triggers]`.
+- **Comment discipline (high value — surface tell):** `requires` blocks are
+  BARE — no `//` group notes, no `// ---- ----` banners; the clauses stand alone
+  (`wlock_cpu`, `syscall_alloc_quota_4k`). `// ---- <title> ----` banners are
+  SINGLE-LINE and belong ONLY to `ensures` framing and to the body's `inv()`
+  re-establishment; never wrap a banner across lines. `proof {}` blocks carry NO
+  prose — the error-path blocks and the top reveal block in `syscall_alloc_quota_4k`
+  are bare calls. Doc comments (`///`) are absent on the ordinary wrappers
+  (`wlock_cpu`, `wlock_quota_4k`); a wrapper gets one ONLY to explain the single
+  non-obvious contract point (e.g. `wunlock_process`'s temp-alloc protocol) —
+  never to recap what the body does step-by-step.
 - **Bidirectional relations:** two separate forall conjuncts tagged
   `// forward` / `// reverse`, each `dom()`-guarded.
 - **Cost control:** `#[verifier::spinoff_prover]` on every wrapper/helper;
@@ -101,6 +125,64 @@ concrete proof-structure patterns that recur across the lock wrappers.
   byte-equal so it closes by Leibniz / a single `reveal`.
 - The fold conjunct's old-state equation must be brought into scope explicitly:
   `assert(<the same fold equation over old(self)...>) by { reveal(container_process_allocator_quota_4k_wf); };`.
+- **`_fold_change_by` axioms (delta form):** when exactly one process's quota
+  moves by `x` (an alloc/free, not a lock op), the fold shifts by `x`. Mirror
+  `lemma_process_effective_quota_4k_fold_eq` but add `mod_p` + `x` params, the
+  per-`mod_p` hypothesis `...(post[mod_p]) == ...(pre[mod_p]) + x`, and ensures
+  `<fold post> == <fold pre> + x`. All three sizes; same `external_body` TCB
+  family (soundness = induct on the set, one element contributes `+x`). Lives
+  beside the `_fold_eq` axioms in `lemma_t::kernel_fold_axioms`.
+- **Preservation lemma over the whole conservation conjunct
+  (`container_process_allocator_quota_4k_wf_preserved_on_alloc`):** extracts the
+  inline fold block into a `#[verifier::spinoff_prover] pub proof fn` taking
+  `pre: &KernelK, post: &KernelK` (NOT loose maps — its source-wf requires are
+  then literal entry-`inv()` clauses a caller with `old(self).inv()` discharges
+  directly). Requires: source conjunct + `container_process_wf` +
+  `container_allocator_wf` (state the OPAQUE clause itself, reveal it in the body
+  — don't hand-copy a partial forall the caller can't match); the container map
+  is write-locked so require per-entry `view()`/`view_rodata()` equality + same
+  dom (NOT whole-map byte-equality — that's unsatisfiable after a wlock), while
+  the untouched-size `thread_map`/`allocator` are byte-equal. Body: per-container
+  `assert forall`, bridge goal (`post.container_map`) back to `pre` via the
+  view-equality, fire `_fold_change_by` on the touched container and `_fold_eq`
+  elsewhere, deriving allocator-uniqueness from `reveal(container_allocator_wf)`.
+  Lives in the syscall file (it's syscall-specific), NOT the spec file.
+
+## Factoring a syscall's commit phase into a helper (`commit_alloc_quota_4k`)
+
+- When a syscall's happy path (mutate → re-establish `inv()` → unlock all → close
+  the user-step) is lifted into a `KernelK` method, the helper's ENTRY is the
+  already-locked mid-syscall state. Precondition = the proof context at that
+  point, stated MINIMALLY: `inv()`, both phases `Acquire` + fresh `snap_shot`
+  (for `begin_user_view_step`), and per held object the four-line lock bundle
+  (`wlocked_by(old(lctx))` + `!being_killed` + perm `state/thread_id/lock_id` +
+  `lock_map` dom-contains + `lock_map[key] == perm.lock_id()`), plus only the
+  structural anchors the fold re-establishment reads and the range/`temp_alloc_clean`
+  facts the mutations/unlocks need. Move BOTH the `begin_user_view_step` and its
+  `kernel_no_change_*` bridge inside — the helper's `old(self)` IS the post-lock
+  state, so its captured `old_u` is the projection directly (no bridge needed
+  inside; the CALLER keeps one `kernel_no_change_*` call before the helper to
+  discharge the `snap_shot` precondition).
+- **Do NOT ensure `all_objects_unlocked` from the helper.** Proving it there
+  needs `locked_objects_match_lctx` transported across `begin_user_view_step`
+  AND the four unlocks — Verus fights the quantifier instantiation (a congruence
+  lemma over equal `lock_map`/`thread_id` won't auto-close). Instead ensure the
+  lock-STATE FRAMING (each touched entry `locking_thread() is None`, every other
+  field byte-equal, the 4k entry's `cpu_caches`/`global_poll` framed, `lock_map`
+  `.remove()`d of the four keys) and let the CALLER re-derive
+  `all_objects_unlocked` from its own entry `all_objects_unlocked` fact — which
+  is still in scope there — with just the `reveal(*_objects_unlocked)` set. This
+  is how the monolithic syscall got it for free (entry-all-unlocked carried
+  through the wlock→wunlock round-trip).
+- Body reads `old(self)` only through lock-state-invariant quantities
+  (`process_effective_quota_*`, tree-field subset equalities), so it transplants
+  verbatim with a `let ghost pre_self = *self;` standing in for the syscall's
+  `old(self)` in the fold lemmas / `kernel_process_quota_4k_changed_imply_*`.
+- Inside a helper taking `Tracked(lctx): Tracked<&mut LocalContext>`: pass the
+  shared borrow as `Tracked(&*lctx)` to `borrow_mut`, the owned perm as
+  `Tracked(perm.borrow())`, and reborrow `&mut *lctx` to `begin/end_user_view_step`
+  and the `wunlock_*` calls. `all_objects_unlocked(final(lctx))` in an ensures
+  needs `final(lctx)` (it's `&mut`).
 
 ## Hoisted per-entry/per-element frame (go-to for "lock op touched one map")
 
@@ -120,6 +202,10 @@ conjuncts fire off this named frame.
   empty — the write-lock is the only thing licensing a non-empty cache).
   `wlock_process_unless_killed`'s success path PROVES `temp_alloc_clean` (fresh
   lock ⟹ was unlocked ⟹ clean), so non-staging callers get it free.
+- **Spec files hold ONLY specs.** `*_spec.rs` files (e.g.
+  `container_allocator_process_thread_spec.rs`) get `spec fn`s only; a `proof fn`
+  belongs in the relevant impl file (the syscall file, a `lemma_*` file). If you
+  drafted a lemma in a spec file, move it out — leave the spec file at "0 verified".
 - **Framing lemmas (`*_no_change_to_*_fields_imply_*` / `*_preserved_for_*`):** the
   re-establishment shortcut. `container_no_change_to_tree_fields_imply_wf`,
   `process_no_change_to_tree_fields_imply_wf`,
@@ -128,6 +214,15 @@ conjuncts fire off this named frame.
   same-dom + per-element `view()`/`view_rodata()` equality; ensures target-wf.
   When writing a NEW one, mirror `container_no_change_to_tree_fields_imply_wf`:
   empty-bodied or reveal-laden, additive (changes no existing spec).
+  SCOPE THE HYPOTHESIS TO THE FIELDS THE TARGET-WF ACTUALLY READS, not the whole
+  `view()`: `process_tree_wf` reads only `children`/`parent_linkedlist_node`/
+  `uppertree_seq`/`subtree_set` off a `Process.view()` (which also carries
+  `quota_*`/`temp_alloc_cache_*`/`pagetable`), so
+  `process_no_change_to_tree_fields_imply_wf` requires equality of just those +
+  `view_rodata()` — requiring full `view()` equality (as the `Container` twin
+  does, since a container's view IS all tree state) needlessly shuts out callers
+  that stage pages or move quota. Weakening a precondition this way is
+  monotonic — existing callers still discharge it by congruence.
 - **Verifying against the WIP crate:** `syscall_alloc_quota.rs` often has live
   calls to not-yet-written helpers (`release_cpu_and_finish`, etc.) that block
   crate compile. To function-verify, back up that file, neutralize the dangling
@@ -138,9 +233,11 @@ conjuncts fire off this named frame.
 
 Load-bearing typos in public ids (`childern`, `processs`, `additonal`/`addtional`,
 `vaild`, `global_poll`, file `pagetabel_map_spec.rs`); `syscall_alloc_quota.rs`
-is WIP — much is commented, the main `syscall_alloc_quota_4k` body ends in
-`assume(false)`, and the live body often calls not-yet-written helpers (see the
-WIP-crate verify note above); opacity applied inconsistently;
+is WIP but `syscall_alloc_quota_4k` + its `commit_alloc_quota_4k` helper now
+verify fully (no `assume(false)`); `finish_empty_user_step` / `release_cpu_and_finish`
+remain COMMENTED-OUT templates — treat them as dead, not as style references
+(the live sources of truth are `syscall_alloc_quota_4k` and the
+`locker_unlocker.rs` wrappers); opacity applied inconsistently;
 `pagetable_impl_base.rs` inlines re-establishment (no spinoff_prover),
 contradicting the playbook. Follow the proof-gap protocol (in
 `veriflat-project-notes.md`) before touching specs.
