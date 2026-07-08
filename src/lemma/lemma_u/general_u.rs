@@ -337,6 +337,110 @@ pub proof fn seq_skip_lemma<A>()
     }
 }
 
+// Split facts for breaking a seq at index `i` into a prefix `subrange(0, i)`
+// and a suffix `subrange(i, len)` (the batch-pop / `pop_head_batch` idiom).
+// Bundles the length, indexing, no-duplicates, and to_set-partition facts the
+// two-list `wf()` re-establishment needs.
+pub proof fn seq_subrange_split_lemma<A>()
+    ensures
+        forall|s: Seq<A>, i: int|
+            #![trigger s.subrange(0, i)]
+            0 <= i <= s.len()
+            ==>
+            s.subrange(0, i).len() == i,
+        forall|s: Seq<A>, i: int|
+            #![trigger s.subrange(i, s.len() as int)]
+            0 <= i <= s.len()
+            ==>
+            s.subrange(i, s.len() as int).len() == s.len() - i,
+        forall|s: Seq<A>, i: int, k: int|
+            #![trigger s.subrange(0, i)[k]]
+            0 <= i <= s.len() && 0 <= k < i
+            ==>
+            s.subrange(0, i)[k] == s[k],
+        forall|s: Seq<A>, i: int, k: int|
+            #![trigger s.subrange(i, s.len() as int)[k]]
+            0 <= i <= s.len() && 0 <= k < s.len() - i
+            ==>
+            s.subrange(i, s.len() as int)[k] == s[i + k],
+        forall|s: Seq<A>, i: int|
+            #![trigger s.subrange(0, i).no_duplicates()]
+            0 <= i <= s.len() && s.no_duplicates()
+            ==>
+            s.subrange(0, i).no_duplicates(),
+        forall|s: Seq<A>, i: int|
+            #![trigger s.subrange(i, s.len() as int).no_duplicates()]
+            0 <= i <= s.len() && s.no_duplicates()
+            ==>
+            s.subrange(i, s.len() as int).no_duplicates(),
+        forall|s: Seq<A>, i: int, a: A|
+            #![trigger s.subrange(0, i).contains(a)]
+            0 <= i <= s.len() && s.no_duplicates() && s.subrange(0, i).contains(a)
+            ==>
+            !s.subrange(i, s.len() as int).contains(a),
+        forall|s: Seq<A>, i: int, a: A|
+            #![trigger s.subrange(i, s.len() as int).contains(a)]
+            0 <= i <= s.len() && s.no_duplicates() && s.subrange(i, s.len() as int).contains(a)
+            ==>
+            !s.subrange(0, i).contains(a),
+        forall|s: Seq<A>, i: int, a: A|
+            #![trigger s.subrange(0, i).contains(a)]
+            #![trigger s.subrange(i, s.len() as int).contains(a)]
+            0 <= i <= s.len()
+            ==>
+            (s.contains(a) == (s.subrange(0, i).contains(a) || s.subrange(i, s.len() as int).contains(a))),
+{
+    assert forall|s: Seq<A>, i: int|
+        0 <= i <= s.len() && s.no_duplicates() implies
+        #[trigger] s.subrange(0, i).no_duplicates() by {
+        let p = s.subrange(0, i);
+        assert forall|j: int, k: int| 0 <= j < p.len() && 0 <= k < p.len() && j != k implies p[j] != p[k] by {
+            assert(p[j] == s[j]);
+            assert(p[k] == s[k]);
+        }
+    }
+
+    assert forall|s: Seq<A>, i: int|
+        0 <= i <= s.len() && s.no_duplicates() implies
+        #[trigger] s.subrange(i, s.len() as int).no_duplicates() by {
+        let q = s.subrange(i, s.len() as int);
+        assert forall|j: int, k: int| 0 <= j < q.len() && 0 <= k < q.len() && j != k implies q[j] != q[k] by {
+            assert(q[j] == s[i + j]);
+            assert(q[k] == s[i + k]);
+        }
+    }
+
+    broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
+
+    assert forall|s: Seq<A>, i: int, a: A|
+        0 <= i <= s.len() && s.no_duplicates() && #[trigger] s.subrange(0, i).contains(a) implies
+        !s.subrange(i, s.len() as int).contains(a) by {
+        if s.subrange(i, s.len() as int).contains(a) {
+            let j = choose|j: int| 0 <= j < i && s[j] == a;
+            let k = choose|k: int| i <= k < s.len() && s[k] == a;
+            assert(j != k);
+        }
+    }
+
+    assert forall|s: Seq<A>, i: int, a: A|
+        0 <= i <= s.len() && s.no_duplicates() && #[trigger] s.subrange(i, s.len() as int).contains(a) implies
+        !s.subrange(0, i).contains(a) by {
+        if s.subrange(0, i).contains(a) {
+            let j = choose|j: int| 0 <= j < i && s[j] == a;
+            let k = choose|k: int| i <= k < s.len() && s[k] == a;
+            assert(j != k);
+        }
+    }
+
+    assert forall|s: Seq<A>, i: int, a: A|
+        0 <= i <= s.len() implies
+        (s.contains(a) == (#[trigger] s.subrange(0, i).contains(a) || #[trigger] s.subrange(i, s.len() as int).contains(a))) by {
+        if s.contains(a) {
+            let j = choose|j: int| 0 <= j < s.len() && s[j] == a;
+        }
+    }
+}
+
 // SPEC FIX: bounded i to [0, s.len()) so subrange(0,i) and subrange(i+1, len) are well-defined.
 // PERF: ~13 ms / ~137k rlimit. Heavy due to multiple choose-based case analyses over subrange.
 pub proof fn seq_remove_lemma<A>()
