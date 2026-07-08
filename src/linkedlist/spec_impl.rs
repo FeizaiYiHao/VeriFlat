@@ -120,11 +120,13 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     }
 
     pub open spec fn spec_len(&self) -> usize{
-        self.length
+        self.view().len() as usize
     }
 
     #[verifier(when_used_as_spec(spec_len))]
     pub fn len(&self) -> (ret:usize)
+        requires
+            self.wf()
         ensures
             ret == self.len()
     {
@@ -224,6 +226,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     }
 
     pub open spec fn wf_value_list(&self) -> bool {
+        &&&
+        self.len() == self.length
         &&&
         self.value_list@.len() == self.length
         &&&
@@ -514,7 +518,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         where T: Copy
         requires
             self.wf(),
-            self.length != 0,
+            self.len() != 0,
         ensures
             // address is the head, in the (current) domain.
             ret.0 == self.addr_list@[0],
@@ -538,7 +542,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     pub fn pop_head(&mut self) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).wf(),
-            old(self).length != 0,
+            old(self).len() != 0,
         ensures
             final(self).wf(),
             final(self).dom() == old(self).dom().remove(ret.0),
@@ -610,6 +614,151 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
             (old_head_addr, Tracked(old_head_perm))
         }
+    }
+
+    pub fn pop_head_batch(&mut self, i: usize) -> (ret: LinkedList<T, MAJOR>)
+        requires
+            old(self).wf(),
+            0 < i < old(self).length,
+        ensures
+            // ---- both halves are well-formed ----
+            final(self).wf(),
+            ret.wf(),
+            // ---- views split at i ----
+            final(self)@ == old(self)@.subrange(i as int, old(self).length as int),
+            ret@ == old(self)@.subrange(0, i as int),
+            final(self).length == old(self).length - i,
+            ret.length == i,
+            // ---- domains / maps split by the prefix address set ----
+            final(self).map() == old(self).map().remove_keys(old(self).addr_list@.subrange(0, i as int).to_set()),
+            ret.map() == old(self).map().restrict(old(self).addr_list@.subrange(0, i as int).to_set()),
+            final(self).dom() == old(self).dom().difference(old(self).addr_list@.subrange(0, i as int).to_set()),
+            ret.dom() == old(self).dom().intersect(old(self).addr_list@.subrange(0, i as int).to_set()),
+            // ---- metadata framed ----
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
+            ret.container_depth == old(self).container_depth,
+            ret.lock_minor() == old(self).lock_minor(),
+    {
+        proof {
+            seq_subrange_split_lemma::<usize>();
+            seq_subrange_split_lemma::<T>();
+            seq_to_set_lemma::<usize>();
+        }
+
+        let ghost prefix_set = old(self).addr_list@.subrange(0, i as int).to_set();
+        let head0 = self.head;
+
+        // traverse to the prefix tail (index i-1); reads only
+        let mut cur = self.head.unwrap();
+        let mut k: usize = 0;
+        while k < i - 1
+            invariant
+                self.wf(),
+                self.addr_list@ == old(self).addr_list@,
+                self.perms@ == old(self).perms@,
+                self.length as int == old(self).length as int,
+                (i as int) < old(self).length as int,
+                0 <= k <= i - 1,
+                cur == old(self).addr_list@[k as int],
+            decreases i - 1 - k,
+        {
+            let tracked node_perm = self.perms.borrow().tracked_borrow(cur);
+            let node = PPtr::<Node<T>>::from_usize(cur).borrow(Tracked(node_perm));
+            cur = node.next.unwrap();
+            k = k + 1;
+        }
+        let prefix_tail_addr = cur;
+
+        let tracked pt_perm_ref = self.perms.borrow().tracked_borrow(prefix_tail_addr);
+        let pt_node = PPtr::<Node<T>>::from_usize(prefix_tail_addr).borrow(Tracked(pt_perm_ref));
+        let cut_addr = pt_node.next.unwrap();
+
+        // sever: the three O(1) writes
+        let mut cut_perm = Tracked(self.perms.borrow_mut().tracked_remove(cut_addr));
+        node_update_prev::<T>(cut_addr, &mut cut_perm, None);
+        proof {
+            self.perms.borrow_mut().tracked_insert(cut_addr, cut_perm.get());
+        }
+
+        let mut pt_perm = Tracked(self.perms.borrow_mut().tracked_remove(prefix_tail_addr));
+        node_update_next::<T>(prefix_tail_addr, &mut pt_perm, None);
+        proof {
+            self.perms.borrow_mut().tracked_insert(prefix_tail_addr, pt_perm.get());
+        }
+
+        self.head = Some(cut_addr);
+
+        // split the perms map in O(1)
+        let tracked prefix_perms = self.perms.borrow_mut().tracked_remove_keys(prefix_set);
+
+        // finish self (suffix)
+        self.addr_list = Ghost(old(self).addr_list@.subrange(i as int, old(self).length as int));
+        self.value_list = Ghost(old(self).value_list@.subrange(i as int, old(self).length as int));
+        self.map = Ghost(old(self).map@.remove_keys(prefix_set));
+        self.length = self.length - i;
+
+        // build ret (prefix)
+        let ret = LinkedList::<T, MAJOR> {
+            perms: Tracked(prefix_perms),
+            addr_list: Ghost(old(self).addr_list@.subrange(0, i as int)),
+            value_list: Ghost(old(self).value_list@.subrange(0, i as int)),
+            length: i,
+            head: head0,
+            tail: Some(prefix_tail_addr),
+            map: Ghost(old(self).map@.restrict(prefix_set)),
+            container_depth: self.container_depth,
+            minor: self.minor,
+        };
+
+        // ---- ret.wf() ----
+        assert(ret.wf_perms());
+        assert(ret.wf_addr_list());
+        assert(ret.wf_value_list());
+        assert(ret.wf_head());
+        assert(ret.wf_tail());
+        assert(ret.wf_prev());
+        assert(ret.wf_next());
+        assert(ret.wf_map());
+        assert(ret.wf());
+
+        // ---- self.wf() (suffix) ----
+        assert(self.wf_perms());
+        assert(self.wf_addr_list());
+        assert(self.wf_value_list());
+        assert(self.wf_head());
+        assert(self.wf_tail());
+        assert(self.wf_prev());
+        assert(self.wf_next());
+        assert(self.wf_map());
+        assert(self.wf());
+
+        ret
+    }
+
+    pub fn append_prefix(&mut self, prefix: LinkedList<T, MAJOR>)
+        requires
+            old(self).wf(),
+            old(self).length == 0,
+            prefix.wf(),
+        ensures
+            // ---- self now holds the whole prefix ----
+            final(self).wf(),
+            final(self)@ == prefix@,
+            final(self).length == prefix.length,
+            final(self).dom() == prefix.dom(),
+            final(self).map() == prefix.map(),
+            // ---- self keeps its own lock identity ----
+            final(self).container_depth == old(self).container_depth,
+            final(self).lock_minor() == old(self).lock_minor(),
+    {
+        self.perms = prefix.perms;
+        self.addr_list = prefix.addr_list;
+        self.value_list = prefix.value_list;
+        self.length = prefix.length;
+        self.head = prefix.head;
+        self.tail = prefix.tail;
+        self.map = prefix.map;
     }
 
     pub fn remove_helper(&mut self, addr:usize) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))
