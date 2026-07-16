@@ -433,7 +433,6 @@ impl KernelK {
     // temp_alloc_cache_4k, decrement the allocator's total_free_pages. Leaves
     // page + cache still write-locked; re-establishes inv().
     // ================================================================
-    #[verifier::spinoff_prover]
     fn pop_stage_4k_page(
         &mut self,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
@@ -503,13 +502,10 @@ impl KernelK {
             final(lctx).lock_map() == old(lctx).lock_map().insert(KernelObjId::Page(page_ptr2page_index(ret.0)), ret.1.view().lock_id()),
             final(self).locked_objects_match_lctx(final(lctx)),
     {
-        // assume(false);
         proof {
             reveal(allocator_perms_wf);
-            // reveal(allocator_free_page_ptrs_wf);
-            // reveal(container_allocator_free_4k_page_wf);
             page_ptr_lemma1();
-            reveal(process_perms_wf); 
+            reveal(process_perms_wf);
             reveal(page_array_wf);
             reveal(page_locked_match_lctx);
         }
@@ -532,33 +528,6 @@ impl KernelK {
         );
 
         // Lock the page slot (still Free4k ⟹ fresh, id tops every held id).
-        // proof {
-        //     // reveal(page_array_wf);
-        //     // reveal(page_locked_match_lctx);
-        //     // if lctx.lock_map().dom().contains(KernelObjId::Page(page_index)) {
-        //     //     assert(lctx.lock_map()[KernelObjId::Page(page_index)].major >= ALLOCATED_PAGE_MAJOR);
-        //     //     assert(false);
-        //     // }
-        //     // let page_lid = self.page_array.lock_id_by_index(page_index);
-        //     // assert(page_lid.container is None && page_lid.process is None);
-        //     // assert(page_lid.major == FREE_PAGE_LOCK_MAJOR);
-        //     // assert forall|k: KernelObjId| #![auto] lctx.lock_map().dom().contains(k)
-        //     // implies page_lid.spec_gt(lctx.lock_map()[k]) by {
-        //     //     let held = lctx.lock_map()[k];
-        //     //     assert(held.major <= ALLOCATOR_CACHE_MAJOR);
-        //     //     if page_lid.container.spec_eq(held.container) && page_lid.process.spec_eq(held.process) {
-        //     //         assert(page_lid.major > held.major);
-        //     //     } else if !page_lid.container.spec_eq(held.container) {
-        //     //         assert(page_lid.container.spec_gt(held.container));
-        //     //     } else {
-        //     //         assert(page_lid.process.spec_gt(held.process));
-        //     //     }
-        //     // };
-        //     // assert(lctx.lock_id_acyclic(page_lid));
-        //     // assert(self.page_array[page_index]@.locked_by(&*lctx) == false);
-        //     // assert(wlock_requires(self.page_array[page_index]@, &*lctx));
-        //     // assert(lctx.obj_id_fresh(KernelObjId::Page(page_index)));
-        // }
         let Tracked(page_lock_perm) = self.wlock_page(page_index, Tracked(&mut *lctx));
 
         // Mutation block: pop + decrement (PageAllocator::inv() re-established by
@@ -583,9 +552,7 @@ impl KernelK {
                 };
             };
             page.free_list_node_storage.put(Tracked(node_perm));
-        
 
-            // proof { reveal(process_perms_wf); }
             let process_mut = self.process_map.borrow_mut(
                 process_ptr, Tracked(&*lctx), Tracked(process_lock_perm),
             );
@@ -609,16 +576,17 @@ impl KernelK {
             // ---- user view unchanged: only page_array / temp_alloc / total moved ----
             kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             // ---- locked_objects_match_lctx: page slot gained, all else framed ----
-            reveal(container_locked_match_lctx);
-            reveal(process_locked_match_lctx);
-            reveal(thread_locked_match_lctx);
-            reveal(endpoint_locked_match_lctx);
-            reveal(scheduler_locked_match_lctx);
-            reveal(pagetable_locked_match_lctx);
-            reveal(page_locked_match_lctx);
-            reveal(cpu_locked_match_lctx);
-            reveal(allocator_locked_match_lctx);
-            assert(self.locked_objects_match_lctx(&*lctx));
+            assert(self.locked_objects_match_lctx(&*lctx)) by {
+                reveal(container_locked_match_lctx);
+                reveal(process_locked_match_lctx);
+                reveal(thread_locked_match_lctx);
+                reveal(endpoint_locked_match_lctx);
+                reveal(scheduler_locked_match_lctx);
+                reveal(pagetable_locked_match_lctx);
+                reveal(page_locked_match_lctx);
+                reveal(cpu_locked_match_lctx);
+                reveal(allocator_locked_match_lctx);
+            }
         }
         proof {
             // ---- subsystems_inv ----
@@ -633,21 +601,15 @@ impl KernelK {
             // ---- memory_management_inv ----
             assert(self.memory_management_inv()) by {
                 assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+                    allocator_4k_pages_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array, old(self).allocator_4k_map, self.allocator_4k_map); allocator_2m_pages_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array, old(self).allocator_2m_map, self.allocator_2m_map); allocator_1g_pages_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array, old(self).allocator_1g_map, self.allocator_1g_map);
                 };
-                assert(container_page_owner_wf(self.container_map, self.page_array)) by {
-                    reveal(container_page_owner_wf);
-                };
+                assert(container_page_owner_wf(self.container_map, self.page_array)) by { container_page_owner_wf_preserved_for_owning_container_eq(old(self).container_map, self.container_map, old(self).page_array, self.page_array); };
                 assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
                     reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
                     reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
                 };
-                assert(container_pages_wf(self.page_array, self.container_map)) by {
-                    reveal(container_pages_wf);
-                };
-                assert(process_pages_wf(self.page_array, self.process_map)) by {
-                    reveal(process_pages_wf);
-                };
+                assert(container_pages_wf(self.page_array, self.container_map)) by { container_pages_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array, old(self).container_map, self.container_map); };
+                assert(process_pages_wf(self.page_array, self.process_map)) by { process_pages_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array, old(self).process_map, self.process_map); };
                 assert(container_process_allocator_quota_4k_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map)) by {
                     reveal(container_process_allocator_quota_4k_wf);
                     reveal(container_process_wf);
@@ -670,69 +632,8 @@ impl KernelK {
                 };
                 assert(self.allocator_free_pages_wf());
                 assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                assert(hugepage_2m_wf(self.page_array)) by { 
-                    reveal(hugepage_2m_wf); page_index_lemma(); page_ptr_2m_lemma(); page_ptr_page_index_truncate_lemma();
-                    assert(
-                        forall|p_i:PageIndex|
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Free2m]
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Allocated2m]
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Mapped2m]
-                            #![trigger page_index_2m_valid(p_i)]
-                            page_index_wf(p_i) 
-                            && {
-                                |||
-                                self.page_array.spec_index(p_i).view().view().state is Free2m
-                                ||| 
-                                self.page_array.spec_index(p_i).view().view().state is Allocated2m 
-                                |||
-                                self.page_array.spec_index(p_i).view().view().state is Mapped2m 
-                            }
-                            ==>
-                            page_index_2m_valid(p_i)
-                        );
-                    assert(
-                        forall|p_i:PageIndex, p_j:PageIndex|
-                            #![trigger spec_page_index_merge_2m_vaild(p_i, p_j)]
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Free2m, self.page_array.spec_index(p_j).view().view().state is Merged2m]
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Allocated2m, self.page_array.spec_index(p_j).view().view().state is Merged2m]
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Mapped2m, self.page_array.spec_index(p_j).view().view().state is Merged2m]
-                            page_index_wf(p_i)
-                            && {
-                                |||
-                                self.page_array.spec_index(p_i).view().view().state is Free2m 
-                                ||| 
-                                self.page_array.spec_index(p_i).view().view().state is Allocated2m 
-                                |||
-                                self.page_array.spec_index(p_i).view().view().state is Mapped2m 
-                            }
-                            &&
-                            spec_page_index_merge_2m_vaild(p_i, p_j)
-                            ==>
-                            {
-                                &&&
-                                self.page_array.spec_index(p_j).view().view().state is Merged2m
-                                &&&
-                                self.page_array.spec_index(p_j).view().view().owning_container == self.page_array.spec_index(p_i).view().view().owning_container
-                            }
-                        );
-                    assert(
-                        forall|p_i:PageIndex|
-                            #![trigger self.page_array.spec_index(p_i).view().view().state is Merged2m]
-                            #![trigger spec_page_index_truncate_2m(p_i)]
-                            page_index_wf(p_i) && (self.page_array.spec_index(p_i).view().view().state is Merged2m)
-                            ==>
-                            {
-                                |||
-                                self.page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Free2m 
-                                |||
-                                self.page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Allocated2m 
-                                ||| 
-                                self.page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Mapped2m 
-                            }
-                        );
-                
-                };
-                assert(hugepage_1g_wf(self.page_array)) by { reveal(hugepage_1g_wf); };
+                assert(hugepage_2m_wf(self.page_array)) by { hugepage_2m_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array); };
+                assert(hugepage_1g_wf(self.page_array)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(self).page_array, self.page_array); };
                 assert(page_pagetable_wf(self.pagetable_map, self.page_array)) by {
                 reveal(page_pagetable_wf);
                 reveal(mapped_4k_page_pagetable_wf);
@@ -743,83 +644,19 @@ impl KernelK {
                 page_ptr_lemma1();
                 };
                 assert(pagetable_pages_wf(self.pagetable_map, self.page_array)) by { reveal(pagetable_pages_wf); };
-                assert(thread_pages_wf(self.thread_map, self.page_array)) by { reveal(thread_pages_wf); };
+                assert(thread_pages_wf(self.thread_map, self.page_array)) by { thread_pages_wf_preserved_for_page_state_eq(old(self).thread_map, self.thread_map, old(self).page_array, self.page_array); };
                 assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
                     reveal(process_staged_pages_4k_wf);
-                    reveal(process_staged_pages_2m_wf);
-                    reveal(process_staged_pages_1g_wf);
+                    process_staged_pages_2m_wf_preserved_for_eq(old(self).process_map, self.process_map, old(self).page_array, self.page_array);
+                    process_staged_pages_1g_wf_preserved_for_eq(old(self).process_map, self.process_map, old(self).page_array, self.page_array);
                 };
-                assert(endpoint_pages_wf(self.endpoint_map, self.page_array)) by { reveal(endpoint_pages_wf); };
+                assert(endpoint_pages_wf(self.endpoint_map, self.page_array)) by { endpoint_pages_wf_preserved_for_page_state_eq(old(self).endpoint_map, self.endpoint_map, old(self).page_array, self.page_array); };
                 assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                     reveal(container_allocator_free_4k_page_wf);
                     reveal(allocator_free_page_ptrs_wf);
                     reveal(container_allocator_wf);
-                    page_ptr_lemma1();
-                    // ---- forward GlobalList: global_poll byte-equal, page unchanged ----
-                    assert forall|p_i: PageIndex|
-                        #![trigger self.page_array.spec_index(p_i).view().view().state]
-                        page_index_wf(p_i)
-                        && (self.page_array.spec_index(p_i).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList })
-                        implies {
-                            let owning_container = self.page_array.spec_index(p_i).view().view().owning_container;
-                            let allocator_ptr_4k = self.container_map.spec_index(owning_container).view_rodata().view().allocator_ptr_4k;
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).global_poll.view().view().contains(page_index2page_ptr(p_i))
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).global_poll.view().map().dom().contains(self.page_array.spec_index(p_i).view().view().free_list_node_storage.addr())
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).global_poll.view().map().spec_index(self.page_array.spec_index(p_i).view().view().free_list_node_storage.addr()) == page_index2page_ptr(p_i)
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).owning_container == self.page_array.spec_index(p_i).view().view().owning_container
-                        }
-                    by {
-                        reveal(container_page_owner_wf);
-                    };
-                    // ---- forward PreCpuCache: popped cache case transported via skip/remove ----
-                    assert forall|p_i: PageIndex|
-                        #![trigger self.page_array.spec_index(p_i).view().view().state]
-                        page_index_wf(p_i)
-                        && (self.page_array.spec_index(p_i).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id } })
-                        implies {
-                            let owning_container = self.page_array.spec_index(p_i).view().view().owning_container;
-                            let allocator_ptr_4k = self.container_map.spec_index(owning_container).view_rodata().view().allocator_ptr_4k;
-                            let cpu_i = self.page_array.spec_index(p_i).view().view().state->Free4k_state->PreCpuCache_cpu_id;
-                            &&& self.allocator_4k_map.dom().contains(allocator_ptr_4k)
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_index2page_ptr(p_i))
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_i).view().view().map().dom().contains(self.page_array.spec_index(p_i).view().view().free_list_node_storage.addr())
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_i).view().view().map().spec_index(self.page_array.spec_index(p_i).view().view().free_list_node_storage.addr()) == page_index2page_ptr(p_i)
-                            &&& self.allocator_4k_map.spec_index(allocator_ptr_4k).owning_container == self.page_array.spec_index(p_i).view().view().owning_container
-                        }
-                    by {
-                        let owning_container = self.page_array.spec_index(p_i).view().view().owning_container;
-                        let allocator_ptr_4k = self.container_map.spec_index(owning_container).view_rodata().view().allocator_ptr_4k;
-                        let cpu_i = self.page_array.spec_index(p_i).view().view().state->Free4k_state->PreCpuCache_cpu_id;
-                        if allocator_ptr_4k == alloc_ptr_4k && cpu_i == cpu_id {
-                            seq_skip_lemma::<PagePtr>();
-                            assert(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(node_addr) == page_ptr);
-                        }
-                    };
-                    // ---- reverse global_poll: byte-equal, target page != page_index ----
-                    assert forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr2: PagePtr|
-                        #![trigger self.allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr2)]
-                        self.allocator_4k_map.dom().contains(alloc_ptr) && self.allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr2)
-                        implies
-                        (self.page_array.spec_index(page_ptr2page_index(page_ptr2)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList })
-                        && self.page_array.spec_index(page_ptr2page_index(page_ptr2)).view().view().owning_container == self.allocator_4k_map.spec_index(alloc_ptr).owning_container
-                    by {
-                    };
-                    // ---- reverse cpu_caches: popped cache drops the head, others byte-equal ----
-                    assert forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr2: PagePtr|
-                        #![trigger self.allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr2)]
-                        self.allocator_4k_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i)
-                        && self.allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr2)
-                        implies
-                        self.page_array.spec_index(page_ptr2page_index(page_ptr2)).view().view().state is Free4k
-                        && self.page_array.spec_index(page_ptr2page_index(page_ptr2)).view().view().state->Free4k_state is PreCpuCache
-                        && self.page_array.spec_index(page_ptr2page_index(page_ptr2)).view().view().state->Free4k_state->PreCpuCache_cpu_id == cpu_i
-                        && self.page_array.spec_index(page_ptr2page_index(page_ptr2)).view().view().owning_container == self.allocator_4k_map.spec_index(alloc_ptr).owning_container
-                    by {
-                        if alloc_ptr == alloc_ptr_4k && cpu_i == cpu_id {
-                            seq_skip_lemma::<PagePtr>();
-                            assert(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr2));
-                        }
-                    };
+                    reveal(container_page_owner_wf);
+                    seq_skip_lemma::<PagePtr>();
                 };
                 assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
                     reveal(container_allocator_free_2m_page_wf);
