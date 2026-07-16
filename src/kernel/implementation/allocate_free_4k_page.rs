@@ -274,13 +274,13 @@ impl KernelK {
         //     assert(lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cpu_id)));
         //     assert(!lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)));
         //     reveal(allocator_locked_match_lctx);
-        //     assert(self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.locked_by(&*lctx) == false);
+        //     assert(self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locked_by(&*lctx) == false);
         //     assert(lctx.kernel_view_locking_state() is Acquire);
         //     let gp_lock_id = LockId{
-        //         container: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.container_depth(),
-        //         process: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.process_depth(),
-        //         major: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.current_lock_major(),
-        //         minor: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.lock_minor(),
+        //         container: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
+        //         process: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
+        //         major: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
+        //         minor: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
         //     };
         //     assert forall|k: KernelObjId| #![auto] lctx.lock_map().dom().contains(k)
         //     implies gp_lock_id.spec_gt(lctx.lock_map()[k]) by {
@@ -292,17 +292,17 @@ impl KernelK {
         //     };
         // }
 
-        // let Tracked(gp_lock_perm) = self.wlock_allocator_global_poll(
+        // let Tracked(gp_lock_perm) = self.wlock_allocator_global_pool(
         //     alloc_ptr_4k, Tracked(&mut *lctx),
         // );
 
-        // // TODO: borrow global_poll, check len, pop if non-empty
+        // // TODO: borrow global_pool, check len, pop if non-empty
         // // TODO: if empty → case 3 (lock-all path)
 
         // // ---- Case 3: Lock-all path ----
-        // // Unlock global_poll + cache, kernel_step_boundary, then lock all.
+        // // Unlock global_pool + cache, kernel_step_boundary, then lock all.
         // // Each wrapper re-establishes inv() internally (wrapper-per-lock-op).
-        // self.wunlock_allocator_global_poll(
+        // self.wunlock_allocator_global_pool(
         //     alloc_ptr_4k, Tracked(&mut *lctx), Tracked(gp_lock_perm),
         // );
         // self.wunlock_allocator_cache(
@@ -402,22 +402,22 @@ impl KernelK {
         // // All caches locked. Lock global poll.
         // proof {
         //     assume(
-        //         wlock_requires(self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll, &*lctx)
+        //         wlock_requires(self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool, &*lctx)
         //         && lctx.lock_id_acyclic(LockId{
-        //             container: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.container_depth(),
-        //             process: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.process_depth(),
-        //             major: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.current_lock_major(),
-        //             minor: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.lock_minor(),
+        //             container: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
+        //             process: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
+        //             major: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
+        //             minor: self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
         //         })
         //         && lctx.obj_id_fresh(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k))
         //     );
         // }
-        // let Tracked(_gp_perm) = self.wlock_allocator_global_poll(
+        // let Tracked(_gp_perm) = self.wlock_allocator_global_pool(
         //     alloc_ptr_4k, Tracked(&mut *lctx),
         // );
 
         // // By leak-free spec: total_free_pages > 0 ∧ all locked ⟹
-        // // ∃ i. cache[i].len() > 0 ∨ global_poll.len() > 0.
+        // // ∃ i. cache[i].len() > 0 ∨ global_pool.len() > 0.
         // // Scan for non-empty, pop, update page state, unlock all.
         // // TODO: scan + pop + page state + temp_alloc + unlock all + inv()
         // proof { assume(false); }
@@ -710,11 +710,11 @@ impl KernelK {
 
     // ================================================================
     // pop_stage_global_4k_page: global-pool twin of pop_stage_4k_page. The
-    // allocator's global_poll + the process are already write-locked and the
+    // allocator's global_pool + the process are already write-locked and the
     // pool is non-empty. Peek the head, lock the page slot, pop the head,
     // retype it Free4k{GlobalList}→Owned4k, stage it in the process's
     // temp_alloc_cache_4k, decrement the allocator's total_free_pages. Leaves
-    // page + global_poll still write-locked; re-establishes inv().
+    // page + global_pool still write-locked; re-establishes inv().
     // ================================================================
     fn pop_stage_global_4k_page(
         &mut self,
@@ -722,7 +722,7 @@ impl KernelK {
         process_ptr: RwLockProcessPtr,
         container_ptr: RwLockContainerPtr,
         Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(global_poll_lock_perm): Tracked<&LockPerm>,
+        Tracked(global_pool_lock_perm): Tracked<&LockPerm>,
         Tracked(process_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: (PagePtr, Tracked<LockPerm>))
         requires
@@ -734,15 +734,15 @@ impl KernelK {
             old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
             old(self).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.wlocked_by(old(lctx)),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.being_killed() == false,
-            global_poll_lock_perm.state() is WriteLock,
-            global_poll_lock_perm.thread_id() == old(lctx).thread_id(),
-            global_poll_lock_perm.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.locking_thread()->Write_lock_id,
+            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(old(lctx)),
+            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.being_killed() == false,
+            global_pool_lock_perm.state() is WriteLock,
+            global_pool_lock_perm.thread_id() == old(lctx).thread_id(),
+            global_pool_lock_perm.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
             old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)),
-            old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)] == global_poll_lock_perm.lock_id(),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view().view().len() > 0,
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view().len() > 0,
+            old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)] == global_pool_lock_perm.lock_id(),
+            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().view().len() > 0,
+            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().len() > 0,
             old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_lock_perm.state() is WriteLock,
@@ -760,13 +760,13 @@ impl KernelK {
             page_ptr_valid(ret.0),
             // ---- user view unchanged: staging is kernel-internal ----
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-            // ---- global_poll + process lock state preserved, phase still Acquire ----
+            // ---- global_pool + process lock state preserved, phase still Acquire ----
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.wlocked_by(final(lctx)),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.being_killed() == false,
-            global_poll_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.locking_thread()->Write_lock_id,
+            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(final(lctx)),
+            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.being_killed() == false,
+            global_pool_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
             final(self).process_map.dom().contains(process_ptr),
             final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
             final(self).process_map.spec_index(process_ptr).being_killed() == false,
@@ -791,8 +791,8 @@ impl KernelK {
             reveal(page_array_wf);
             reveal(page_locked_match_lctx);
         }
-        let poll_ref = self.allocator_4k_map.borrow_global_poll(
-            alloc_ptr_4k, Tracked(global_poll_lock_perm),
+        let poll_ref = self.allocator_4k_map.borrow_global_pool(
+            alloc_ptr_4k, Tracked(global_pool_lock_perm),
         );
         let (node_addr, page_ptr) = poll_ref.peek_head();
         assert(page_ptr_valid(page_ptr))
@@ -803,10 +803,10 @@ impl KernelK {
         ;
         let page_index = page_ptr2page_index(page_ptr);
         // The peeked page_ptr is the head of the global pool, so it is in that
-        // pool's view() — the reverse-global_poll clause pins the page's state to
+        // pool's view() — the reverse-global_pool clause pins the page's state to
         // Free4k{GlobalList}.
         assert(
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view().view().contains(page_ptr)
+            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().view().contains(page_ptr)
         );
 
         // Lock the page slot (still Free4k ⟹ fresh, id tops every held id).
@@ -815,7 +815,7 @@ impl KernelK {
         // Mutation block: pop + decrement (PageAllocator::inv() re-established by
         // the wrapper), retype Free4k→Owned4k, stage.
         let alloc_mut = self.allocator_4k_map.borrow_mut(alloc_ptr_4k);
-        let (node_addr2, Tracked(node_perm)) = alloc_mut.pop_global_poll_page(Tracked(&*lctx), Tracked(global_poll_lock_perm));
+        let (node_addr2, Tracked(node_perm)) = alloc_mut.pop_global_pool_page(Tracked(&*lctx), Tracked(global_pool_lock_perm));
         assert(node_addr2 == node_addr);
 
         {

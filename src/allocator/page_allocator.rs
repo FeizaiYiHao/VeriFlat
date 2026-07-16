@@ -7,7 +7,7 @@ verus! {
 
 pub struct PageAllocator{
     pub cpu_caches: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
-    pub global_poll: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, (), (), (), NO_KILL_STATE>,
+    pub global_pool: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, (), (), (), NO_KILL_STATE>,
     pub quota: RwLock<AllocatorQuota, (), (), (), NO_KILL_STATE>,
     pub total_free_pages: Ghost<usize>,
 
@@ -29,13 +29,13 @@ impl PageAllocator{
         &&&
         self.cpu_caches.inv()
         &&&
-        self.global_poll.inv()
+        self.global_pool.inv()
         &&&
         self.cpu_caches_wf()
         &&&
         self.quota_minor_wf()
         &&&
-        self.global_poll_minor_wf()
+        self.global_pool_minor_wf()
         &&&
         self.total_free_pages_wf()
     }
@@ -61,12 +61,12 @@ impl PageAllocator{
     /// The global pool's intrinsic minor lock id is the owning container
     /// pointer. Same reasoning as `quota_minor_wf` — `LinkedList` carries
     /// its own minor.
-    pub open spec fn global_poll_minor_wf(&self) -> bool {
-        self.global_poll.view().lock_minor() == self.owning_container
+    pub open spec fn global_pool_minor_wf(&self) -> bool {
+        self.global_pool.view().lock_minor() == self.owning_container
     }
 
     pub open spec fn total_free_pages_wf(&self) -> bool{
-        self.global_poll.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
+        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
     }
 
     pub open spec fn cpu_caches_unlocked(&self) -> bool {
@@ -78,8 +78,8 @@ impl PageAllocator{
         self.cpu_caches.spec_index(cpu_i).view().locked() == false
     }
 
-    pub open spec fn global_poll_unlocked(&self) -> bool{
-        self.global_poll.locked() == false
+    pub open spec fn global_pool_unlocked(&self) -> bool{
+        self.global_pool.locked() == false
     }
 
     // pub open spec fn quota_unlocked(&self) -> bool{
@@ -88,7 +88,7 @@ impl PageAllocator{
 
     // pub open spec fn internal_lock_id_wf(&self) -> bool{
     //     &&&
-    //     self.quota.view().container_depth() == self.global_poll.view().container_depth()
+    //     self.quota.view().container_depth() == self.global_pool.view().container_depth()
     //     &&&
     //     forall|cpu_i:CpuId|
     //         #![trigger self.cpu_caches.spec_index(cpu_i).container_depth()]
@@ -114,7 +114,7 @@ impl PageAllocator{
     ///
     /// `wf()` re-establishes for free: only `quota`'s lock state moves
     /// (`wlock_ensures` preserves `quota.view()`), and the only fold conjunct
-    /// `total_free_pages_wf` folds over `cpu_caches` + `global_poll` — both
+    /// `total_free_pages_wf` folds over `cpu_caches` + `global_pool` — both
     /// untouched here — so no fold lemma is needed.
     pub fn wlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
@@ -129,7 +129,7 @@ impl PageAllocator{
             lock_ensures(old(lctx), final(lctx), final(self).quota.view(), old(self).quota.lock_id(), KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
@@ -148,7 +148,7 @@ impl PageAllocator{
     ///
     /// `wf()` re-establishes for free: only `quota`'s lock state moves
     /// (`wunlock_ensures` preserves `quota.view()`), and the only fold conjunct
-    /// `total_free_pages_wf` folds over `cpu_caches` + `global_poll` — both
+    /// `total_free_pages_wf` folds over `cpu_caches` + `global_pool` — both
     /// untouched here — so no fold lemma is needed.
     pub fn wunlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
@@ -170,7 +170,7 @@ impl PageAllocator{
             unlock_ensures(old(lctx), final(lctx), final(self).quota.view(), lock_perm@.lock_id(), KernelObjId::AllocatorQuota(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
@@ -210,7 +210,7 @@ impl PageAllocator{
             }, KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
             // Other fields untouched.
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
@@ -254,7 +254,7 @@ impl PageAllocator{
             unlock_ensures(old(lctx), final(lctx), final(self).cpu_caches[cpu_id]@@, lock_perm@.lock_id(), KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
             // Other fields untouched.
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
@@ -274,33 +274,33 @@ impl PageAllocator{
         }
     }
 
-    /// Acquire the inner `global_poll` write lock. Mirrors `wlock_quota`;
+    /// Acquire the inner `global_pool` write lock. Mirrors `wlock_quota`;
     /// builds `KernelObjId::AllocatorGlobalPoll`. The lock id is inferred
     /// from the global pool's traits.
-    pub fn wlock_global_poll(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
-            wlock_requires(old(self).global_poll, old(lctx)),
+            wlock_requires(old(self).global_pool, old(lctx)),
             old(lctx).lock_id_acyclic(LockId{
-                container: old(self).global_poll@.container_depth(),
-                process: old(self).global_poll@.process_depth(),
-                major: old(self).global_poll@.current_lock_major(),
-                minor: old(self).global_poll@.lock_minor(),
+                container: old(self).global_pool@.container_depth(),
+                process: old(self).global_pool@.process_depth(),
+                major: old(self).global_pool@.current_lock_major(),
+                minor: old(self).global_pool@.lock_minor(),
             }),
             old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
         ensures
             final(self).wf(),
-            wlock_ensures(old(self).global_poll, final(self).global_poll, LockId{
-                container: old(self).global_poll@.container_depth(),
-                process: old(self).global_poll@.process_depth(),
-                major: old(self).global_poll@.current_lock_major(),
-                minor: old(self).global_poll@.lock_minor(),
+            wlock_ensures(old(self).global_pool, final(self).global_pool, LockId{
+                container: old(self).global_pool@.container_depth(),
+                process: old(self).global_pool@.process_depth(),
+                major: old(self).global_pool@.current_lock_major(),
+                minor: old(self).global_pool@.lock_minor(),
             }, final(lctx).thread_id(), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self).global_poll.view(), LockId{
-                container: old(self).global_poll@.container_depth(),
-                process: old(self).global_poll@.process_depth(),
-                major: old(self).global_poll@.current_lock_major(),
-                minor: old(self).global_poll@.lock_minor(),
+            lock_ensures(old(lctx), final(lctx), final(self).global_pool.view(), LockId{
+                container: old(self).global_pool@.container_depth(),
+                process: old(self).global_pool@.process_depth(),
+                major: old(self).global_pool@.current_lock_major(),
+                minor: old(self).global_pool@.lock_minor(),
             }, KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
@@ -309,37 +309,37 @@ impl PageAllocator{
             final(self).total_free_pages == old(self).total_free_pages,
     {
         let lock_id = Ghost(LockId{
-            container: self.global_poll@.container_depth(),
-            process: self.global_poll@.process_depth(),
-            major: self.global_poll@.current_lock_major(),
-            minor: self.global_poll@.lock_minor(),
+            container: self.global_pool@.container_depth(),
+            process: self.global_pool@.process_depth(),
+            major: self.global_pool@.current_lock_major(),
+            minor: self.global_pool@.lock_minor(),
         });
-        self.global_poll.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
+        self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
     }
 
-    /// Release the inner `global_poll` write lock. Mirrors `wunlock_quota`.
-    pub fn wunlock_global_poll(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+    /// Release the inner `global_pool` write lock. Mirrors `wunlock_quota`.
+    pub fn wunlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
-            old(self).global_poll.wlocked_by(old(lctx)),
-            old(self).global_poll.inv(),
+            old(self).global_pool.wlocked_by(old(lctx)),
+            old(self).global_pool.inv(),
             unlock_requires::<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
-            lock_perm@.lock_id() == old(self).global_poll.locking_thread()->Write_lock_id,
+            lock_perm@.lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
             old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
             old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)] == lock_perm@.lock_id(),
         ensures
             final(self).wf(),
-            wunlock_ensures(old(self).global_poll, final(self).global_poll),
-            unlock_ensures(old(lctx), final(lctx), final(self).global_poll.view(), lock_perm@.lock_id(), KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
+            wunlock_ensures(old(self).global_pool, final(self).global_pool),
+            unlock_ensures(old(lctx), final(lctx), final(self).global_pool.view(), lock_perm@.lock_id(), KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        self.global_poll.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
+        self.global_pool.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
     }
 }
 
@@ -372,7 +372,7 @@ impl PageAllocator{
             final(self).cpu_caches[cpu_id].view().is_init(),
             final(self).cpu_caches[cpu_id].view().locking_thread() == old(self).cpu_caches[cpu_id].view().locking_thread(),
             final(self).cpu_caches[cpu_id].view().being_killed() == old(self).cpu_caches[cpu_id].view().being_killed(),
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
     {
@@ -396,36 +396,36 @@ impl PageAllocator{
     }
 
     // Global-pool twin of `pop_cache_page`: pop the head off the write-locked
-    // `global_poll` list and rebalance `total_free_pages`. Conservation is
-    // simpler than the cache case -- `total_free_pages_wf` folds `global_poll.len()
-    // + fold(cpu_caches)`, and here `global_poll.len()` drops by 1 while the whole
+    // `global_pool` list and rebalance `total_free_pages`. Conservation is
+    // simpler than the cache case -- `total_free_pages_wf` folds `global_pool.len()
+    // + fold(cpu_caches)`, and here `global_pool.len()` drops by 1 while the whole
     // `cpu_caches` array is byte-unchanged (so its fold is congruent).
-    pub fn pop_global_poll_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+    pub fn pop_global_pool_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
         requires
             old(self).wf(),
-            old(self).global_poll.wlocked_by(lctx),
-            old(self).global_poll.is_init(),
+            old(self).global_pool.wlocked_by(lctx),
+            old(self).global_pool.is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).global_poll.locking_thread()->Write_lock_id,
-            old(self).global_poll.view().len() > 0,
+            lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
+            old(self).global_pool.view().len() > 0,
         ensures
             final(self).wf(),
             // ---- popped node ----
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == old(self).global_poll.view().view()[0],
-            old(self).global_poll.view().map().dom().contains(ret.0),
-            old(self).global_poll.view().map()[ret.0] == ret.1.view().value().view(),
-            ret.0 == old(self).global_poll.view().addr_list.view()[0],
+            ret.1.view().value().view() == old(self).global_pool.view().view()[0],
+            old(self).global_pool.view().map().dom().contains(ret.0),
+            old(self).global_pool.view().map()[ret.0] == ret.1.view().value().view(),
+            ret.0 == old(self).global_pool.view().addr_list.view()[0],
             // ---- pool shrank by the popped head, total rebalanced ----
-            final(self).global_poll.view().view() == old(self).global_poll.view().view().skip(1),
-            final(self).global_poll.view().map() == old(self).global_poll.view().map().remove(ret.0),
+            final(self).global_pool.view().view() == old(self).global_pool.view().view().skip(1),
+            final(self).global_pool.view().map() == old(self).global_pool.view().map().remove(ret.0),
             final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
-            // ---- lock state of global_poll preserved, others untouched ----
-            final(self).global_poll.is_init(),
-            final(self).global_poll.locking_thread() == old(self).global_poll.locking_thread(),
-            final(self).global_poll.being_killed() == old(self).global_poll.being_killed(),
+            // ---- lock state of global_pool preserved, others untouched ----
+            final(self).global_pool.is_init(),
+            final(self).global_pool.locking_thread() == old(self).global_pool.locking_thread(),
+            final(self).global_pool.being_killed() == old(self).global_pool.being_killed(),
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
@@ -434,9 +434,9 @@ impl PageAllocator{
             lemma_cache_len_fold_nonneg(old(self).cpu_caches.view());
         }
         let (node_addr, node_perm) = {
-            let poll_mut = self.global_poll.borrow_mut(Tracked(lctx), lock_perm);
+            let poll_mut = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = poll_mut.pop_head();
-            assert(old(self).global_poll.view().map().dom().contains(node_addr)) by {
+            assert(old(self).global_pool.view().map().dom().contains(node_addr)) by {
                 reveal(LinkedList::wf_perms);
                 reveal(LinkedList::wf_map);
             };
@@ -444,8 +444,8 @@ impl PageAllocator{
         };
         self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
         proof {
-            self.global_poll.view().lemma_len_view();
-            old(self).global_poll.view().lemma_len_view();
+            self.global_pool.view().lemma_len_view();
+            old(self).global_pool.view().lemma_len_view();
             lemma_cache_len_fold_congruence(old(self).cpu_caches.view(), self.cpu_caches.view());
         }
         (node_addr, node_perm)
@@ -454,33 +454,33 @@ impl PageAllocator{
 
 /*
 impl PageAllocator{
-    /// Acquire the inner `global_poll` write lock. Mirrors `wlock_quota`;
+    /// Acquire the inner `global_pool` write lock. Mirrors `wlock_quota`;
     /// builds `KernelObjId::AllocatorGlobalPoll`. The lock id is inferred
     /// from the global pool's traits.
-    pub fn wlock_global_poll(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
-            wlock_requires(old(self).global_poll, old(lctx)),
+            wlock_requires(old(self).global_pool, old(lctx)),
             old(lctx).lock_id_acyclic(LockId{
-                container: old(self).global_poll@.container_depth(),
-                process: old(self).global_poll@.process_depth(),
-                major: old(self).global_poll@.current_lock_major(),
-                minor: old(self).global_poll@.lock_minor(),
+                container: old(self).global_pool@.container_depth(),
+                process: old(self).global_pool@.process_depth(),
+                major: old(self).global_pool@.current_lock_major(),
+                minor: old(self).global_pool@.lock_minor(),
             }),
             old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
         ensures
             final(self).wf(),
-            wlock_ensures(old(self).global_poll, final(self).global_poll, LockId{
-                container: old(self).global_poll@.container_depth(),
-                process: old(self).global_poll@.process_depth(),
-                major: old(self).global_poll@.current_lock_major(),
-                minor: old(self).global_poll@.lock_minor(),
+            wlock_ensures(old(self).global_pool, final(self).global_pool, LockId{
+                container: old(self).global_pool@.container_depth(),
+                process: old(self).global_pool@.process_depth(),
+                major: old(self).global_pool@.current_lock_major(),
+                minor: old(self).global_pool@.lock_minor(),
             }, final(lctx).thread_id(), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self).global_poll.view(), LockId{
-                container: old(self).global_poll@.container_depth(),
-                process: old(self).global_poll@.process_depth(),
-                major: old(self).global_poll@.current_lock_major(),
-                minor: old(self).global_poll@.lock_minor(),
+            lock_ensures(old(lctx), final(lctx), final(self).global_pool.view(), LockId{
+                container: old(self).global_pool@.container_depth(),
+                process: old(self).global_pool@.process_depth(),
+                major: old(self).global_pool@.current_lock_major(),
+                minor: old(self).global_pool@.lock_minor(),
             }, KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
@@ -489,40 +489,40 @@ impl PageAllocator{
             final(self).total_free_pages == old(self).total_free_pages,
     {
         let lock_id = Ghost(LockId{
-            container: self.global_poll@.container_depth(),
-            process: self.global_poll@.process_depth(),
-            major: self.global_poll@.current_lock_major(),
-            minor: self.global_poll@.lock_minor(),
+            container: self.global_pool@.container_depth(),
+            process: self.global_pool@.process_depth(),
+            major: self.global_pool@.current_lock_major(),
+            minor: self.global_pool@.lock_minor(),
         });
-        self.global_poll.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
+        self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
     }
 
-    /// Release the inner `global_poll` write lock. Mirrors `wunlock_quota`.
-    pub fn wunlock_global_poll(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+    /// Release the inner `global_pool` write lock. Mirrors `wunlock_quota`.
+    pub fn wunlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
-            old(self).global_poll.wlocked_by(old(lctx)),
-            old(self).global_poll.inv(),
+            old(self).global_pool.wlocked_by(old(lctx)),
+            old(self).global_pool.inv(),
 
             unlock_requires::<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
 
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
-            lock_perm@.lock_id() == old(self).global_poll.locking_thread()->Write_lock_id,
+            lock_perm@.lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
 
             old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
             old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)] == lock_perm@.lock_id(),
         ensures
             final(self).wf(),
-            wunlock_ensures(old(self).global_poll, final(self).global_poll),
-            unlock_ensures(old(lctx), final(lctx), final(self).global_poll.view(), lock_perm@.lock_id(), KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
+            wunlock_ensures(old(self).global_pool, final(self).global_pool),
+            unlock_ensures(old(lctx), final(lctx), final(self).global_pool.view(), lock_perm@.lock_id(), KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
             // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        self.global_poll.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
+        self.global_pool.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
     }
 
     /// Acquire the per-cpu `cpu_caches[cpu_id]` write lock. Builds
@@ -556,7 +556,7 @@ impl PageAllocator{
             }, KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
             // Other fields untouched.
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
@@ -608,7 +608,7 @@ impl PageAllocator{
             unlock_ensures(old(lctx), final(lctx), final(self).cpu_caches[cpu_id]@@, lock_perm@.lock_id(), KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
             // Other fields untouched.
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_poll == old(self).global_poll,
+            final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
@@ -636,7 +636,7 @@ impl PageAllocator{
     //     requires
     //         old(self).wf(),
     //         old(self).cpu_caches_unlocked(),
-    //         old(self).global_poll_unlocked(),
+    //         old(self).global_pool_unlocked(),
     //         // old(self).quota_unlocked(),
     //         old(self).local_quota_clean(cpu_id),
     //         cpu_id_valid(cpu_id),
@@ -644,7 +644,7 @@ impl PageAllocator{
 
     //         wlock_requires(old(self).cpu_caches.spec_index(cpu_id).view(), old(lctx)),
     //         // wlock_requires(old(self).quota, old(lctx)),
-    //         wlock_requires(old(self).global_poll, old(lctx)),
+    //         wlock_requires(old(self).global_pool, old(lctx)),
 
     //         old(lctx).kernel_view_locking_state() is Acquire,
 
@@ -663,13 +663,13 @@ impl PageAllocator{
     //             &&&
     //             self.cpu_caches_unlocked()
     //             &&&
-    //             self.global_poll_unlocked()
+    //             self.global_pool_unlocked()
     //             &&&
     //             self.quota_unlocked()
     //             &&&
     //             self.cpu_caches == old(self).cpu_caches
     //             &&&
-    //             self.global_poll == old(self).global_poll
+    //             self.global_pool == old(self).global_pool
     //             &&&
     //             self.quota.view() == old(self).quota.view()
     //         },
@@ -712,7 +712,7 @@ impl PageAllocator{
         
     //     assert(self.wf()) by {
     //         assert(self.cpu_caches.inv());
-    //         assert(self.global_poll.inv());
+    //         assert(self.global_pool.inv());
     //         assert(self.quota.inv());
     //         assert(self.cpu_caches_wf());
     //         assert(self.internal_lock_id_wf());

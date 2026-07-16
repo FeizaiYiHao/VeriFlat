@@ -24,7 +24,7 @@ verus! {
         pub allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         pub allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
 
-        // pub clontainer_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
+        // pub container_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
 
         pub default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, // Read only
     }
@@ -356,7 +356,7 @@ verus! {
                             PageSize::SZ2m => final(self).allocator_2m_map,
                             PageSize::SZ1g => final(self).allocator_1g_map,
                         };
-                        new_m.dom().contains(p) && new_m[p].global_poll == old_m[p].global_poll
+                        new_m.dom().contains(p) && new_m[p].global_pool == old_m[p].global_pool
                     },
                 forall|sz: PageSize, p: RwLockPageAllocatorPtr, c: CpuId|
                     #![trigger old(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
@@ -551,7 +551,7 @@ verus! {
         sz: PageSize,
         lctx: &LocalContext,
     ) -> bool {
-        // forward: quota / cache / global_poll
+        // forward: quota / cache / global_pool
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))]
             #![trigger alloc_map.spec_index(p)]
@@ -581,9 +581,9 @@ verus! {
             lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].global_poll.locked_by(lctx)
-            && alloc_map[p].global_poll.locking_thread() is Write
-            && alloc_map[p].global_poll.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)])
+            && alloc_map[p].global_pool.locked_by(lctx)
+            && alloc_map[p].global_pool.locking_thread() is Write
+            && alloc_map[p].global_pool.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)])
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger alloc_map.dom().contains(p)]
             #![trigger alloc_map.spec_index(p)]
@@ -592,7 +592,7 @@ verus! {
             {
                 &&& alloc_map[p].quota.locked_by(lctx)
                     ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
-                &&& alloc_map[p].global_poll.locked_by(lctx)
+                &&& alloc_map[p].global_pool.locked_by(lctx)
                     ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
                 &&& forall|c: CpuId|
                     #![trigger alloc_map[p].cpu_caches[c]@.locked_by(lctx)]

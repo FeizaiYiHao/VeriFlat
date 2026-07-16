@@ -90,7 +90,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_childern_parent_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn container_children_parent_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&&
         forall|c_ptr: RwLockContainerPtr, child_c_ptr: RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr)]
@@ -145,7 +145,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_childern_depth_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
+    pub open spec fn container_children_depth_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr|
             #![trigger container_perms.dom().contains(c_ptr)]
@@ -211,9 +211,9 @@ verus! {
 
     pub open spec fn container_tree_wf(root_container: RwLockContainerPtr, container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,) -> bool {
         &&& container_root_wf(root_container, container_perms)
-        &&& container_childern_parent_wf(root_container, container_perms)
+        &&& container_children_parent_wf(root_container, container_perms)
         &&& containers_linkedlist_wf(root_container, container_perms)
-        &&& container_childern_depth_wf(root_container, container_perms)
+        &&& container_children_depth_wf(root_container, container_perms)
         &&& container_subtree_set_wf(root_container, container_perms)
         &&& container_uppertree_seq_wf(root_container, container_perms)
         &&& container_subtree_set_exclusive(root_container, container_perms)
@@ -241,9 +241,9 @@ verus! {
             container_tree_wf(root_container, new_container_perms),
     {
         reveal(container_root_wf);
-        reveal(container_childern_parent_wf);
+        reveal(container_children_parent_wf);
         reveal(containers_linkedlist_wf);
-        reveal(container_childern_depth_wf);
+        reveal(container_children_depth_wf);
         reveal(container_subtree_set_wf);
         reveal(container_uppertree_seq_wf);
         reveal(container_subtree_set_exclusive);
@@ -265,8 +265,8 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
     proof {
         reveal(container_perms_wf);
         reveal(container_root_wf);
-        reveal(container_childern_parent_wf);
-        reveal(container_childern_depth_wf);
+        reveal(container_children_parent_wf);
+        reveal(container_children_depth_wf);
         reveal(container_subtree_set_wf);
         reveal(container_uppertree_seq_wf);
         reveal(container_subtree_set_exclusive);

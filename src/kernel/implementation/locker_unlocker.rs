@@ -712,7 +712,7 @@ verus! {
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
@@ -752,7 +752,7 @@ verus! {
                     #![trigger self.allocator_4k_map.spec_index(aptr)]
                     self.allocator_4k_map.dom().contains(aptr)
                 implies
-                    self.allocator_4k_map.spec_index(aptr).global_poll == old(self).allocator_4k_map.spec_index(aptr).global_poll
+                    self.allocator_4k_map.spec_index(aptr).global_pool == old(self).allocator_4k_map.spec_index(aptr).global_pool
                     && self.allocator_4k_map.spec_index(aptr).cpu_caches == old(self).allocator_4k_map.spec_index(aptr).cpu_caches
                     && self.allocator_4k_map.spec_index(aptr).quota.view() == old(self).allocator_4k_map.spec_index(aptr).quota.view()
                     && self.allocator_4k_map.spec_index(aptr).total_free_pages == old(self).allocator_4k_map.spec_index(aptr).total_free_pages
@@ -931,7 +931,7 @@ verus! {
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
@@ -1724,7 +1724,7 @@ verus! {
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.unchanged_except(&old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches, cache_cpu),
@@ -1925,7 +1925,7 @@ verus! {
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.unchanged_except(&old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches, cache_cpu),
@@ -2052,7 +2052,7 @@ verus! {
         }
 
         #[verifier::spinoff_prover]
-        pub fn wlock_allocator_global_poll(
+        pub fn wlock_allocator_global_pool(
             &mut self,
             alloc_ptr_4k: RwLockPageAllocatorPtr,
             Tracked(lctx): Tracked<&mut LocalContext>,
@@ -2061,19 +2061,19 @@ verus! {
                 old(self).inv(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                wlock_requires(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll, old(lctx)),
+                wlock_requires(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool, old(lctx)),
                 old(lctx).lock_id_acyclic(LockId{
-                    container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.container_depth(),
-                    process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.process_depth(),
-                    major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.current_lock_major(),
-                    minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.lock_minor(),
+                    container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
+                    process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
+                    major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
+                    minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
                 }),
                 old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
 
-                // ---- Field framing: only allocator_4k_map's global_poll lock state moves ----
+                // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
@@ -2088,7 +2088,7 @@ verus! {
                 final(self).allocator_1g_map  == old(self).allocator_1g_map,
                 final(self).default_pagetable == old(self).default_pagetable,
 
-                // ---- allocator_4k_map: dom unchanged; only the targeted entry's global_poll lock state changed ----
+                // ---- allocator_4k_map: dom unchanged; only the targeted entry's global_pool lock state changed ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
@@ -2103,27 +2103,27 @@ verus! {
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_global_poll) ----
+                // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_global_pool) ----
                 wlock_ensures(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                     LockId{
-                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.container_depth(),
-                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.process_depth(),
-                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.current_lock_major(),
-                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.lock_minor(),
+                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
+                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
+                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
+                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
                     },
                     final(lctx).thread_id(),
                     ret@,
                 ),
                 lock_ensures(
                     old(lctx), final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view(),
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view(),
                     LockId{
-                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.container_depth(),
-                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.process_depth(),
-                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.current_lock_major(),
-                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll@.lock_minor(),
+                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
+                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
+                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
+                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
                     },
                     KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
                 ),
@@ -2134,7 +2134,7 @@ verus! {
                 reveal(allocator_perms_wf);
                 reveal(process_perms_wf);
             }
-            let ret = self.allocator_4k_map.wlock_global_poll(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
+            let ret = self.allocator_4k_map.wlock_global_pool(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
             proof {
                 // ---- subsystems_inv ----
@@ -2227,7 +2227,7 @@ verus! {
         }
 
         #[verifier::spinoff_prover]
-        pub fn wunlock_allocator_global_poll(
+        pub fn wunlock_allocator_global_pool(
             &mut self,
             alloc_ptr_4k: RwLockPageAllocatorPtr,
             Tracked(lctx): Tracked<&mut LocalContext>,
@@ -2237,19 +2237,19 @@ verus! {
                 old(self).inv(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.wlocked_by(old(lctx)),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.inv(),
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(old(lctx)),
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.inv(),
                 unlock_requires::<crate::linkedlist::spec_impl::LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.locking_thread()->Write_lock_id,
+                lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
                 old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)),
                 old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)] == lock_perm@.lock_id(),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
 
-                // ---- Field framing: only allocator_4k_map's global_poll lock state moves ----
+                // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
@@ -2264,7 +2264,7 @@ verus! {
                 final(self).allocator_1g_map  == old(self).allocator_1g_map,
                 final(self).default_pagetable == old(self).default_pagetable,
 
-                // ---- allocator_4k_map: dom unchanged; only the targeted entry's global_poll lock state changed (now unlocked) ----
+                // ---- allocator_4k_map: dom unchanged; only the targeted entry's global_pool lock state changed (now unlocked) ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
@@ -2283,15 +2283,15 @@ verus! {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_global_poll) ----
+                // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_global_pool) ----
                 wunlock_ensures(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 ),
                 unlock_ensures(
                     old(lctx),
                     final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view(),
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view(),
                     lock_perm@.lock_id(),
                     KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
                 ),
@@ -2302,7 +2302,7 @@ verus! {
                 reveal(allocator_perms_wf);
                 reveal(process_perms_wf);
             }
-            self.allocator_4k_map.wunlock_global_poll(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
+            self.allocator_4k_map.wunlock_global_pool(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
 
             proof {
                 // ---- subsystems_inv ----

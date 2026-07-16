@@ -4,7 +4,7 @@ use crate::array::Array;
 use vstd::set_lib::*;
 
 
-/// A set of intergers from 0 to N - 1.
+/// A set of integers from 0 to N - 1.
 pub struct ArraySet<const N: usize> {
     pub data: Array<bool, N>,
     pub len: usize,

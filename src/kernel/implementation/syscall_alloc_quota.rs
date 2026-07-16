@@ -294,7 +294,7 @@ verus! {
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locking_thread() is None,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
-                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_poll,
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
 

@@ -281,7 +281,7 @@ if they ever disagree.
   AND the four unlocks — Verus fights the quantifier instantiation (a congruence
   lemma over equal `lock_map`/`thread_id` won't auto-close). Instead ensure the
   lock-STATE FRAMING (each touched entry `locking_thread() is None`, every other
-  field byte-equal, the 4k entry's `cpu_caches`/`global_poll` framed, `lock_map`
+  field byte-equal, the 4k entry's `cpu_caches`/`global_pool` framed, `lock_map`
   `.remove()`d of the four keys) and let the CALLER re-derive
   `all_objects_unlocked` from its own entry `all_objects_unlocked` fact — which
   is still in scope there — with just the `reveal(*_objects_unlocked)` set. This
@@ -344,8 +344,7 @@ conjuncts fire off this named frame.
 
 ## Honest rough edges in-tree (don't "fix" silently)
 
-Load-bearing typos in public ids (`childern`, `processs`, `additonal`/`addtional`,
-`vaild`, `global_poll`, file `pagetabel_map_spec.rs`); `syscall_alloc_quota.rs`
+`syscall_alloc_quota.rs`
 is WIP but `syscall_alloc_quota_4k` + its `commit_alloc_quota_4k` helper now
 verify fully (no `assume(false)`); `finish_empty_user_step` / `release_cpu_and_finish`
 remain COMMENTED-OUT templates — treat them as dead, not as style references
