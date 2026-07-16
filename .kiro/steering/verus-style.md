@@ -134,6 +134,26 @@ if they ever disagree.
   ask — don't sprinkle it. The rest of the cost pattern still holds: function-wide
   `proof { reveal(...); }` hoist at top; re-establish `inv()` conjunct-by-conjunct
   under `// ---- subsystem ----` banners ending in `assert(self.inv());`.
+- **Scope reveals to the assert that owns them — every BARE `reveal(...)` deserves a
+  second look (high value — reveal scope is real SMT cost).** A `reveal(P)` at
+  `proof {}` / function scope opens `P`'s definition for the WHOLE rest of the
+  function's SMT context, not just the obligation that needs it. For a DEEP-quantifier
+  predicate (`*_locked_match_lctx`, the `*_wf` membership/fold invariants) that
+  leaked-open body enlarges E-matching for every downstream assert — pollution that
+  inflates rlimit and can destabilize UNRELATED sibling conjuncts. The confining move
+  is to attach the reveal to the specific `assert(<goal>) by { reveal(P); }` that
+  consumes it (Verus `reveal` is lexically function-wide, so a nested `proof {}` does
+  NOT limit it — only an `assert ... by {}` does). Scoping the 9-reveal
+  `*_locked_match_lctx` chain in `pop_stage_4k_page` into
+  `assert(self.locked_objects_match_lctx(&*lctx)) by { <the 9 reveals> }` cut the
+  module rlimit ~6%. This is the SAME lever as the nested-`inv()` rebuild below (each
+  `by {}` is its own scoped sub-goal) — apply it to loose reveals too. EXCEPTIONS
+  where a bare hoist is correct: (a) the predicate is consumed by SEVERAL sibling
+  asserts in the block (scoping would duplicate the reveal N times — the function-wide
+  hoist is then the cheaper idiom), or (b) delete-and-reverify shows the reveal is
+  needed function-wide (e.g. by exec precondition checks between the reveal and a later
+  re-reveal). Don't force-scope a reveal a delete-and-reverify proves is needed broadly;
+  DO scope a deep-quantifier reveal that exactly one downstream assert owns.
 - **inv() re-establishment is NESTED, not flat** (high value): wrap each
   subsystem's conjuncts INSIDE
   `assert(self.memory_management_inv()) by { <its conjuncts> };` and

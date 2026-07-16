@@ -42,6 +42,32 @@ Run this after any major edit to `src/` before considering the work done.
      `ensures` framing and the body's `inv()` re-establishment — never wrapped
      across lines, never in `requires`.
    - **`proof {}` blocks carry NO prose** — bare calls / asserts / reveals.
+   - **Every BARE `reveal(...)` deserves a second look (HIGH SIGNAL — reveal scope
+     is a real SMT cost).** A `reveal(P)` at `proof {}` / function scope opens `P`'s
+     definition for the ENTIRE rest of the function's SMT context, not just the
+     obligation that needs it. For a DEEP-quantifier predicate (`*_locked_match_lctx`,
+     `*_wf` with `forall` bodies, the fold/membership invariants) that leaked-open body
+     enlarges the E-matching search space for every downstream assert — pure pollution
+     that inflates rlimit and can destabilize UNRELATED sibling conjuncts. The fix is to
+     SCOPE it: move the `reveal(P)` inside the `assert(<the goal that needs P>) by {
+     reveal(P); }` that actually consumes it (Verus `reveal` is lexically function-wide,
+     so the ONLY way to confine it is to attach it to a specific `assert ... by {}`).
+     When you see a cluster of bare reveals at `proof {}`/function scope — especially
+     deep-quantifier ones — flag it and, if you can (`--fix`/scratch check), try wrapping
+     them in the consuming `assert by {}` and re-verify with `--time-expanded`; if the
+     module still verifies at EQUAL-or-LOWER rlimit, the scoping is a strict win (keep
+     it). Concretely, scoping the 9-reveal `*_locked_match_lctx` chain in
+     `pop_stage_4k_page` into `assert(self.locked_objects_match_lctx(&*lctx)) by { ... }`
+     cut the module rlimit ~6%. EXEMPT: a bare reveal is fine (a) when the same predicate
+     is consumed by several sibling asserts in the block (scoping would duplicate it N
+     times — the hoist is then the cheaper form, matching the function-wide
+     `proof { reveal(...); }` cost-hoist idiom), or (b) when it is delete-and-reverify
+     load-bearing AND removing it fails the function (i.e. genuinely needed by exec
+     precondition checks between the reveal and a later re-reveal). The tell for a BAD
+     bare reveal is specifically: a deep-quantifier `reveal` at outer scope whose fact
+     is consumed by exactly ONE downstream `assert`, sitting alongside unrelated conjuncts
+     it silently slows. Don't force-scope a reveal that a delete-and-reverify shows is
+     needed function-wide; DO scope one that a single assert owns.
    - **Doc comments (`///`)** — absent on ordinary wrappers; present ONLY to
      explain the single non-obvious contract point, never to recap the body.
    - **Triggers** — `#![auto]` for shallow "every other entry unchanged" framing
@@ -153,16 +179,32 @@ Run this after any major edit to `src/` before considering the work done.
    verdict: **clean** or **N violations**.
 
 5. **Clear the gate (clean pass only).** The `Stop` hook
-   (`.claude/hooks/style-gate.sh`) blocks stopping while `src/**/*.rs` is dirty and
-   newer than the sentinel `.claude/.style-checked`. When — and only when — this
-   review comes back **clean** (zero surviving violations), run
-   `touch .claude/.style-checked` so the gate clears. If there are violations, do
-   NOT touch it: fix them (or hand back to the user) and re-run `/style-check`; the
-   gate stays shut until a clean pass. Never `touch` the sentinel by any other route
-   — that is the one action that certifies the diff, so it must reflect a real pass.
+   (`.claude/hooks/style-gate.sh`) blocks stopping while a session-edited
+   `src/**/*.rs` is dirty and its CONTENT differs from what was last certified.
+   The sentinel `.claude/.style-checked` records that certified content: one
+   `<git-hash-object><TAB><path>` line per reviewed dirty file. When — and only
+   when — this review comes back **clean** (zero surviving violations), regenerate
+   the sentinel with the current content hashes of exactly the dirty ledger files
+   you reviewed:
+
+   ```bash
+   : > .claude/.style-checked
+   for f in <the dirty ledger paths reviewed clean>; do
+     printf '%s\t%s\n' "$(git hash-object "$f")" "$f" >> .claude/.style-checked
+   done
+   ```
+
+   (If no ledger file was still dirty, an empty `: > .claude/.style-checked`
+   refreshes the mtime and clears the gate.) Recording the hash — not just a
+   `touch` — is what lets the gate stay quiet when later measurement/profiling
+   mutates a file and then restores it byte-for-byte: same content hash ⟹ no
+   re-block, no re-check. If there are violations, do NOT regenerate it: fix them
+   (or hand back to the user) and re-run `/style-check`; the gate stays shut until
+   a clean pass. Never write the sentinel by any other route — that is the one
+   action that certifies the diff, so it must reflect a real pass.
 
 Do NOT edit `src/` here — this is review-only (the `--fix` path below is the sole
 exception). If the user wants fixes applied, they will ask (or pass `--fix` in
 `$ARGUMENTS`, in which case apply the fixes after reporting, re-run
 `./verify.sh --verify-only-module <changed module>` to confirm nothing broke, then
-`touch .claude/.style-checked` to clear the gate).
+regenerate `.claude/.style-checked` (per step 5) to clear the gate).

@@ -4,6 +4,23 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+    // A page slot participates in the 2m hugepage invariant iff its state is one
+    // of the 2m variants (the leaf 2m states or a 2m merge tail). Used to scope
+    // the `hugepage_2m_wf` framing lemma to exactly the slots that invariant reads.
+    pub open spec fn page_state_2m_related(s: PageState) -> bool {
+        ||| s is Free2m
+        ||| s is Allocated2m
+        ||| s is Mapped2m
+        ||| s is Merged2m
+    }
+
+    // 1g twin of `page_state_2m_related`.
+    pub open spec fn page_state_1g_related(s: PageState) -> bool {
+        ||| s is Free1g
+        ||| s is Mapped1g
+        ||| s is Merged1g
+    }
+
     #[verifier::opaque]
     pub open spec fn hugepage_2m_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
