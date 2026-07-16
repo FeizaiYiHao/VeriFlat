@@ -394,6 +394,62 @@ impl PageAllocator{
         }
         (node_addr, node_perm)
     }
+
+    // Global-pool twin of `pop_cache_page`: pop the head off the write-locked
+    // `global_poll` list and rebalance `total_free_pages`. Conservation is
+    // simpler than the cache case -- `total_free_pages_wf` folds `global_poll.len()
+    // + fold(cpu_caches)`, and here `global_poll.len()` drops by 1 while the whole
+    // `cpu_caches` array is byte-unchanged (so its fold is congruent).
+    pub fn pop_global_poll_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+        requires
+            old(self).wf(),
+            old(self).global_poll.wlocked_by(lctx),
+            old(self).global_poll.is_init(),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().lock_id() == old(self).global_poll.locking_thread()->Write_lock_id,
+            old(self).global_poll.view().len() > 0,
+        ensures
+            final(self).wf(),
+            // ---- popped node ----
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == old(self).global_poll.view().view()[0],
+            old(self).global_poll.view().map().dom().contains(ret.0),
+            old(self).global_poll.view().map()[ret.0] == ret.1.view().value().view(),
+            ret.0 == old(self).global_poll.view().addr_list.view()[0],
+            // ---- pool shrank by the popped head, total rebalanced ----
+            final(self).global_poll.view().view() == old(self).global_poll.view().view().skip(1),
+            final(self).global_poll.view().map() == old(self).global_poll.view().map().remove(ret.0),
+            final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
+            // ---- lock state of global_poll preserved, others untouched ----
+            final(self).global_poll.is_init(),
+            final(self).global_poll.locking_thread() == old(self).global_poll.locking_thread(),
+            final(self).global_poll.being_killed() == old(self).global_poll.being_killed(),
+            final(self).cpu_caches == old(self).cpu_caches,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+    {
+        proof {
+            lemma_cache_len_fold_nonneg(old(self).cpu_caches.view());
+        }
+        let (node_addr, node_perm) = {
+            let poll_mut = self.global_poll.borrow_mut(Tracked(lctx), lock_perm);
+            let (node_addr, Tracked(node_perm)) = poll_mut.pop_head();
+            assert(old(self).global_poll.view().map().dom().contains(node_addr)) by {
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_map);
+            };
+            (node_addr, Tracked(node_perm))
+        };
+        self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
+        proof {
+            self.global_poll.view().lemma_len_view();
+            old(self).global_poll.view().lemma_len_view();
+            lemma_cache_len_fold_congruence(old(self).cpu_caches.view(), self.cpu_caches.view());
+        }
+        (node_addr, node_perm)
+    }
 }
 
 /*

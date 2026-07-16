@@ -245,6 +245,7 @@ verus! {
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
             #![trigger allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
+            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_poll, page_ptr2page_index(page_ptr)]
             allocator_4k_map.dom().contains(alloc_ptr) && allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
             ==>
             (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList })
