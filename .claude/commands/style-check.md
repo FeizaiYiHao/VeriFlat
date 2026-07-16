@@ -169,8 +169,7 @@ Run this after any major edit to `src/` before considering the work done.
    - **Framing lemmas** — hypothesis scoped to the fields the target-wf actually
      reads, not the whole `view()`.
    - **Naming** — `_4k`/`_2m`/`_1g` triples + non-suffixed combiner; `<from>2<to>`
-     conversions; relations `<a>_<b>_wf` in lock-hierarchy order. Preserve the
-     load-bearing in-tree typos (`childern`, `processs`, `global_poll`, …).
+     conversions; relations `<a>_<b>_wf` in lock-hierarchy order.
 
 4. **Report.** List each violation as `path:line — <what> → <the fix>`, grouped
    by file, ordered by severity (comment discipline & `#![all_triggers]` are the

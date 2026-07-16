@@ -816,10 +816,10 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_alloc(
         // container_map unchanged; allocator dom unchanged.
         post.container_map == pre.container_map,
         post.allocator_4k_map.dom() == pre.allocator_4k_map.dom(),
-        // The touched allocator: global_poll + owning_container unchanged; cache
+        // The touched allocator: global_pool + owning_container unchanged; cache
         // cpu_id shrank to pre.skip(1); other caches unchanged.
-        post.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view()
-            == pre.allocator_4k_map.spec_index(alloc_ptr_4k).global_poll.view(),
+        post.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view()
+            == pre.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view(),
         post.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view()
             == pre.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
         pre.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().len() >= 1,
@@ -867,9 +867,9 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_alloc(
         let owner = post.page_array.spec_index(pi).view().view().owning_container;
         let alloc = post.container_map.spec_index(owner).view_rodata().view().allocator_ptr_4k;
         &&& post.page_array.spec_index(pi).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList }
-            ==> post.allocator_4k_map.spec_index(alloc).global_poll.view().view().contains(page_index2page_ptr(pi))
-                && post.allocator_4k_map.spec_index(alloc).global_poll.view().map().dom().contains(post.page_array.spec_index(pi).view().view().free_list_node_storage.addr())
-                && post.allocator_4k_map.spec_index(alloc).global_poll.view().map().spec_index(post.page_array.spec_index(pi).view().view().free_list_node_storage.addr()) == page_index2page_ptr(pi)
+            ==> post.allocator_4k_map.spec_index(alloc).global_pool.view().view().contains(page_index2page_ptr(pi))
+                && post.allocator_4k_map.spec_index(alloc).global_pool.view().map().dom().contains(post.page_array.spec_index(pi).view().view().free_list_node_storage.addr())
+                && post.allocator_4k_map.spec_index(alloc).global_pool.view().map().spec_index(post.page_array.spec_index(pi).view().view().free_list_node_storage.addr()) == page_index2page_ptr(pi)
                 && post.allocator_4k_map.spec_index(alloc).owning_container == post.page_array.spec_index(pi).view().view().owning_container
         &&& post.page_array.spec_index(pi).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id: c } }
             ==> post.allocator_4k_map.dom().contains(alloc)
@@ -887,13 +887,13 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_alloc(
             let alloc = pre.container_map.spec_index(owner).view_rodata().view().allocator_ptr_4k;
             let pp = page_index2page_ptr(pi);
             let st = pre.page_array.spec_index(pi).view().view().free_list_node_storage.addr();
-            // GlobalList: that allocator's global_poll is unchanged. If alloc ==
+            // GlobalList: that allocator's global_pool is unchanged. If alloc ==
             // alloc_ptr_4k it's preserved by hypothesis; else the whole allocator
             // == pre. Either way pre's forward GlobalList fact carries.
             if pre.page_array.spec_index(pi).view().view().state is Free4k
                 && pre.page_array.spec_index(pi).view().view().state->Free4k_state is GlobalList {
-                assert(post.allocator_4k_map.spec_index(alloc).global_poll.view()
-                    == pre.allocator_4k_map.spec_index(alloc).global_poll.view());
+                assert(post.allocator_4k_map.spec_index(alloc).global_pool.view()
+                    == pre.allocator_4k_map.spec_index(alloc).global_pool.view());
             }
             // PreCpuCache: page pp ≠ page_ptr (pi ≠ page_index, page_index2page_ptr
             // injective). Its cache (alloc, c): if (alloc,c)==(alloc_ptr_4k,cpu_id),
@@ -922,8 +922,8 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_alloc(
 
     // ---- REVERSE pool ----
     assert forall|a: RwLockPageAllocatorPtr, pp: PagePtr|
-        #![trigger post.allocator_4k_map.spec_index(a).global_poll.view().view().contains(pp)]
-        post.allocator_4k_map.dom().contains(a) && post.allocator_4k_map.spec_index(a).global_poll.view().view().contains(pp)
+        #![trigger post.allocator_4k_map.spec_index(a).global_pool.view().view().contains(pp)]
+        post.allocator_4k_map.dom().contains(a) && post.allocator_4k_map.spec_index(a).global_pool.view().view().contains(pp)
     implies
         (post.page_array.spec_index(page_ptr2page_index(pp)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList })
         && post.page_array.spec_index(page_ptr2page_index(pp)).view().view().owning_container == post.allocator_4k_map.spec_index(a).owning_container
@@ -931,7 +931,7 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_alloc(
         // pool unchanged for every allocator ⟹ pp was in pre's pool ⟹ pre reverse
         // gives Free4k{GlobalList}; that page ≠ page_index (page_index was a cache
         // page, Free4k{PreCpuCache}, not GlobalList), so its state is unchanged.
-        assume(post.allocator_4k_map.spec_index(a).global_poll.view() == pre.allocator_4k_map.spec_index(a).global_poll.view());
+        assume(post.allocator_4k_map.spec_index(a).global_pool.view() == pre.allocator_4k_map.spec_index(a).global_pool.view());
         assume(page_ptr2page_index(pp) != page_index);
     };
 
@@ -985,9 +985,9 @@ pub proof fn lemma_process_tree_wf_preserved_for_tree_fields_eq(
         process_tree_wf(root_process, process_tree_dom, new_process_perms),
 {
     reveal(process_root_wf);
-    reveal(process_childern_parent_wf);
-    reveal(processs_linkedlist_wf);
-    reveal(process_childern_depth_wf);
+    reveal(process_children_parent_wf);
+    reveal(process_linkedlist_wf);
+    reveal(process_children_depth_wf);
     reveal(process_subtree_set_wf);
     reveal(process_uppertree_seq_wf);
     reveal(process_subtree_set_exclusive);
@@ -1114,7 +1114,7 @@ pub proof fn lemma_process_perms_wf_preserved_for_process_lock_op(
 /// lock-state-only change. These predicates read only: the page array
 /// (state, `free_list_node_storage.addr()`, `owning_container`), each
 /// container's `view_rodata()` (the `allocator_ptr_*`), and each allocator's
-/// `global_poll.view()` / per-cpu cache payload / `owning_container`. None of
+/// `global_pool.view()` / per-cpu cache payload / `owning_container`. None of
 /// those move when a single object's lock state flips, so the honest
 /// hypotheses are pointwise projection-equalities. Split into one lemma per
 /// granule (each its own SMT query) because a single combined query exceeds
@@ -1152,7 +1152,7 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
             #![trigger post.allocator_4k_map.spec_index(a).owning_container]
             post.allocator_4k_map.dom().contains(a) ==>
                 post.allocator_4k_map.spec_index(a).owning_container == pre.allocator_4k_map.spec_index(a).owning_container
-                && post.allocator_4k_map.spec_index(a).global_poll.view() == pre.allocator_4k_map.spec_index(a).global_poll.view(),
+                && post.allocator_4k_map.spec_index(a).global_pool.view() == pre.allocator_4k_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
             post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
@@ -1173,8 +1173,8 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
         let owner = post.page_array.spec_index(page_index).view().view().owning_container;
         let alloc = post.container_map.spec_index(owner).view_rodata().view().allocator_ptr_4k;
         &&& post.page_array.spec_index(page_index).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList }
-            ==> post.allocator_4k_map.spec_index(alloc).global_poll.view().view().contains(page_index2page_ptr(page_index))
-                && post.allocator_4k_map.spec_index(alloc).global_poll.view().map().spec_index(post.page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+            ==> post.allocator_4k_map.spec_index(alloc).global_pool.view().view().contains(page_index2page_ptr(page_index))
+                && post.allocator_4k_map.spec_index(alloc).global_pool.view().map().spec_index(post.page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
                 && post.allocator_4k_map.spec_index(alloc).owning_container == post.page_array.spec_index(page_index).view().view().owning_container
         &&& post.page_array.spec_index(page_index).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id } }
@@ -1200,11 +1200,11 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
         // container_allocator_wf forward: alloc is in the 4k allocator map.
         assert(pre.allocator_4k_map.dom().contains(alloc));
         // Mention owning_container at `alloc` to fire the bundled hypothesis
-        // (owning_container && global_poll.view() preserved), then restate the
-        // global_poll equality explicitly so the goal's `.global_poll...` reads
+        // (owning_container && global_pool.view() preserved), then restate the
+        // global_pool equality explicitly so the goal's `.global_pool...` reads
         // rewrite to pre. The per-cpu cache equality is asserted per valid cpu.
         assert(post.allocator_4k_map.spec_index(alloc).owning_container == pre.allocator_4k_map.spec_index(alloc).owning_container);
-        assert(post.allocator_4k_map.spec_index(alloc).global_poll.view() == pre.allocator_4k_map.spec_index(alloc).global_poll.view());
+        assert(post.allocator_4k_map.spec_index(alloc).global_pool.view() == pre.allocator_4k_map.spec_index(alloc).global_pool.view());
         // page_array_wf ⟹ this page satisfies Page::inv() ⟹ free_state_inv:
         // a Free4k{PreCpuCache{cpu_id}} page has cpu_id_valid(cpu_id). That lets
         // the per-cpu cache projection-equality hypothesis apply at the page's
@@ -1216,16 +1216,16 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
     };
 
     assert forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
-        #![trigger post.allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
-        post.allocator_4k_map.dom().contains(alloc_ptr) && post.allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+        #![trigger post.allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
+        post.allocator_4k_map.dom().contains(alloc_ptr) && post.allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
     implies
         (post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList })
         && post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == post.allocator_4k_map.spec_index(alloc_ptr).owning_container
     by {
         assert(pre.allocator_4k_map.dom().contains(alloc_ptr));
-        // global_poll view preserved ⟹ pre also contains page_ptr ⟹ pre's
+        // global_pool view preserved ⟹ pre also contains page_ptr ⟹ pre's
         // reverse predicate fires; page_array and owning_container preserved.
-        assert(pre.allocator_4k_map.spec_index(alloc_ptr).global_poll.view() == post.allocator_4k_map.spec_index(alloc_ptr).global_poll.view());
+        assert(pre.allocator_4k_map.spec_index(alloc_ptr).global_pool.view() == post.allocator_4k_map.spec_index(alloc_ptr).global_pool.view());
         assert(post.page_array.spec_index(page_ptr2page_index(page_ptr)) == pre.page_array.spec_index(page_ptr2page_index(page_ptr)));
         assert(post.allocator_4k_map.spec_index(alloc_ptr).owning_container == pre.allocator_4k_map.spec_index(alloc_ptr).owning_container);
     };
@@ -1270,7 +1270,7 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
             #![trigger post.allocator_2m_map.spec_index(a).owning_container]
             post.allocator_2m_map.dom().contains(a) ==>
                 post.allocator_2m_map.spec_index(a).owning_container == pre.allocator_2m_map.spec_index(a).owning_container
-                && post.allocator_2m_map.spec_index(a).global_poll.view() == pre.allocator_2m_map.spec_index(a).global_poll.view(),
+                && post.allocator_2m_map.spec_index(a).global_pool.view() == pre.allocator_2m_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_2m_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
             post.allocator_2m_map.dom().contains(a) && cpu_id_valid(i) ==>
@@ -1291,8 +1291,8 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
         let owner = post.page_array.spec_index(page_index).view().view().owning_container;
         let alloc = post.container_map.spec_index(owner).view_rodata().view().allocator_ptr_2m;
         &&& post.page_array.spec_index(page_index).view().view().state matches PageState::Free2m { state: FreePageAllocatorState::GlobalList }
-            ==> post.allocator_2m_map.spec_index(alloc).global_poll.view().view().contains(page_index2page_ptr(page_index))
-                && post.allocator_2m_map.spec_index(alloc).global_poll.view().map().spec_index(post.page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+            ==> post.allocator_2m_map.spec_index(alloc).global_pool.view().view().contains(page_index2page_ptr(page_index))
+                && post.allocator_2m_map.spec_index(alloc).global_pool.view().map().spec_index(post.page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
                 && post.allocator_2m_map.spec_index(alloc).owning_container == post.page_array.spec_index(page_index).view().view().owning_container
         &&& post.page_array.spec_index(page_index).view().view().state matches PageState::Free2m { state: FreePageAllocatorState::PreCpuCache { cpu_id } }
@@ -1312,7 +1312,7 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
         let alloc = pre.container_map.spec_index(owner).view_rodata().view().allocator_ptr_2m;
         assert(pre.allocator_2m_map.dom().contains(alloc));
         assert(post.allocator_2m_map.spec_index(alloc).owning_container == pre.allocator_2m_map.spec_index(alloc).owning_container);
-        assert(post.allocator_2m_map.spec_index(alloc).global_poll.view() == pre.allocator_2m_map.spec_index(alloc).global_poll.view());
+        assert(post.allocator_2m_map.spec_index(alloc).global_pool.view() == pre.allocator_2m_map.spec_index(alloc).global_pool.view());
         assert(pre.page_array.spec_index(page_index)@@.inv());
         assert forall|i: CpuId| #![trigger post.allocator_2m_map.spec_index(alloc).cpu_caches.spec_index(i)] cpu_id_valid(i) implies
             post.allocator_2m_map.spec_index(alloc).cpu_caches.spec_index(i).view().view()
@@ -1320,14 +1320,14 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
     };
 
     assert forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
-        #![trigger post.allocator_2m_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
-        post.allocator_2m_map.dom().contains(alloc_ptr) && post.allocator_2m_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+        #![trigger post.allocator_2m_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
+        post.allocator_2m_map.dom().contains(alloc_ptr) && post.allocator_2m_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
     implies
         (post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free2m { state: FreePageAllocatorState::GlobalList })
         && post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == post.allocator_2m_map.spec_index(alloc_ptr).owning_container
     by {
         assert(pre.allocator_2m_map.dom().contains(alloc_ptr));
-        assert(pre.allocator_2m_map.spec_index(alloc_ptr).global_poll.view() == post.allocator_2m_map.spec_index(alloc_ptr).global_poll.view());
+        assert(pre.allocator_2m_map.spec_index(alloc_ptr).global_pool.view() == post.allocator_2m_map.spec_index(alloc_ptr).global_pool.view());
         assert(post.page_array.spec_index(page_ptr2page_index(page_ptr)) == pre.page_array.spec_index(page_ptr2page_index(page_ptr)));
         assert(post.allocator_2m_map.spec_index(alloc_ptr).owning_container == pre.allocator_2m_map.spec_index(alloc_ptr).owning_container);
     };
@@ -1368,7 +1368,7 @@ pub proof fn lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(
             #![trigger post.allocator_1g_map.spec_index(a).owning_container]
             post.allocator_1g_map.dom().contains(a) ==>
                 post.allocator_1g_map.spec_index(a).owning_container == pre.allocator_1g_map.spec_index(a).owning_container
-                && post.allocator_1g_map.spec_index(a).global_poll.view() == pre.allocator_1g_map.spec_index(a).global_poll.view(),
+                && post.allocator_1g_map.spec_index(a).global_pool.view() == pre.allocator_1g_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_1g_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
             post.allocator_1g_map.dom().contains(a) && cpu_id_valid(i) ==>
@@ -1389,8 +1389,8 @@ pub proof fn lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(
         let owner = post.page_array.spec_index(page_index).view().view().owning_container;
         let alloc = post.container_map.spec_index(owner).view_rodata().view().allocator_ptr_1g;
         &&& post.page_array.spec_index(page_index).view().view().state matches PageState::Free1g { state: FreePageAllocatorState::GlobalList }
-            ==> post.allocator_1g_map.spec_index(alloc).global_poll.view().view().contains(page_index2page_ptr(page_index))
-                && post.allocator_1g_map.spec_index(alloc).global_poll.view().map().spec_index(post.page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+            ==> post.allocator_1g_map.spec_index(alloc).global_pool.view().view().contains(page_index2page_ptr(page_index))
+                && post.allocator_1g_map.spec_index(alloc).global_pool.view().map().spec_index(post.page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
                 && post.allocator_1g_map.spec_index(alloc).owning_container == post.page_array.spec_index(page_index).view().view().owning_container
         &&& post.page_array.spec_index(page_index).view().view().state matches PageState::Free1g { state: FreePageAllocatorState::PreCpuCache { cpu_id } }
@@ -1410,7 +1410,7 @@ pub proof fn lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(
         let alloc = pre.container_map.spec_index(owner).view_rodata().view().allocator_ptr_1g;
         assert(pre.allocator_1g_map.dom().contains(alloc));
         assert(post.allocator_1g_map.spec_index(alloc).owning_container == pre.allocator_1g_map.spec_index(alloc).owning_container);
-        assert(post.allocator_1g_map.spec_index(alloc).global_poll.view() == pre.allocator_1g_map.spec_index(alloc).global_poll.view());
+        assert(post.allocator_1g_map.spec_index(alloc).global_pool.view() == pre.allocator_1g_map.spec_index(alloc).global_pool.view());
         assert(pre.page_array.spec_index(page_index)@@.inv());
         assert forall|i: CpuId| #![trigger post.allocator_1g_map.spec_index(alloc).cpu_caches.spec_index(i)] cpu_id_valid(i) implies
             post.allocator_1g_map.spec_index(alloc).cpu_caches.spec_index(i).view().view()
@@ -1418,14 +1418,14 @@ pub proof fn lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(
     };
 
     assert forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
-        #![trigger post.allocator_1g_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
-        post.allocator_1g_map.dom().contains(alloc_ptr) && post.allocator_1g_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+        #![trigger post.allocator_1g_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
+        post.allocator_1g_map.dom().contains(alloc_ptr) && post.allocator_1g_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
     implies
         (post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free1g { state: FreePageAllocatorState::GlobalList })
         && post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == post.allocator_1g_map.spec_index(alloc_ptr).owning_container
     by {
         assert(pre.allocator_1g_map.dom().contains(alloc_ptr));
-        assert(pre.allocator_1g_map.spec_index(alloc_ptr).global_poll.view() == post.allocator_1g_map.spec_index(alloc_ptr).global_poll.view());
+        assert(pre.allocator_1g_map.spec_index(alloc_ptr).global_pool.view() == post.allocator_1g_map.spec_index(alloc_ptr).global_pool.view());
         assert(post.page_array.spec_index(page_ptr2page_index(page_ptr)) == pre.page_array.spec_index(page_ptr2page_index(page_ptr)));
         assert(post.allocator_1g_map.spec_index(alloc_ptr).owning_container == pre.allocator_1g_map.spec_index(alloc_ptr).owning_container);
     };
@@ -1473,7 +1473,7 @@ pub proof fn lemma_container_allocator_free_pages_wf_preserved_for_lock_op(
             #![trigger post.allocator_4k_map.spec_index(a).owning_container]
             post.allocator_4k_map.dom().contains(a) ==>
                 post.allocator_4k_map.spec_index(a).owning_container == pre.allocator_4k_map.spec_index(a).owning_container
-                && post.allocator_4k_map.spec_index(a).global_poll.view() == pre.allocator_4k_map.spec_index(a).global_poll.view(),
+                && post.allocator_4k_map.spec_index(a).global_pool.view() == pre.allocator_4k_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
             post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
@@ -1484,7 +1484,7 @@ pub proof fn lemma_container_allocator_free_pages_wf_preserved_for_lock_op(
             #![trigger post.allocator_2m_map.spec_index(a).owning_container]
             post.allocator_2m_map.dom().contains(a) ==>
                 post.allocator_2m_map.spec_index(a).owning_container == pre.allocator_2m_map.spec_index(a).owning_container
-                && post.allocator_2m_map.spec_index(a).global_poll.view() == pre.allocator_2m_map.spec_index(a).global_poll.view(),
+                && post.allocator_2m_map.spec_index(a).global_pool.view() == pre.allocator_2m_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_2m_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
             post.allocator_2m_map.dom().contains(a) && cpu_id_valid(i) ==>
@@ -1495,7 +1495,7 @@ pub proof fn lemma_container_allocator_free_pages_wf_preserved_for_lock_op(
             #![trigger post.allocator_1g_map.spec_index(a).owning_container]
             post.allocator_1g_map.dom().contains(a) ==>
                 post.allocator_1g_map.spec_index(a).owning_container == pre.allocator_1g_map.spec_index(a).owning_container
-                && post.allocator_1g_map.spec_index(a).global_poll.view() == pre.allocator_1g_map.spec_index(a).global_poll.view(),
+                && post.allocator_1g_map.spec_index(a).global_pool.view() == pre.allocator_1g_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_1g_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
             post.allocator_1g_map.dom().contains(a) && cpu_id_valid(i) ==>

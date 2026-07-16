@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 
     /// Container owned Cpu only runs processes and threads of the container
-    /// Container cpu bidirectly points to each other
+    /// Container cpu bidirectionally points to each other
     #[verifier::opaque]
     pub open spec fn container_cpu_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
         &&&

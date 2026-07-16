@@ -202,13 +202,13 @@ verus! {
 
                 &&&
                 allocator_4k_map.spec_index(allocator_ptr_4k)
-                    .global_poll.view().view().contains(page_index2page_ptr(page_index))
+                    .global_pool.view().view().contains(page_index2page_ptr(page_index))
                 &&&
                 allocator_4k_map.spec_index(allocator_ptr_4k)
-                    .global_poll.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    .global_pool.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                 &&&
                 allocator_4k_map.spec_index(allocator_ptr_4k)
-                    .global_poll.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    .global_pool.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
                 &&&
                 allocator_4k_map.spec_index(allocator_ptr_4k)
@@ -244,9 +244,9 @@ verus! {
             
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
-            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
-            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_poll, page_ptr2page_index(page_ptr)]
-            allocator_4k_map.dom().contains(alloc_ptr) && allocator_4k_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
+            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool, page_ptr2page_index(page_ptr)]
+            allocator_4k_map.dom().contains(alloc_ptr) && allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
             ==>
             (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::GlobalList })
             &&
@@ -290,13 +290,13 @@ verus! {
 
                 &&&
                 allocator_2m_map.spec_index(allocator_ptr_2m)
-                    .global_poll.view().view().contains(page_index2page_ptr(page_index))
+                    .global_pool.view().view().contains(page_index2page_ptr(page_index))
                 &&&
                 allocator_2m_map.spec_index(allocator_ptr_2m)
-                    .global_poll.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    .global_pool.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                 &&&
                 allocator_2m_map.spec_index(allocator_ptr_2m)
-                    .global_poll.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    .global_pool.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
                 &&&
                 allocator_2m_map.spec_index(allocator_ptr_2m)
@@ -332,8 +332,8 @@ verus! {
             
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
-            #![trigger allocator_2m_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
-            allocator_2m_map.dom().contains(alloc_ptr) && allocator_2m_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+            #![trigger allocator_2m_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
+            allocator_2m_map.dom().contains(alloc_ptr) && allocator_2m_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
             ==>
             (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free2m { state: FreePageAllocatorState::GlobalList })
             &&
@@ -374,13 +374,13 @@ verus! {
 
                 &&&
                 allocator_1g_map.spec_index(allocator_ptr_1g)
-                    .global_poll.view().view().contains(page_index2page_ptr(page_index))
+                    .global_pool.view().view().contains(page_index2page_ptr(page_index))
                 &&&
                 allocator_1g_map.spec_index(allocator_ptr_1g)
-                    .global_poll.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    .global_pool.view().map().dom().contains(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                 &&&
                 allocator_1g_map.spec_index(allocator_ptr_1g)
-                    .global_poll.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
+                    .global_pool.view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
                 &&&
                 allocator_1g_map.spec_index(allocator_ptr_1g)
@@ -416,8 +416,8 @@ verus! {
             
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
-            #![trigger allocator_1g_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)]
-            allocator_1g_map.dom().contains(alloc_ptr) && allocator_1g_map.spec_index(alloc_ptr).global_poll.view().view().contains(page_ptr)
+            #![trigger allocator_1g_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
+            allocator_1g_map.dom().contains(alloc_ptr) && allocator_1g_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
             ==>
             (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free1g { state: FreePageAllocatorState::GlobalList })
             &&

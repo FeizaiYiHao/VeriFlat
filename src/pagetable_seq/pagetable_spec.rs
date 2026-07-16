@@ -15,7 +15,7 @@ use crate::lemma::lemma_u::*;
 /// mapping_xx is the abstract mappings of each page size.
 /// if an entry exists in mapping_xx.dom(), is entry is visible to the kernel at least. 
 /// if the entry has present flag set, it's visible to the page table walk. 
-/// our TLB spec will be that the TLB is `alway` a subset of kernel view. Regardless the locking state of the page table.
+/// our TLB spec will be that the TLB is `always` a subset of kernel view. Regardless the locking state of the page table.
 pub struct PageTable<const TABLE_TYPE:PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
@@ -286,7 +286,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.l2_tables@.dom().contains(p) && 0 <= i < 512 && self.l2_tables@[p].value()[i].perm.ps && self.l2_tables@[p].value()[i].perm.present
                 ==> 
                 self.l2_tables@[p].value()[i].perm.kernel_present
-        // All L2 maps to vaild L1 tables
+        // All L2 maps to valid L1 tables
         &&& forall|p: PageMapPtr, i: L2Index|
             #![trigger self.l1_tables@.dom().contains(self.l2_tables@[p].value()[i].addr) ]
             self.l2_tables@.dom().contains(p) 
@@ -638,7 +638,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         &&& self.levels_wf()
         &&& self.disjoint_wf()
         &&& self.mappings_wf()
-        &&& self.additonal_wf()
+        &&& self.additional_wf()
     }
 
     pub closed   spec fn levels_wf(&self) -> bool {
@@ -659,7 +659,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         &&& self.wf_mapping_1g()
     }
 
-    pub closed   spec fn additonal_wf(&self) -> bool {
+    pub closed   spec fn additional_wf(&self) -> bool {
         &&& self.user_only()
         &&& self.rwx_upper_level_entries()
         &&& self.table_pages_wf()
@@ -673,7 +673,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 &&& self.levels_wf()
                 &&& self.disjoint_wf()
                 &&& self.mappings_wf()
-                &&& self.additonal_wf()
+                &&& self.additional_wf()
             },
     {
     }
@@ -704,9 +704,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             },
     {
     }
-    pub broadcast proof fn reveal_page_table_addtional_wf(&self)
+    pub broadcast proof fn reveal_page_table_additional_wf(&self)
         ensures
-            #[trigger] self.additonal_wf() <==> {
+            #[trigger] self.additional_wf() <==> {
                 &&& self.user_only()
                 &&& self.rwx_upper_level_entries()
                 &&& self.table_pages_wf()

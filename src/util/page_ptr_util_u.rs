@@ -4,14 +4,14 @@ verus! {
 use crate::define::*;
 use crate::lemma::lemma_t::*;
 
-pub open spec fn spec_page_index_merge_2m_vaild(i: usize, j: usize) -> bool
+pub open spec fn spec_page_index_merge_2m_valid(i: usize, j: usize) -> bool
     recommends
         page_index_2m_valid(i),
 {
     i < j < i + 0x200
 }
 
-pub open spec fn spec_page_index_merge_1g_vaild(i: usize, j: usize) -> bool
+pub open spec fn spec_page_index_merge_1g_valid(i: usize, j: usize) -> bool
     recommends
         page_index_1g_valid(i),
 {
@@ -327,23 +327,23 @@ pub proof fn va_range_lemma()
 pub proof fn page_index_lemma()
     ensures
         forall|i: usize, j: usize|
-            #![trigger spec_page_index_merge_2m_vaild(i, j)]
+            #![trigger spec_page_index_merge_2m_valid(i, j)]
             #![trigger page_index_2m_valid(i), page_index_valid(j)]
-            page_index_2m_valid(i) && spec_page_index_merge_2m_vaild(i, j) ==> page_index_valid(j),
+            page_index_2m_valid(i) && spec_page_index_merge_2m_valid(i, j) ==> page_index_valid(j),
         forall|i: usize, j: usize|
-            #![trigger spec_page_index_merge_1g_vaild(i, j)]
+            #![trigger spec_page_index_merge_1g_valid(i, j)]
             #![trigger page_index_2m_valid(i), page_index_valid(j)]
-            page_index_1g_valid(i) && spec_page_index_merge_1g_vaild(i, j) ==> page_index_valid(j),
+            page_index_1g_valid(i) && spec_page_index_merge_1g_valid(i, j) ==> page_index_valid(j),
 {
     assert forall|i: usize, j: usize|
-        page_index_2m_valid(i) && #[trigger] spec_page_index_merge_2m_vaild(i, j) implies
+        page_index_2m_valid(i) && #[trigger] spec_page_index_merge_2m_valid(i, j) implies
         page_index_valid(j) by {
         // i % 512 == 0, i < NUM_PAGES = 2*1024*1024 (multiple of 512), i < j < i + 512
         assert((i + 0x200) <= NUM_PAGES) by (nonlinear_arith)
             requires i % 512 == 0, i < NUM_PAGES, NUM_PAGES == 2 * 1024 * 1024;
     }
     assert forall|i: usize, j: usize|
-        page_index_1g_valid(i) && #[trigger] spec_page_index_merge_1g_vaild(i, j) implies
+        page_index_1g_valid(i) && #[trigger] spec_page_index_merge_1g_valid(i, j) implies
         page_index_valid(j) by {
         // i % 0x40000 == 0, i < NUM_PAGES = 0x200000, i < j < i + 0x40000
         assert((i + 0x40000) <= NUM_PAGES) by (nonlinear_arith)

@@ -130,7 +130,7 @@ trigger-compensating asserts", applied as a cleanup sweep.)
 - `container_allocator_free_4k_page_wf` (dual change: cache popped + page retyped):
   ~115 → ~70; kept only genuine content per clause — `reveal(container_page_owner_wf)`
   (cross-inv dom), `seq_skip_lemma()` + one map/membership fact (popped-cache),
-  reverse-global_poll closed with an EMPTY `by {}` (trigger fires alone).
+  reverse-global_pool closed with an EMPTY `by {}` (trigger fires alone).
 - Structural-trigger fixes (approved) that retired three framing lemmas:
   `#![trigger page_array[i]]` on `page_locked_match_lctx`,
   `#![trigger cpu_array[c]]` on `cpu_locked_match_lctx`,

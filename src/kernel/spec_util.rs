@@ -79,10 +79,10 @@ pub open spec fn scheduler_objects_unlocked(scheduler_map: LockedMap<RwLockSched
 pub open spec fn allocator_objects_unlocked(alloc_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, lctx: &LocalContext) -> bool {
     &&&
     forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).global_poll]
+        #![trigger alloc_map.spec_index(alloc_ptr).global_pool]
         alloc_map.dom().contains(alloc_ptr)
         ==>
-        alloc_map.spec_index(alloc_ptr).global_poll.locked_by(lctx) == false
+        alloc_map.spec_index(alloc_ptr).global_pool.locked_by(lctx) == false
     &&&
     forall|alloc_ptr: RwLockPageAllocatorPtr|
         #![trigger alloc_map.spec_index(alloc_ptr).quota]

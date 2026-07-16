@@ -83,7 +83,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_childern_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
+    pub open spec fn process_children_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&&
         forall|p_ptr: RwLockProcessPtr, child_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view().children.view().contains(child_p_ptr)]
@@ -118,7 +118,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn processs_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
+    pub open spec fn process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())]
@@ -144,7 +144,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn process_childern_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
+    pub open spec fn process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& 
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
@@ -212,9 +212,9 @@ verus! {
 
     pub open spec fn process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap,) -> bool {
         &&& process_root_wf(root_process, process_tree_dom, process_perms)
-        &&& process_childern_parent_wf(root_process, process_tree_dom, process_perms)
-        &&& processs_linkedlist_wf(root_process, process_tree_dom, process_perms)
-        &&& process_childern_depth_wf(root_process, process_tree_dom, process_perms)
+        &&& process_children_parent_wf(root_process, process_tree_dom, process_perms)
+        &&& process_linkedlist_wf(root_process, process_tree_dom, process_perms)
+        &&& process_children_depth_wf(root_process, process_tree_dom, process_perms)
         &&& process_subtree_set_wf(root_process, process_tree_dom, process_perms)
         &&& process_uppertree_seq_wf(root_process, process_tree_dom, process_perms)
         &&& process_subtree_set_exclusive(root_process, process_tree_dom, process_perms)
@@ -252,9 +252,9 @@ verus! {
             process_tree_wf(root_process, process_tree_dom, new_process_perms),
     {
         reveal(process_root_wf);
-        reveal(process_childern_parent_wf);
-        reveal(processs_linkedlist_wf);
-        reveal(process_childern_depth_wf);
+        reveal(process_children_parent_wf);
+        reveal(process_linkedlist_wf);
+        reveal(process_children_depth_wf);
         reveal(process_subtree_set_wf);
         reveal(process_uppertree_seq_wf);
         reveal(process_subtree_set_exclusive);
@@ -374,8 +374,8 @@ pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tr
 {
     proof {
         reveal(process_root_wf);
-        reveal(process_childern_parent_wf);
-        reveal(process_childern_depth_wf);
+        reveal(process_children_parent_wf);
+        reveal(process_children_depth_wf);
         reveal(process_subtree_set_wf);
         reveal(process_uppertree_seq_wf);
         reveal(process_subtree_set_exclusive);

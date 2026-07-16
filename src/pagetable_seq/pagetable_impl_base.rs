@@ -30,7 +30,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         let tracked l4_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
         let l4_tbl: &PageMap = PPtr::<PageMap>::from_usize(self.cr3).borrow(Tracked(l4_perm));
@@ -69,7 +69,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
         let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
@@ -99,7 +99,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         let tracked l3_perm = self.l3_tables.borrow().tracked_borrow(l4_entry.addr);
         let l3_tbl: &PageMap = PPtr::<PageMap>::from_usize(l4_entry.addr).borrow(Tracked(l3_perm));
@@ -142,7 +142,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         proof {
             va_lemma();
@@ -177,7 +177,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         let tracked l2_perm = self.l2_tables.borrow().tracked_borrow(l3_entry.addr);
         let l2_tbl: &PageMap = PPtr::<PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
@@ -215,7 +215,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         proof {
             va_lemma();
@@ -266,7 +266,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
@@ -395,7 +395,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         broadcast use PageTable::reveal_page_table_disjoint_wf;
         broadcast use PageTable::reveal_page_table_mappings_wf;
-        broadcast use PageTable::reveal_page_table_addtional_wf;
+        broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
@@ -535,7 +535,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(forall|i: usize|
             #![trigger page_map_perm.value()[i].is_empty()]
@@ -559,11 +559,11 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && 
                 !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps && 
                  old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.write && 
-                 !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.execute_disable) by {broadcast use PageTable::reveal_page_table_addtional_wf;};
+                 !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.execute_disable) by {broadcast use PageTable::reveal_page_table_additional_wf;};
         assert(old(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.perm.present
             && !old(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.perm.ps
             && old(self).spec_resolve_mapping_l3(target_l4i, target_l3i)->0.perm.write
-            && !old(self).spec_resolve_mapping_l3(target_l4i,target_l3i,)->0.perm.execute_disable) by {broadcast use PageTable::reveal_page_table_addtional_wf;};
+            && !old(self).spec_resolve_mapping_l3(target_l4i,target_l3i,)->0.perm.execute_disable) by {broadcast use PageTable::reveal_page_table_additional_wf;};
 
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
         proof {
@@ -649,7 +649,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         // assert(self.present_or_zero());
         // assert(self.table_pages_wf());
         assert(self.va_addr_valid()) by { va_addr_valid_proof::<TABLE_TYPE>();};
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         assert(self.mapping_4k() =~= old(self).mapping_4k());
         assert(self.mapping_2m() =~= old(self).mapping_2m());
         assert(self.mapping_1g() =~= old(self).mapping_1g());
@@ -696,7 +696,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(va_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))) by {
             va_lemma();
@@ -808,31 +808,31 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         };
         assert(self.mappings_wf()) by { broadcast use PageTable::reveal_page_table_mappings_wf; };
         // assert(self.user_only()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // };
         // assert(self.rwx_upper_level_entries()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // };
         // assert(self.present_or_zero()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // };
         // assert(self.table_pages_wf()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // };
         // assert(self.kernel_entries_wf()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // }; 
         // assert(self.pcid_ioid_wf()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // }; 
         // assert(self.tlb_wf()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // }; 
         // assert(self.tlb_submap_of_mapping()) by {
-        //     broadcast use PageTable::reveal_page_table_addtional_wf;
+        //     broadcast use PageTable::reveal_page_table_additional_wf;
         // };
         assert(self.va_addr_valid()) by { va_addr_valid_proof::<TABLE_TYPE>();};
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         // assert(self.mapping_2m() =~= old(self).mapping_2m());
         // assert(self.mapping_1g() =~= old(self).mapping_1g());
     }
@@ -881,7 +881,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         let va = Ghost(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)));
         assert(va_4k_valid(va@)) by {
@@ -1013,7 +1013,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                         =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
             };
         }
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         assert(self.mapping_2m() =~= old(self).mapping_2m());
         assert(self.mapping_1g() =~= old(self).mapping_1g());
         assert(self.va_addr_valid()) by {
@@ -1165,7 +1165,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                         =~= self.spec_resolve_mapping_1g_l3(l4i, l3i));
             };
         };
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         assert(self.mapping_2m() =~= old(self).mapping_2m());
         assert(self.mapping_1g() =~= old(self).mapping_1g());        
         assert(self.va_addr_valid()) by {
@@ -1221,7 +1221,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(va_2m_valid(spec_index2va((target_l4i, target_l3i, target_l2i, 0)))) by {
             va_lemma();
@@ -1348,7 +1348,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         };
         assert(self.mapping_4k() =~= old(self).mapping_4k());
         assert(self.mapping_1g() =~= old(self).mapping_1g());
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}        
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}        
         assert(self.va_addr_valid()) by {
             va_addr_valid_proof::<TABLE_TYPE>();
         };
@@ -1402,7 +1402,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert forall |i: L4Index| #![auto]  0 <= i < 512 ==> (va_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, i)))) by {
             va_lemma();
@@ -1440,7 +1440,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             broadcast use PageTable::reveal_page_table_levels_wf;
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|p: PageMapPtr, i: L2Index|
             #![auto]
             old(self).l2_tables@.dom().contains(p) && 0 <= i < 512 && (p != target_l2_p || i != target_l2i)
@@ -1539,13 +1539,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 };
         }
         
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         assert(self.page_closure() =~= old(self).page_closure().remove(target_l1_p)) by {
             broadcast use PageTable::reveal_page_table_wf;
             broadcast use PageTable::reveal_page_table_levels_wf;
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
         }       
         assert(self.va_addr_valid()) by {
             va_addr_valid_proof::<TABLE_TYPE>();
@@ -1604,7 +1604,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         let tracked mut l3_perm = self.l3_tables.borrow_mut().tracked_remove(target_l3_p);
         proof { mem_valid_zero(); }
@@ -1636,7 +1636,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l3()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|p: PageMapPtr, i: L3Index|
             #![auto]
             old(self).l3_tables@.dom().contains(p) && 0 <= i < 512 && p != target_l3_p
@@ -1647,7 +1647,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l2()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_l3(l4i,l3i)]
@@ -1662,7 +1662,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l1()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_l3(l4i,l3i)]
@@ -1758,13 +1758,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 };
         }
         
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         assert(self.page_closure() =~= old(self).page_closure().remove(target_l2_p)) by {
             broadcast use PageTable::reveal_page_table_wf;
             broadcast use PageTable::reveal_page_table_levels_wf;
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
         };        
         assert(self.va_addr_valid()) by {
             va_addr_valid_proof::<TABLE_TYPE>();
@@ -1807,7 +1807,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_levels_wf;
         // broadcast use PageTable::reveal_page_table_disjoint_wf;
         // broadcast use PageTable::reveal_page_table_mappings_wf;
-        // broadcast use PageTable::reveal_page_table_addtional_wf;
+        // broadcast use PageTable::reveal_page_table_additional_wf;
 
         let tracked mut l4_perm = self.l4_table.borrow_mut().tracked_remove(self.cr3);
         proof {
@@ -1842,7 +1842,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l4()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|i: L4Index|
             #![auto]
             old(self).l4_table@.dom().contains(self.cr3) && self.kernel_l4_end <= i < 512 && i != target_l4i
@@ -1853,7 +1853,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l3()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|l4i: L4Index|
                 #![trigger self.spec_resolve_mapping_l4(l4i)]
                 #![trigger old(self).spec_resolve_mapping_l4(l4i)]
@@ -1871,7 +1871,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l2()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_l3(l4i,l3i)]
@@ -1883,7 +1883,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.wf_l1()) by {
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
             assert(forall|l4i: L4Index, l3i: L3Index|
                 #![trigger self.spec_resolve_mapping_l3(l4i,l3i)]
                 #![trigger old(self).spec_resolve_mapping_l3(l4i,l3i)]
@@ -1965,13 +1965,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 };
         }
         
-        assert(self.additonal_wf()) by {broadcast use PageTable::reveal_page_table_addtional_wf;}
+        assert(self.additional_wf()) by {broadcast use PageTable::reveal_page_table_additional_wf;}
         assert(self.page_closure() =~= old(self).page_closure().remove(target_l3_p)) by {
             broadcast use PageTable::reveal_page_table_wf;
             broadcast use PageTable::reveal_page_table_levels_wf;
             broadcast use PageTable::reveal_page_table_disjoint_wf;
             broadcast use PageTable::reveal_page_table_mappings_wf;
-            broadcast use PageTable::reveal_page_table_addtional_wf;
+            broadcast use PageTable::reveal_page_table_additional_wf;
         };        
         assert(self.va_addr_valid()) by {
             va_addr_valid_proof::<TABLE_TYPE>();
