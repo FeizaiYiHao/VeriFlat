@@ -61,7 +61,7 @@ pub open spec fn page_index_2m_valid(i: usize) -> bool {
 }
 
 pub open spec fn page_index_1g_valid(i: usize) -> bool {
-    &&& i % (512 * 512) as usize == 0
+    &&& i % 262144 == 0
     &&& 0 <= i < NUM_PAGES
 }
 

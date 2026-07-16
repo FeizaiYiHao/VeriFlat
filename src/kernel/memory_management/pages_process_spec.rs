@@ -8,7 +8,7 @@ verus! {
     pub open spec fn process_pages_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>, process_map: ProcessLockedMap) -> bool{
         &&&
         forall|page_index:PageIndex|
-        #![trigger page_array.spec_index(page_index)]
+        #![trigger page_array.spec_index(page_index).view().view().state]
         #![trigger process_map.dom().contains(page_index2page_ptr(page_index))]
         page_index_wf(page_index)
         ==>
@@ -20,7 +20,7 @@ verus! {
 
         &&&
         forall|c_ptr:RwLockContainerPtr|
-        #![trigger page_array.spec_index(page_ptr2page_index(c_ptr))]
+        #![trigger page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state]
         #![trigger process_map.dom().contains(c_ptr)]
         process_map.dom().contains(c_ptr)
         ==>

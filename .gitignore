@@ -43,3 +43,7 @@ tmp.rs
 # style-gate.sh sentinel: /style-check touches this on a clean pass to clear the
 # Stop hook. Per-checkout state, not source — the hooks/command/steering are tracked.
 .claude/.style-checked
+# style-record.sh per-session state: the ledger of src/*.rs this session edited
+# and the id used to detect a session change. Transient, not source.
+.claude/.session-edits
+.claude/.session-id

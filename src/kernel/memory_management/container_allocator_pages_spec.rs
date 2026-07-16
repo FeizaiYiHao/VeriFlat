@@ -253,10 +253,13 @@ verus! {
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, cpu_i:CpuId, page_ptr: PagePtr|
             #![trigger allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
+            #![trigger allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), page_ptr2page_index(page_ptr)]
             allocator_4k_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i) &&
                 allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
             ==>
-            (page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state matches PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id: _cpu_id }})
+            page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Free4k
+            &&
+            page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Free4k_state is PreCpuCache
             &&
             page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Free4k_state->PreCpuCache_cpu_id == cpu_i
             &&

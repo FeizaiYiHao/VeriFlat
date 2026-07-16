@@ -55,7 +55,7 @@ pub proof fn lemma_cache_len_fold_change_one(
         s1.len() == s2.len(),
         0 <= j < s1.len(),
         s1[j].view().linked_list.len() == s2[j].view().linked_list.len() + 1,
-        forall|i: int| #![trigger s1[i], s2[i]]
+        forall|i: int| #![trigger s1[i]] #![trigger s2[i]]
             0 <= i < s1.len() && i != j ==>
             s1[i].view().linked_list.len() == s2[i].view().linked_list.len(),
     ensures
@@ -89,6 +89,78 @@ pub proof fn lemma_cache_len_fold_change_one(
         assert(s1.drop_last()[j] == s1[j]);
         assert(s2.drop_last()[j] == s2[j]);
         lemma_cache_len_fold_change_one(s1.drop_last(), s2.drop_last(), j);
+    }
+}
+
+/// Array-facing wrapper for `lemma_cache_len_fold_change_one`: takes the two
+/// `cpu_caches` arrays directly (not their `view()`), so the "unchanged
+/// elsewhere" hypothesis is `new_arr.unchanged_except(old_arr, j)` — the exact
+/// term `LockedArray::borrow_mut` delivers, no call-site `spec_index → view`
+/// bridge. The `spec_index → view()` congruence lives here, once.
+#[verifier::spinoff_prover]
+pub proof fn lemma_cache_len_fold_change_one_array(
+    old_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
+    new_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
+    j: int,
+)
+    requires
+        old_arr.inv(),
+        new_arr.inv(),
+        0 <= j < NUM_CPUS,
+        new_arr.unchanged_except(&old_arr, j as usize),
+        old_arr.spec_index(j as usize).view().view().linked_list.len()
+            == new_arr.spec_index(j as usize).view().view().linked_list.len() + 1,
+    ensures
+        old_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()})
+            == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
+{
+    assert forall|i: int| #![trigger old_arr.view()[i], new_arr.view()[i]]
+        0 <= i < old_arr.view().len() && i != j
+        implies old_arr.view()[i].view().linked_list.len() == new_arr.view()[i].view().linked_list.len()
+    by {
+        assert(new_arr[i as usize] === old_arr[i as usize]);
+    };
+    lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j);
+}
+
+/// The `total_free_pages_wf` fold is nonnegative — every summand is a
+/// `usize` length. Peeled-last induction; used to bound the fold from below.
+pub proof fn lemma_cache_len_fold_nonneg(
+    s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+)
+    ensures
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= 0,
+    decreases s.len(),
+{
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    if s.len() == 0 {
+    } else {
+        assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
+        lemma_cache_len_fold_nonneg(s.drop_last());
+    }
+}
+
+/// Lower bound: the `total_free_pages_wf` fold is at least any single cache's
+/// length. Used to prove `total_free_pages >= 1` before decrementing on a pop
+/// (the popped cache is nonempty, so the fold — and thus the total — is >= 1).
+pub proof fn lemma_cache_len_fold_ge_elem(
+    s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+    j: int,
+)
+    requires
+        0 <= j < s.len(),
+    ensures
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= s[j].view().linked_list.len(),
+    decreases s.len(),
+{
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
+    assert(s.last() == s[s.len() - 1]);
+    if j == s.len() - 1 {
+        lemma_cache_len_fold_nonneg(s.drop_last());
+    } else {
+        assert(s.drop_last()[j] == s[j]);
+        lemma_cache_len_fold_ge_elem(s.drop_last(), j);
     }
 }
 

@@ -34,6 +34,87 @@ if they ever disagree.
   block. For a SHALLOW framing forall (the "every other entry unchanged" shape,
   `forall|k| dom.contains(k) && k != touched ==> self[k] == old[k]`) use
   `#![auto]` — that's the LIVE idiom in `wunlock_quota_4k`. NEVER `#![all_triggers]`.
+- **No trigger-compensating asserts (high value — the tell that you have a
+  trigger bug, not a proof gap):** an `inv()` re-establishment should close with
+  a few `reveal(...)`s (+ the narrow fold/preservation lemma calls) — look at how
+  `wlock_quota_4k` / `wunlock_process` prove each subsystem conjunct with just
+  `by { reveal(...); }`. If you find yourself adding a hand `assert forall|...| ...
+  == old ... by { if k != touched { assert(...) } }` block BEFORE the conjunct
+  asserts to make them go through, STOP: that block is not proof content, it is a
+  crutch for a quantifier that should have fired on its own. Needing it means the
+  relevant trigger is mis-set — too conservative, badly chosen, or (rarely — you
+  hit rlimit first) the instantiation search space blew up. That is Xiangdong's
+  job to fix at the trigger site (the spec's `#![trigger ...]` or the primitive's
+  `ensures` shape), NOT to paper over at the call site. DELETE the assert, confirm
+  it still verifies from the bare reveals; if it then fails, that is the signal to
+  flag the trigger gap (proof-gap protocol) — do not re-add the assert. A wrapper
+  whose `inv()` rebuild carries `assert forall ... == old` scaffolding is a review
+  finding, not a finished proof.
+  - **When the delete-and-reverify FAILS, the culprit is usually a missing
+    `reveal`, not a real proof obligation — hoist it before you conclude
+    "load-bearing" (learned the hard way).** A hand `assert forall|c_ptr| ...
+    quota fold ... by { assert(dom.contains(aptr)) by { reveal(container_allocator_wf); }; ... }`
+    block hides its real dependency inside a NESTED `by { reveal(...) }`. Deleting
+    the outer block ALSO deletes that buried reveal, so the conjunct fails — but
+    that failure is the missing reveal, not the forall. The fix is NOT to keep the
+    forall: hoist the buried reveal up beside the conjunct's own reveal
+    (`by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); }`)
+    and the `#![trigger ...allocator_ptr_4k]` fires on its own — the fold args are
+    byte-equal on a lock op, so congruence closes the sum with zero hand-proof.
+    This is exactly how `wlock_allocator_cache` collapses a 23-line `assert forall
+    ... == old` block to two reveals. Diagnostic order: (1) delete the block; (2)
+    if it fails, scan the deleted block for `reveal(...)` calls it was secretly
+    providing and add THOSE to the conjunct's `by {}`; (3) only if it STILL fails
+    after every dependency reveal is hoisted is the hand-proof real — then flag the
+    trigger gap. Concluding "needed" at step (1)'s failure is the trap.
+- **When you stub a proof, delete the scaffolding that only fed it (high value):**
+  a hand-off `assume(self.inv())` (or any `//@Xiangdong` stub standing in for an
+  unfinished conjunct) makes ALL the machinery that was building toward it dead
+  weight — the `let ghost pre_mut = *self;` / `post_pop` / `pre_stage_proc`
+  snapshots, the per-field `assert(self.X == pre_mut.X)` frame blocks, the
+  `_fold_change_one`/`lemma_view_len` re-derivations, the nested `assert(self.
+  memory_management_inv()) by {...}` rebuild. Once the conjunct is an `assume`,
+  none of that is load-bearing; leaving it around a stub reads as "finished proof"
+  when it isn't, and buries the few live obligations. STRIP IT: collapse the whole
+  rebuild to the single `assume`, and delete every ghost snapshot + frame assert
+  that has no consumer left. Keep ONLY what still feeds a LIVE (non-assumed)
+  obligation — e.g. the exec-precondition proofs a real `wlock_*`/`wunlock_*` call
+  still needs (page-slot acyclicity/freshness, the `container_allocator_free_4k_page_wf`
+  reveal that pins the peeked page Free4k so the page lock id computes), and the
+  ghost (`cache_lock_id`) those proofs read. Reflex: after stubbing, delete a ghost
+  / frame assert and re-verify; if it still passes, it was scaffolding for the
+  stub — leave it out. A stubbed fast path should be lean exec + the live
+  lock-op precondition proofs + the `//@Xiangdong` stubs, nothing more.
+- **Trim the scaffolding once it's green (high value — do this EVERY time you
+  finish a proof, before calling it done):** the asserts you add while GRINDING a
+  proof — the intermediate `assert(...)` steps, the extra `reveal(...)`s, the
+  `let ghost` snapshots you introduced to see what the solver had — are almost all
+  redundant once the real closing step lands. A proof found by accretion reads as
+  10 lines when it's really 2. After the function verifies, do a deliberate trim
+  pass: delete each assert/reveal/ghost you added (start from the ones farthest
+  from the goal), re-verify, and KEEP it only if removal breaks verification. This
+  is the mirror of the delete-and-reverify diagnostic above, run as cleanup rather
+  than debugging. Concretely, in this session `pop_stage_4k_page`'s line-572 fix
+  needed a `contains(page_ptr)` primer, a cpu-id-match assert, an allocator-ptr
+  assert, and a payload-framing assert to GET there — but several of those became
+  dead once the target assert had its own `by { reveal(container_allocator_free_4k_page_wf); }`
+  and the `node_addr == storage.addr()` substitution was in scope; the finished
+  proof should carry only the asserts that still fail-on-delete. Watch especially
+  for: (a) two asserts proving the SAME fact by different routes (keep the cheaper
+  one), (b) a `reveal(...)` that a later `by { reveal(...) }` now subsumes, (c) a
+  `let ghost` bound but read only by an assert you're deleting, (d) an assert that
+  only PRIMED a solver state that a subsequent `by {}` block now establishes on its
+  own. A wrapper whose body still carries its grind-time scaffolding after it's
+  green is an unfinished proof, not a finished one — trim before `/style-check`.
+  **Ghost snapshots are the #1 offender — audit EVERY `let ghost`:** the
+  `let ghost old_self = *self;` / `old_caches` / `old_ll` / `pre_mut` / `post_pop`
+  / `storage_addr` bindings are what accretion leaves behind most — you snapshot
+  the pre-state to compare, then close the proof another way and never read the
+  snapshot. For each `let ghost`, find the live line that reads it (a surviving
+  assert, a lemma-call arg, a framing conjunct); if none does, DELETE it and
+  re-verify. A finished proof has ZERO ghost snapshots that aren't consumed by a
+  live obligation — an orphaned `let ghost` reads as "this tracks the old state"
+  when nothing does.
 - **Comment discipline (high value — surface tell):** `requires` blocks are
   BARE — no `//` group notes, no `// ---- ----` banners; the clauses stand alone
   (`wlock_cpu`, `syscall_alloc_quota_4k`). `// ---- <title> ----` banners are
@@ -46,10 +127,13 @@ if they ever disagree.
   never to recap what the body does step-by-step.
 - **Bidirectional relations:** two separate forall conjuncts tagged
   `// forward` / `// reverse`, each `dom()`-guarded.
-- **Cost control:** `#[verifier::spinoff_prover]` on every wrapper/helper;
-  function-wide `proof { reveal(...); }` hoist at top; re-establish `inv()`
-  conjunct-by-conjunct under `// ---- subsystem ----` banners ending in
-  `assert(self.inv());`.
+- **Cost control:** do NOT add `#[verifier::spinoff_prover]` on your own — it's
+  Xiangdong's call, applied only when he directs it (many existing wrappers carry
+  it because HE added it; that's not a license to add more). If a new
+  wrapper/helper/lemma is slow enough that you think it wants spinoff, flag it and
+  ask — don't sprinkle it. The rest of the cost pattern still holds: function-wide
+  `proof { reveal(...); }` hoist at top; re-establish `inv()` conjunct-by-conjunct
+  under `// ---- subsystem ----` banners ending in `assert(self.inv());`.
 - **inv() re-establishment is NESTED, not flat** (high value): wrap each
   subsystem's conjuncts INSIDE
   `assert(self.memory_management_inv()) by { <its conjuncts> };` and
@@ -74,6 +158,15 @@ if they ever disagree.
   `== false` instead of `!`; full `.view().view()` chains, no intermediate `let`;
   signs TODOs `//@Xiangdong`; `// SPEC FIX:` / `// PERF:` tags; keeps abandoned
   code commented in-tree rather than deleting.
+- **Spell out `.view()` — do NOT use the `@` sugar (tooling constraint):** write
+  `x.view()` / `x.view().view()` (and `x.view()->Write_lock_id`,
+  `foo.view().linked_list`), never `x@` / `x@@`. `@` desugars to `.view()`
+  identically for the verifier, but the code analyzer doesn't resolve the `@`
+  sugar well, so NEW code spells it out. This is go-forward: much of HIS existing
+  code (e.g. `wlock_cpu`) is dense with `@`, so you'll still READ `@` everywhere —
+  don't churn his live code to convert it, and mirror the `.view()` chain shape,
+  not the `@`, when you copy a sibling. `//@Xiangdong` TODO signatures are text,
+  not the view operator — leave them as-is.
 - **Spec safety:** derived quantities return `int` (no underflow); `recommends`
   (not `requires`) on pure accessors as inline doc; opacity-bridge via empty
   `lemma_view_len`-style proof fn, never open a closed spec.
@@ -134,7 +227,7 @@ if they ever disagree.
   beside the `_fold_eq` axioms in `lemma_t::kernel_fold_axioms`.
 - **Preservation lemma over the whole conservation conjunct
   (`container_process_allocator_quota_4k_wf_preserved_on_alloc`):** extracts the
-  inline fold block into a `#[verifier::spinoff_prover] pub proof fn` taking
+  inline fold block into a `pub proof fn` taking
   `pre: &KernelK, post: &KernelK` (NOT loose maps — its source-wf requires are
   then literal entry-`inv()` clauses a caller with `old(self).inv()` discharges
   directly). Requires: source conjunct + `container_process_wf` +
@@ -238,9 +331,8 @@ verify fully (no `assume(false)`); `finish_empty_user_step` / `release_cpu_and_f
 remain COMMENTED-OUT templates — treat them as dead, not as style references
 (the live sources of truth are `syscall_alloc_quota_4k` and the
 `locker_unlocker.rs` wrappers); opacity applied inconsistently;
-`pagetable_impl_base.rs` inlines re-establishment (no spinoff_prover),
-contradicting the playbook. Follow the proof-gap protocol (in
-`veriflat-project-notes.md`) before touching specs.
+`pagetable_impl_base.rs` inlines re-establishment. Follow the proof-gap protocol
+(in `veriflat-project-notes.md`) before touching specs.
 
 ## On rejected AI code & strict scoping
 

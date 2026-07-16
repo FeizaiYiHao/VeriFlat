@@ -76,13 +76,24 @@ verus! {
             forall|pt: RwLockPageTableRoot|
                 #![trigger post.pagetable_map.spec_index(pt).view()]
                 post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view(),
-            // process_map: same domain, and per process only `view()` /
-            // `view_rodata()` / `being_killed()` are read.
+            // process_map: same domain, and per process only the fields
+            // `ProcessU` projects are read — quota/tree fields off `view()`,
+            // `parent`/`depth` off `view_rodata()`, and `being_killed()`. NOT
+            // the whole `view()`: `temp_alloc_cache_*` is unprojected, so a
+            // caller that stages a page (mutating `view()` but no `ProcessU`
+            // field) can still use this.
             post.process_map.dom() =~= pre.process_map.dom(),
             forall|ptr: RwLockProcessPtr|
                 #![trigger post.process_map.spec_index(ptr)]
                 pre.process_map.dom().contains(ptr) ==>
-                    post.process_map.spec_index(ptr).view() == pre.process_map.spec_index(ptr).view()
+                    post.process_map.spec_index(ptr).view().quota_4k == pre.process_map.spec_index(ptr).view().quota_4k
+                    && post.process_map.spec_index(ptr).view().quota_2m == pre.process_map.spec_index(ptr).view().quota_2m
+                    && post.process_map.spec_index(ptr).view().quota_1g == pre.process_map.spec_index(ptr).view().quota_1g
+                    && post.process_map.spec_index(ptr).view().children.view() == pre.process_map.spec_index(ptr).view().children.view()
+                    && post.process_map.spec_index(ptr).view().uppertree_seq.view() == pre.process_map.spec_index(ptr).view().uppertree_seq.view()
+                    && post.process_map.spec_index(ptr).view().subtree_set.view() == pre.process_map.spec_index(ptr).view().subtree_set.view()
+                    && post.process_map.spec_index(ptr).view().owned_threads.view() == pre.process_map.spec_index(ptr).view().owned_threads.view()
+                    && post.process_map.spec_index(ptr).view().pagetable == pre.process_map.spec_index(ptr).view().pagetable
                     && post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata()
                     && post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed(),
             // cpu_array: per-slot payload `view()`.
@@ -116,10 +127,7 @@ verus! {
                 implies post_u.process_map[ptr] == pre_u.process_map[ptr]
             by {
                 assert(pre.process_map.dom().contains(ptr));
-                assert(post.process_map.spec_index(ptr).view() == pre.process_map.spec_index(ptr).view());
-                assert(post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata());
-                assert(post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed());
-                // Same `.view()` ==> same pagetable ptr; that entry's `view()` is equal.
+                // Same pagetable ptr (projected field) ==> that entry's `view()` is equal.
                 let pt = post.process_map.spec_index(ptr).view().pagetable;
                 assert(post.get_process_pagetable(ptr) == pre.get_process_pagetable(ptr)) by {
                     assert(post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view());
