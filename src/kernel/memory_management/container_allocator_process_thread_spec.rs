@@ -20,19 +20,43 @@ verus! {
             container_process_allocator_quota_1g_wf(container_map, process_map, thread_map, allocator_1g_map)
         }
 
+    pub open spec fn process_effective_quota_4k_fold_sum(
+            owned_processes: Set<RwLockProcessPtr>,
+            process_map: ProcessLockedMap,
+        ) -> int {
+            owned_processes.fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_4k(process_map.spec_index(p_ptr))})
+        }
+
+    pub open spec fn process_effective_quota_2m_fold_sum(
+            owned_processes: Set<RwLockProcessPtr>,
+            process_map: ProcessLockedMap,
+        ) -> int {
+            owned_processes.fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_2m(process_map.spec_index(p_ptr))})
+        }
+
+    pub open spec fn process_effective_quota_1g_fold_sum(
+            owned_processes: Set<RwLockProcessPtr>,
+            process_map: ProcessLockedMap,
+        ) -> int {
+            owned_processes.fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_1g(process_map.spec_index(p_ptr))})
+        }
+
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_4k_wf(
             container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
             process_map: ProcessLockedMap,
             thread_map: ThreadLockedMap,
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
-        ) -> bool{
+        ) -> bool
+            recommends
+            // container_allocator_wf
+        {
             &&&
             forall|c_ptr:RwLockContainerPtr|
                 #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k]
                 container_map.dom().contains(c_ptr)
                 ==>
-                container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_4k(process_map.spec_index(p_ptr))})
+                process_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
                     container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
                     +
@@ -55,7 +79,7 @@ verus! {
                 #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
                 container_map.dom().contains(c_ptr)
                 ==>
-                container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_2m(process_map.spec_index(p_ptr))})
+                process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
                     container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
                     +
@@ -78,7 +102,7 @@ verus! {
                 #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
                 container_map.dom().contains(c_ptr)
                 ==>
-                container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_1g(process_map.spec_index(p_ptr))})
+                process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
                     container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
                     +

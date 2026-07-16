@@ -260,8 +260,106 @@ verus! {
         reveal(process_subtree_set_exclusive);
     }
 
+    /// Quantified-fact form of `process_no_change_to_tree_fields_imply_wf`: a
+    /// single invocation installs the fact for ALL `(root, dom, old, new)`, so a
+    /// caller need not spell out the tuple or wrap it in an `assert forall` — the
+    /// SMT instantiates `process_tree_wf(root, dom, new)` wherever the goal needs
+    /// it. Multi-trigger on the source + target `process_tree_wf` terms: fires
+    /// once the caller has `process_tree_wf(root, dom, old)` in scope and the goal
+    /// mentions `process_tree_wf(root, dom, new)`.
+    pub proof fn process_no_change_to_tree_fields_imply_wf_forall()
+        ensures
+            forall|
+                root_process: RwLockProcessPtr,
+                process_tree_dom: Set<RwLockProcessPtr>,
+                old_process_perms: ProcessLockedMap,
+                new_process_perms: ProcessLockedMap,
+            |
+                #![trigger process_tree_wf(root_process, process_tree_dom, old_process_perms), process_tree_wf(root_process, process_tree_dom, new_process_perms)]
+                (process_tree_wf(root_process, process_tree_dom, old_process_perms)
+                && process_tree_dom.subset_of(new_process_perms.dom())
+                && forall|p_ptr: RwLockProcessPtr|
+                    #![trigger new_process_perms.spec_index(p_ptr)]
+                    process_tree_dom.contains(p_ptr) ==>
+                        new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
+                        && new_process_perms.spec_index(p_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(p_ptr).view().parent_linkedlist_node
+                        && new_process_perms.spec_index(p_ptr).view().uppertree_seq == old_process_perms.spec_index(p_ptr).view().uppertree_seq
+                        && new_process_perms.spec_index(p_ptr).view().subtree_set == old_process_perms.spec_index(p_ptr).view().subtree_set
+                        && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata())
+                ==>
+                process_tree_wf(root_process, process_tree_dom, new_process_perms),
+    {
+        assert forall|
+            root_process: RwLockProcessPtr,
+            process_tree_dom: Set<RwLockProcessPtr>,
+            old_process_perms: ProcessLockedMap,
+            new_process_perms: ProcessLockedMap,
+        |
+            (process_tree_wf(root_process, process_tree_dom, old_process_perms)
+            && process_tree_dom.subset_of(new_process_perms.dom())
+            && forall|p_ptr: RwLockProcessPtr|
+                #![trigger new_process_perms.spec_index(p_ptr)]
+                process_tree_dom.contains(p_ptr) ==>
+                    new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
+                    && new_process_perms.spec_index(p_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(p_ptr).view().parent_linkedlist_node
+                    && new_process_perms.spec_index(p_ptr).view().uppertree_seq == old_process_perms.spec_index(p_ptr).view().uppertree_seq
+                    && new_process_perms.spec_index(p_ptr).view().subtree_set == old_process_perms.spec_index(p_ptr).view().subtree_set
+                    && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata())
+            implies
+            process_tree_wf(root_process, process_tree_dom, new_process_perms)
+        by {
+            process_no_change_to_tree_fields_imply_wf(
+                root_process, process_tree_dom, old_process_perms, new_process_perms);
+        };
+    }
+
+    /// `forall`-lifted twin of `process_no_change_to_tree_fields_imply_wf`:
+    /// re-establishes `per_container_process_tree_wf` for the WHOLE container map
+    /// in one call, so a caller mutating non-tree process state (staging, quota)
+    /// need not hand-write the per-container `assert forall|c_ptr| ... by { ... }`
+    /// loop — it just invokes this and the SMT expands the quantifier. Requires
+    /// the per-process tree-field equality scoped to the fields `process_tree_wf`
+    /// reads (see the point-wise twin), same `container_perms`, and same process
+    /// dom (a process mutation preserves it). `container_process_wf` supplies each
+    /// container's `owned_processes ⊆ process dom` so the per-container
+    /// `subset_of` precondition discharges.
+    pub proof fn per_container_process_tree_wf_preserved_for_tree_fields_eq(
+        container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        old_process_perms: ProcessLockedMap,
+        new_process_perms: ProcessLockedMap,
+    )
+        requires
+            per_container_process_tree_wf(container_perms, old_process_perms),
+            container_process_wf(container_perms, old_process_perms),
+            old_process_perms.dom() == new_process_perms.dom(),
+            forall|p_ptr: RwLockProcessPtr|
+                #![trigger new_process_perms.spec_index(p_ptr)]
+                old_process_perms.dom().contains(p_ptr) ==>
+                    new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
+                    && new_process_perms.spec_index(p_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(p_ptr).view().parent_linkedlist_node
+                    && new_process_perms.spec_index(p_ptr).view().uppertree_seq == old_process_perms.spec_index(p_ptr).view().uppertree_seq
+                    && new_process_perms.spec_index(p_ptr).view().subtree_set == old_process_perms.spec_index(p_ptr).view().subtree_set
+                    && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata(),
+        ensures
+            per_container_process_tree_wf(container_perms, new_process_perms),
+    {
+        reveal(per_container_process_tree_wf);
+        reveal(container_process_wf);
+        assert forall|c_ptr: RwLockContainerPtr|
+            #![trigger container_perms.spec_index(c_ptr).view().root_process]
+            #![trigger container_perms.spec_index(c_ptr).view().owned_processes]
+            container_perms.dom().contains(c_ptr)
+            implies process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes.view(), new_process_perms)
+        by {
+            process_no_change_to_tree_fields_imply_wf(
+                container_perms.spec_index(c_ptr).view().root_process,
+                container_perms.spec_index(c_ptr).view().owned_processes.view(),
+                old_process_perms, new_process_perms);
+        };
+    }
+
 #[verifier::loop_isolation(false)]
-pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &ProcessLockedMap, 
+pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &ProcessLockedMap,
         a_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr) -> (ret: bool)
     requires
         process_perms_wf(*process_perms),

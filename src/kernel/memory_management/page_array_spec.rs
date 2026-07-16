@@ -7,9 +7,10 @@ verus! {
         page_array.inv()
         &&&
         forall|p_i:PageIndex|
-            #![auto]
+            #![trigger page_index_wf(p_i)]
+            #![trigger page_array.spec_index(p_i).view().inv()]
             page_index_wf(p_i)
             ==>
-            page_array[p_i]@.inv()
+            page_array.spec_index(p_i).view().inv()
     }
 }

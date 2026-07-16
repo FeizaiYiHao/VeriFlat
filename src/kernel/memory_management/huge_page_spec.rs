@@ -8,7 +8,10 @@ verus! {
     pub open spec fn hugepage_2m_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         forall|p_i:PageIndex|
-            #![trigger page_array.spec_index(p_i).view().view().state]
+            #![trigger page_array.spec_index(p_i).view().view().state is Free2m]
+            #![trigger page_array.spec_index(p_i).view().view().state is Allocated2m]
+            #![trigger page_array.spec_index(p_i).view().view().state is Mapped2m]
+            #![trigger page_index_2m_valid(p_i)]
             page_index_wf(p_i) 
             && {
                 |||
@@ -23,6 +26,9 @@ verus! {
         &&&
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_2m_vaild(p_i, p_j)]
+            #![trigger page_array.spec_index(p_i).view().view().state is Free2m, page_array.spec_index(p_j).view().view().state is Merged2m]
+            #![trigger page_array.spec_index(p_i).view().view().state is Allocated2m, page_array.spec_index(p_j).view().view().state is Merged2m]
+            #![trigger page_array.spec_index(p_i).view().view().state is Mapped2m, page_array.spec_index(p_j).view().view().state is Merged2m]
             page_index_wf(p_i)
             && {
                 |||
@@ -43,7 +49,8 @@ verus! {
             }
         &&&
         forall|p_i:PageIndex|
-            #![trigger page_array.spec_index(p_i).view().view().state]
+            #![trigger page_array.spec_index(p_i).view().view().state is Merged2m]
+            #![trigger spec_page_index_truncate_2m(p_i)]
             page_index_wf(p_i) && (page_array.spec_index(p_i).view().view().state is Merged2m)
             ==>
             {
@@ -60,7 +67,9 @@ verus! {
     pub open spec fn hugepage_1g_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
         &&&
         forall|p_i:PageIndex|
-            #![trigger page_array.spec_index(p_i).view().view().state]
+            #![trigger page_array.spec_index(p_i).view().view().state is Free1g]
+            #![trigger page_array.spec_index(p_i).view().view().state is Mapped1g]
+            #![trigger page_index_1g_valid(p_i)]
             page_index_wf(p_i) 
             && {
                 page_array.spec_index(p_i).view().view().state is Free1g
@@ -72,6 +81,8 @@ verus! {
         &&&
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_1g_vaild(p_i, p_j)]
+            #![trigger page_array.spec_index(p_i).view().view().state is Free1g, page_array.spec_index(p_j).view().view().state is Merged1g]
+            #![trigger page_array.spec_index(p_i).view().view().state is Mapped1g, page_array.spec_index(p_j).view().view().state is Merged1g]
             page_index_wf(p_i)
             && {
                 |||
@@ -90,7 +101,8 @@ verus! {
             }
         &&&
         forall|p_i:PageIndex|
-            #![trigger page_array.spec_index(p_i).view().view().state]
+            #![trigger page_array.spec_index(p_i).view().view().state is Merged1g]
+            #![trigger spec_page_index_truncate_1g(p_i)]
             page_index_wf(p_i) && (page_array.spec_index(p_i).view().view().state is Merged1g)            
             ==>
             {

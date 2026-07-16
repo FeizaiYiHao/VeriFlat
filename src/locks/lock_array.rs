@@ -15,23 +15,21 @@ verus! {
         user_seq: Ghost<Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>,
     }
     impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, HAS_KILL_STATE> { 
-        pub closed spec fn inv(&self) -> bool{
+        pub closed spec fn array_wf(&self) -> bool{
             &&&
             self.array.wf()
+        }
+
+        pub open spec fn inv(&self) -> bool{
+            &&&
+            self.array_wf()
+            &&&
+            self.view().len() == N
         }
 
         pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
             self.array@
         }
-        /// Expose the (otherwise closed) length fact: a well-formed array
-        /// has exactly `N` elements. Additive helper — does not change any
-        /// existing spec; lets clients relate `view().len()` to `N`.
-        pub proof fn lemma_view_len(&self)
-            requires
-                self.inv(),
-            ensures
-                self.view().len() == N,
-        {}
         pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
@@ -44,7 +42,7 @@ verus! {
         pub open spec fn unchanged_except(&self, old: &Self, index:usize) -> bool{
             &&&
             forall|i:usize|
-                #![auto]
+                #![trigger self[i]]
                 0 <= i < N && i != index
                 ==>
                 self[i] === old[i]
