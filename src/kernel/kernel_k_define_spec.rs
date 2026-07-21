@@ -14,7 +14,7 @@ verus! {
         pub cpu_tlb: CpuTLB,
 
         pub root_container: RwLockContainerPtr, // Never dies
-        pub container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,        
+        pub container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,        
         // pub number_containers: RwLock<NumContainers, (), (), NO_KILL_STATE>,
         pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>,
         pub process_map: ProcessLockedMap,
@@ -47,7 +47,9 @@ verus! {
             &&&
             process_perms_wf(self.process_map)
             &&&
-            self.thread_perms_wf()
+            thread_perms_wf(self.thread_map)
+            &&&
+            scheduler_perms_wf(self.scheduler_map)
             &&&
             allocator_perms_wf(self.allocator_4k_map)
             &&&
@@ -124,6 +126,8 @@ verus! {
             process_cpu_wf(self.process_map, self.cpu_array)
             &&&
             process_thread_wf(self.process_map, self.thread_map)
+            &&&
+            thread_cpu_wf(self.thread_map, self.cpu_array)
         }
         /// All spec functions under this are closed
         pub open spec fn inv(&self) -> bool {
@@ -275,6 +279,32 @@ verus! {
                 // Read-only data unchanged at the kernel level.
                 final(self).root_container == old(self).root_container,
                 final(self).default_pagetable == old(self).default_pagetable,
+                // Rodata is immutable (no interface mutates a live object's rodata;
+                // only lock/kill and a create/destroy could, and those are separate
+                // steps that would change the domain), so EVERY container's /
+                // process's rodata + domain membership is preserved across the
+                // interleaving — not just the held ones. Lets a syscall that read a
+                // container's scheduler/allocator ptr before an internal boundary
+                // keep using it afterward without holding the container lock.
+                old(self).container_map.dom() == final(self).container_map.dom(),
+                forall|c: RwLockContainerPtr|
+                    #![trigger final(self).container_map.spec_index(c).view_rodata()]
+                    old(self).container_map.dom().contains(c)
+                    ==> final(self).container_map.spec_index(c).view_rodata()
+                        == old(self).container_map.spec_index(c).view_rodata(),
+                // Object domains are stable across the interleaving: creating or
+                // destroying a scheduler / thread / endpoint / pagetable is a
+                // separate step, so a syscall keeps its domain memberships.
+                old(self).scheduler_map.dom() == final(self).scheduler_map.dom(),
+                old(self).thread_map.dom() == final(self).thread_map.dom(),
+                old(self).endpoint_map.dom() == final(self).endpoint_map.dom(),
+                old(self).pagetable_map.dom() == final(self).pagetable_map.dom(),
+                old(self).process_map.dom() == final(self).process_map.dom(),
+                forall|p: RwLockProcessPtr|
+                    #![trigger final(self).process_map.spec_index(p).view_rodata()]
+                    old(self).process_map.dom().contains(p)
+                    ==> final(self).process_map.spec_index(p).view_rodata()
+                        == old(self).process_map.spec_index(p).view_rodata(),
                 // Held containers / processes / etc. unchanged in entirety.
                 forall|c: RwLockContainerPtr|
                     #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Container(c))]
@@ -384,7 +414,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn container_locked_match_lctx(
-        container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
         lctx: &LocalContext,
     ) -> bool {
         // forward

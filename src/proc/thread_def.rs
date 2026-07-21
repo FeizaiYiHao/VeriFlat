@@ -21,7 +21,6 @@ pub struct Thread {
     pub endpoint_linkedlist_node: ExternalNode<RwLockThreadPtr>,
     pub ipc_payload: IPCPayLoad,
 
-    pub running_cpu: Option<CpuId>,
     pub error_code: Option<RetValueType>,  //this will only be set when it comes out of endpoint and goes to scheduler.
     pub trap_frame: TrapFrameOption,
 
@@ -87,8 +86,6 @@ impl LockInvTrait for Thread {
     open spec fn inv(&self) -> bool {
         &&&
         self.endpoint_descriptors.wf()
-        &&&
-        self.state is RUNNING == self.running_cpu is Some
         &&&
         self.error_code is Some ==> self.state is SCHEDULED
         &&&
@@ -235,7 +232,7 @@ impl IPCPayLoad {
 }
 impl LockMajorTrait for Thread {
     open spec fn lock_major_1(&self) -> LockMajorId {
-        PROCESS_LOCK_MAJOR
+        THREAD_LOCK_MAJOR
     }
 
     open spec fn lock_major_2(&self) -> LockMajorId {
@@ -264,6 +261,22 @@ impl LockMajorTrait for Thread {
 
     open spec fn lock_major_default_predicate(&self) -> bool {
         true
+    }
+}
+
+impl LockOwnerIdTrait for Thread {
+    open spec fn container_depth(&self) -> LockOwnerId {
+        LockOwnerId::Some(self.container_depth)
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::Some(self.process_depth)
+    }
+}
+
+impl LockUserVisibilityTrait for Thread {
+    open spec fn is_user_visible() -> bool {
+        false
     }
 }
 

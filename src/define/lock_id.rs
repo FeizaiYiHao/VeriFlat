@@ -25,7 +25,12 @@ pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
 pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = 10003;
 pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = 10004;
 
-pub const SCHEDULER_LOCK_MAJOR:LockMajorId = 20000;
+// The scheduler sits in the container tier (below the process, major 105) so a
+// syscall can hold it across a page allocation: it must top the container/quota
+// but stay under the process + allocator cache (106) + the staged page, whose
+// lock id is frozen at Free4k time (major FREE_PAGE_LOCK_MAJOR = 30000). Locking
+// the scheduler first (103) then the page (30000) is acyclic; the reverse is not.
+pub const SCHEDULER_LOCK_MAJOR:LockMajorId = 103;
 pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
 
 pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;

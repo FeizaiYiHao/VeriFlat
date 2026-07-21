@@ -81,14 +81,14 @@ proof fn lemma_subsystems_inv_preserved_for_page_lock_state_change(pre: KernelK,
     // free fns whose congruence on equal args is automatic. No HEAVY inner
     // predicate body is revealed, so the query stays light.
     reveal(KernelK::default_pagetable_wf);
-    reveal(KernelK::thread_perms_wf);
+    reveal(thread_perms_wf);
     assert(post.default_pagetable_wf());
     assert(pagetable_perms_wf(post.pagetable_map));
     assert(cpu_array_wf(post.cpu_array, post.default_pagetable.view()));
     assert(post.cpu_tlb.inv());
     assert(container_perms_wf(post.container_map));
     assert(process_perms_wf(post.process_map));
-    assert(post.thread_perms_wf()) by { reveal(KernelK::threads_inv); };
+    assert(thread_perms_wf(post.thread_map)) by { reveal(threads_inv); };
     assert(allocator_perms_wf(post.allocator_4k_map));
     assert(allocator_perms_wf(post.allocator_2m_map));
     assert(allocator_perms_wf(post.allocator_1g_map));

@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
         pub open spec fn container_process_allocator_quota_wf(
-                container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+                container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
                 process_map: ProcessLockedMap,
                 thread_map: ThreadLockedMap,
                 allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
@@ -43,7 +43,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_4k_wf(
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             process_map: ProcessLockedMap,
             thread_map: ThreadLockedMap,
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
@@ -58,9 +58,9 @@ verus! {
                 ==>
                 process_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
+                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
                     +
-                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     +
                     allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
                     ==
@@ -69,7 +69,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_2m_wf(
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             process_map: ProcessLockedMap,
             thread_map: ThreadLockedMap,
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
@@ -81,9 +81,9 @@ verus! {
                 ==>
                 process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
                     +
-                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     +
                     allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                     ==
@@ -92,7 +92,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_1g_wf(
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             process_map: ProcessLockedMap,
             thread_map: ThreadLockedMap,
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
@@ -104,9 +104,9 @@ verus! {
                 ==>
                 process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
+                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
                     +
-                    container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     +
                     allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
                     ==

@@ -164,4 +164,28 @@ pub proof fn lemma_cache_len_fold_ge_elem(
     }
 }
 
+/// The `total_free_pages_wf` fold is zero when every cache's list is empty.
+/// Peeled-last induction; used to show that after a failed cache scan (all
+/// caches empty) the whole free-page total sits in the global pool.
+pub proof fn lemma_cache_len_fold_all_zero(
+    s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+)
+    requires
+        forall|j: int| #![trigger s[j]] 0 <= j < s.len() ==> s[j].view().linked_list.view().len() == 0,
+    ensures
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) == 0,
+    decreases s.len(),
+{
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    if s.len() == 0 {
+    } else {
+        assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
+        assert(s.last() == s[s.len() - 1]);
+        assert forall|j: int| #![trigger s.drop_last()[j]] 0 <= j < s.drop_last().len() implies s.drop_last()[j].view().linked_list.view().len() == 0 by {
+            assert(s.drop_last()[j] == s[j]);
+        };
+        lemma_cache_len_fold_all_zero(s.drop_last());
+    }
+}
+
 }

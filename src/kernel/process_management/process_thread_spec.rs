@@ -16,8 +16,10 @@ verus! {
             &&
             thread_map.spec_index(t_ptr).view().proc_pagetable_ptr == process_map.spec_index(p_ptr).view().pagetable
             &&
-            process_map.spec_index(p_ptr).view().owned_threads.map().spec_index(t_ptr) 
-                == thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr()
+            process_map.spec_index(p_ptr).view().owned_threads.map().dom().contains(thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr())
+            &&
+            process_map.spec_index(p_ptr).view().owned_threads.map().spec_index(thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr())
+                == t_ptr
         &&&
         forall|t_ptr:RwLockThreadPtr|
             #![trigger thread_map.spec_index(t_ptr).view().owning_proc]

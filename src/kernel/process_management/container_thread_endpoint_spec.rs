@@ -36,9 +36,9 @@ verus! {
             ==>
             endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.view().contains(t_ptr)
             &&
-            endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.map().spec_index(t_ptr)
-                == 
-                thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr()
+            endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.map().spec_index(thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr())
+                ==
+                t_ptr
         &&&
         forall|e_ptr:RwLockEndpointPtr, t_ptr: RwLockThreadPtr,|
             #![trigger endpoint_map.spec_index(e_ptr).view().queue.view().contains(t_ptr)]
@@ -53,7 +53,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_thread_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, thread_map: ThreadLockedMap, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
+    pub open spec fn container_thread_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, thread_map: ThreadLockedMap, endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool 
     {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|

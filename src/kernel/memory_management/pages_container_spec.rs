@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_pages_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>, container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>) -> bool{
+    pub open spec fn container_pages_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>, container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>) -> bool{
         &&&
         forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index).view().view().state]

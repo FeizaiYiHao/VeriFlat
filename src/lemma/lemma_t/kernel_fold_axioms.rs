@@ -137,6 +137,30 @@ pub proof fn lemma_process_effective_quota_4k_fold_change_by(
 {
 }
 
+/// Trusted axiom (TCB): the sum-fold of `process_effective_quota_4k` over a set
+/// is at least any single member's effective quota, provided every member's
+/// effective quota is non-negative. Pins the container conservation fold from
+/// below: a held process with `effective_quota_4k >= 1` forces the fold — and
+/// thus `total_free_pages` — to be `>= 1`.
+/// Soundness: induct on the set; the member contributes its own value, every
+/// other element contributes a non-negative summand.
+#[verifier::external_body]
+pub proof fn lemma_process_effective_quota_4k_fold_ge_member(
+    s: Set<RwLockProcessPtr>,
+    pm: ProcessLockedMap,
+    mem: RwLockProcessPtr,
+)
+    requires
+        s.contains(mem),
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_4k(pm.spec_index(p))]
+            s.contains(p) ==> process_effective_quota_4k(pm.spec_index(p)) >= 0,
+    ensures
+        s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(pm.spec_index(p_ptr)))
+            >= process_effective_quota_4k(pm.spec_index(mem)),
+{
+}
+
 #[verifier::external_body]
 pub proof fn lemma_process_effective_quota_2m_fold_change_by(
     s: Set<RwLockProcessPtr>,
@@ -298,6 +322,151 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(
 {
 }
 
+/// Trusted axiom (TCB): direct free-quota-pending fold when a fresh thread
+/// `new_t` with zero direct pending is inserted into the folded set. The new
+/// element contributes `0`; every pre-existing element's value is preserved;
+/// so the fold sum is unchanged. The set-growth twin of
+/// `lemma_thread_direct_pending_4k_fold_eq`, for the thread-create case where
+/// a container's `owned_threads` gains the fresh thread.
+/// Soundness: induct on the set (vstd `lemma_fold_insert`); the inserted
+/// element contributes `+0`, every other element matches per-element.
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_4k_fold_insert_zero(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+)
+    requires
+        s.contains(new_t) == false,
+        post.spec_index(new_t).view().direct_free_quota_pending_4k.view() == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().direct_free_quota_pending_4k]
+            s.contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_4k.view()
+                    == pre.spec_index(t).view().direct_free_quota_pending_4k.view(),
+    ensures
+        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_4k.view())
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_2m_fold_insert_zero(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+)
+    requires
+        s.contains(new_t) == false,
+        post.spec_index(new_t).view().direct_free_quota_pending_2m.view() == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().direct_free_quota_pending_2m]
+            s.contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_2m.view()
+                    == pre.spec_index(t).view().direct_free_quota_pending_2m.view(),
+    ensures
+        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_2m.view())
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_1g_fold_insert_zero(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+)
+    requires
+        s.contains(new_t) == false,
+        post.spec_index(new_t).view().direct_free_quota_pending_1g.view() == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().direct_free_quota_pending_1g]
+            s.contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_1g.view()
+                    == pre.spec_index(t).view().direct_free_quota_pending_1g.view(),
+    ensures
+        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_1g.view())
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()),
+{
+}
+
+/// Trusted axiom (TCB): indirect free-quota-pending fold (at a fixed container
+/// depth) when a fresh thread `new_t` with zero indirect pending at that depth
+/// is inserted into the folded set. The set-growth twin of
+/// `lemma_thread_indirect_pending_4k_fold_eq_at_depth`, for the thread-create
+/// case where an ancestor container's `owned_indirect_threads` gains the fresh
+/// thread.
+/// Soundness: induct on the set (vstd `lemma_fold_insert`); the inserted
+/// element contributes `+0` at `depth`, every other element matches per-element.
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+    depth: int,
+)
+    requires
+        s.contains(new_t) == false,
+        post.spec_index(new_t).view().indirect_free_quota_pending_4k.view().spec_index(depth) == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().indirect_free_quota_pending_4k]
+            s.contains(t) ==>
+                post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth)
+                    == pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth),
+    ensures
+        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth))
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth)),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+    depth: int,
+)
+    requires
+        s.contains(new_t) == false,
+        post.spec_index(new_t).view().indirect_free_quota_pending_2m.view().spec_index(depth) == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().indirect_free_quota_pending_2m]
+            s.contains(t) ==>
+                post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth)
+                    == pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth),
+    ensures
+        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth))
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(depth)),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+    depth: int,
+)
+    requires
+        s.contains(new_t) == false,
+        post.spec_index(new_t).view().indirect_free_quota_pending_1g.view().spec_index(depth) == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t).view().indirect_free_quota_pending_1g]
+            s.contains(t) ==>
+                post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth)
+                    == pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth),
+    ensures
+        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth))
+            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(depth)),
+{
+}
+
 /// Trusted axiom (TCB): `process_staged_pages_wf` is preserved when
 /// page_array is unchanged and per-process views (which contain
 /// temp_alloc_cache) are unchanged. Narrow: the quantifiers in
@@ -323,6 +492,33 @@ pub proof fn lemma_process_staged_pages_wf_preserved_for_view_eq(
                     == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view(),
     ensures
         process_staged_pages_wf(post_process_map, page_array),
+{
+}
+
+/// Trusted axiom (TCB): the direct-thread-pending fold in the container
+/// conservation law is non-negative (every summand is a `usize`).
+/// Soundness: induct on the set; each summand is a `usize` length.
+#[verifier::external_body]
+pub proof fn lemma_thread_direct_pending_4k_fold_nonneg(
+    s: Set<RwLockThreadPtr>,
+    thread_map: ThreadLockedMap,
+)
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()) >= 0,
+{
+}
+
+/// Trusted axiom (TCB): the indirect-thread-pending fold (at a fixed container
+/// depth) in the conservation law is non-negative (every summand is a `usize`).
+/// Soundness: induct on the set; each summand is a `usize` length.
+#[verifier::external_body]
+pub proof fn lemma_thread_indirect_pending_4k_fold_nonneg(
+    s: Set<RwLockThreadPtr>,
+    thread_map: ThreadLockedMap,
+    depth: int,
+)
+    ensures
+        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth)) >= 0,
 {
 }
 

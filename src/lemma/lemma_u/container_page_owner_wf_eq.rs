@@ -14,8 +14,8 @@ verus! {
 // POINT-WISE form (PREFER at a call site -- no standing quantifier) and a
 // delegating `_forall`, mirror of the `hugepage`/`pages_wf` families.
 pub proof fn container_page_owner_wf_preserved_for_owning_container_eq(
-    old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-    new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+    new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
     old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
     new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
 )
@@ -39,8 +39,8 @@ pub proof fn container_page_owner_wf_preserved_for_owning_container_eq(
 pub proof fn container_page_owner_wf_preserved_for_owning_container_eq_forall()
     ensures
         forall|
-            old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-            new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+            new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
             new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
         |
@@ -59,8 +59,8 @@ pub proof fn container_page_owner_wf_preserved_for_owning_container_eq_forall()
             container_page_owner_wf(new_container_map, new_page_array),
 {
     assert forall|
-        old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-        new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
         old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
         new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
     |

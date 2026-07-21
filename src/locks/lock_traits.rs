@@ -59,6 +59,20 @@ pub trait LockOwnerIdTrait {
     spec fn process_depth(&self) -> LockOwnerId;
 }
 
+/// Empty read-only data (`ROT = ()`) carries no owner-id, so it reports
+/// `NotApp` for both — the `RwLock` owner-id accessors then fall back to the
+/// payload `T`'s own owner-id. Lets `thread_map` / `scheduler_map` (both
+/// `ROT = ()`) participate in the lock system.
+impl LockOwnerIdTrait for () {
+    open spec fn container_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+
+    open spec fn process_depth(&self) -> LockOwnerId {
+        LockOwnerId::NotApp
+    }
+}
+
 pub trait LockMinorTrait {
     spec fn lock_minor(&self) -> LockMinorId;
 }

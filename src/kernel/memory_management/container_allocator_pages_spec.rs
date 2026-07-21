@@ -96,7 +96,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_allocator_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, 
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, 
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>
@@ -158,7 +158,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_page_owner_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_page_owner_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, 
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool {
         &&&
@@ -180,7 +180,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_free_4k_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    pub open spec fn container_allocator_free_4k_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool
@@ -268,7 +268,7 @@ verus! {
     }
 
    #[verifier::opaque]
-    pub open spec fn container_allocator_free_2m_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    pub open spec fn container_allocator_free_2m_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool
@@ -352,7 +352,7 @@ verus! {
     }
 
    #[verifier::opaque]
-    pub open spec fn container_allocator_free_1g_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    pub open spec fn container_allocator_free_1g_page_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
             page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>
         ) -> bool

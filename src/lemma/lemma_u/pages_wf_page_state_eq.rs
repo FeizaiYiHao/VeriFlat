@@ -26,8 +26,8 @@ verus! {
 pub proof fn container_pages_wf_preserved_for_page_state_eq(
     old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
     new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-    new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+    new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
 )
     requires
         container_pages_wf(old_page_array, old_container_map),
@@ -49,8 +49,8 @@ pub proof fn container_pages_wf_preserved_for_page_state_eq_forall()
         forall|
             old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
             new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-            new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+            old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+            new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
         |
             #![trigger container_pages_wf(old_page_array, old_container_map), container_pages_wf(new_page_array, new_container_map)]
             (container_pages_wf(old_page_array, old_container_map)
@@ -67,8 +67,8 @@ pub proof fn container_pages_wf_preserved_for_page_state_eq_forall()
     assert forall|
         old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
         new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
-        new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
     |
         (container_pages_wf(old_page_array, old_container_map)
         && new_container_map.dom() == old_container_map.dom()

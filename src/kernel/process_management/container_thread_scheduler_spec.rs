@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, 
             scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr|
@@ -24,7 +24,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_thread_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+    pub open spec fn container_thread_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
             thread_map: ThreadLockedMap, 
             scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
         &&&
@@ -34,9 +34,11 @@ verus! {
             ==>
             scheduler_map.spec_index(container_map.spec_index(thread_map.spec_index(t_ptr).view().owning_container).view_rodata().view().scheduler).view().queue.view().contains(t_ptr)
             &&
-            scheduler_map.spec_index(container_map.spec_index(thread_map.spec_index(t_ptr).view().owning_container).view_rodata().view().scheduler).view().queue.map().spec_index(t_ptr)
+            scheduler_map.spec_index(container_map.spec_index(thread_map.spec_index(t_ptr).view().owning_container).view_rodata().view().scheduler).view().queue.map().dom().contains(thread_map.spec_index(t_ptr).view().scheduler_linkedlist_node.addr())
+            &&
+            scheduler_map.spec_index(container_map.spec_index(thread_map.spec_index(t_ptr).view().owning_container).view_rodata().view().scheduler).view().queue.map().spec_index(thread_map.spec_index(t_ptr).view().scheduler_linkedlist_node.addr())
                 ==
-                thread_map.spec_index(t_ptr).view().scheduler_linkedlist_node.addr()
+                t_ptr
         &&&
         forall|s_ptr:RwLockSchedulerPtr, t_ptr:RwLockThreadPtr|
             #![trigger scheduler_map.spec_index(s_ptr).view().queue.view().contains(t_ptr)]

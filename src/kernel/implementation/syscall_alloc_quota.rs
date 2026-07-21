@@ -79,6 +79,9 @@ verus! {
                 reveal(process_cpu_wf);
                 reveal(container_process_wf);
             };
+            proof {
+                all_unlocked_imply_locked_objects_match_lctx(&*self, &lctx);
+            }
 
             let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut lctx));
             let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
@@ -266,6 +269,7 @@ verus! {
                 alloc_amount <= usize::MAX - old(self).process_map.spec_index(process_ptr).view().quota_4k,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.view().value >= alloc_amount,
                 old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
+                old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -349,7 +353,7 @@ verus! {
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
                 assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
-                assert(self.thread_perms_wf()) by { reveal(KernelK::thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
+                assert(thread_perms_wf(self.thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(self.memory_management_inv()) by {
@@ -379,17 +383,17 @@ verus! {
                             self.container_map.dom().contains(c_ptr)
                             implies
                                 self.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_4k(self.process_map.spec_index(p_ptr))})
-                                    + self.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
-                                    + self.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                                    + self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
+                                    + self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                                     + self.allocator_4k_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
                                     == self.allocator_4k_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
                             by {
                                 let depth = self.container_map.spec_index(c_ptr).view_rodata().view().depth as int;
                                 lemma_thread_direct_pending_4k_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view().owned_threads.view(),
+                                    self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
                                     pre_self.thread_map, self.thread_map);
                                 lemma_thread_indirect_pending_4k_fold_eq_at_depth(
-                                    self.container_map.spec_index(c_ptr).view().owned_indirect_threads.view(),
+                                    self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(),
                                     pre_self.thread_map, self.thread_map, depth);
                                 assert(self.container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(self.process_map.dom())) by {
                                     reveal(container_process_wf);
@@ -421,8 +425,8 @@ verus! {
                             self.container_map.dom().contains(c_ptr)
                         implies
                             self.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(self.process_map.spec_index(p_ptr))})
-                                + self.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
-                                + self.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                                + self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                                + self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                                 + self.allocator_2m_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                                 == self.allocator_2m_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
                         by {
@@ -443,8 +447,8 @@ verus! {
                             self.container_map.dom().contains(c_ptr)
                         implies
                             self.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(self.process_map.spec_index(p_ptr))})
-                                + self.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
-                                + self.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                                + self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
+                                + self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                                 + self.allocator_1g_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
                                 == self.allocator_1g_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view()
                         by {
@@ -533,6 +537,18 @@ verus! {
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
                 assert(self.inv());
+                // ---- locked_objects_match_lctx: quota alloc moved only payloads, lock state framed ----
+                assert(self.locked_objects_match_lctx(&*lctx)) by {
+                    reveal(container_locked_match_lctx);
+                    reveal(process_locked_match_lctx);
+                    reveal(thread_locked_match_lctx);
+                    reveal(endpoint_locked_match_lctx);
+                    reveal(scheduler_locked_match_lctx);
+                    reveal(pagetable_locked_match_lctx);
+                    reveal(page_locked_match_lctx);
+                    reveal(cpu_locked_match_lctx);
+                    reveal(allocator_locked_match_lctx);
+                }
             }
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
             self.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
@@ -544,6 +560,38 @@ verus! {
             }
         }
 
+    }
+
+    /// Bridge: a fully-unlocked kernel with an empty `lock_map` trivially
+    /// satisfies `locked_objects_match_lctx` — every forward conjunct is
+    /// vacuous (nothing is in `lock_map`) and every reverse conjunct is vacuous
+    /// (nothing is `locked_by` per `all_objects_unlocked`). Seeds the wrappers'
+    /// new `locked_objects_match_lctx` requires at syscall entry.
+    pub proof fn all_unlocked_imply_locked_objects_match_lctx(k: &KernelK, lctx: &LocalContext)
+        requires
+            k.all_objects_unlocked(lctx),
+            lctx.lock_map() == Map::<KernelObjId, LockId>::empty(),
+        ensures
+            k.locked_objects_match_lctx(lctx),
+    {
+        reveal(cpu_objects_unlocked);
+        reveal(page_objects_unlocked);
+        reveal(container_objects_unlocked);
+        reveal(process_objects_unlocked);
+        reveal(thread_objects_unlocked);
+        reveal(endpoint_objects_unlocked);
+        reveal(pagetable_objects_unlocked);
+        reveal(scheduler_objects_unlocked);
+        reveal(allocator_objects_unlocked);
+        reveal(container_locked_match_lctx);
+        reveal(process_locked_match_lctx);
+        reveal(thread_locked_match_lctx);
+        reveal(endpoint_locked_match_lctx);
+        reveal(scheduler_locked_match_lctx);
+        reveal(pagetable_locked_match_lctx);
+        reveal(page_locked_match_lctx);
+        reveal(cpu_locked_match_lctx);
+        reveal(allocator_locked_match_lctx);
     }
 
     pub open spec fn kernel_u_only_process_quota_4k_changed(
@@ -720,15 +768,19 @@ verus! {
             container_allocator_wf(pre.container_map, pre.allocator_4k_map, pre.allocator_2m_map, pre.allocator_1g_map),
             // `container_map`: the quota path WRITE-LOCKS the owning container,
             // so its byte representation is NOT preserved (lock state moves).
-            // The conservation fold reads only `view()` / `view_rodata()`, both
-            // of which a lock op preserves — so require per-entry projection
-            // equality + same domain, not whole-map byte equality.
+            // The conservation fold reads only `view()` / `view_rodata()` and the
+            // two ghost slots (`view_user_ghost` = owned_threads,
+            // `view_kernel_ghost` = owned_indirect_threads), all of which a lock op
+            // preserves — so require per-entry projection equality + same domain,
+            // not whole-map byte equality.
             post.container_map.dom() =~= pre.container_map.dom(),
             forall|c_ptr: RwLockContainerPtr|
                 #![trigger post.container_map.spec_index(c_ptr)]
                 pre.container_map.dom().contains(c_ptr) ==>
                     post.container_map.spec_index(c_ptr).view() == pre.container_map.spec_index(c_ptr).view()
-                    && post.container_map.spec_index(c_ptr).view_rodata() == pre.container_map.spec_index(c_ptr).view_rodata(),
+                    && post.container_map.spec_index(c_ptr).view_rodata() == pre.container_map.spec_index(c_ptr).view_rodata()
+                    && post.container_map.spec_index(c_ptr).view_user_ghost() == pre.container_map.spec_index(c_ptr).view_user_ghost()
+                    && post.container_map.spec_index(c_ptr).view_kernel_ghost() == pre.container_map.spec_index(c_ptr).view_kernel_ghost(),
             // `thread_map` IS byte-equal: no thread object is touched on this path.
             post.thread_map == pre.thread_map,
             // The mutation's anchor objects.
@@ -767,8 +819,8 @@ verus! {
             post.container_map.dom().contains(c_ptr)
             implies
                 post.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_4k(post.process_map.spec_index(p_ptr))})
-                    + post.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
-                    + post.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    + post.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
+                    + post.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     + post.allocator_4k_map.spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
                     == post.allocator_4k_map.spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
             by {
@@ -785,10 +837,10 @@ verus! {
                 // very same expressions as the `pre`-side ones the lemmas produce.
                 assert(post.container_map.spec_index(c_ptr).view().owned_processes
                     == pre.container_map.spec_index(c_ptr).view().owned_processes);
-                assert(post.container_map.spec_index(c_ptr).view().owned_threads
-                    == pre.container_map.spec_index(c_ptr).view().owned_threads);
-                assert(post.container_map.spec_index(c_ptr).view().owned_indirect_threads
-                    == pre.container_map.spec_index(c_ptr).view().owned_indirect_threads);
+                assert(post.container_map.spec_index(c_ptr).view_user_ghost().owned_threads
+                    == pre.container_map.spec_index(c_ptr).view_user_ghost().owned_threads);
+                assert(post.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads
+                    == pre.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads);
                 assert(post.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k
                     == pre.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k);
                 assert(post.container_map.spec_index(c_ptr).view_rodata().view().depth
@@ -796,8 +848,8 @@ verus! {
                 // OLD equation at this container — the only fact pulled from the
                 // entry invariant; everything else is framing arithmetic.
                 assert(pre.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_4k(pre.process_map.spec_index(p_ptr))})
-                    + pre.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
-                    + pre.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    + pre.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
+                    + pre.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     + pre.allocator_4k_map.spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
                     == pre.allocator_4k_map.spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view())
                     by { reveal(container_process_allocator_quota_4k_wf); };
@@ -873,14 +925,18 @@ verus! {
             // (so the fold's per-element bridge applies to each owned process).
             container_process_wf(pre.container_map, pre.process_map),
             // `container_map`: write-locked on the 4k path, so byte representation
-            // is NOT preserved; the fold reads only `view()` / `view_rodata()`,
-            // which a lock op preserves — require those + same domain.
+            // is NOT preserved; the fold reads only `view()` / `view_rodata()` and
+            // the two ghost slots (`view_user_ghost` = owned_threads,
+            // `view_kernel_ghost` = owned_indirect_threads), which a lock op
+            // preserves — require those + same domain.
             post.container_map.dom() =~= pre.container_map.dom(),
             forall|c_ptr: RwLockContainerPtr|
                 #![trigger post.container_map.spec_index(c_ptr)]
                 pre.container_map.dom().contains(c_ptr) ==>
                     post.container_map.spec_index(c_ptr).view() == pre.container_map.spec_index(c_ptr).view()
-                    && post.container_map.spec_index(c_ptr).view_rodata() == pre.container_map.spec_index(c_ptr).view_rodata(),
+                    && post.container_map.spec_index(c_ptr).view_rodata() == pre.container_map.spec_index(c_ptr).view_rodata()
+                    && post.container_map.spec_index(c_ptr).view_user_ghost() == pre.container_map.spec_index(c_ptr).view_user_ghost()
+                    && post.container_map.spec_index(c_ptr).view_kernel_ghost() == pre.container_map.spec_index(c_ptr).view_kernel_ghost(),
             // `thread_map` / `allocator_2m_map` are byte-equal: no 2m object moves.
             post.thread_map == pre.thread_map,
             post.allocator_2m_map == pre.allocator_2m_map,
@@ -901,8 +957,8 @@ verus! {
             post.container_map.dom().contains(c_ptr)
             implies
                 post.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(post.process_map.spec_index(p_ptr))})
-                    + post.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
-                    + post.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    + post.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                    + post.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + post.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     + post.allocator_2m_map.spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                     == post.allocator_2m_map.spec_index(post.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
             by {
@@ -916,8 +972,8 @@ verus! {
                 assert(post.container_map.spec_index(c_ptr).view_rodata() == pre.container_map.spec_index(c_ptr).view_rodata());
                 // OLD equation at this container.
                 assert(pre.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(pre.process_map.spec_index(p_ptr))})
-                    + pre.container_map.spec_index(c_ptr).view().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
-                    + pre.container_map.spec_index(c_ptr).view().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    + pre.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                    + pre.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + pre.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                     + pre.allocator_2m_map.spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                     == pre.allocator_2m_map.spec_index(pre.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view())
                     by { reveal(container_process_allocator_quota_2m_wf); };
