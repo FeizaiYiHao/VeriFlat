@@ -448,6 +448,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).map() == old(self).map().insert(addr, perm@.value()@),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
+            old(self).dom().contains(addr) == false,
     {
         proof{
             reveal(LinkedList::wf_perms);

@@ -103,7 +103,7 @@ pub type SLLIndex = i32;
 pub enum ThreadState {
     SCHEDULED,
     BLOCKED,
-    RUNNING,
+    RUNNING{cpu_id:CpuId},
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

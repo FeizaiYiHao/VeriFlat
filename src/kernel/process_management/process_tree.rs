@@ -324,7 +324,7 @@ verus! {
     /// container's `owned_processes ⊆ process dom` so the per-container
     /// `subset_of` precondition discharges.
     pub proof fn per_container_process_tree_wf_preserved_for_tree_fields_eq(
-        container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>,
+        container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
         old_process_perms: ProcessLockedMap,
         new_process_perms: ProcessLockedMap,
     )

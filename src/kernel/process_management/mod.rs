@@ -1,6 +1,7 @@
 pub mod container_tree;
 pub mod process_tree;
 pub mod thread_map_wf;
+pub mod thread_cpu_wf;
 pub mod endpoint_map_spec;
 pub mod scheduler_map_wf;
 pub mod container_process_spec;
@@ -15,6 +16,7 @@ pub mod container_thread_endpoint_spec;
 pub use container_tree::*;
 pub use process_tree::*;
 pub use thread_map_wf::*;
+pub use thread_cpu_wf::*;
 pub use endpoint_map_spec::*;
 pub use scheduler_map_wf::*;
 pub use container_process_spec::*;

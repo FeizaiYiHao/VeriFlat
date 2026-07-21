@@ -84,6 +84,20 @@ impl Process{
         self.pagetable_iommutable_different()
         &&&
         self.at_least_one_thread()
+        &&&
+        self.quota_within_bound()
+    }
+    /// Staged pages never exceed the nominal quota, so the effective quota
+    /// (`quota_* - temp_alloc_cache_*.len()`) stays non-negative. This pins the
+    /// conservation fold from below: a container's free-page total is at least
+    /// each owned process's effective quota.
+    pub open spec fn quota_within_bound(&self) -> bool {
+        &&&
+        self.quota_4k >= self.temp_alloc_cache_4k.view().len()
+        &&&
+        self.quota_2m >= self.temp_alloc_cache_2m.view().len()
+        &&&
+        self.quota_1g >= self.temp_alloc_cache_1g.view().len()
     }
     pub open spec fn iommu_table_wf(&self) -> bool {
         &&&

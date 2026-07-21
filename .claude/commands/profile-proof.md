@@ -144,6 +144,9 @@ below.)
 
 - `/profile-proof` (this) — LOCATES the costly obligation (measurement only).
 - `/shrink-proof` — SHRINKS a located obligation (delete-and-reverify).
+- `/discharge-assume` — BUILDS a proof for an `assume`d conjunct by transplanting
+  a sibling's reveal recipe (the inverse of shrink: adds real proof where there
+  was a stub).
 - `/style-check` — FLAGS the tells (bare reveals, `== old` crutches, orphan
   ghosts) that profiling confirms are costing rlimit.
 Typical chain: profile → shrink the dominator (or scope its reveals) → re-profile

@@ -346,5 +346,43 @@ pub fn borrow_mut<'a, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr
     }
 }
 
+/// TCB: replace the kernel-view-only ghost of the `RwLock` inside a `PointsTo`,
+/// lock-free. Reaching the heap-stored `RwLock` through the opaque `PointsTo` is
+/// irreducibly trusted (there is no proof-mode `&mut RwLock` from `&mut PointsTo`),
+/// so this is the axiom; `LockedMap::update_kernel_ghost` is the verified wrapper.
+/// No `LockPerm` and no `lctx`: the kernel ghost is never part of `KernelU`, so a
+/// change to it is invisible to the user view (mirror of atmosphere's
+/// `container_set_owned_threads`).
+#[verifier::external_body]
+pub proof fn update_kernel_ghost<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(tracked perm: &mut PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>, new_kernel_ghost: KGhostT)
+    requires
+        old(perm).is_init(),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+
+        update_kernel_ghost_ensures(old(perm).value(), final(perm).value(), new_kernel_ghost),
+{
+    unimplemented!()
+}
+
+/// TCB: replace the user-view-visible ghost of the `RwLock` inside a `PointsTo`,
+/// lock-free. Same trust boundary as `update_kernel_ghost` above. No `LockPerm`
+/// and no `lctx`: `KernelU` projects neither `container_map` nor any ghost slot,
+/// so this ghost is invisible to the user view — no user-view linearization
+/// guard is needed (mirror of atmosphere's `container_set_owned_threads`).
+#[verifier::external_body]
+pub proof fn update_user_ghost<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(tracked perm: &mut PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>, new_user_ghost: UGhostT)
+    requires
+        old(perm).is_init(),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+
+        update_user_ghost_ensures(old(perm).value(), final(perm).value(), new_user_ghost),
+{
+    unimplemented!()
+}
+
 
 }

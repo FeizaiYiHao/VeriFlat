@@ -172,6 +172,36 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         let ret = borrow_rodata(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&perm));
         return ret;
     }
+
+    pub proof fn update_kernel_ghost(tracked &mut self, key:usize, new_kernel_ghost: KGhostT)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+
+            update_kernel_ghost_ensures(old(self)[key], final(self)[key], new_kernel_ghost),
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        update_kernel_ghost(&mut perm, new_kernel_ghost);
+        self.map.borrow_mut().tracked_insert(key, perm);
+    }
+
+    pub proof fn update_user_ghost(tracked &mut self, key:usize, new_user_ghost: UGhostT)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+
+            update_user_ghost_ensures(old(self)[key], final(self)[key], new_user_ghost),
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        update_user_ghost(&mut perm, new_user_ghost);
+        self.map.borrow_mut().tracked_insert(key, perm);
+    }
 }
 
 
@@ -181,6 +211,81 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             self.dom().contains(key)
     {
         self.view().spec_index(key).lock_id()
+    }
+
+    /// TCB: register a brand-new object into the map at a fresh key, GROWING the
+    /// domain. Mints a fresh `RwLock<T>` at address `key` holding `value` /
+    /// `rodata` / `kernel_ghost` / `user_ghost`, initialized (`is_init`), not
+    /// being-killed, and WRITE-LOCKED by the calling thread — so the caller can
+    /// immediately `borrow_mut` to finish wiring the object and later `wunlock`
+    /// it. Registers the lock id in `lctx.lock_map()` under `obj_id`, returning
+    /// the `LockPerm` (same shape as `wlock`).
+    ///
+    /// This is the ONLY operation that changes a `LockedMap`'s domain; every
+    /// other method preserves `dom()`. Allocation itself is trusted (there is no
+    /// verified heap allocator); the returned key is assumed to be a fresh,
+    /// otherwise-unused slot address, enforced by `!old(self).dom().contains(key)`.
+    /// The acyclicity precondition uses the same `LockId` (container/process/major
+    /// derived from `value`, minor = `key`) that `wlock` computes, so a
+    /// freshly-inserted-and-locked object obeys global lock ordering exactly like
+    /// an ordinarily-acquired one.
+    #[verifier::external_body]
+    pub fn insert(
+        &mut self,
+        key: usize,
+        value: T,
+        rodata: ROT,
+        Ghost(kernel_ghost): Ghost<KGhostT>,
+        Ghost(user_ghost): Ghost<UGhostT>,
+        Tracked(lctx): Tracked<&mut LocalContext>,
+        obj_id: Ghost<KernelObjId>,
+    ) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key) == false,
+            value.inv(),
+            old(lctx).lock_id_acyclic(LockId{
+                container: rodata.container_depth(),
+                process: rodata.process_depth(),
+                major: value.current_lock_major(),
+                minor: key,
+            }),
+            old(lctx).obj_id_fresh(obj_id@),
+        ensures
+            final(self).perms_wf(),
+            // ---- domain grows by exactly `key`; every prior entry unchanged ----
+            final(self).dom() =~= old(self).dom().insert(key),
+            forall|k:usize|
+                #![auto]
+                old(self).dom().contains(k)
+                ==>
+                final(self)[k] == old(self)[k],
+            // ---- the new entry: initialized, write-locked, holds the given payload ----
+            final(self).dom().contains(key),
+            final(self)[key].is_init(),
+            final(self)[key]@ == value,
+            final(self)[key].view_rodata() == rodata,
+            final(self)[key].view_kernel_ghost() == kernel_ghost,
+            final(self)[key].view_user_ghost() == user_ghost,
+            final(self)[key].being_killed() == false,
+            final(self)[key].locking_thread() == (RwLockState::Write {
+                thread_id: final(lctx).thread_id(),
+                lock_id: final(self).lock_id_by_key(key),
+            }),
+            final(self).lock_id_by_key(key) == (LockId{
+                container: rodata.container_depth(),
+                process: rodata.process_depth(),
+                major: value.current_lock_major(),
+                minor: key,
+            }),
+            // ---- the returned write perm ----
+            ret@.state() is WriteLock,
+            ret@.thread_id() == final(lctx).thread_id(),
+            ret@.lock_id() == final(self).lock_id_by_key(key),
+            // ---- lctx: the new lock id is registered under obj_id ----
+            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(key), obj_id@),
+    {
+        unimplemented!()
     }
 }
 

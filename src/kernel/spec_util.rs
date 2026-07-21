@@ -22,7 +22,7 @@ pub open spec fn page_objects_unlocked(page_array: LockedArray<Page, (), (), (),
 }
 
 #[verifier::opaque]
-pub open spec fn container_objects_unlocked(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, (), (), CONTAINER_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn container_objects_unlocked(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
     forall|c_ptr: RwLockContainerPtr|
         #![trigger container_map.dom().contains(c_ptr)]
         container_map.dom().contains(c_ptr)
