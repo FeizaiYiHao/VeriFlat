@@ -1,0 +1,106 @@
+# VeriFlat — Cline custom instructions
+
+A microkernel verified with Verus (everything under `src/` is Verus Rust).
+Build/verify with `./verify.sh` from the project root.
+
+## Steering docs (knowledge base)
+
+These files contain the working knowledge. Read them when you need context:
+
+- `.kiro/steering/veriflat-project-notes.md` — durable architecture, conventions, idioms, gotchas, and the reference syscall example. Stable; rarely edited.
+- `.kiro/steering/verus-verification.md` — the transferable "how to verify" playbook (cost tactics, proof patterns, TCB axiom design, failure strategies).
+- `.kiro/steering/verus-style.md` — the code-style signature: layout, naming, idiom, and the concrete proof-structure patterns (nested inv() re-establishment, the lock-wrapper-per-object pattern, fold-conjunct discipline). Write edits that match it.
+
+## Verus style (summary — read verus-style.md for the full rules)
+
+- **Layout:** `&&&` / `|||` connector ALONE on its own line before each operand, even single-clause specs. `&&&` = top-level conjuncts; `&&` = inside one conjunct's body.
+- **`requires` are BARE** — no `//` group notes, no `// ---- ----` banners.
+- **`// ---- <title> ----` banners are SINGLE-LINE**, and appear ONLY in `ensures` framing and the body's `inv()` re-establishment — never wrapped across lines, never in `requires`.
+- **`proof {}` blocks carry NO prose** — bare calls / asserts / reveals.
+- **Triggers:** `#![auto]` for shallow "every other entry unchanged" framing foralls; hand-written `#![trigger ...]` for deep invariant quantifiers; **NEVER `#![all_triggers]`**.
+- **No trigger-compensating asserts:** An `inv()` re-establishment should close from a few `reveal(...)`s (+ narrow lemma calls), like `wlock_quota_4k`. A hand `assert forall|...| ... == old(self)... by { if k != touched { assert(...) } }` block sitting BEFORE the conjunct asserts (to feed them) is a crutch for a quantifier that should fire on its own — a sign of a mis-set trigger. DELETE it and re-verify from the bare reveals.
+- **`inv()` re-establishment is NESTED** — subsystem conjuncts wrapped in `assert(self.memory_management_inv()) by { ... }` etc.; banner order: subsystems_inv → memory_management_inv → process_management_inv → inv() direct conjuncts → `assert(self.inv())`.
+- **Spell out `.view()` — do NOT use the `@` sugar (tooling constraint):** write `x.view()` / `x.view().view()` (and `x.view()->Write_lock_id`, `foo.view().linked_list`), never `x@` / `x@@`.
+- **Framing:** list EVERY field `final(self).X == old(self).X` even when one moves; frame the touched one with `unchanged_except`; `=~=` for collections, `==` for scalars/the single changed field.
+- **Naming:** `wf()` well-formedness, `view()`/`@` abstraction, `inv()` = thin `&&& self.wf()` shell. Spec twin = `spec_X` + `#[verifier(when_used_as_spec(spec_X))]`. Conversions `<from>2<to>` with literal digit (`page_index2page_ptr`). Relations `<a>_<b>_wf` in lock-hierarchy order. Page sizes always `_4k`/`_2m`/`_1g` triples + non-suffixed combiner.
+- **Canonical style references — mirror these:** `kernel/implementation/syscall_alloc_quota.rs` (the `syscall_alloc_quota_4k` syscall + `commit_alloc_quota_4k` helper) and the `kernel/implementation/locker_unlocker.rs` wrappers (`wlock_cpu`, `wunlock_quota_4k`, `wunlock_process`, …). When in doubt about layout, comment density, banner form, `requires`/`ensures` shape, or trigger idiom, open the nearest LIVE function in these two files and copy its shape.
+- **`#[verifier::spinoff_prover]` is Xiangdong's call — do NOT add it unprompted.** If a new wrapper/helper/lemma is slow enough to want spinoff, flag it and ask — don't add it.
+- **Spec files hold ONLY specs.** `*_spec.rs` files get `spec fn`s only; a `proof fn` belongs in the relevant impl file (the syscall file, a `lemma_*` file).
+- **Map-level lock-id:** use `map.lock_id_by_key(key)` / `array.lock_id_by_index(i)` in wrapper specs — NOT a hand-built `LockId{container, process, major, minor}`.
+- **Dead scaffolding around a stub:** If the function stubs a conjunct with `assume(self.inv())` / `assume(...)` / a `//@Xiangdong` TODO, then every ghost snapshot and per-field frame assert that was building toward that conjunct is now DEAD — strip it. A stubbed body should be lean exec + the live lock-op precondition proofs + the stubs, nothing more.
+- **Trim the scaffolding once it's green:** After a proof verifies, do a deliberate trim pass: delete each assert/reveal/ghost you added (start from the ones farthest from the goal), re-verify, and KEEP it only if removal breaks verification.
+- **Scope reveals to the assert that owns them:** A `reveal(P)` at `proof {}` / function scope opens `P`'s definition for the WHOLE rest of the function's SMT context. Attach the reveal to the specific `assert(<goal>) by { reveal(P); }` that consumes it.
+
+## Verification commands
+
+- `./verify.sh` — verify everything
+- `./verify.sh --verify-only-module <module>` — verify a single module
+- `./verify.sh --verify-only-module <module> --verify-function <fn> --time-expanded` — verify a single function with timing
+- `./verify.sh --verify-only-module <module> --verify-function <fn> --profile-all` — profile a function's quantifier instantiations
+- `./verify.sh --verify-only-module <module> --verify-function <fn> --expand-errors` — get detailed error output
+- `./verify.sh --verify-only-module <module> --verify-function <fn> --rlimit BIG` — bump rlimit ceiling for measurement
+- `./verify.sh --output-json` — machine-readable output with function-level rlimit breakdown
+
+## Style check procedure (manual — Cline has no hook system)
+
+After any substantial edit to `src/` that has verified clean, run a style check before calling the work done:
+
+1. Get the diff: `git diff HEAD -- src/**/*.rs` (or the specific files you edited)
+2. Re-read `.kiro/steering/verus-style.md` for the full rubric
+3. Open the nearest LIVE sibling in `syscall_alloc_quota.rs` or `locker_unlocker.rs` and compare shape
+4. Check each changed function against the tells listed above
+5. Report violations; fix them and re-verify
+
+## Proof gap protocol
+
+When you discover a proof gap or spec gap (e.g., a missing postcondition, a lock ordering incompatibility, a `closed spec` blocking a proof, or a Verus/SMT limitation), **stop and flag it to the user** before adding any `#[verifier::external_body]` axiom or `assume(...)` workaround. Explain:
+1. What property can't be proved.
+2. Whether it's a spec gap (fixable by strengthening specs) or a Verus limitation (e.g., `closed spec` + opaque datatype field restrictions).
+3. What the narrow TCB axiom would look like if the user chooses to accept it.
+
+## Module layout
+
+- `src/lib.rs` — crate root; re-exports everything.
+- `src/locks/` — trusted base. `RwLock`, `LocalContext`, `LockedMap`, `LockedArray`, `PointsTo` glue. Mostly `external_body`.
+- `src/define/` — types, constants, traits.
+- `src/page/`, `src/proc/`, `src/cpu/`, `src/allocator/` — kernel object definitions (`Page`, `Container`, `Process`, `Thread`, `Endpoint`, `Scheduler`, `Cpu`, `PageAllocator`).
+- `src/pagetable_seq/` — page table machinery.
+- `src/kernel/` — global kernel state and invariants.
+  - `kernel_k_define_spec.rs` — `KernelK` struct and the global `inv()`.
+  - `kernel_u_define_spec.rs` — `KernelU` user-view projection.
+  - `kernel_total_define_spec.rs` — `KernelStep`, `KernelSteps` ledger.
+  - `spec_util.rs` — preservation lemmas, narrow trusted set-fold axioms.
+  - `memory_management/`, `process_management/`, `cpu_tlb_management/` — spec files, one bidirectional relation per file.
+  - `implementation/` — verified syscall implementations.
+- `src/lemma/`, `src/util/`, `src/primitive/`, `src/linkedlist/` — proof helpers and data structures.
+
+## RwLock — five generic params
+
+```rust
+RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>
+```
+
+- `T` — lock-protected payload. Always kernel-visible; user-visible iff `T::is_user_visible()`.
+- `ROT` — read-only data. Same visibility as `T`. `borrow_rodata()` works without a lock.
+- `KGhostT` — kernel-view-only ghost. Never user-visible. `update_kernel_ghost` mutates without a lock; kernel-view Release op.
+- `UGhostT` — user-view-visible ghost. Same visibility as `T`. `update_user_ghost` mutates without a lock; kernel-view Release; if `T::is_user_visible()`, also requires user-view Release.
+- `HAS_KILL_STATE` — `bool` const generic. Toggles whether the rwlock carries a `killer_info: Option<KillerInfo>` (kill-protocol marker).
+
+## LocalContext
+
+Tracked ghost type minted by the TCB at syscall entry, threaded through every kernel call by ownership.
+
+- `kernel_view_locking_state`: per atomic section (`Acquire → Release`). Acquire = locks may be taken. Release = no more acquires; releases only.
+- `user_view_locking_state`: per user-step (`Acquire → Release`). Same shape. Flipped both directions by `begin/end_user_view_step`.
+- `lock_seq: Seq<LockId>` — strictly ascending under `LockId::spec_gt`, enforcing global lock ordering for deadlock-freedom.
+
+## KernelSteps + snap_shot discipline
+
+`KernelSteps` is a tracked ledger threaded through a syscall, recording user-visible atomic transitions. The `snap_shot` field is the discipline mechanism that catches unrecorded U-mutations:
+
+- **Syscall entry** (precondition): `old(steps).snap_shot == kernel_k_to_kernel_u(*old(self))`.
+- **`begin_user_view_step`**: snap_shot preserved.
+- **`end_user_view_step`**: snap_shot refreshed to current projection.
+- **`kernel_step_boundary`**: requires `kernel_k_to_kernel_u(*self) == steps.snap_shot` (no unrecorded U-mutation); ensures snap_shot refreshed to post-interleaving projection.
+
+If a syscall mutates U outside of a `begin/end_user_view_step` pair, the snap_shot stays stale, and the next `kernel_step_boundary` will fail to verify.
