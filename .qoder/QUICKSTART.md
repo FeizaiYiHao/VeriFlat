@@ -1,3 +1,52 @@
+# Qoder Style & Proof Workflow — Quick Start
+
+## Skills (slash commands)
+
+| Skill | Purpose |
+|-------|---------|
+| `/style-check` | Review working diff against Xiangdong's Verus style; certify clean pass |
+| `/discharge-assume` | Replace `assume(P)` with a real proof by transplanting a sibling's recipe |
+| `/shrink-proof` | Delete-and-reverify to strip scaffolding from a green proof |
+| `/profile-proof` | Ablation-based rlimit attribution to locate the costly obligation |
+
+Typical chain: **discharge** each assume → **shrink** the transplant → **profile** if still slow → **style-check** → gate.
+
+## Hooks (utility scripts)
+
+```
+.qoder/hooks/
+├── style-remind.sh   # Print the Verus style reminder (run before editing)
+├── style-record.sh   # Record dirty src/**/*.rs into .qoder/.session-edits
+└── style-gate.sh     # Block "done" until /style-check certifies the edits
+```
+
+These are standalone scripts (Qoder has no native hook system). Wire them to
+VSCode tasks or run manually:
+
+```bash
+.qoder/hooks/style-remind.sh   # before an editing session
+.qoder/hooks/style-record.sh   # after editing (records dirty files)
+.qoder/hooks/style-gate.sh     # before calling it done (exit 1 = blocked)
+```
+
+## Style gate workflow
+
+1. Edit `src/**/*.rs` as needed.
+2. Run `/style-check` — reviews only dirty files, reports violations.
+3. Fix violations, re-run `/style-check` until **clean**.
+4. A clean pass writes `.qoder/.style-checked` (content hashes) — this clears the gate.
+5. `.qoder/hooks/style-gate.sh` now exits 0 (PASS).
+
+## Key references
+
+- Style guide: `.kiro/steering/verus-style.md`
+- Canonical files: `src/kernel/implementation/syscall_alloc_quota.rs`, `src/kernel/implementation/locker_unlocker.rs`
+- Verification: `./verify.sh` (full crate) or `./verify.sh --verify-only-module <mod> --verify-function <fn> --time-expanded`
+
+## VSCode shortcuts (from .vscode/keybindings.json)
+
+- **Ctrl+Alt+S** — run style check task
+- **Ctrl+Alt+V** — run full verification
 # Qoder 自动 Style 检查系统 - 快速开始
 
 ## ✅ 已部署完成！
