@@ -1,8 +1,9 @@
 {
+    "chat.editing.autoAccept": true,
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 1000,
     
-    // 保存后运行任务（需要安装"Run on Save"扩展）
+    // Run task on save (requires "Run on Save" extension)
     "emeraldwalk.runonsave": {
         "commands": [
             {
@@ -12,10 +13,10 @@
         ]
     },
     
-    // 或者使用内置的tasks + keybinding
+    // Or use built-in tasks + keybinding
     "task.autoDetect": "on",
     
-    // 推荐安装的扩展
+    // Recommended extensions
     "extensions.recommendations": [
         "emeraldwalk.RunOnSave"
     ]
