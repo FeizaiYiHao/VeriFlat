@@ -1,10 +1,22 @@
 {
-    "cSpell.words": [
-        "bidirectly",
-        "CPUS",
-        "CpuTLB",
-        "hugepage",
-        "PCID",
-        "uninterp"
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    
+    // 保存后运行任务（需要安装"Run on Save"扩展）
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": "src/.*\\.rs$",
+                "cmd": "${workspaceFolder}/.qoder/hooks/post-save.sh ${file}"
+            }
+        ]
+    },
+    
+    // 或者使用内置的tasks + keybinding
+    "task.autoDetect": "on",
+    
+    // 推荐安装的扩展
+    "extensions.recommendations": [
+        "emeraldwalk.RunOnSave"
     ]
 }

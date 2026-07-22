@@ -1,0 +1,14 @@
+[
+    {
+        "key": "ctrl+alt+s",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Auto Style Check",
+        "when": "editorTextFocus && resourceExtname == .rs"
+    },
+    {
+        "key": "ctrl+alt+v",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Verify Project",
+        "when": "editorTextFocus"
+    }
+]

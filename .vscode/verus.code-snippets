@@ -1,0 +1,52 @@
+{
+    "Verus Proof Template": {
+        "prefix": "vproof",
+        "body": [
+            "proof fn ${1:lemma_name}(",
+            "    ${2:param}: ${3:Type},",
+            ")",
+            "    requires",
+            "        ${4:precondition},",
+            "    ensures",
+            "        ${5:postcondition},",
+            "{",
+            "    proof {",
+            "        ${6:// proof body}",
+            "    }",
+            "}"
+        ],
+        "description": "Verus proof function template"
+    },
+    "Verus Spec Function": {
+        "prefix": "vspec",
+        "body": [
+            "pub open spec fn ${1:function_name}(",
+            "    ${2:param}: ${3:Type},",
+            ") -> ${4:ReturnType} {",
+            "    ${5:// spec body}",
+            "}"
+        ],
+        "description": "Verus spec function template"
+    },
+    "Verus Invariant Block": {
+        "prefix": "vinv",
+        "body": [
+            "assert(self.${1:subsystem}_inv()) by {",
+            "    reveal(${2:spec_function});",
+            "    ${3:// additional reveals or lemmas}",
+            "}"
+        ],
+        "description": "Verus invariant re-establishment block"
+    },
+    "Verus Fold Lemma Call": {
+        "prefix": "vfold",
+        "body": [
+            "lemma_${1:process_effective_quota_4k}_fold_eq(",
+            "    ${2:set},",
+            "    pre_map,",
+            "    post_map,",
+            ");"
+        ],
+        "description": "Verus fold lemma call template"
+    }
+}
