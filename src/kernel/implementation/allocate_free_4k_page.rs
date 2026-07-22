@@ -2143,7 +2143,7 @@ pub proof fn container_process_allocator_quota_2m_wf_forall()
         allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
-    |
+    |  #![auto]
         (container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map)
         && container_process_wf(container_map, old_process_map)
         && forall|p: RwLockProcessPtr|
@@ -2202,7 +2202,7 @@ pub proof fn container_process_allocator_quota_1g_wf_forall()
         allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
-    |
+    |  #![auto]
         (container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map)
         && container_process_wf(container_map, old_process_map)
         && forall|p: RwLockProcessPtr|
@@ -2247,8 +2247,8 @@ pub proof fn lemma_process_effective_quota_4k_fold_sum_eq_forall()
             ==>
             process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre),
 {
-    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|
-        (forall|p: RwLockProcessPtr|
+    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|  #![auto]
+        (forall|p: RwLockProcessPtr|  #![auto]
             s.contains(p) ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)))
     implies
         process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre)
@@ -2274,10 +2274,10 @@ pub proof fn lemma_process_effective_quota_4k_fold_change_by_forall(mod_p: RwLoc
             ==>
             process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre) + x,
 {
-    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|
+    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|  #![auto]
         (s.contains(mod_p)
         && process_effective_quota_4k(post.spec_index(mod_p)) == process_effective_quota_4k(pre.spec_index(mod_p)) + x
-        && forall|p: RwLockProcessPtr|
+        && forall|p: RwLockProcessPtr|  #![auto]
             s.contains(p) && p != mod_p ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)))
     implies
         process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre) + x

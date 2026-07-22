@@ -294,7 +294,7 @@ verus! {
             process_tree_dom: Set<RwLockProcessPtr>,
             old_process_perms: ProcessLockedMap,
             new_process_perms: ProcessLockedMap,
-        |
+        |  #![auto]
             (process_tree_wf(root_process, process_tree_dom, old_process_perms)
             && process_tree_dom.subset_of(new_process_perms.dom())
             && forall|p_ptr: RwLockProcessPtr|
