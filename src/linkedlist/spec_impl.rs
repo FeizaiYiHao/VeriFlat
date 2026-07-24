@@ -489,7 +489,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_next());
             assert(self.value_list_unique());
             assert(self.wf_reverse_map()) by {
-                broadcast use vstd::map::group_map_axioms;
+                broadcast use vstd::map::group_map_lemmas;
                 let v = perm@.value()@;
                 if old(self).revese_map().dom().contains(v) {
                     assert(old(self).map().dom().contains(old(self).revese_map()[v]));
@@ -598,7 +598,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_next());
             assert(self.value_list_unique());
             assert(self.wf_reverse_map()) by {
-                broadcast use vstd::map::group_map_axioms;
+                broadcast use vstd::map::group_map_lemmas;
                 let v = perm@.value()@;
                 if old(self).revese_map().dom().contains(v) {
                     assert(old(self).map().dom().contains(old(self).revese_map()[v]));

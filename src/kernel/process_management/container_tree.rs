@@ -56,8 +56,6 @@ verus! {
                 &&&
                 container_perms.spec_index(c_ptr).view().children.view().contains(c_ptr) == false
                 &&&
-                container_perms.spec_index(c_ptr).view().subtree_set.view().finite()
-                &&&
                 container_perms.spec_index(c_ptr).view().uppertree_seq.view().len()
                     ==
                     container_perms.spec_index(c_ptr).view_rodata().view().depth

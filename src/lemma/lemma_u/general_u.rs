@@ -179,7 +179,6 @@ pub proof fn seq_to_set_lemma<A>()
         #![trigger s.contains(a)]
         #![trigger s.to_set().contains(a)]
         s.contains(a) == s.to_set().contains(a) by {
-        assert(s.to_set() =~= Set::new(|a: A| s.contains(a)));
     }
 }
 
@@ -216,7 +215,6 @@ pub proof fn seq_pop_unique_lemma<A>()
         s.no_duplicates() && s.len() > 0 && s[s.len() - 1] == v implies
         #[trigger] s.drop_last().to_set().contains(v) == false by {
         if s.drop_last().to_set().contains(v) {
-            assert(s.drop_last().to_set() =~= Set::new(|a: A| s.drop_last().contains(a)));
             assert(s.drop_last().contains(v));
             let j = choose|j: int| 0 <= j < s.drop_last().len() && s.drop_last()[j] == v;
             assert(s.drop_last()[j] == s[j]);
@@ -230,8 +228,6 @@ pub proof fn seq_pop_unique_lemma<A>()
     assert forall|s: Seq<A>, v: A|
         s.no_duplicates() && s.len() > 0 && s[s.len() - 1] != v implies
         #[trigger] s.drop_last().to_set().contains(v) == s.to_set().contains(v) by {
-        assert(s.drop_last().to_set() =~= Set::new(|a: A| s.drop_last().contains(a)));
-        assert(s.to_set() =~= Set::new(|a: A| s.contains(a)));
         if s.drop_last().contains(v) {
             let j = choose|j: int| 0 <= j < s.drop_last().len() && s.drop_last()[j] == v;
             assert(s.drop_last()[j] == s[j]);

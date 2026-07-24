@@ -115,8 +115,7 @@ verus! {
         }
 
         pub open spec fn mappings_finite(&self) -> bool{
-            &&&
-            self.mappings().finite()
+            true
         }
         pub open spec fn is_mapped(&self) -> bool {
             match self.state{

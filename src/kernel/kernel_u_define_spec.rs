@@ -35,7 +35,7 @@ verus! {
                 },
             ),
             process_map: Map::new(
-                |ptr: RwLockProcessPtr| kernel_k.process_map.dom().contains(ptr),
+                kernel_k.process_map.dom(),
                 |ptr: RwLockProcessPtr| {
                     let p = kernel_k.process_map.spec_index(ptr).view();
                     let p_ro = kernel_k.process_map.spec_index(ptr).view_rodata().view();
