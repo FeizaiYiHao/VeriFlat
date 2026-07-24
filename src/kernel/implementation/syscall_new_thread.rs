@@ -1134,7 +1134,6 @@ verus! {
                     == old(self).process_map.spec_index(process_ptr).view_rodata(),
                 final(self).process_map.spec_index(process_ptr).view().inv(),
                 final(self).process_map.spec_index(process_ptr).is_init(),
-                final(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view().finite(),
                 final(self).process_map.spec_index(process_ptr).locking_thread()
                     == old(self).process_map.spec_index(process_ptr).locking_thread(),
                 final(self).process_map.spec_index(process_ptr).being_killed()
@@ -1337,10 +1336,6 @@ verus! {
         //@Xiangdong PROOF GAP: process_thread_wf trigger doesn't fire for subset.
         assume(k.process_map.spec_index(process_ptr).view().owned_threads.view().to_set()
             .subset_of(k.thread_map.dom()));
-
-        // thread_dom is finite.
-        //@Xiangdong PROOF GAP: LockedMap spec doesn't imply dom().finite().
-        assume(k.thread_map.dom().finite());
 
         // to_set().len() <= thread_dom.len() (lemma_len_subset).
         vstd::set_lib::lemma_len_subset(

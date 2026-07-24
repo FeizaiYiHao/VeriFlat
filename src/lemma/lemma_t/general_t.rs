@@ -49,8 +49,8 @@ pub proof fn set_insert_lemma<A>()
         forall|s1: Set<A>, x: A, y: A| s1.contains(y) ==> s1.insert(x).contains(y),
         forall|s1: Set<A>, x: A| s1.contains(x) ==> (s1.insert(x) == s1),
 {
-    broadcast use vstd::set::axiom_set_insert_same;
-    broadcast use vstd::set::axiom_set_insert_different;
+    broadcast use vstd::set::lemma_set_insert_same;
+    broadcast use vstd::set::lemma_set_insert_different;
     assert forall|s1: Set<A>, x: A| s1.contains(x) implies s1.insert(x) == s1 by {
         assert(s1.insert(x) =~= s1);
     }

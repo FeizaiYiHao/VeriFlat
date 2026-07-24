@@ -1065,7 +1065,6 @@ pub proof fn lemma_process_perms_wf_preserved_for_process_lock_op(
             &&& post.spec_index(p_ptr).view().children.view().no_duplicates()
             &&& post.spec_index(p_ptr).view().uppertree_seq.view().no_duplicates()
             &&& post.spec_index(p_ptr).view().children.view().contains(p_ptr) == false
-            &&& post.spec_index(p_ptr).view().subtree_set.view().finite()
             &&& post.spec_index(p_ptr).view().uppertree_seq.view().len()
                     == post.spec_index(p_ptr).view_rodata().view().depth
         }) by {

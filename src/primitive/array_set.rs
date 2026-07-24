@@ -96,8 +96,6 @@ impl <const N: usize> ArraySet<N> {
         &&&
         self.data.wf()
         &&&
-        self.set@.finite()
-        &&&
         0 <= self.len <= N
         &&&
         forall|i:usize| 
@@ -149,7 +147,6 @@ impl <const N: usize> ArraySet<N> {
     // Helper lemma: a finite set contained in [0, m) has at most m elements
     proof fn lemma_finite_set_bounded_size(s: Set<usize>, m: usize)
         requires
-            s.finite(),
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < m,
         ensures
             s.len() <= m,
@@ -192,7 +189,6 @@ impl <const N: usize> ArraySet<N> {
     // then the set has strictly fewer than n elements
     proof fn lemma_set_missing_element_size(s: Set<usize>, v: usize, n: usize)
         requires
-            s.finite(),
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < n,
             0 <= v < n,
             !s.contains(v),

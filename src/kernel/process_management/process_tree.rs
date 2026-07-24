@@ -37,18 +37,6 @@ verus! {
                 &&&
                 process_perms.spec_index(p_ptr).view().children.view().contains(p_ptr) == false
                 &&&
-                process_perms.spec_index(p_ptr).view().subtree_set.view().finite()
-                &&&
-                // The temp-alloc caches are finite: their `.len()` feeds
-                // process_effective_quota_* and the conservation law, which are
-                // only meaningful for finite sets, and staging a page (Set::insert)
-                // must grow the length by exactly 1.
-                process_perms.spec_index(p_ptr).view().temp_alloc_cache_4k.view().finite()
-                &&&
-                process_perms.spec_index(p_ptr).view().temp_alloc_cache_2m.view().finite()
-                &&&
-                process_perms.spec_index(p_ptr).view().temp_alloc_cache_1g.view().finite()
-                &&&
                 process_perms.spec_index(p_ptr).view().uppertree_seq.view().len()
                     ==
                     process_perms.spec_index(p_ptr).view_rodata().view().depth
