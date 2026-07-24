@@ -341,12 +341,6 @@ verus! {
             );
             let page_index = page_ptr2page_index(page_ptr);
 
-            // allocate_free_4k_page preserves quota_4k.
-            proof {
-                assert(self.process_map.spec_index(process_ptr).view().quota_4k
-                    == entry_self.process_map.spec_index(process_ptr).view().quota_4k);
-            }
-
             // Open the user-view step (the retype below is the real U-change; alloc
             // staged the page but that projects to nothing).
             proof {
@@ -408,24 +402,10 @@ verus! {
                 assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_2m.view().len() == 0);
                 assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_1g.view().len() == 0);
             }
-            // Capture quota + owned_threads changes from create_thread_from_staged_page.
-            let ghost pre_create_quota = self.process_map.spec_index(process_ptr).view().quota_4k;
-            let ghost pre_create_owned_len = self.process_map.spec_index(process_ptr).view().owned_threads.view().len();
             let (thread_ptr, Tracked(thread_lock_perm)) = self.create_thread_from_staged_page(
                 page_ptr, process_ptr, container_ptr, scheduler_ptr,
                 Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&process_lock_perm), Tracked(&scheduler_lock_perm),
             );
-            proof {
-                assert(self.process_map.spec_index(process_ptr).view().quota_4k == pre_create_quota - 1);
-                assert(pre_create_quota == entry_self.process_map.spec_index(process_ptr).view().quota_4k);
-                assert(self.process_map.spec_index(process_ptr).view().quota_4k
-                    == entry_self.process_map.spec_index(process_ptr).view().quota_4k - 1);
-                assert(self.process_map.spec_index(process_ptr).view().owned_threads.view().len()
-                    == pre_create_owned_len + 1);
-                assert(pre_create_owned_len == entry_self.process_map.spec_index(process_ptr).view().owned_threads.view().len());
-                assert(self.process_map.spec_index(process_ptr).view().owned_threads.view().len()
-                    == entry_self.process_map.spec_index(process_ptr).view().owned_threads.view().len() + 1);
-            }
 
             // Release every lock (reverse acquire order): thread, page, scheduler,
             // process, cpu.
@@ -1229,10 +1209,6 @@ verus! {
             // ---- 4. Take perm_4k from the page + flip state ----
             let page_index = page_ptr2page_index(page_ptr);
             proof {
-                // borrow_rodata doesn't modify self, so page_array is unchanged.
-                assert(self.page_array =~= old(self).page_array);
-                assert(self.page_array.spec_index(page_index).view().wlocked_by(&*lctx));
-                assert(self.page_array.spec_index(page_index).view().is_init());
                 // Establish addr fact BEFORE borrow_mut modifies the page.
                 reveal(page_array_wf);
                 assert(page_index_wf(page_index));
@@ -1245,29 +1221,12 @@ verus! {
             page_mut.state = PageState::Allocated4k{ state: Allocated4KPageState::AsThread };
 
             // ---- 5. Retype: PagePerm4k -> locked ThreadRwLock + LockPerm ----
-            proof {
-                // take_perm_4k ensures: ret@.is_init() && ret@.addr() == final(page).addr.
-                // final(page).addr == old(page).addr (take_perm_4k: addr unchanged).
-                // old(page).addr == page_index2page_ptr(page_index) (established in step 4).
-                // page_index2page_ptr(page_index) == page_ptr (page_ptr_lemma1 in step 4).
-                assert(page_perm.is_init());
-                assert(page_perm.addr() == page_ptr);
-            }
             let (Tracked(thread_rwlock_perm), Tracked(thread_lock_perm)) = retype_page_perm_to_thread(
                 page_ptr, thread_value, Tracked(page_perm),
                 Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)),
             );
 
             // ---- 6. Insert into thread_map (already locked, no lctx needed) ----
-            proof {
-                assert(thread_rwlock_perm.is_init());
-                assert(thread_rwlock_perm.addr() == page_ptr);
-                assert(thread_rwlock_perm.value().is_init());
-                assert(thread_rwlock_perm.value().view().inv());
-                assert(thread_rwlock_perm.value().being_killed() == false);
-                assert(self.thread_map.dom().contains(page_ptr) == false);
-                assert(self.thread_map.perms_wf());
-            }
             self.thread_map.insert_with_perm(
                 page_ptr,
                 Tracked(thread_rwlock_perm),
@@ -1306,25 +1265,12 @@ verus! {
         page_ptr_lemma1();
 
         // Every thread key is a valid page pointer (thread_pages_wf reverse).
-        assert(forall|t: RwLockThreadPtr| k.thread_map.dom().contains(t) ==> page_ptr_valid(t));
+        assert(forall|t: RwLockThreadPtr| #![auto] k.thread_map.dom().contains(t) ==> page_ptr_valid(t));
 
         // thread_dom.len() <= NUM_PAGES: pigeonhole (injective map into [0, NUM_PAGES)).
         //@Xiangdong PROOF GAP: need Set comprehension + lemma_len_subset for pigeonhole.
         assume(k.thread_map.dom().len() <= NUM_PAGES);
 
-        // owned_threads.wf() from Process::inv (via process_perms_wf).
-        assert(k.process_map[process_ptr].inv());
-        assert(k.process_map.spec_index(process_ptr).view().owned_threads.wf());
-
-        // no_duplicates from LinkedList::wf -> value_list_unique.
-        // Bridge: view()[i] == value_list@[i] (view() == value_list@ by def).
-        assert(forall|i: int|
-            #![trigger k.process_map.spec_index(process_ptr).view().owned_threads.view()[i]]
-            #![trigger k.process_map.spec_index(process_ptr).view().owned_threads.value_list@[i]]
-            0 <= i < k.process_map.spec_index(process_ptr).view().owned_threads.view().len()
-            ==>
-            k.process_map.spec_index(process_ptr).view().owned_threads.view()[i]
-            == k.process_map.spec_index(process_ptr).view().owned_threads.value_list@[i]);
         //@Xiangdong PROOF GAP: value_list_unique uses (i != j), no_duplicates uses (i < j).
         // Logically equivalent but solver doesn't do the transformation.
         assume(k.process_map.spec_index(process_ptr).view().owned_threads.view().no_duplicates());
@@ -1341,10 +1287,6 @@ verus! {
         vstd::set_lib::lemma_len_subset(
             k.process_map.spec_index(process_ptr).view().owned_threads.view().to_set(),
             k.thread_map.dom());
-
-        // Therefore owned_threads.view().len() <= thread_dom.len() <= NUM_PAGES.
-        assert(k.process_map.spec_index(process_ptr).view().owned_threads.view().len()
-            <= k.thread_map.dom().len());
     }
 
     /// A scheduler's ready `queue` is bounded by `NUM_PAGES`: it holds distinct
@@ -1372,8 +1314,8 @@ verus! {
     /// ancestors) is unchanged. This is the exact container-map delta the
     /// create-thread wrapper performs while holding the container-chain locks.
     pub open spec fn container_map_gained_thread(
-        pre_cm: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
-        post_cm: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        pre_cm: ContainerLockedMap,
+        post_cm: ContainerLockedMap,
         dc: RwLockContainerPtr,
         t_ptr: RwLockThreadPtr,
         uppers: Seq<RwLockContainerPtr>,
@@ -1414,7 +1356,7 @@ verus! {
     /// per-ancestor inserts compose without clobbering. Establishes the exact
     /// `container_map_gained_thread` delta the create-thread wrapper needs.
     pub proof fn add_thread_to_container_sets(
-        tracked container_map: &mut LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        tracked container_map: &mut ContainerLockedMap,
         dc: RwLockContainerPtr,
         t_ptr: RwLockThreadPtr,
         uppers: Seq<RwLockContainerPtr>,
@@ -1448,7 +1390,7 @@ verus! {
     /// touching nothing else. `dc`'s `owned_threads` (already inserted by the
     /// caller) is preserved because `dc` is disjoint from `uppers`.
     pub proof fn add_thread_to_ancestor_sets(
-        tracked container_map: &mut LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        tracked container_map: &mut ContainerLockedMap,
         dc: RwLockContainerPtr,
         t_ptr: RwLockThreadPtr,
         uppers: Seq<RwLockContainerPtr>,
@@ -1521,8 +1463,8 @@ verus! {
     /// must pin the fresh thread's `container_depth`/`upper_container_seq` to
     /// `dc` (the caller derives the depth via `container_tree_fields_wf`).
     pub proof fn container_thread_wf_preserved_on_thread_add(
-        pre_cm: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
-        post_cm: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        pre_cm: ContainerLockedMap,
+        post_cm: ContainerLockedMap,
         pre_tm: ThreadLockedMap,
         post_tm: ThreadLockedMap,
         dc: RwLockContainerPtr,

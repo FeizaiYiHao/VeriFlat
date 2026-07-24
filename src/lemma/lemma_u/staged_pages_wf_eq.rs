@@ -17,8 +17,8 @@ verus! {
 pub proof fn process_staged_pages_2m_wf_preserved_for_eq(
     old_process_map: ProcessLockedMap,
     new_process_map: ProcessLockedMap,
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
 )
     requires
         process_staged_pages_2m_wf(old_process_map, old_page_array),
@@ -44,8 +44,8 @@ pub proof fn process_staged_pages_2m_wf_preserved_for_eq_forall()
         forall|
             old_process_map: ProcessLockedMap,
             new_process_map: ProcessLockedMap,
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
         |
             #![trigger process_staged_pages_2m_wf(old_process_map, old_page_array), process_staged_pages_2m_wf(new_process_map, new_page_array)]
             (process_staged_pages_2m_wf(old_process_map, old_page_array)
@@ -66,8 +66,8 @@ pub proof fn process_staged_pages_2m_wf_preserved_for_eq_forall()
     assert forall|
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
     |
         (process_staged_pages_2m_wf(old_process_map, old_page_array)
         && new_process_map.dom() == old_process_map.dom()
@@ -92,8 +92,8 @@ pub proof fn process_staged_pages_2m_wf_preserved_for_eq_forall()
 pub proof fn process_staged_pages_1g_wf_preserved_for_eq(
     old_process_map: ProcessLockedMap,
     new_process_map: ProcessLockedMap,
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
 )
     requires
         process_staged_pages_1g_wf(old_process_map, old_page_array),
@@ -119,8 +119,8 @@ pub proof fn process_staged_pages_1g_wf_preserved_for_eq_forall()
         forall|
             old_process_map: ProcessLockedMap,
             new_process_map: ProcessLockedMap,
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
         |
             #![trigger process_staged_pages_1g_wf(old_process_map, old_page_array), process_staged_pages_1g_wf(new_process_map, new_page_array)]
             (process_staged_pages_1g_wf(old_process_map, old_page_array)
@@ -141,8 +141,8 @@ pub proof fn process_staged_pages_1g_wf_preserved_for_eq_forall()
     assert forall|
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
     |
         (process_staged_pages_1g_wf(old_process_map, old_page_array)
         && new_process_map.dom() == old_process_map.dom()

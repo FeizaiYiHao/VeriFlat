@@ -6,7 +6,7 @@ verus! {
     /// Container owned Cpu only runs processes and threads of the container
     /// Container cpu bidirectionally points to each other
     #[verifier::opaque]
-    pub open spec fn container_cpu_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_cpu_wf(container_perms: ContainerLockedMap, cpu_array:CpuLockedArray) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, cpu_i: CpuId|
             #![trigger container_perms.spec_index(c_ptr).view().owned_cpus.view().contains(cpu_i)]

@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_thread_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, 
+    pub open spec fn container_thread_wf(container_map: ContainerLockedMap, 
             thread_map: ThreadLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|

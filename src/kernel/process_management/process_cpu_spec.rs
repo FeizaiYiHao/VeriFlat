@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn process_cpu_wf(process_map: ProcessLockedMap, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub open spec fn process_cpu_wf(process_map: ProcessLockedMap, cpu_array:CpuLockedArray) -> bool {
         &&&
         forall|cpu_i:CpuId|
             #![trigger cpu_array.spec_index(cpu_i).view().view().current_process]

@@ -13,7 +13,7 @@ verus! {
 #[verifier::opaque]
 pub open spec fn process_staged_pages_4k_wf(
     process_map: ProcessLockedMap,
-    page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    page_array: PageLockedArray,
 ) -> bool {
     &&&
     forall|page_index:PageIndex|
@@ -45,7 +45,7 @@ pub open spec fn process_staged_pages_4k_wf(
 #[verifier::opaque]
 pub open spec fn process_staged_pages_2m_wf(
     process_map: ProcessLockedMap,
-    page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    page_array: PageLockedArray,
 ) -> bool {
     &&&
     forall|page_index:PageIndex|
@@ -77,7 +77,7 @@ pub open spec fn process_staged_pages_2m_wf(
 #[verifier::opaque]
 pub open spec fn process_staged_pages_1g_wf(
     process_map: ProcessLockedMap,
-    page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    page_array: PageLockedArray,
 ) -> bool {
     &&&
     forall|page_index:PageIndex|
@@ -108,7 +108,7 @@ pub open spec fn process_staged_pages_1g_wf(
 
 pub open spec fn process_staged_pages_wf(
     process_map: ProcessLockedMap,
-    page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    page_array: PageLockedArray,
 ) -> bool {
     &&& process_staged_pages_4k_wf(process_map, page_array)
     &&& process_staged_pages_2m_wf(process_map, page_array)

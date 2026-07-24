@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
         #[verifier::opaque]
-        pub open spec fn pagetable_pages_wf(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+        pub open spec fn pagetable_pages_wf(pagetable_map: PageTableLockedMap, page_array: PageLockedArray) -> bool {
             &&&
             forall|page_index:PageIndex|
                 #![trigger pagetable_map.dom().contains(page_index2page_ptr(page_index))]

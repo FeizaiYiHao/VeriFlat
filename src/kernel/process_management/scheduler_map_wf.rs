@@ -3,13 +3,13 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn scheduler_perms_wf(scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool{
+    pub open spec fn scheduler_perms_wf(scheduler_map: SchedulerLockedMap) -> bool{
         &&&
         scheduler_map.perms_wf()
         &&&
         schedulers_inv(scheduler_map)
     }
-    pub open spec fn schedulers_inv(scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool{
+    pub open spec fn schedulers_inv(scheduler_map: SchedulerLockedMap) -> bool{
         &&&
         forall|scheduler_p:RwLockSchedulerPtr|
             #![auto]

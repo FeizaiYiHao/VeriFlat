@@ -2129,9 +2129,9 @@ impl KernelK {
 pub proof fn container_process_allocator_quota_2m_wf_forall()
     ensures
         forall|
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+            container_map: ContainerLockedMap,
             thread_map: ThreadLockedMap,
-            allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+            allocator_2m_map: PageAllocatorUnLockedMap,
             old_process_map: ProcessLockedMap,
             new_process_map: ProcessLockedMap,
         |
@@ -2146,9 +2146,9 @@ pub proof fn container_process_allocator_quota_2m_wf_forall()
             container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map),
 {
     assert forall|
-        container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        container_map: ContainerLockedMap,
         thread_map: ThreadLockedMap,
-        allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        allocator_2m_map: PageAllocatorUnLockedMap,
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
     |  #![auto]
@@ -2188,9 +2188,9 @@ pub proof fn container_process_allocator_quota_2m_wf_forall()
 pub proof fn container_process_allocator_quota_1g_wf_forall()
     ensures
         forall|
-            container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+            container_map: ContainerLockedMap,
             thread_map: ThreadLockedMap,
-            allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+            allocator_1g_map: PageAllocatorUnLockedMap,
             old_process_map: ProcessLockedMap,
             new_process_map: ProcessLockedMap,
         |
@@ -2205,9 +2205,9 @@ pub proof fn container_process_allocator_quota_1g_wf_forall()
             container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map),
 {
     assert forall|
-        container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        container_map: ContainerLockedMap,
         thread_map: ThreadLockedMap,
-        allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        allocator_1g_map: PageAllocatorUnLockedMap,
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
     |  #![auto]

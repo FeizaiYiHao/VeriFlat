@@ -12,8 +12,8 @@ verus! {
 // mutation that touches only non-2m slots (e.g. a Free4k→Owned4k retype) leaves
 // every read-slot byte-equal and the invariant stands.
 pub proof fn hugepage_2m_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
 )
     requires
         hugepage_2m_wf(old_page_array),
@@ -38,8 +38,8 @@ pub proof fn hugepage_2m_wf_preserved_for_page_state_eq(
 pub proof fn hugepage_2m_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
         |
             #![trigger hugepage_2m_wf(old_page_array), hugepage_2m_wf(new_page_array)]
             (hugepage_2m_wf(old_page_array)
@@ -54,8 +54,8 @@ pub proof fn hugepage_2m_wf_preserved_for_page_state_eq_forall()
             hugepage_2m_wf(new_page_array),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
     |
         (hugepage_2m_wf(old_page_array)
         && forall|p_i: PageIndex|
@@ -74,8 +74,8 @@ pub proof fn hugepage_2m_wf_preserved_for_page_state_eq_forall()
 
 // 1g twin of `hugepage_2m_wf_preserved_for_page_state_eq`.
 pub proof fn hugepage_1g_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
 )
     requires
         hugepage_1g_wf(old_page_array),
@@ -97,8 +97,8 @@ pub proof fn hugepage_1g_wf_preserved_for_page_state_eq(
 pub proof fn hugepage_1g_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
         |
             #![trigger hugepage_1g_wf(old_page_array), hugepage_1g_wf(new_page_array)]
             (hugepage_1g_wf(old_page_array)
@@ -113,8 +113,8 @@ pub proof fn hugepage_1g_wf_preserved_for_page_state_eq_forall()
             hugepage_1g_wf(new_page_array),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
     |
         (hugepage_1g_wf(old_page_array)
         && forall|p_i: PageIndex|

@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
         #[verifier::opaque]
-        pub open spec fn endpoint_pages_wf(endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool{
+        pub open spec fn endpoint_pages_wf(endpoint_map: EndpointLockedMap, page_array: PageLockedArray) -> bool{
             &&&
             forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index)]

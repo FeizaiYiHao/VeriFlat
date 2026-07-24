@@ -37,9 +37,18 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
     pub fn new_with_init_value(value:T) -> (ret:Self)
         ensures 
             ret.inv(),
-            ret@ == Map::new(Set::new_assuming_finite(|i:usize| usize_in_range::<N>(i)), |k:usize|{value}),
+            ret@ == Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}),
     {
-        let ghost_map = Ghost(Map::new(Set::new_assuming_finite(|i:usize| usize_in_range::<N>(i)), |k:usize|{value}));
+        proof {
+            let s = Seq::new(N as nat, |i: int| i as usize);
+            assert forall|i: usize| usize_in_range::<N>(i) implies s.to_set().contains(i) by {
+                assert(s[i as int] == i);
+            }
+            assert forall|i: usize| s.to_set().contains(i) implies usize_in_range::<N>(i) by {
+                let j = choose|j: int| 0 <= j < s.len() && s[j] == i;
+            }
+        }
+        let ghost_map = Ghost(Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}));
         Self{
             bit_map: Array::new_with_init_value(value),
             map:ghost_map

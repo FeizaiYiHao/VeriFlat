@@ -53,7 +53,7 @@ verus! {
 
     /// There is no lock involved. This has to be true all the time.
     #[verifier::opaque]
-    pub open spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool {
+    pub open spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, cpu_array: CpuLockedArray) -> bool {
         &&&
         forall|cpu_id:CpuId, pcid:Pcid|
             #![trigger cpu_tlb.spec_index((cpu_id, pcid))]

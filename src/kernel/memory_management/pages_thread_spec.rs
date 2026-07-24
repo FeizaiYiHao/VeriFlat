@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
         #[verifier::opaque]
-        pub open spec fn thread_pages_wf(thread_map: ThreadLockedMap, page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool{
+        pub open spec fn thread_pages_wf(thread_map: ThreadLockedMap, page_array: PageLockedArray) -> bool{
             &&&
             forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index)]

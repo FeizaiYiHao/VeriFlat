@@ -5,24 +5,37 @@ use vstd::simple_pptr::*;
 
 verus! {
 
-    pub const KERNEL_DEFAULT_PCID:Pcid = 0; 
+    pub const KERNEL_DEFAULT_PCID:Pcid = 0;
+
+    pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>;
+    pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>;
+    pub type PageLockedArray = LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>;
+    pub type CpuLockedArray = LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>;
+    pub type ContainerLockedMap = LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>;
+    pub type SchedulerLockedMap = LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>;
+    pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>;
+    pub type PageAllocatorUnLockedMap = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>;
+    pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
+    pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>;
+
     pub struct KernelK{
-        pub pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>,
-        pub iommutable_map: LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>,
-        pub page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        pub cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>,
+        pub pagetable_map: PageTableLockedMap,
+        pub iommutable_map: IommuTableLockedMap,
+        pub page_array: PageLockedArray,
+        pub cpu_array: CpuLockedArray,
+        pub container_map: ContainerLockedMap,
+        pub scheduler_map: SchedulerLockedMap,
+        pub process_map: ProcessLockedMap,
+        pub thread_map: ThreadLockedMap,
+        pub endpoint_map: EndpointLockedMap,
+        pub allocator_4k_map: PageAllocatorUnLockedMap,
+        pub allocator_2m_map: PageAllocatorUnLockedMap,
+        pub allocator_1g_map: PageAllocatorUnLockedMap,
         pub cpu_tlb: CpuTLB,
 
         pub root_container: RwLockContainerPtr, // Never dies
-        pub container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,        
+
         // pub number_containers: RwLock<NumContainers, (), (), NO_KILL_STATE>,
-        pub scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>,
-        pub process_map: ProcessLockedMap,
-        pub thread_map: ThreadLockedMap,
-        pub endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-        pub allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-        pub allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-        pub allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
 
         // pub container_to_pagetable_map: Ghost<Map<RwLockContainerPtr, Set<RwLockPageTableRoot>>>,
 
@@ -414,7 +427,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn container_locked_match_lctx(
-        container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        container_map: ContainerLockedMap,
         lctx: &LocalContext,
     ) -> bool {
         // forward
@@ -467,7 +480,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn endpoint_locked_match_lctx(
-        endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
+        endpoint_map: EndpointLockedMap,
         lctx: &LocalContext,
     ) -> bool {
         &&& (forall|e: RwLockEndpointPtr|
@@ -486,7 +499,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn scheduler_locked_match_lctx(
-        scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>,
+        scheduler_map: SchedulerLockedMap,
         lctx: &LocalContext,
     ) -> bool {
         &&& (forall|s: RwLockSchedulerPtr|
@@ -505,7 +518,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn pagetable_locked_match_lctx(
-        pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>,
+        pagetable_map: PageTableLockedMap,
         lctx: &LocalContext,
     ) -> bool {
         &&& (forall|pt: RwLockPageTableRoot|
@@ -524,7 +537,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn page_locked_match_lctx(
-        page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        page_array: PageLockedArray,
         lctx: &LocalContext,
     ) -> bool {
         &&& (forall|i: PageIndex|
@@ -555,7 +568,7 @@ verus! {
 
     #[verifier::opaque]
     pub open spec fn cpu_locked_match_lctx(
-        cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>,
+        cpu_array: CpuLockedArray,
         lctx: &LocalContext,
     ) -> bool {
         &&& (forall|c: CpuId|
@@ -577,7 +590,7 @@ verus! {
     /// Bidirectional agreement for one allocator map, tagged by its `PageSize`.
     #[verifier::opaque]
     pub open spec fn allocator_locked_match_lctx(
-        alloc_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        alloc_map: PageAllocatorUnLockedMap,
         sz: PageSize,
         lctx: &LocalContext,
     ) -> bool {
