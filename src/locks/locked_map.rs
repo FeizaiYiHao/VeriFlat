@@ -287,6 +287,56 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     {
         unimplemented!()
     }
+
+    /// Insert an already-initialized, already-locked entry into the map.
+    /// The caller provides the `PointsTo<RwLock<T>>` (from a retype operation)
+    /// and the entry is already write-locked. No lctx registration is done here
+    /// (the caller handles lock registration via the retype primitive).
+    #[verifier::external_body]
+    pub fn insert_with_perm(
+        &mut self,
+        key: usize,
+        Tracked(perm): Tracked<PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>,
+        rodata: ROT,
+        Ghost(kernel_ghost): Ghost<KGhostT>,
+        Ghost(user_ghost): Ghost<UGhostT>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key) == false,
+            perm.is_init(),
+            perm.addr() == key,
+            perm.value().is_init(),
+            perm.value().view().inv(),
+            perm.value().view_rodata() == rodata,
+            perm.value().view_kernel_ghost() == kernel_ghost,
+            perm.value().view_user_ghost() == user_ghost,
+            perm.value().being_killed() == false,
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= old(self).dom().insert(key),
+            forall|k:usize|
+                #![auto]
+                old(self).dom().contains(k)
+                ==>
+                final(self)[k] == old(self)[k],
+            final(self).dom().contains(key),
+            final(self)[key].is_init(),
+            final(self)[key]@ == perm.value().view(),
+            final(self)[key].view_rodata() == rodata,
+            final(self)[key].view_kernel_ghost() == kernel_ghost,
+            final(self)[key].view_user_ghost() == user_ghost,
+            final(self)[key].being_killed() == false,
+            final(self)[key].locking_thread() == perm.value().locking_thread(),
+            final(self).lock_id_by_key(key) == (LockId{
+                container: rodata.container_depth(),
+                process: rodata.process_depth(),
+                major: perm.value().view().current_lock_major(),
+                minor: key,
+            }),
+    {
+        unimplemented!()
+    }
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{

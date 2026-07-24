@@ -6,6 +6,9 @@ verus! {
 
 pub struct AllocatorCache{
     pub linked_list: LinkedList<PagePtr, 233>,
+    pub page_perms_4k: Tracked<Map<PagePtr, PagePerm4k>>,
+    pub page_perms_2m: Tracked<Map<PagePtr, PagePerm2m>>,
+    pub page_perms_1g: Tracked<Map<PagePtr, PagePerm1g>>,
 }
 
 impl LockOwnerIdTrait for AllocatorCache{
@@ -72,6 +75,7 @@ impl AllocatorCache{
         self.linked_list.view().no_duplicates()
         &&&
         self.watermark_wf()
+        //@Xiangdong TODO: add self.perm_wf() once pop_cache_page returns the PagePerm
     }
     pub open spec fn view(&self) -> Seq<PagePtr> {
         self.linked_list.view()
@@ -87,6 +91,39 @@ impl AllocatorCache{
     pub open spec fn watermark_wf(&self) -> bool{
         &&&
         ALLOCATOR_MIN_WATERMARK <= self.linked_list.view().len() <= ALLOCATOR_MAX_WATERMARK
+    }
+
+    /// Exactly one of the three perm maps covers the free pages; the other two
+    /// are empty.  Each entry is initialised with the correct address.
+    pub open spec fn perm_wf(&self) -> bool {
+        let pages = self.linked_list.view().to_set();
+        &&& self.page_perms_4k@.dom().subset_of(pages)
+        &&& self.page_perms_2m@.dom().subset_of(pages)
+        &&& self.page_perms_1g@.dom().subset_of(pages)
+        // ---- disjoint: no page in two maps ----
+        &&& self.page_perms_4k@.dom().disjoint(self.page_perms_2m@.dom())
+        &&& self.page_perms_4k@.dom().disjoint(self.page_perms_1g@.dom())
+        &&& self.page_perms_2m@.dom().disjoint(self.page_perms_1g@.dom())
+        // ---- coverage: every free page has exactly one perm ----
+        &&& self.page_perms_4k@.dom() + self.page_perms_2m@.dom() + self.page_perms_1g@.dom() =~= pages
+        // ---- 4k entries: is_init + addr ----
+        &&& forall|p: PagePtr|
+            #![trigger self.page_perms_4k@[p].is_init()]
+            #![trigger self.page_perms_4k@[p].addr()]
+            self.page_perms_4k@.dom().contains(p)
+            ==> self.page_perms_4k@[p].is_init() && self.page_perms_4k@[p].addr() == p
+        // ---- 2m entries: is_init + addr ----
+        &&& forall|p: PagePtr|
+            #![trigger self.page_perms_2m@[p].is_init()]
+            #![trigger self.page_perms_2m@[p].addr()]
+            self.page_perms_2m@.dom().contains(p)
+            ==> self.page_perms_2m@[p].is_init() && self.page_perms_2m@[p].addr() == p
+        // ---- 1g entries: is_init + addr ----
+        &&& forall|p: PagePtr|
+            #![trigger self.page_perms_1g@[p].is_init()]
+            #![trigger self.page_perms_1g@[p].addr()]
+            self.page_perms_1g@.dom().contains(p)
+            ==> self.page_perms_1g@[p].is_init() && self.page_perms_1g@[p].addr() == p
     }
 }
 

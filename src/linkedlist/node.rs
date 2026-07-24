@@ -30,6 +30,17 @@ impl<T> ExternalNode<T>{
         self.is_init@
     }
 
+    /// Create a fresh (init) ExternalNode with a dummy value.
+    /// The address is determined by where this node is placed in memory.
+    /// Used for constructing initial Thread values for retype operations.
+    #[verifier(external_body)]
+    pub fn new(value: T) -> (ret: Self)
+        ensures
+            ret.is_init(),
+    {
+        unimplemented!()
+    }
+
     #[verifier(when_used_as_spec(spec_addr))]
     #[verifier(external_body)]
     pub fn addr(&self) -> (ret:usize)

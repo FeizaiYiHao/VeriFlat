@@ -7,7 +7,7 @@ verus! {
 
 pub struct PageAllocator{
     pub cpu_caches: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
-    pub global_pool: RwLock<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, (), (), (), NO_KILL_STATE>,
+    pub global_pool: RwLock<GlobalPool, (), (), (), NO_KILL_STATE>,
     pub quota: RwLock<AllocatorQuota, (), (), (), NO_KILL_STATE>,
     pub total_free_pages: Ghost<usize>,
 
@@ -323,7 +323,7 @@ impl PageAllocator{
             old(self).wf(),
             old(self).global_pool.wlocked_by(old(lctx)),
             old(self).global_pool.inv(),
-            unlock_requires::<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
+            unlock_requires::<GlobalPool>(old(lctx)),
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
@@ -395,6 +395,42 @@ impl PageAllocator{
         (node_addr, node_perm)
     }
 
+    /// Extract the `PagePerm4k` for a page that was just popped from the given
+    /// CPU's cache.  The perm must be in `cpu_caches[cpu_id].page_perms_4k`.
+    /// //@Xiangdong PROOF GAP: when the cache was refilled from the global pool,
+    /// the perms need to move from global_pool.page_perms_4k to the cache's map.
+    /// This transfer is not yet implemented.
+    #[verifier::external_body]
+    pub fn extract_page_perm_4k(
+        &mut self,
+        cpu_id: CpuId,
+        page_ptr: PagePtr,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&LockPerm>,
+    ) -> (ret: Tracked<PagePerm4k>)
+        requires
+            old(self).wf(),
+            cpu_id_valid(cpu_id),
+            old(self).cpu_caches[cpu_id].view().wlocked_by(lctx),
+            old(self).cpu_caches[cpu_id].view().is_init(),
+            lock_perm@.state() is WriteLock,
+            lock_perm@.thread_id() == lctx.thread_id(),
+            lock_perm@.lock_id() == old(self).cpu_caches[cpu_id].view().locking_thread()->Write_lock_id,
+            old(self).cpu_caches[cpu_id].view().view().page_perms_4k@.dom().contains(page_ptr),
+        ensures
+            final(self).wf(),
+            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
+            final(self).cpu_caches[cpu_id].view().locking_thread() == old(self).cpu_caches[cpu_id].view().locking_thread(),
+            final(self).global_pool == old(self).global_pool,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+            final(self).total_free_pages == old(self).total_free_pages,
+            ret@.is_init(),
+            ret@.addr() == page_ptr,
+    {
+        unimplemented!()
+    }
+
     // Global-pool twin of `pop_cache_page`: pop the head off the write-locked
     // `global_pool` list and rebalance `total_free_pages`. Conservation is
     // simpler than the cache case -- `total_free_pages_wf` folds `global_pool.len()
@@ -417,7 +453,7 @@ impl PageAllocator{
             ret.1.view().value().view() == old(self).global_pool.view().view()[0],
             old(self).global_pool.view().map().dom().contains(ret.0),
             old(self).global_pool.view().map()[ret.0] == ret.1.view().value().view(),
-            ret.0 == old(self).global_pool.view().addr_list.view()[0],
+            ret.0 == old(self).global_pool.view().linked_list.addr_list.view()[0],
             // ---- pool shrank by the popped head, total rebalanced ----
             final(self).global_pool.view().view() == old(self).global_pool.view().view().skip(1),
             final(self).global_pool.view().map() == old(self).global_pool.view().map().remove(ret.0),
@@ -435,7 +471,7 @@ impl PageAllocator{
         }
         let (node_addr, node_perm) = {
             let poll_mut = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
-            let (node_addr, Tracked(node_perm)) = poll_mut.pop_head();
+            let (node_addr, Tracked(node_perm)) = poll_mut.linked_list.pop_head();
             assert(old(self).global_pool.view().map().dom().contains(node_addr)) by {
                 reveal(LinkedList::wf_perms);
                 reveal(LinkedList::wf_map);

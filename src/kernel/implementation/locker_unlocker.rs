@@ -2723,7 +2723,7 @@ verus! {
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(old(lctx)),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.inv(),
-                unlock_requires::<crate::linkedlist::spec_impl::LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
+                unlock_requires::<GlobalPool>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,

@@ -4,38 +4,58 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-    /// TCB: reinterpret a raw 4k page's memory as a fresh `RwLock<Thread>`.
+    /// TCB: reinterpret a raw 4k page's memory as a fresh, WRITE-LOCKED
+    /// `RwLock<Thread>` and mint the corresponding `LockPerm`.
     ///
-    /// The narrow retype converter — mirrors `page_perm_to_page_map`
-    /// (`pagetable_seq/pagemap_util_t.rs`) and atmosphere's `page_to_thread`:
-    /// it consumes the page's byte-array permission (`PagePerm4k`) and hands
-    /// back a typed `PointsTo<ThreadRwLock>` at the SAME address, holding
-    /// `thread_value`, initialized and UNLOCKED. No lock is taken and `lctx` is
-    /// untouched here — this primitive only reinterprets memory. The write-lock
-    /// registration (mint the `LockPerm`, register in `lctx`, flip
-    /// `locking_thread` to `Write`) and the `thread_map` domain growth are done
-    /// by `LockedMap::insert` when it accepts this perm; the page-state flip
-    /// (`Owned4k -> Allocated4k{AsThread}`) and the process unstage / quota
-    /// decrement stay in verified code. Keeping this converter pure (one
-    /// `unsafe` reinterpret, no ghost lock machinery) is what makes it a small,
-    /// defensible TCB axiom rather than a fat multi-subsystem mutation.
+    /// This is a MINT, not an acquire: the page is exclusively ours (staged,
+    /// slot write-locked), so no other thread can contend on the new thread
+    /// lock and no wait cycle is possible. The retype reinterprets the page's
+    /// physical memory as a `ThreadRwLock`, initializes it with `thread_value`,
+    /// sets the lock state to Write, and registers `Thread(page_ptr)` in `lctx`.
+    ///
+    /// The `thread_map` domain growth is done separately by
+    /// `LockedMap::insert_with_perm`; the page-state flip and process unstage
+    /// stay in verified code.
     #[verifier::external_body]
     pub fn retype_page_perm_to_thread(
         page_ptr: PagePtr,
         thread_value: Thread,
         Tracked(page_perm): Tracked<PagePerm4k>,
-    ) -> (ret: Tracked<PointsTo<ThreadRwLock>>)
+        Tracked(lctx): Tracked<&mut LocalContext>,
+        obj_id: Ghost<KernelObjId>,
+    ) -> (ret: (Tracked<PointsTo<ThreadRwLock>>, Tracked<LockPerm>))
         requires
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             thread_value.inv(),
+            old(lctx).obj_id_fresh(obj_id@),
         ensures
-            ret@.addr() == page_ptr,
-            ret@.is_init(),
-            ret@.value().is_init(),
-            ret@.value().view() == thread_value,
-            ret@.value().locking_thread() is None,
-            ret@.value().being_killed() == false,
+            // ---- the ThreadRwLock: initialized, write-locked, holds thread_value ----
+            ret.0@.addr() == page_ptr,
+            ret.0@.is_init(),
+            ret.0@.value().is_init(),
+            ret.0@.value().view() == thread_value,
+            ret.0@.value().being_killed() == false,
+            ret.0@.value().locking_thread() == (RwLockState::Write {
+                thread_id: final(lctx).thread_id(),
+                lock_id: (LockId{
+                    container: LockOwnerId::NotApp,
+                    process: LockOwnerId::NotApp,
+                    major: thread_value.current_lock_major(),
+                    minor: page_ptr,
+                }),
+            }),
+            // ---- the LockPerm ----
+            ret.1@.state() is WriteLock,
+            ret.1@.thread_id() == final(lctx).thread_id(),
+            ret.1@.lock_id() == (LockId{
+                container: LockOwnerId::NotApp,
+                process: LockOwnerId::NotApp,
+                major: thread_value.current_lock_major(),
+                minor: page_ptr,
+            }),
+            // ---- lctx: the thread lock id registered under obj_id ----
+            lock_ensures(old(lctx), final(lctx), thread_value, ret.1@.lock_id(), obj_id@),
     {
         unimplemented!()
     }
