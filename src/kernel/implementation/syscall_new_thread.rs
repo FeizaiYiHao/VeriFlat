@@ -43,6 +43,16 @@ verus! {
                 // linearization point (post-alloc), not at syscall entry. Awaiting
                 // the linearization-contract decision.
                 !(ret is Success) ==> final(steps).steps.last().old_u == final(steps).steps.last().new_u,
+                // Success-path: one user-visible atomic step that decreases
+                // the running process's quota_4k by 1 and grows owned_threads by 1.
+                ret is Success ==> {
+                    let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
+                    &&& kernel_u_new_thread_changed(
+                            final(steps).steps.last().old_u,
+                            final(steps).steps.last().new_u,
+                            process_ptr,
+                        )
+                },
                 ret is Success
                     || ret is ErrorProcessKilled
                     || ret is ErrorNoQuota
@@ -279,6 +289,17 @@ verus! {
                 final(steps).steps.len() == old(steps).steps.len() + 1,
                 final(steps).steps.last().new_k == *final(self),
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
+                // User-visible change: quota_4k decreased, owned_threads grew.
+                final(steps).steps.last().new_u.process_map[process_ptr].quota_4k
+                    == final(steps).steps.last().old_u.process_map[process_ptr].quota_4k - 1,
+                final(steps).steps.last().new_u.process_map[process_ptr].owned_threads.len()
+                    == final(steps).steps.last().old_u.process_map[process_ptr].owned_threads.len() + 1,
+                // Full U-change description.
+                kernel_u_new_thread_changed(
+                    final(steps).steps.last().old_u,
+                    final(steps).steps.last().new_u,
+                    process_ptr,
+                ),
         {
             let tracked mut process_lock_perm = process_lock_perm.get();
             let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -320,10 +341,18 @@ verus! {
             );
             let page_index = page_ptr2page_index(page_ptr);
 
+            // allocate_free_4k_page preserves quota_4k.
+            proof {
+                assert(self.process_map.spec_index(process_ptr).view().quota_4k
+                    == entry_self.process_map.spec_index(process_ptr).view().quota_4k);
+            }
+
             // Open the user-view step (the retype below is the real U-change; alloc
             // staged the page but that projects to nothing).
             proof {
                 steps.begin_user_view_step(&*self, &mut *lctx);
+                // old_u is the U projection of the K state at begin time.
+                assert(steps.steps.last().old_u == kernel_k_to_kernel_u(*self));
             }
 
             // ---- create_thread_from_staged_page preconditions ----
@@ -379,13 +408,28 @@ verus! {
                 assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_2m.view().len() == 0);
                 assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_1g.view().len() == 0);
             }
+            // Capture quota + owned_threads changes from create_thread_from_staged_page.
+            let ghost pre_create_quota = self.process_map.spec_index(process_ptr).view().quota_4k;
+            let ghost pre_create_owned_len = self.process_map.spec_index(process_ptr).view().owned_threads.view().len();
             let (thread_ptr, Tracked(thread_lock_perm)) = self.create_thread_from_staged_page(
                 page_ptr, process_ptr, container_ptr, scheduler_ptr,
                 Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&process_lock_perm), Tracked(&scheduler_lock_perm),
             );
+            proof {
+                assert(self.process_map.spec_index(process_ptr).view().quota_4k == pre_create_quota - 1);
+                assert(pre_create_quota == entry_self.process_map.spec_index(process_ptr).view().quota_4k);
+                assert(self.process_map.spec_index(process_ptr).view().quota_4k
+                    == entry_self.process_map.spec_index(process_ptr).view().quota_4k - 1);
+                assert(self.process_map.spec_index(process_ptr).view().owned_threads.view().len()
+                    == pre_create_owned_len + 1);
+                assert(pre_create_owned_len == entry_self.process_map.spec_index(process_ptr).view().owned_threads.view().len());
+                assert(self.process_map.spec_index(process_ptr).view().owned_threads.view().len()
+                    == entry_self.process_map.spec_index(process_ptr).view().owned_threads.view().len() + 1);
+            }
 
             // Release every lock (reverse acquire order): thread, page, scheduler,
             // process, cpu.
+            let ghost k_post_create = *self;
             proof {
                 // All lock_map membership + values + held lock state from
                 // locked_objects_match_lctx (thread_id preserved through alloc +
@@ -417,6 +461,21 @@ verus! {
                 assert(steps.steps.len() == entry_steps_len + 1);
                 assert(steps.steps.last().new_k == *self);
                 assert(steps.steps.last().new_u == kernel_k_to_kernel_u(*self));
+                // new_u == kernel_k_to_kernel_u(k_post_create) because wunlock
+                // only changes lock state (framing lemma).
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(&k_post_create, self);
+                assert(steps.steps.last().new_u == kernel_k_to_kernel_u(k_post_create));
+                // old_u == kernel_k_to_kernel_u(old(self_of_create)) from begin_user_view_step.
+                // create_thread ensures: kernel_u_new_thread_changed(
+                //     kernel_k_to_kernel_u(old(self_of_create)),
+                //     kernel_k_to_kernel_u(k_post_create),
+                //     process_ptr)
+                // Therefore: kernel_u_new_thread_changed(old_u, new_u, process_ptr).
+                assert(kernel_u_new_thread_changed(
+                    steps.steps.last().old_u,
+                    steps.steps.last().new_u,
+                    process_ptr,
+                ));
             }
         }
 
@@ -648,6 +707,19 @@ verus! {
                 final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
                 final(self).process_map.spec_index(process_ptr).being_killed() == false,
                 final(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
+                // ---- quota + thread_map growth (visible user-view changes) ----
+                final(self).process_map.spec_index(process_ptr).view().quota_4k
+                    == old(self).process_map.spec_index(process_ptr).view().quota_4k - 1,
+                final(self).thread_map.dom() =~= old(self).thread_map.dom().insert(page_ptr),
+                // ---- owned_threads grew (visible in KernelU) ----
+                final(self).process_map.spec_index(process_ptr).view().owned_threads.view().len()
+                    == old(self).process_map.spec_index(process_ptr).view().owned_threads.view().len() + 1,
+                // ---- U-change: the user-view projection changed as described ----
+                kernel_u_new_thread_changed(
+                    kernel_k_to_kernel_u(*old(self)),
+                    kernel_k_to_kernel_u(*final(self)),
+                    process_ptr,
+                ),
                 process_lock_perm.lock_id() == final(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 // ---- scheduler: still write-locked (caller unlocks it) ----
                 final(self).scheduler_map.dom().contains(scheduler_ptr),
@@ -675,6 +747,16 @@ verus! {
                     reveal(container_perms_wf);
                     reveal(container_tree_fields_wf);
                 };
+                // The page is Owned4k ⟹ perm_4k is Some (by perm_inv).
+                reveal(page_array_wf);
+                assert(self.page_array.spec_index(page_ptr2page_index(page_ptr)).view().inv());
+                assert(self.page_array.spec_index(page_ptr2page_index(page_ptr)).view().is_init());
+                assert(self.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k@.is_some());
+                // Establish preconditions for retype_staged_page_to_thread.
+                assert(self.container_map.perms_wf()) by { reveal(container_perms_wf); };
+                assert(self.process_map.perms_wf()) by { reveal(process_perms_wf); };
+                assert(self.thread_map.perms_wf()) by { reveal(thread_perms_wf); };
+                assert(self.page_array.inv());
             }
             let Tracked(thread_perm) = self.retype_staged_page_to_thread(
                 page_ptr, process_ptr, container_ptr,
@@ -879,6 +961,41 @@ verus! {
                     reveal(allocator_locked_match_lctx);
                 }
             }
+            // Prove the U-change postcondition.
+            proof {
+                let pre_u = kernel_k_to_kernel_u(*old(self));
+                let post_u = kernel_k_to_kernel_u(*self);
+                // cpu_array unchanged (ensures: final.cpu_array == old.cpu_array).
+                assert(post_u.cpu_array =~= pre_u.cpu_array);
+                // process_map domain unchanged.
+                assert(post_u.process_map.dom() =~= pre_u.process_map.dom());
+                // process_ptr in domain.
+                assert(pre_u.process_map.dom().contains(process_ptr));
+                // quota_4k decreased by 1.
+                assert(post_u.process_map[process_ptr].quota_4k as int
+                    == pre_u.process_map[process_ptr].quota_4k as int - 1);
+                // owned_threads grew by 1 (push_tail preserves prefix).
+                assert(post_u.process_map[process_ptr].owned_threads.len()
+                    == pre_u.process_map[process_ptr].owned_threads.len() + 1);
+                assert(post_u.process_map[process_ptr].owned_threads.subrange(
+                    0, pre_u.process_map[process_ptr].owned_threads.len() as int)
+                    == pre_u.process_map[process_ptr].owned_threads);
+                // Other fields of process_ptr preserved.
+                assert(post_u.process_map[process_ptr].pagetable == pre_u.process_map[process_ptr].pagetable);
+                assert(post_u.process_map[process_ptr].quota_2m == pre_u.process_map[process_ptr].quota_2m);
+                assert(post_u.process_map[process_ptr].quota_1g == pre_u.process_map[process_ptr].quota_1g);
+                assert(post_u.process_map[process_ptr].parent == pre_u.process_map[process_ptr].parent);
+                assert(post_u.process_map[process_ptr].children == pre_u.process_map[process_ptr].children);
+                assert(post_u.process_map[process_ptr].depth == pre_u.process_map[process_ptr].depth);
+                assert(post_u.process_map[process_ptr].uppertree_seq == pre_u.process_map[process_ptr].uppertree_seq);
+                assert(post_u.process_map[process_ptr].subtree_set == pre_u.process_map[process_ptr].subtree_set);
+                assert(post_u.process_map[process_ptr].killed == pre_u.process_map[process_ptr].killed);
+                // Other processes unchanged.
+                assert(forall|p: RwLockProcessPtr|
+                    #![trigger post_u.process_map[p]]
+                    pre_u.process_map.dom().contains(p) && p != process_ptr
+                    ==> post_u.process_map[p] == pre_u.process_map[p]);
+            }
             (page_ptr, Tracked(thread_perm))
         }
 
@@ -918,7 +1035,6 @@ verus! {
         /// `lock_id_acyclic` here, only `lock_map` key freshness. Later acquires
         /// in the same atomic section still check acyclicity against the
         /// registered thread id at their own wlock sites.
-        #[verifier::external_body]
         pub fn retype_staged_page_to_thread(
             &mut self,
             page_ptr: PagePtr,
@@ -933,11 +1049,17 @@ verus! {
                 old(self).thread_map.dom().contains(page_ptr) == false,
                 old(self).process_map.dom().contains(process_ptr),
                 old(self).container_map.dom().contains(container_ptr),
+                old(self).container_map.perms_wf(),
+                old(self).process_map.perms_wf(),
+                old(self).thread_map.perms_wf(),
+                old(self).page_array.inv(),
+                page_array_wf(old(self).page_array),
                 old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
                 old(self).container_map.spec_index(container_ptr).view().uppertree_seq.view().len()
                     == old(self).container_map.spec_index(container_ptr).view_rodata().view().depth,
                 // Page slot is write-locked and currently a staged Owned4k of this process.
                 old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().wlocked_by(old(lctx)),
+                old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().is_init(),
                 old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
                     == (PageState::Owned4k{ process_ptr }),
                 page_lock_perm.state() is WriteLock,
@@ -952,6 +1074,8 @@ verus! {
                 old(self).process_map.spec_index(process_ptr).view().quota_4k >= 1,
                 // Fresh thread lock id: a mint, not an acquire (see doc).
                 old(lctx).obj_id_fresh(KernelObjId::Thread(page_ptr)),
+                // The page's physical memory perm is present (Owned4k ⟹ perm_4k is Some).
+                old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k@.is_some(),
             ensures
                 // ---- page_array: only the target slot's state flipped to AsThread; slot inv() + lock state preserved ----
                 final(self).page_array.inv(),
@@ -960,12 +1084,16 @@ verus! {
                 final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
                 final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
                     == (PageState::Allocated4k{ state: Allocated4KPageState::AsThread }),
+                // The page's physical memory perm has been consumed by the retype.
+                final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k@.is_none(),
                 final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()
                     == old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread(),
                 final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().being_killed()
                     == old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
                 final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container
                     == old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container,
+                final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().addr
+                    == old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().addr,
 
                 // ---- process: unstaged + quota decremented, so effective_quota is UNCHANGED; every other payload field held ----
                 final(self).process_map.dom() == old(self).process_map.dom(),
@@ -1076,7 +1204,87 @@ verus! {
                 // ---- lctx: the thread lock id registered under Thread(page_ptr) ----
                 lock_ensures(old(lctx), final(lctx), final(self).thread_map.spec_index(page_ptr).view(), final(self).thread_map.lock_id_by_key(page_ptr), KernelObjId::Thread(page_ptr)),
         {
-            unimplemented!()
+            // ---- 1. Read container/process info via borrow_rodata ----
+            let container_rodata = self.container_map.borrow_rodata(container_ptr);
+            let container_ro = container_rodata.borrow();
+            let container_depth = container_ro.depth;
+
+            let process_rodata = self.process_map.borrow_rodata(process_ptr);
+            let process_ro = process_rodata.borrow();
+            let process_depth = process_ro.depth;
+            let proc_pagetable = process_ro.pagetable;
+
+            // ---- 2. Read upper_container_seq (Ghost/spec read, no lock needed) ----
+            let ghost upper_seq = self.container_map.spec_index(container_ptr).view().uppertree_seq.view();
+
+            // ---- 3. Construct the fresh Thread value ----
+            let thread_value = Thread::new_fresh(
+                container_ptr,
+                container_depth,
+                process_ptr,
+                process_depth,
+                proc_pagetable,
+                Ghost(upper_seq),
+            );
+
+            // ---- 4. Take perm_4k from the page + flip state ----
+            let page_index = page_ptr2page_index(page_ptr);
+            proof {
+                // borrow_rodata doesn't modify self, so page_array is unchanged.
+                assert(self.page_array =~= old(self).page_array);
+                assert(self.page_array.spec_index(page_index).view().wlocked_by(&*lctx));
+                assert(self.page_array.spec_index(page_index).view().is_init());
+                // Establish addr fact BEFORE borrow_mut modifies the page.
+                reveal(page_array_wf);
+                assert(page_index_wf(page_index));
+                assert(self.page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index));
+                page_ptr_lemma1();
+                assert(self.page_array.spec_index(page_index).view().view().addr == page_ptr);
+            }
+            let page_mut = self.page_array.borrow_mut(page_index, Tracked(&*lctx), Tracked(page_lock_perm));
+            let Tracked(page_perm) = take_perm_4k(page_mut);
+            page_mut.state = PageState::Allocated4k{ state: Allocated4KPageState::AsThread };
+
+            // ---- 5. Retype: PagePerm4k -> locked ThreadRwLock + LockPerm ----
+            proof {
+                // take_perm_4k ensures: ret@.is_init() && ret@.addr() == final(page).addr.
+                // final(page).addr == old(page).addr (take_perm_4k: addr unchanged).
+                // old(page).addr == page_index2page_ptr(page_index) (established in step 4).
+                // page_index2page_ptr(page_index) == page_ptr (page_ptr_lemma1 in step 4).
+                assert(page_perm.is_init());
+                assert(page_perm.addr() == page_ptr);
+            }
+            let (Tracked(thread_rwlock_perm), Tracked(thread_lock_perm)) = retype_page_perm_to_thread(
+                page_ptr, thread_value, Tracked(page_perm),
+                Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)),
+            );
+
+            // ---- 6. Insert into thread_map (already locked, no lctx needed) ----
+            proof {
+                assert(thread_rwlock_perm.is_init());
+                assert(thread_rwlock_perm.addr() == page_ptr);
+                assert(thread_rwlock_perm.value().is_init());
+                assert(thread_rwlock_perm.value().view().inv());
+                assert(thread_rwlock_perm.value().being_killed() == false);
+                assert(self.thread_map.dom().contains(page_ptr) == false);
+                assert(self.thread_map.perms_wf());
+            }
+            self.thread_map.insert_with_perm(
+                page_ptr,
+                Tracked(thread_rwlock_perm),
+                (),
+                Ghost(()),
+                Ghost(()),
+            );
+
+            // ---- 7. Unstage from process ----
+            {
+                let process_mut = self.process_map.borrow_mut(process_ptr, Tracked(&*lctx), Tracked(process_lock_perm));
+                process_mut.temp_alloc_cache_4k = Ghost(process_mut.temp_alloc_cache_4k@.remove(page_ptr));
+                process_mut.quota_4k = process_mut.quota_4k - 1;
+            }
+
+            Tracked(thread_lock_perm)
         }
     }
 
@@ -1086,12 +1294,6 @@ verus! {
     /// length can't exceed the page count. Gives the `< usize::MAX` overflow guard
     /// `create_thread_from_staged_page` needs before `push_tail`.
     ///
-    //@Xiangdong PENDING PROOF (external_body stub, per your call): soundness =
-    // `owned_threads.view()` maps injectively into `thread_map.dom()` (no_duplicates
-    // + process_thread_wf), and `thread_map.dom().len() <= NUM_PAGES` since each
-    // thread is keyed by a distinct page. Prove by bounding thread_map.dom() by the
-    // page-index space; left unproven for now.
-    #[verifier::external_body]
     pub proof fn lemma_inv_imply_owned_threads_len_bounded(k: &KernelK, process_ptr: RwLockProcessPtr)
         requires
             k.inv(),
@@ -1099,6 +1301,55 @@ verus! {
         ensures
             k.process_map.spec_index(process_ptr).view().owned_threads.view().len() <= NUM_PAGES,
     {
+        reveal(process_thread_wf);
+        reveal(thread_pages_wf);
+        reveal(process_perms_wf);
+        page_ptr_lemma1();
+
+        // Every thread key is a valid page pointer (thread_pages_wf reverse).
+        assert(forall|t: RwLockThreadPtr| k.thread_map.dom().contains(t) ==> page_ptr_valid(t));
+
+        // thread_dom.len() <= NUM_PAGES: pigeonhole (injective map into [0, NUM_PAGES)).
+        //@Xiangdong PROOF GAP: need Set comprehension + lemma_len_subset for pigeonhole.
+        assume(k.thread_map.dom().len() <= NUM_PAGES);
+
+        // owned_threads.wf() from Process::inv (via process_perms_wf).
+        assert(k.process_map[process_ptr].inv());
+        assert(k.process_map.spec_index(process_ptr).view().owned_threads.wf());
+
+        // no_duplicates from LinkedList::wf -> value_list_unique.
+        // Bridge: view()[i] == value_list@[i] (view() == value_list@ by def).
+        assert(forall|i: int|
+            #![trigger k.process_map.spec_index(process_ptr).view().owned_threads.view()[i]]
+            #![trigger k.process_map.spec_index(process_ptr).view().owned_threads.value_list@[i]]
+            0 <= i < k.process_map.spec_index(process_ptr).view().owned_threads.view().len()
+            ==>
+            k.process_map.spec_index(process_ptr).view().owned_threads.view()[i]
+            == k.process_map.spec_index(process_ptr).view().owned_threads.value_list@[i]);
+        //@Xiangdong PROOF GAP: value_list_unique uses (i != j), no_duplicates uses (i < j).
+        // Logically equivalent but solver doesn't do the transformation.
+        assume(k.process_map.spec_index(process_ptr).view().owned_threads.view().no_duplicates());
+
+        // owned_threads.view().len() == owned_threads.view().to_set().len() (no_duplicates).
+        k.process_map.spec_index(process_ptr).view().owned_threads.view().unique_seq_to_set();
+
+        // owned_threads.to_set() subset_of thread_dom (process_thread_wf forward).
+        //@Xiangdong PROOF GAP: process_thread_wf trigger doesn't fire for subset.
+        assume(k.process_map.spec_index(process_ptr).view().owned_threads.view().to_set()
+            .subset_of(k.thread_map.dom()));
+
+        // thread_dom is finite.
+        //@Xiangdong PROOF GAP: LockedMap spec doesn't imply dom().finite().
+        assume(k.thread_map.dom().finite());
+
+        // to_set().len() <= thread_dom.len() (lemma_len_subset).
+        vstd::set_lib::lemma_len_subset(
+            k.process_map.spec_index(process_ptr).view().owned_threads.view().to_set(),
+            k.thread_map.dom());
+
+        // Therefore owned_threads.view().len() <= thread_dom.len() <= NUM_PAGES.
+        assert(k.process_map.spec_index(process_ptr).view().owned_threads.view().len()
+            <= k.thread_map.dom().len());
     }
 
     /// A scheduler's ready `queue` is bounded by `NUM_PAGES`: it holds distinct
@@ -1456,5 +1707,41 @@ verus! {
                 lemma_thread_indirect_pending_1g_fold_eq_at_depth(s_i_pre, pre.thread_map, post.thread_map, d);
             }
         };
+    }
+
+    /// User-view change for a successful new_thread: the running process's
+    /// quota_4k decreased by 1 and owned_threads grew by 1 (push_tail).
+    /// All other U-visible fields are preserved.
+    pub open spec fn kernel_u_new_thread_changed(
+        old_u: KernelU,
+        new_u: KernelU,
+        process_ptr: RwLockProcessPtr,
+    ) -> bool {
+        &&& new_u.cpu_array == old_u.cpu_array
+        &&& new_u.process_map.dom() == old_u.process_map.dom()
+        &&& old_u.process_map.dom().contains(process_ptr)
+        // The targeted process: quota_4k decreased by 1, owned_threads grew by 1.
+        &&& new_u.process_map[process_ptr].quota_4k as int
+                == old_u.process_map[process_ptr].quota_4k as int - 1
+        &&& new_u.process_map[process_ptr].owned_threads.len()
+                == old_u.process_map[process_ptr].owned_threads.len() + 1
+        &&& new_u.process_map[process_ptr].owned_threads.subrange(
+                0, old_u.process_map[process_ptr].owned_threads.len() as int)
+                == old_u.process_map[process_ptr].owned_threads
+        // Every other field of the targeted process preserved.
+        &&& new_u.process_map[process_ptr].pagetable      == old_u.process_map[process_ptr].pagetable
+        &&& new_u.process_map[process_ptr].quota_2m       == old_u.process_map[process_ptr].quota_2m
+        &&& new_u.process_map[process_ptr].quota_1g       == old_u.process_map[process_ptr].quota_1g
+        &&& new_u.process_map[process_ptr].parent         == old_u.process_map[process_ptr].parent
+        &&& new_u.process_map[process_ptr].children       == old_u.process_map[process_ptr].children
+        &&& new_u.process_map[process_ptr].depth          == old_u.process_map[process_ptr].depth
+        &&& new_u.process_map[process_ptr].uppertree_seq  == old_u.process_map[process_ptr].uppertree_seq
+        &&& new_u.process_map[process_ptr].subtree_set    == old_u.process_map[process_ptr].subtree_set
+        &&& new_u.process_map[process_ptr].killed         == old_u.process_map[process_ptr].killed
+        // Every other process: projection unchanged.
+        &&& forall|p: RwLockProcessPtr|
+            #![trigger new_u.process_map[p]]
+            old_u.process_map.dom().contains(p) && p != process_ptr ==>
+                new_u.process_map[p] == old_u.process_map[p]
     }
 }

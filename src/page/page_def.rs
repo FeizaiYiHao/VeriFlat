@@ -15,6 +15,14 @@ verus! {
 
         pub free_list_node_storage: ExternalNode<PageIndex>,
         pub free_list: RwLockContainerPtr,
+
+        /// Tracked ownership of the physical memory backing this page.
+        /// `Some` when the page is Free or Owned (the allocator/process holds
+        /// the perm); `None` when Allocated/Mapped/Merged (the perm has been
+        /// consumed by a retype or handed to a page table).
+        pub perm_4k: Tracked<Option<PagePerm4k>>,
+        pub perm_2m: Tracked<Option<PagePerm2m>>,
+        pub perm_1g: Tracked<Option<PagePerm1g>>,
     }
 
     impl Page{
@@ -55,6 +63,29 @@ verus! {
                 }
                 _ => true,
             }
+        }
+
+        /// The tracked perm for a page size is `Some` iff the page is Free or
+        /// Owned for that size (the allocator/process still holds the physical
+        /// memory ownership).  Once Allocated/Mapped/Merged the perm has been
+        /// consumed by a retype or handed to a page table.
+        pub open spec fn perm_inv(&self) -> bool {
+            &&& match self.state {
+                PageState::Free4k{..} | PageState::Owned4k{..} => self.perm_4k@.is_some(),
+                _ => self.perm_4k@.is_none(),
+            }
+            &&& match self.state {
+                PageState::Free2m{..} | PageState::Owned2m{..} => self.perm_2m@.is_some(),
+                _ => self.perm_2m@.is_none(),
+            }
+            &&& match self.state {
+                PageState::Free1g{..} | PageState::Owned1g{..} => self.perm_1g@.is_some(),
+                _ => self.perm_1g@.is_none(),
+            }
+            // The perm's address matches this page's address.
+            &&& self.perm_4k@.is_some() ==> self.perm_4k@.unwrap().addr() == self.addr
+            &&& self.perm_2m@.is_some() ==> self.perm_2m@.unwrap().addr() == self.addr
+            &&& self.perm_1g@.is_some() ==> self.perm_1g@.unwrap().addr() == self.addr
         }
 
         pub open spec fn node_storage_inv(&self) -> bool{
@@ -146,6 +177,8 @@ verus! {
             &&&
             self.free_state_inv()
             &&&
+            self.perm_inv()
+            &&&
             self.is_io_page ==> self.state is Mapped4k || self.state is Unavailable
         }
     }
@@ -192,5 +225,29 @@ verus! {
         open spec fn is_user_visible() -> bool {
             false
         }
+    }
+
+    /// Extract the 4k page perm from a page that is Free4k or Owned4k.
+    /// Sets perm_4k to None. The caller must ensure perm_4k is Some.
+    #[verifier::external_body]
+    pub fn take_perm_4k(page: &mut Page) -> (ret: Tracked<PagePerm4k>)
+        requires
+            old(page).perm_4k@.is_some(),
+        ensures
+            final(page).perm_4k@.is_none(),
+            ret@ == old(page).perm_4k@.unwrap(),
+            ret@.is_init(),
+            ret@.addr() == final(page).addr,
+            // All other fields unchanged.
+            final(page).addr == old(page).addr,
+            final(page).state == old(page).state,
+            final(page).is_io_page == old(page).is_io_page,
+            final(page).ref_count == old(page).ref_count,
+            final(page).owning_container == old(page).owning_container,
+            final(page).mappings@ == old(page).mappings@,
+            final(page).perm_2m@ == old(page).perm_2m@,
+            final(page).perm_1g@ == old(page).perm_1g@,
+    {
+        unimplemented!()
     }
 }

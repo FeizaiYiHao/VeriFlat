@@ -116,6 +116,8 @@ impl KernelK {
                 == old(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_1g,
             final(self).process_map.spec_index(process_ptr).view().quota_4k
                 == old(self).process_map.spec_index(process_ptr).view().quota_4k,
+            final(self).process_map.spec_index(process_ptr).view().owned_threads
+                == old(self).process_map.spec_index(process_ptr).view().owned_threads,
     {
         proof {
             reveal(allocator_perms_wf);
@@ -933,6 +935,8 @@ impl KernelK {
                     == old(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_1g
                 &&& final(self).process_map.spec_index(process_ptr).view().quota_4k
                     == old(self).process_map.spec_index(process_ptr).view().quota_4k
+                &&& final(self).process_map.spec_index(process_ptr).view().owned_threads
+                    == old(self).process_map.spec_index(process_ptr).view().owned_threads
                 // container_map + scheduler_map untouched (scan only stages via pop_stage).
                 &&& final(self).container_map == old(self).container_map
                 &&& final(self).scheduler_map == old(self).scheduler_map
@@ -1118,6 +1122,8 @@ impl KernelK {
                 == old(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_1g,
             final(self).process_map.spec_index(process_ptr).view().quota_4k
                 == old(self).process_map.spec_index(process_ptr).view().quota_4k,
+            final(self).process_map.spec_index(process_ptr).view().owned_threads
+                == old(self).process_map.spec_index(process_ptr).view().owned_threads,
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).scheduler_map == old(self).scheduler_map,
@@ -1417,6 +1423,8 @@ impl KernelK {
                 == old(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_1g,
             final(self).process_map.spec_index(process_ptr).view().quota_4k
                 == old(self).process_map.spec_index(process_ptr).view().quota_4k,
+            final(self).process_map.spec_index(process_ptr).view().owned_threads
+                == old(self).process_map.spec_index(process_ptr).view().owned_threads,
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).scheduler_map == old(self).scheduler_map,

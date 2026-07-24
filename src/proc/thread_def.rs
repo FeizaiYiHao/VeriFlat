@@ -66,6 +66,40 @@ impl Thread{
             ==>
             self.indirect_free_quota_pending_1g.view().spec_index(i) == 0
     }
+
+    /// Construct a fresh Thread for retype operations.
+    /// State is RUNNING{cpu_id: 0} (not BLOCKED, not SCHEDULED).
+    /// All endpoint fields are None/empty, all pending quotas are 0,
+    /// linkedlist nodes are init, trap_frame is None.
+    #[verifier::external_body]
+    pub fn new_fresh(
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+        owning_proc: RwLockProcessPtr,
+        process_depth: usize,
+        proc_pagetable_ptr: RwLockPageTableRoot,
+        upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
+    ) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.owning_container == owning_container,
+            ret.container_depth == container_depth,
+            ret.owning_proc == owning_proc,
+            ret.process_depth == process_depth,
+            ret.proc_pagetable_ptr == proc_pagetable_ptr,
+            ret.upper_container_seq@ == upper_container_seq@,
+            (ret.state is BLOCKED) == false,
+            (ret.state is SCHEDULED) == false,
+            ret.proc_linkedlist_node.is_init(),
+            ret.scheduler_linkedlist_node.is_init(),
+            ret.blocking_endpoint_ptr is None,
+            ret.blocking_endpoint_index is None,
+            forall|edp_index: EndpointIdx| #![auto]
+                ret.endpoint_descriptors.view().spec_index(edp_index as int) is None,
+            ret.free_quota_pending_clean(),
+    {
+        unimplemented!()
+    }
 }
 
 /// Free-quota pending counters must be zero unless the thread is write-locked.

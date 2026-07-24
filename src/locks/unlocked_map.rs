@@ -3,6 +3,7 @@ use vstd::simple_pptr::*;
 use crate::define::*;
 use super::*;
 use crate::concurrency::*;
+use crate::allocator::global_pool::GlobalPool;
 verus! {
 
 
@@ -190,7 +191,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
 
     /// Shared borrow into the global pool of the allocator at `alloc_ptr`.
     /// Caller holds either a read or a write lock on `global_pool`.
-    pub fn borrow_global_pool<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a crate::linkedlist::spec_impl::LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>)
+    pub fn borrow_global_pool<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a GlobalPool)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -206,7 +207,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
 
     /// Mutably borrow the global pool of the allocator at `alloc_ptr`.
     /// Caller must hold a write lock on `global_pool`.
-    pub fn borrow_mut_global_pool<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut crate::linkedlist::spec_impl::LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>)
+    pub fn borrow_mut_global_pool<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut GlobalPool)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
@@ -514,7 +515,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             old(self)[alloc_ptr].wf(),
             old(self)[alloc_ptr].global_pool.wlocked_by(old(lctx)),
             old(self)[alloc_ptr].global_pool.inv(),
-            unlock_requires::<crate::linkedlist::spec_impl::LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
+            unlock_requires::<GlobalPool>(old(lctx)),
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[alloc_ptr].global_pool.locking_thread()->Write_lock_id,
