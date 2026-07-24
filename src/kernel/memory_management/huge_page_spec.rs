@@ -22,7 +22,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn hugepage_2m_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+    pub open spec fn hugepage_2m_wf(page_array: PageLockedArray) -> bool {
         &&&
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free2m]
@@ -81,7 +81,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn hugepage_1g_wf(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>) -> bool {
+    pub open spec fn hugepage_1g_wf(page_array: PageLockedArray) -> bool {
         &&&
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free1g]

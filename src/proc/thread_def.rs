@@ -40,7 +40,6 @@ pub struct Thread {
 }
 
 pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
-pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
     pub open spec fn free_quota_pending_clean(&self) -> bool{

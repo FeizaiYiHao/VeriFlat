@@ -4,7 +4,7 @@ use super::*;
 verus! {
 
 #[verifier::opaque]
-pub open spec fn cpu_objects_unlocked(cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn cpu_objects_unlocked(cpu_array: CpuLockedArray, lctx: &LocalContext) -> bool {
     forall|cpu_i: CpuId|
         #![trigger cpu_array.spec_index(cpu_i).view()]
         cpu_id_valid(cpu_i)
@@ -13,7 +13,7 @@ pub open spec fn cpu_objects_unlocked(cpu_array: LockedArray<Cpu, (), (), (), NU
 }
 
 #[verifier::opaque]
-pub open spec fn page_objects_unlocked(page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn page_objects_unlocked(page_array: PageLockedArray, lctx: &LocalContext) -> bool {
     forall|p_i: PageIndex|
         #![trigger page_array.spec_index(p_i)]
         page_index_valid(p_i)
@@ -22,7 +22,7 @@ pub open spec fn page_objects_unlocked(page_array: LockedArray<Page, (), (), (),
 }
 
 #[verifier::opaque]
-pub open spec fn container_objects_unlocked(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn container_objects_unlocked(container_map: ContainerLockedMap, lctx: &LocalContext) -> bool {
     forall|c_ptr: RwLockContainerPtr|
         #![trigger container_map.dom().contains(c_ptr)]
         container_map.dom().contains(c_ptr)
@@ -49,7 +49,7 @@ pub open spec fn thread_objects_unlocked(thread_map: ThreadLockedMap, lctx: &Loc
 }
 
 #[verifier::opaque]
-pub open spec fn endpoint_objects_unlocked(endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn endpoint_objects_unlocked(endpoint_map: EndpointLockedMap, lctx: &LocalContext) -> bool {
     forall|e_ptr: RwLockEndpointPtr|
         #![trigger endpoint_map.spec_index(e_ptr)]
         endpoint_map.dom().contains(e_ptr)
@@ -58,7 +58,7 @@ pub open spec fn endpoint_objects_unlocked(endpoint_map: LockedMap<RwLockEndpoin
 }
 
 #[verifier::opaque]
-pub open spec fn pagetable_objects_unlocked(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn pagetable_objects_unlocked(pagetable_map: PageTableLockedMap, lctx: &LocalContext) -> bool {
     forall|pt_ptr: RwLockPageTableRoot|
         #![trigger pagetable_map.spec_index(pt_ptr).locked_by(lctx)]
         pagetable_map.dom().contains(pt_ptr)
@@ -67,7 +67,7 @@ pub open spec fn pagetable_objects_unlocked(pagetable_map: LockedMap<RwLockPageT
 }
 
 #[verifier::opaque]
-pub open spec fn scheduler_objects_unlocked(scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
+pub open spec fn scheduler_objects_unlocked(scheduler_map: SchedulerLockedMap, lctx: &LocalContext) -> bool {
     forall|s_ptr: RwLockSchedulerPtr|
         #![trigger scheduler_map.spec_index(s_ptr).locked_by(lctx)]
         scheduler_map.dom().contains(s_ptr)
@@ -76,7 +76,7 @@ pub open spec fn scheduler_objects_unlocked(scheduler_map: LockedMap<RwLockSched
 }
 
 #[verifier::opaque]
-pub open spec fn allocator_objects_unlocked(alloc_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>, lctx: &LocalContext) -> bool {
+pub open spec fn allocator_objects_unlocked(alloc_map: PageAllocatorUnLockedMap, lctx: &LocalContext) -> bool {
     &&&
     forall|alloc_ptr: RwLockPageAllocatorPtr|
         #![trigger alloc_map.spec_index(alloc_ptr).global_pool]

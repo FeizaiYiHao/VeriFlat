@@ -3,8 +3,8 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_endpoint_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, 
-            endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_endpoint_wf(container_map: ContainerLockedMap, 
+            endpoint_map: EndpointLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, e_ptr:RwLockEndpointPtr|
             #![trigger container_map.spec_index(c_ptr).view().owned_endpoints.view().contains(e_ptr)]

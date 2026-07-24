@@ -22,7 +22,7 @@ pub proof fn lemma_usize_int(x: int)
 
 pub proof fn set_lemma<A>()
     ensures
-        forall|s1: Set<A>, s2: Set<A>, e: A|
+        forall|s1: Set<A>, s2: Set<A>, e: A| #![auto]
             (s1 + s2).insert(e) == s1 + (s2.insert(e)) && s1 + (s2.insert(e)) == s2 + (s1.insert(e))
                 && (s1 + s2).insert(e) == s2 + (s1.insert(e)) && (!(s1 + s2).contains(e)
                 <==> !s1.contains(e) && !s2.contains(
@@ -32,7 +32,7 @@ pub proof fn set_lemma<A>()
 //     (!(s1 + s2 + s3 + s4).contains(e)) <==> (!s1.contains(e) && !s2.contains(e) && !s3.contains(e) && !s4.contains(e))
 
 {
-    assert forall|s1: Set<A>, s2: Set<A>, e: A|
+    assert forall|s1: Set<A>, s2: Set<A>, e: A| #![auto]
         (s1 + s2).insert(e) == s1 + (s2.insert(e))
             && s1 + (s2.insert(e)) == s2 + (s1.insert(e))
             && (s1 + s2).insert(e) == s2 + (s1.insert(e))
@@ -47,11 +47,11 @@ pub proof fn set_insert_lemma<A>()
     ensures
         forall|s1: Set<A>, x: A, y: A| x != y ==> (s1.insert(x).contains(y) == s1.contains(y)),
         forall|s1: Set<A>, x: A, y: A| s1.contains(y) ==> s1.insert(x).contains(y),
-        forall|s1: Set<A>, x: A| s1.contains(x) ==> (s1.insert(x) == s1),
+        forall|s1: Set<A>, x: A| #![auto] s1.contains(x) ==> (s1.insert(x) == s1),
 {
     broadcast use vstd::set::lemma_set_insert_same;
     broadcast use vstd::set::lemma_set_insert_different;
-    assert forall|s1: Set<A>, x: A| s1.contains(x) implies s1.insert(x) == s1 by {
+    assert forall|s1: Set<A>, x: A| #![auto] s1.contains(x) implies s1.insert(x) == s1 by {
         assert(s1.insert(x) =~= s1);
     }
 }

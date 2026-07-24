@@ -3,8 +3,8 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, 
-            scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
+    pub open spec fn container_scheduler_wf(container_map: ContainerLockedMap, 
+            scheduler_map: SchedulerLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr|
             #![trigger container_map.spec_index(c_ptr).view_rodata().view().scheduler]
@@ -24,9 +24,9 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_thread_scheduler_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+    pub open spec fn container_thread_scheduler_wf(container_map: ContainerLockedMap,
             thread_map: ThreadLockedMap, 
-            scheduler_map: LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>) -> bool {
+            scheduler_map: SchedulerLockedMap) -> bool {
         &&&
         forall|t_ptr:RwLockThreadPtr|
             #![trigger thread_map.spec_index(t_ptr).view().state]

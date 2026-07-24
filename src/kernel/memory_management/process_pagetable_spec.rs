@@ -3,7 +3,7 @@ use crate::*;
 verus! {
 
 #[verifier::opaque]
-pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool {
+pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap) -> bool {
     &&&
     forall|proc_ptr:RwLockProcessPtr|
         #![trigger process_map.spec_index(proc_ptr).view().pagetable]

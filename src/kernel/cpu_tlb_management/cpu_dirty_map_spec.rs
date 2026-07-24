@@ -1,8 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn cpu_dirty_map_wf(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, process_map: ProcessLockedMap, 
-        cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>, tlb: CpuTLB, pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
+    pub open spec fn cpu_dirty_map_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, 
+        cpu_array:CpuLockedArray, tlb: CpuTLB, pagetable_map: PageTableLockedMap) -> bool
     {
         &&&
         cpu_dirty_map_contains_container_processes(container_map, cpu_array)
@@ -15,7 +15,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_dirty_map_contains_container_processes(container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_contains_container_processes(container_map: ContainerLockedMap, cpu_array:CpuLockedArray) -> bool 
         recommends
             container_cpu_wf(container_map, cpu_array),
     {
@@ -35,7 +35,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_dirty_map_contains_pagetable_pcid_match(pagetable_map: LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>, cpu_array:LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_contains_pagetable_pcid_match(pagetable_map: PageTableLockedMap, cpu_array:CpuLockedArray) -> bool 
     {
         &&&
         forall|cpu_i:CpuId, pcid: Pcid|
@@ -54,7 +54,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_not_in_dirty_map_imply_not_in_tlb(cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>, tlb: CpuTLB) -> bool {
+    pub open spec fn cpu_not_in_dirty_map_imply_not_in_tlb(cpu_array: CpuLockedArray, tlb: CpuTLB) -> bool {
         &&&
         forall|cpu_id:CpuId, pcid: Pcid|
             #![auto]
@@ -66,7 +66,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_dirty_map_proc_pcid_match(process_map: ProcessLockedMap, cpu_array: LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>) -> bool 
+    pub open spec fn cpu_dirty_map_proc_pcid_match(process_map: ProcessLockedMap, cpu_array: CpuLockedArray) -> bool 
         recommends
             process_cpu_wf(process_map, cpu_array)
     {

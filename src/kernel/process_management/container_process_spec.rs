@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_process_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, process_perms: ProcessLockedMap) -> bool {
+    pub open spec fn container_process_wf(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr|
             #![trigger container_perms.spec_index(c_ptr).view().root_process]
@@ -47,7 +47,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn per_container_process_tree_wf(container_perms: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>, process_perms: ProcessLockedMap) -> bool
+    pub open spec fn per_container_process_tree_wf(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap) -> bool
         recommends
             container_process_wf(container_perms, process_perms),
     {

@@ -28,7 +28,6 @@ pub struct Process {
 }
 
 pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
-pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
     pub pagetable: PageTable<PT_TYPE>,

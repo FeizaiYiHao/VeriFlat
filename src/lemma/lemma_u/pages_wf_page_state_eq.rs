@@ -24,10 +24,10 @@ verus! {
 
 // container_pages_wf: Allocated2m{AsContainer} <-> container_map.dom().
 pub proof fn container_pages_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
-    new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
+    old_container_map: ContainerLockedMap,
+    new_container_map: ContainerLockedMap,
 )
     requires
         container_pages_wf(old_page_array, old_container_map),
@@ -47,10 +47,10 @@ pub proof fn container_pages_wf_preserved_for_page_state_eq(
 pub proof fn container_pages_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
-            new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
+            old_container_map: ContainerLockedMap,
+            new_container_map: ContainerLockedMap,
         |
             #![trigger container_pages_wf(old_page_array, old_container_map), container_pages_wf(new_page_array, new_container_map)]
             (container_pages_wf(old_page_array, old_container_map)
@@ -65,10 +65,10 @@ pub proof fn container_pages_wf_preserved_for_page_state_eq_forall()
             container_pages_wf(new_page_array, new_container_map),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        old_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
-        new_container_map: LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
+        old_container_map: ContainerLockedMap,
+        new_container_map: ContainerLockedMap,
     |
         (container_pages_wf(old_page_array, old_container_map)
         && new_container_map.dom() == old_container_map.dom()
@@ -87,8 +87,8 @@ pub proof fn container_pages_wf_preserved_for_page_state_eq_forall()
 
 // process_pages_wf: Allocated4k{AsProcess} <-> process_map.dom().
 pub proof fn process_pages_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
     old_process_map: ProcessLockedMap,
     new_process_map: ProcessLockedMap,
 )
@@ -110,8 +110,8 @@ pub proof fn process_pages_wf_preserved_for_page_state_eq(
 pub proof fn process_pages_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
             old_process_map: ProcessLockedMap,
             new_process_map: ProcessLockedMap,
         |
@@ -128,8 +128,8 @@ pub proof fn process_pages_wf_preserved_for_page_state_eq_forall()
             process_pages_wf(new_page_array, new_process_map),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
         old_process_map: ProcessLockedMap,
         new_process_map: ProcessLockedMap,
     |
@@ -152,8 +152,8 @@ pub proof fn process_pages_wf_preserved_for_page_state_eq_forall()
 pub proof fn thread_pages_wf_preserved_for_page_state_eq(
     old_thread_map: ThreadLockedMap,
     new_thread_map: ThreadLockedMap,
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
 )
     requires
         thread_pages_wf(old_thread_map, old_page_array),
@@ -175,8 +175,8 @@ pub proof fn thread_pages_wf_preserved_for_page_state_eq_forall()
         forall|
             old_thread_map: ThreadLockedMap,
             new_thread_map: ThreadLockedMap,
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
         |
             #![trigger thread_pages_wf(old_thread_map, old_page_array), thread_pages_wf(new_thread_map, new_page_array)]
             (thread_pages_wf(old_thread_map, old_page_array)
@@ -193,8 +193,8 @@ pub proof fn thread_pages_wf_preserved_for_page_state_eq_forall()
     assert forall|
         old_thread_map: ThreadLockedMap,
         new_thread_map: ThreadLockedMap,
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
     |
         (thread_pages_wf(old_thread_map, old_page_array)
         && new_thread_map.dom() == old_thread_map.dom()
@@ -213,10 +213,10 @@ pub proof fn thread_pages_wf_preserved_for_page_state_eq_forall()
 
 // endpoint_pages_wf: Allocated4k{AsEndpoint} <-> endpoint_map.dom().
 pub proof fn endpoint_pages_wf_preserved_for_page_state_eq(
-    old_endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-    new_endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    old_endpoint_map: EndpointLockedMap,
+    new_endpoint_map: EndpointLockedMap,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
 )
     requires
         endpoint_pages_wf(old_endpoint_map, old_page_array),
@@ -236,10 +236,10 @@ pub proof fn endpoint_pages_wf_preserved_for_page_state_eq(
 pub proof fn endpoint_pages_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-            new_endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+            old_endpoint_map: EndpointLockedMap,
+            new_endpoint_map: EndpointLockedMap,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
         |
             #![trigger endpoint_pages_wf(old_endpoint_map, old_page_array), endpoint_pages_wf(new_endpoint_map, new_page_array)]
             (endpoint_pages_wf(old_endpoint_map, old_page_array)
@@ -254,10 +254,10 @@ pub proof fn endpoint_pages_wf_preserved_for_page_state_eq_forall()
             endpoint_pages_wf(new_endpoint_map, new_page_array),
 {
     assert forall|
-        old_endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-        new_endpoint_map: LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>,
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+        old_endpoint_map: EndpointLockedMap,
+        new_endpoint_map: EndpointLockedMap,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
     |
         (endpoint_pages_wf(old_endpoint_map, old_page_array)
         && new_endpoint_map.dom() == old_endpoint_map.dom()
@@ -276,10 +276,10 @@ pub proof fn endpoint_pages_wf_preserved_for_page_state_eq_forall()
 
 // allocator_4k_pages_wf: Allocated4k{As4KAllocator} <-> allocator_4k_map.dom().
 pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-    new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
+    old_allocator_map: PageAllocatorUnLockedMap,
+    new_allocator_map: PageAllocatorUnLockedMap,
 )
     requires
         allocator_4k_pages_wf(old_page_array, old_allocator_map),
@@ -299,10 +299,10 @@ pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(
 pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-            new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
+            old_allocator_map: PageAllocatorUnLockedMap,
+            new_allocator_map: PageAllocatorUnLockedMap,
         |
             #![trigger allocator_4k_pages_wf(old_page_array, old_allocator_map), allocator_4k_pages_wf(new_page_array, new_allocator_map)]
             (allocator_4k_pages_wf(old_page_array, old_allocator_map)
@@ -317,10 +317,10 @@ pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq_forall()
             allocator_4k_pages_wf(new_page_array, new_allocator_map),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-        new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
+        old_allocator_map: PageAllocatorUnLockedMap,
+        new_allocator_map: PageAllocatorUnLockedMap,
     |
         (allocator_4k_pages_wf(old_page_array, old_allocator_map)
         && new_allocator_map.dom() == old_allocator_map.dom()
@@ -339,10 +339,10 @@ pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq_forall()
 
 // allocator_2m_pages_wf: Allocated4k{As2MAllocator} <-> allocator_2m_map.dom().
 pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-    new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
+    old_allocator_map: PageAllocatorUnLockedMap,
+    new_allocator_map: PageAllocatorUnLockedMap,
 )
     requires
         allocator_2m_pages_wf(old_page_array, old_allocator_map),
@@ -362,10 +362,10 @@ pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq(
 pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-            new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
+            old_allocator_map: PageAllocatorUnLockedMap,
+            new_allocator_map: PageAllocatorUnLockedMap,
         |
             #![trigger allocator_2m_pages_wf(old_page_array, old_allocator_map), allocator_2m_pages_wf(new_page_array, new_allocator_map)]
             (allocator_2m_pages_wf(old_page_array, old_allocator_map)
@@ -380,10 +380,10 @@ pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq_forall()
             allocator_2m_pages_wf(new_page_array, new_allocator_map),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-        new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
+        old_allocator_map: PageAllocatorUnLockedMap,
+        new_allocator_map: PageAllocatorUnLockedMap,
     |
         (allocator_2m_pages_wf(old_page_array, old_allocator_map)
         && new_allocator_map.dom() == old_allocator_map.dom()
@@ -402,10 +402,10 @@ pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq_forall()
 
 // allocator_1g_pages_wf: Allocated4k{As1GAllocator} <-> allocator_1g_map.dom().
 pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq(
-    old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-    old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-    new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
+    old_allocator_map: PageAllocatorUnLockedMap,
+    new_allocator_map: PageAllocatorUnLockedMap,
 )
     requires
         allocator_1g_pages_wf(old_page_array, old_allocator_map),
@@ -425,10 +425,10 @@ pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq(
 pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq_forall()
     ensures
         forall|
-            old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-            old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-            new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+            old_page_array: PageLockedArray,
+            new_page_array: PageLockedArray,
+            old_allocator_map: PageAllocatorUnLockedMap,
+            new_allocator_map: PageAllocatorUnLockedMap,
         |
             #![trigger allocator_1g_pages_wf(old_page_array, old_allocator_map), allocator_1g_pages_wf(new_page_array, new_allocator_map)]
             (allocator_1g_pages_wf(old_page_array, old_allocator_map)
@@ -443,10 +443,10 @@ pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq_forall()
             allocator_1g_pages_wf(new_page_array, new_allocator_map),
 {
     assert forall|
-        old_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        new_page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
-        old_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
-        new_allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>,
+        old_page_array: PageLockedArray,
+        new_page_array: PageLockedArray,
+        old_allocator_map: PageAllocatorUnLockedMap,
+        new_allocator_map: PageAllocatorUnLockedMap,
     |
         (allocator_1g_pages_wf(old_page_array, old_allocator_map)
         && new_allocator_map.dom() == old_allocator_map.dom()

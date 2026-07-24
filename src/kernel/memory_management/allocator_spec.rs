@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 verus! {
     #[verifier::opaque]
-    pub open spec fn allocator_perms_wf(alloc_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool {
+    pub open spec fn allocator_perms_wf(alloc_map: PageAllocatorUnLockedMap) -> bool {
         &&&
         alloc_map.perms_wf()
         &&&
@@ -14,7 +14,7 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn allocator_free_page_ptrs_wf(allocator_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool{
+    pub open spec fn allocator_free_page_ptrs_wf(allocator_map: PageAllocatorUnLockedMap) -> bool{
         &&&
         forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
             #![trigger allocator_map.spec_index(alloc_ptr), page_ptr_valid(page_ptr)]
@@ -33,7 +33,7 @@ verus! {
             page_ptr_valid(page_ptr)  
     }
 
-    // pub closed spec fn free_pages_4k_addr_wf(allocator_4k_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool{
+    // pub closed spec fn free_pages_4k_addr_wf(allocator_4k_map: PageAllocatorUnLockedMap) -> bool{
     //     &&&
     //     forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
     //         #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
@@ -49,7 +49,7 @@ verus! {
     //         page_ptr_valid(page_ptr)  
     // }
 
-    // pub closed spec fn free_pages_2m_addr_wf(allocator_2m_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool{
+    // pub closed spec fn free_pages_2m_addr_wf(allocator_2m_map: PageAllocatorUnLockedMap) -> bool{
     //     &&&
     //     forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
     //         #![trigger allocator_2m_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
@@ -65,7 +65,7 @@ verus! {
     //         page_ptr_2m_valid(page_ptr)  
     // }
 
-    // pub closed spec fn free_pages_1g_addr_wf(allocator_1g_map: UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>) -> bool{
+    // pub closed spec fn free_pages_1g_addr_wf(allocator_1g_map: PageAllocatorUnLockedMap) -> bool{
     //     &&&
     //     forall|alloc_ptr:RwLockPageAllocatorPtr, page_ptr: PagePtr|
     //         #![trigger allocator_1g_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]

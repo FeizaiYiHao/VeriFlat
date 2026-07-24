@@ -476,7 +476,7 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(
 pub proof fn lemma_process_staged_pages_wf_preserved_for_view_eq(
     pre_process_map: ProcessLockedMap,
     post_process_map: ProcessLockedMap,
-    page_array: LockedArray<Page, (), (), (), NUM_PAGES, NO_KILL_STATE>,
+    page_array: PageLockedArray,
 )
     requires
         process_staged_pages_wf(pre_process_map, page_array),
