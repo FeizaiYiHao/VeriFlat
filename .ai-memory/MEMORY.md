@@ -1,0 +1,26 @@
+- [Proof gaps](feedback_proof_gaps.md) — Always flag proof/spec gaps to the user before adding external_body workarounds
+- [Ask before invariant triggers](feedback_ask_before_invariant_triggers.md) — Don't change #![trigger] on invariant/opaque spec predicates without asking first
+- [No self-added spinoff_prover](feedback_no_self_added_spinoff_prover.md) — Never add #[verifier::spinoff_prover] on your own; it's Xiangdong's call
+- [wunlock_process temp-alloc protocol](project_wunlock_process_temp_alloc_protocol.md) — wunlock_process requires temp_alloc_clean; flush staged pages before unlocking
+- [Lemma scoping](feedback_lemma_scoping.md) — scope lemmas into EXISTING consumer asserts only; a new assert-by for a ground-fact lemma backfires; forall-ensures lemmas are the reveal-like ones worth scoping
+- [alloc_free_4k rlimit drivers](project_alloc_free_4k_rlimit_drivers.md) — profiler: allocate_free_4k_page is 54% of module rlimit; dominated by Set fold axioms + allocator/cpu-cache inv() deep quantifiers, not ground lemmas
+- [match_lctx wrapper contract](project_match_lctx_wrapper_contract.md) — the 6 4k-path lock wrappers now carry locked_objects_match_lctx in requires/ensures; cut allocate_free_4k_page 83%; Batch 2 (cpu/container/quota/process) done + begin/end_user_view_step frame it
+- [alloc_free_4k postconditions](project_alloc_free_4k_postconditions.md) — full functional postconditions proven; scan_caches_and_alloc spec-gap fix; "cost wall" was a proof-gap mirage (fix the gap, not the budget)
+- [syscall_new_thread](project_syscall_new_thread.md) — now enabled + fully verifies (lock skeleton + release paths); thread-creation body still a stub returning Error; roadmap for finishing inside
+- [LockedMap::insert TCB](project_lockedmap_insert_tcb.md) — new external_body primitive that GROWS the map domain (mints a write-locked RwLock); first step for thread creation; awaiting Xiangdong review
+- [Thread-create skeleton](project_thread_create_skeleton.md) — scheduler wrappers + retype TCB + container-set proof fn + create wrapper all landed (crate 466); 2 marked assumes + fold-insert-of-zero axiom left to finish; lock traits + scheduler_perms_wf-in-inv gap fixed
+- [Thread wiring milestone](project_thread_wiring_milestone.md) — alloc exact-insert contract + wunlock_thread + create_thread ensures DONE (473 verified); body blocked on staged-page-post-boundary lock state (needs design call: alloc should return page still-locked)
+- [create_thread remaining assumes](project_create_thread_remaining_assumes.md) — inv() rebuild mostly proven; 2 assumes left (fold-insert-of-zero, container_thread_wf lemma); process_thread_wf now PROVEN via push_tail freshness ensures + a dom-membership conjunct added to its fwd clause + seq_push_lemma for the reverse contains
+- [Who Xiangdong is](user_xiangdong.md) — verification architect; one deliverable at a time, blesses narrow escape hatches then expects reuse, honesty over polish, decisions (invariant/trigger/spinoff/lock-hierarchy) are HIS
+- [Ensures over assume](feedback_ensures_over_assume.md) — a fact lost across &mut borrows: strengthen the callee's ensures, never assume() it (took add_new_thread 16 assumes → 0)
+- [Cost wall is usually a bug](feedback_cost_wall_is_usually_a_bug.md) — a postcondition failing at 300M rlimit is usually an un-fired trigger; assert the trigger/membership term, don't raise the budget (272M→5.27M)
+- [Lock id frozen at acquire](feedback_lock_id_ordering_frozen_at_acquire.md) — an RwLock's lock_id+major is frozen at lock time from the payload THEN; staged page locks as Free (major 30000) even after retype; drove scheduler major 20000→103
+- [Thread wiring COMPLETE](project_thread_wiring_milestone.md) — add_new_thread LIVE, crate 479 verified (2026-07-23), 0 assumes; scheduler→103, rodata-TCB, Option-B alloc, 4 blessed stub lemmas
+- [Syscall postcondition models KernelU](feedback_syscall_postcondition_models_kernel_u.md) — syscall postcondition describe KernelU (user-visible) via old_u/new_u, never KernelK internals
+- [Kernel invariant opaque reveal](project_kernel_invariant_opaque_reveal.md) — all kernel invariants are #[verifier::opaque], must explicitly reveal() in proof blocks
+- [Memory model core concepts](project_memory_model_core_concepts.md) — Page metadata vs PagePtr physical address vs PagePerm ownership; page_index2page_ptr mapping; perm field Tracked<Option<PagePerm>>
+- [upper_container_seq read-only no lock](feedback_upper_container_seq_readonly_no_lock.md) — read-only spec field access needs no lock
+- [Struct literal parens](feedback_verus_struct_literal_parens.md) — ensures/requires struct literals must be wrapped in parentheses
+- [view() sequence bridge assert](feedback_verus_view_sequence_bridge_assert.md) — when view() and underlying sequence don't auto-equate, add explicit forall bridge assert
+- [KernelSteps.inv() bridge](project_syscall_new_thread_kernelsteps_inv.md) — syscall_new_thread postcondition needs KernelSteps.inv() to bridge old_u and old_k
+- Verus code-style signature now lives in-repo at `.kiro/steering/verus-style.md` (auto-loaded via CLAUDE.md @import) — not duplicated here
