@@ -280,6 +280,7 @@ verus! {
                 final(self).inv(),
                 // LocalContext: phase flips to Acquire; everything else preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                // lock_map fully preserved (held objects' lock states unchanged).
                 final(lctx).lock_map() == old(lctx).lock_map(),
                 final(lctx).kernel_view_locking_state() is Acquire,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -292,134 +293,17 @@ verus! {
                 // Read-only data unchanged at the kernel level.
                 final(self).root_container == old(self).root_container,
                 final(self).default_pagetable == old(self).default_pagetable,
-                // Rodata is immutable (no interface mutates a live object's rodata;
-                // only lock/kill and a create/destroy could, and those are separate
-                // steps that would change the domain), so EVERY container's /
-                // process's rodata + domain membership is preserved across the
-                // interleaving — not just the held ones. Lets a syscall that read a
-                // container's scheduler/allocator ptr before an internal boundary
-                // keep using it afterward without holding the container lock.
-                old(self).container_map.dom() == final(self).container_map.dom(),
-                forall|c: RwLockContainerPtr|
-                    #![trigger final(self).container_map.spec_index(c).view_rodata()]
-                    old(self).container_map.dom().contains(c)
-                    ==> final(self).container_map.spec_index(c).view_rodata()
-                        == old(self).container_map.spec_index(c).view_rodata(),
-                // Object domains are stable across the interleaving: creating or
-                // destroying a scheduler / thread / endpoint / pagetable is a
-                // separate step, so a syscall keeps its domain memberships.
-                old(self).scheduler_map.dom() == final(self).scheduler_map.dom(),
-                old(self).thread_map.dom() == final(self).thread_map.dom(),
-                old(self).endpoint_map.dom() == final(self).endpoint_map.dom(),
-                old(self).pagetable_map.dom() == final(self).pagetable_map.dom(),
-                old(self).process_map.dom() == final(self).process_map.dom(),
-                forall|p: RwLockProcessPtr|
-                    #![trigger final(self).process_map.spec_index(p).view_rodata()]
-                    old(self).process_map.dom().contains(p)
-                    ==> final(self).process_map.spec_index(p).view_rodata()
-                        == old(self).process_map.spec_index(p).view_rodata(),
-                // Held containers / processes / etc. unchanged in entirety.
-                forall|c: RwLockContainerPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Container(c))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::Container(c))
-                    ==>
-                    final(self).container_map.dom().contains(c)
-                    && final(self).container_map[c] == old(self).container_map[c],
-                forall|p: RwLockProcessPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Process(p))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::Process(p))
-                    ==>
-                    final(self).process_map.dom().contains(p)
-                    && final(self).process_map[p] == old(self).process_map[p],
-                forall|t: RwLockThreadPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Thread(t))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::Thread(t))
-                    ==>
-                    final(self).thread_map.dom().contains(t)
-                    && final(self).thread_map[t] == old(self).thread_map[t],
-                forall|e: RwLockEndpointPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Endpoint(e))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::Endpoint(e))
-                    ==>
-                    final(self).endpoint_map.dom().contains(e)
-                    && final(self).endpoint_map[e] == old(self).endpoint_map[e],
-                forall|s: RwLockSchedulerPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Scheduler(s))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::Scheduler(s))
-                    ==>
-                    final(self).scheduler_map.dom().contains(s)
-                    && final(self).scheduler_map[s] == old(self).scheduler_map[s],
-                forall|pt: RwLockPageTableRoot|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::PageTable(pt))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::PageTable(pt))
-                    ==>
-                    final(self).pagetable_map.dom().contains(pt)
-                    && final(self).pagetable_map[pt] == old(self).pagetable_map[pt],
-                // Held pages: full RwLock instance preserved.
-                forall|i: PageIndex|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Page(i))]
-                    page_index_wf(i) && old(lctx).lock_map().dom().contains(KernelObjId::Page(i))
-                    ==>
-                    final(self).page_array[i]@ == old(self).page_array[i]@,
-                // Held cpus: full RwLock instance preserved.
-                forall|c: CpuId|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::Cpu(c))]
-                    cpu_id_valid(c) && old(lctx).lock_map().dom().contains(KernelObjId::Cpu(c))
-                    ==>
-                    final(self).cpu_array[c]@ == old(self).cpu_array[c]@,
-                forall|sz: PageSize, p: RwLockPageAllocatorPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
-                    ==>
-                    {
-                        let old_m = match sz {
-                            PageSize::SZ4k => old(self).allocator_4k_map,
-                            PageSize::SZ2m => old(self).allocator_2m_map,
-                            PageSize::SZ1g => old(self).allocator_1g_map,
-                        };
-                        let new_m = match sz {
-                            PageSize::SZ4k => final(self).allocator_4k_map,
-                            PageSize::SZ2m => final(self).allocator_2m_map,
-                            PageSize::SZ1g => final(self).allocator_1g_map,
-                        };
-                        new_m.dom().contains(p) && new_m[p].quota == old_m[p].quota
-                    },
-                forall|sz: PageSize, p: RwLockPageAllocatorPtr|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
-                    ==>
-                    {
-                        let old_m = match sz {
-                            PageSize::SZ4k => old(self).allocator_4k_map,
-                            PageSize::SZ2m => old(self).allocator_2m_map,
-                            PageSize::SZ1g => old(self).allocator_1g_map,
-                        };
-                        let new_m = match sz {
-                            PageSize::SZ4k => final(self).allocator_4k_map,
-                            PageSize::SZ2m => final(self).allocator_2m_map,
-                            PageSize::SZ1g => final(self).allocator_1g_map,
-                        };
-                        new_m.dom().contains(p) && new_m[p].global_pool == old_m[p].global_pool
-                    },
-                forall|sz: PageSize, p: RwLockPageAllocatorPtr, c: CpuId|
-                    #![trigger old(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
-                    old(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
-                    ==>
-                    {
-                        let old_m = match sz {
-                            PageSize::SZ4k => old(self).allocator_4k_map,
-                            PageSize::SZ2m => old(self).allocator_2m_map,
-                            PageSize::SZ1g => old(self).allocator_1g_map,
-                        };
-                        let new_m = match sz {
-                            PageSize::SZ4k => final(self).allocator_4k_map,
-                            PageSize::SZ2m => final(self).allocator_2m_map,
-                            PageSize::SZ1g => final(self).allocator_1g_map,
-                        };
-                        new_m.dom().contains(p)
-                        && cpu_id_valid(c)
-                        && new_m[p].cpu_caches[c]@ == old_m[p].cpu_caches[c]@
-                    },
+                // Per-subsystem preservation: rodata of surviving objects +
+                // full state of every held object.
+                boundary_containers_preserved(old(self), final(self), old(lctx)),
+                boundary_processes_preserved(old(self), final(self), old(lctx)),
+                boundary_threads_preserved(old(self), final(self), old(lctx)),
+                boundary_endpoints_preserved(old(self), final(self), old(lctx)),
+                boundary_schedulers_preserved(old(self), final(self), old(lctx)),
+                boundary_pagetables_preserved(old(self), final(self), old(lctx)),
+                boundary_pages_preserved(old(self), final(self), old(lctx)),
+                boundary_cpus_preserved(old(self), final(self), old(lctx)),
+                boundary_allocators_preserved(old(self), final(self), old(lctx)),
         {
             unimplemented!()
         }
@@ -643,6 +527,194 @@ verus! {
                     cpu_id_valid(c) && alloc_map[p].cpu_caches[c]@.locked_by(lctx)
                     ==> lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
             })
+    }
+
+    // ================================================================
+    // Boundary preservation predicates, grouped by kernel subsystem.
+    // Each relates the pre-boundary kernel `pre` to the post-boundary
+    // kernel `post`: rodata of surviving objects is immutable, and any
+    // object held in `lctx.lock_map` (or write-locked by `lctx`) is
+    // preserved in its entirety.
+    // ================================================================
+
+    pub open spec fn boundary_containers_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        &&& forall|c: RwLockContainerPtr|
+            #![trigger pre.container_map.dom().contains(c)]
+            #![trigger post.container_map.dom().contains(c)]
+            pre.container_map.dom().contains(c) && post.container_map.dom().contains(c)
+            ==> post.container_map.spec_index(c).view_rodata() == pre.container_map.spec_index(c).view_rodata()
+        &&& forall|c: RwLockContainerPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Container(c))]
+            #![trigger pre.container_map.spec_index(c).locked_by(lctx)]
+            #![trigger pre.container_map.dom().contains(c)]
+            #![trigger post.container_map.dom().contains(c)]
+            (lctx.lock_map().dom().contains(KernelObjId::Container(c))
+                || (pre.container_map.dom().contains(c) && pre.container_map.spec_index(c).locked_by(lctx)))
+            ==> post.container_map.dom().contains(c) && post.container_map[c] == pre.container_map[c]
+    }
+
+    pub open spec fn boundary_processes_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        &&& forall|p: RwLockProcessPtr|
+            #![trigger pre.process_map.dom().contains(p)]
+            #![trigger post.process_map.dom().contains(p)]
+            pre.process_map.dom().contains(p) && post.process_map.dom().contains(p)
+            ==> post.process_map.spec_index(p).view_rodata() == pre.process_map.spec_index(p).view_rodata()
+        &&& forall|p: RwLockProcessPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Process(p))]
+            #![trigger pre.process_map.spec_index(p).locked_by(lctx)]
+            #![trigger pre.process_map.dom().contains(p)]
+            #![trigger post.process_map.dom().contains(p)]
+            (lctx.lock_map().dom().contains(KernelObjId::Process(p))
+                || (pre.process_map.dom().contains(p) && pre.process_map.spec_index(p).locked_by(lctx)))
+            ==> post.process_map.dom().contains(p) && post.process_map[p] == pre.process_map[p]
+    }
+
+    pub open spec fn boundary_threads_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        forall|t: RwLockThreadPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Thread(t))]
+            #![trigger pre.thread_map.spec_index(t).locked_by(lctx)]
+            #![trigger pre.thread_map.dom().contains(t)]
+            #![trigger post.thread_map.dom().contains(t)]
+            (lctx.lock_map().dom().contains(KernelObjId::Thread(t))
+                || (pre.thread_map.dom().contains(t) && pre.thread_map.spec_index(t).locked_by(lctx)))
+            ==> post.thread_map.dom().contains(t) && post.thread_map[t] == pre.thread_map[t]
+    }
+
+    pub open spec fn boundary_endpoints_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        forall|e: RwLockEndpointPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))]
+            #![trigger pre.endpoint_map.spec_index(e).locked_by(lctx)]
+            #![trigger pre.endpoint_map.dom().contains(e)]
+            #![trigger post.endpoint_map.dom().contains(e)]
+            (lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))
+                || (pre.endpoint_map.dom().contains(e) && pre.endpoint_map.spec_index(e).locked_by(lctx)))
+            ==> post.endpoint_map.dom().contains(e) && post.endpoint_map[e] == pre.endpoint_map[e]
+    }
+
+    pub open spec fn boundary_schedulers_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        forall|s: RwLockSchedulerPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))]
+            #![trigger pre.scheduler_map.spec_index(s).locked_by(lctx)]
+            #![trigger pre.scheduler_map.dom().contains(s)]
+            #![trigger post.scheduler_map.dom().contains(s)]
+            #![trigger post.scheduler_map.spec_index(s)]
+            (lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))
+                || (pre.scheduler_map.dom().contains(s) && pre.scheduler_map.spec_index(s).locked_by(lctx)))
+            ==> post.scheduler_map.dom().contains(s) && post.scheduler_map[s] == pre.scheduler_map[s]
+    }
+
+    pub open spec fn boundary_pagetables_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        forall|pt: RwLockPageTableRoot|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))]
+            #![trigger pre.pagetable_map.spec_index(pt).locked_by(lctx)]
+            #![trigger pre.pagetable_map.dom().contains(pt)]
+            #![trigger post.pagetable_map.dom().contains(pt)]
+            (lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))
+                || (pre.pagetable_map.dom().contains(pt) && pre.pagetable_map.spec_index(pt).locked_by(lctx)))
+            ==> post.pagetable_map.dom().contains(pt) && post.pagetable_map[pt] == pre.pagetable_map[pt]
+    }
+
+    pub open spec fn boundary_pages_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        forall|i: PageIndex|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Page(i))]
+            #![trigger pre.page_array[i]@.locked_by(lctx)]
+            (page_index_wf(i) && lctx.lock_map().dom().contains(KernelObjId::Page(i)))
+                || (page_index_wf(i) && pre.page_array[i]@.locked_by(lctx))
+            ==> post.page_array[i]@ == pre.page_array[i]@
+    }
+
+    pub open spec fn boundary_cpus_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        forall|c: CpuId|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Cpu(c))]
+            #![trigger pre.cpu_array[c]@.locked_by(lctx)]
+            #![trigger post.cpu_array[c]@]
+            (cpu_id_valid(c) && lctx.lock_map().dom().contains(KernelObjId::Cpu(c)))
+                || (cpu_id_valid(c) && pre.cpu_array[c]@.locked_by(lctx))
+            ==> post.cpu_array[c]@ == pre.cpu_array[c]@
+    }
+
+    pub open spec fn boundary_allocators_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
+        &&& forall|sz: PageSize, p: RwLockPageAllocatorPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
+            ==> {
+                let old_m = match sz {
+                    PageSize::SZ4k => pre.allocator_4k_map,
+                    PageSize::SZ2m => pre.allocator_2m_map,
+                    PageSize::SZ1g => pre.allocator_1g_map,
+                };
+                let new_m = match sz {
+                    PageSize::SZ4k => post.allocator_4k_map,
+                    PageSize::SZ2m => post.allocator_2m_map,
+                    PageSize::SZ1g => post.allocator_1g_map,
+                };
+                new_m.dom().contains(p) && new_m[p].quota == old_m[p].quota
+            }
+        &&& forall|sz: PageSize, p: RwLockPageAllocatorPtr|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
+            ==> {
+                let old_m = match sz {
+                    PageSize::SZ4k => pre.allocator_4k_map,
+                    PageSize::SZ2m => pre.allocator_2m_map,
+                    PageSize::SZ1g => pre.allocator_1g_map,
+                };
+                let new_m = match sz {
+                    PageSize::SZ4k => post.allocator_4k_map,
+                    PageSize::SZ2m => post.allocator_2m_map,
+                    PageSize::SZ1g => post.allocator_1g_map,
+                };
+                new_m.dom().contains(p) && new_m[p].global_pool == old_m[p].global_pool
+            }
+        &&& forall|p: RwLockPageAllocatorPtr|
+            #![trigger pre.allocator_4k_map.spec_index(p).global_pool.locked_by(lctx)]
+            pre.allocator_4k_map.dom().contains(p) && pre.allocator_4k_map.spec_index(p).global_pool.locked_by(lctx)
+            ==> post.allocator_4k_map.dom().contains(p)
+                && post.allocator_4k_map.spec_index(p).global_pool == pre.allocator_4k_map.spec_index(p).global_pool
+        &&& forall|p: RwLockPageAllocatorPtr|
+            #![trigger pre.allocator_2m_map.spec_index(p).global_pool.locked_by(lctx)]
+            pre.allocator_2m_map.dom().contains(p) && pre.allocator_2m_map.spec_index(p).global_pool.locked_by(lctx)
+            ==> post.allocator_2m_map.dom().contains(p)
+                && post.allocator_2m_map.spec_index(p).global_pool == pre.allocator_2m_map.spec_index(p).global_pool
+        &&& forall|p: RwLockPageAllocatorPtr|
+            #![trigger pre.allocator_1g_map.spec_index(p).global_pool.locked_by(lctx)]
+            pre.allocator_1g_map.dom().contains(p) && pre.allocator_1g_map.spec_index(p).global_pool.locked_by(lctx)
+            ==> post.allocator_1g_map.dom().contains(p)
+                && post.allocator_1g_map.spec_index(p).global_pool == pre.allocator_1g_map.spec_index(p).global_pool
+        &&& forall|sz: PageSize, p: RwLockPageAllocatorPtr, c: CpuId|
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
+            ==> {
+                let old_m = match sz {
+                    PageSize::SZ4k => pre.allocator_4k_map,
+                    PageSize::SZ2m => pre.allocator_2m_map,
+                    PageSize::SZ1g => pre.allocator_1g_map,
+                };
+                let new_m = match sz {
+                    PageSize::SZ4k => post.allocator_4k_map,
+                    PageSize::SZ2m => post.allocator_2m_map,
+                    PageSize::SZ1g => post.allocator_1g_map,
+                };
+                new_m.dom().contains(p) && cpu_id_valid(c) && new_m[p].cpu_caches[c]@ == old_m[p].cpu_caches[c]@
+            }
+        &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
+            #![trigger pre.allocator_4k_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)]
+            pre.allocator_4k_map.dom().contains(p) && cpu_id_valid(c)
+                && pre.allocator_4k_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)
+            ==> post.allocator_4k_map.dom().contains(p)
+                && post.allocator_4k_map.spec_index(p).cpu_caches[c]@ == pre.allocator_4k_map.spec_index(p).cpu_caches[c]@
+        &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
+            #![trigger pre.allocator_2m_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)]
+            pre.allocator_2m_map.dom().contains(p) && cpu_id_valid(c)
+                && pre.allocator_2m_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)
+            ==> post.allocator_2m_map.dom().contains(p)
+                && post.allocator_2m_map.spec_index(p).cpu_caches[c]@ == pre.allocator_2m_map.spec_index(p).cpu_caches[c]@
+        &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
+            #![trigger pre.allocator_1g_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)]
+            pre.allocator_1g_map.dom().contains(p) && cpu_id_valid(c)
+                && pre.allocator_1g_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)
+            ==> post.allocator_1g_map.dom().contains(p)
+                && post.allocator_1g_map.spec_index(p).cpu_caches[c]@ == pre.allocator_1g_map.spec_index(p).cpu_caches[c]@
     }
 
 }
