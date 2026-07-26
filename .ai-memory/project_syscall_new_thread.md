@@ -7,6 +7,11 @@ metadata:
   originSessionId: 11731d4e-6c71-43b7-b3d9-440871f93b17
 ---
 
+> Historical snapshot from 2026-07-17. The stub/blocker status below is
+> superseded by `project_thread_wiring_milestone.md` and
+> `project_contract_proof_simplification_2026_07_25.md`; do not use it as the
+> current implementation status.
+
 `kernel/implementation/syscall_new_thread.rs` is now ENABLED in mod.rs and
 **fully verifies** (3 verified, 0 errors; full crate 462; module 337K rlimit).
 It was previously the distrusted non-compiling "wip. fk AI. Useless" file.
