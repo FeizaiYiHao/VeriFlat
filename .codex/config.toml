@@ -1,0 +1,7 @@
+# Allow routine repository work while keeping sandbox escapes reviewable.
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false

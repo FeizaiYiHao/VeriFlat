@@ -1,81 +1,151 @@
 ---
 name: feedback_proof_simplification_methodology
-description: "Systematic approach to eliminating redundant proof code: trigger-first diagnosis, delete-and-verify, minimal irreducible core"
+description: "Contract-entailment-first method for removing redundant Verus proof code and specifications without weakening behavior"
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: current
 ---
 
-## Proof Simplification Hierarchy
+## Core Rule
 
-When simplifying Verus proof code, apply in this order:
+Proof simplification is a logical provenance audit, not an assert-counting
+exercise. For each precondition, postcondition, quantified conjunct, ghost
+snapshot, and proof block, identify the next consumer and the strongest fact
+that already implies it. Delete consequences rather than repeatedly forwarding
+them through every helper.
 
-### 1. Fix triggers FIRST (eliminates entire assert forall blocks)
+Do not call a proof "minimal" merely because obvious debugging asserts are gone.
+The 2026-07-25 pass removed another 321 net lines from code that had already been
+described as minimal, without changing invariant triggers or adding proof gaps.
 
-Most bridging `assert forall ... by { reveal(...) }` exist because a callee's
-postcondition forall trigger didn't fire. Fix the trigger on the CALLEE, then
-delete the bridging assert on the CALLER.
+## Simplification Order
 
-**Diagnostic:** if removing a bridging assert breaks verification, check whether
-the callee's postcondition forall has an aggressive post-state trigger. If not,
-add one (exec fn triggers are free to modify — small blast radius).
+### 1. Audit consumers and implication first
 
-### 2. Delete debugging asserts (STEP1/STEP2/... comments are tells)
+Start at call sites and externally consumed postconditions. Keep a fact only if
+a caller or the function body consumes it and it is not already implied by a
+stronger retained predicate.
 
-Any assert with a comment like `// STEP1: after wlock_all` or `// after scan`
-is a debugging aid. Delete and verify. These are never proof content.
+Common stronger sources in VeriFlat:
 
-### 3. Delete framing asserts that ensures already provide
+| Redundant fact | Stronger retained source |
+|---|---|
+| map domain/wf/init facts | `inv()` plus the relevant scoped `reveal(...)` |
+| object `wlocked_by` and lock-id equality | `locked_objects_match_lctx`, the `LockPerm`, and the `lctx.lock_map()` entry |
+| map-domain equality | `unchanged_except(...)` |
+| inserted-key membership/value and old-key preservation | exact `map == old(map).insert(key, value)` |
+| individual user-visible field deltas | a semantic change predicate such as `kernel_u_new_thread_changed` |
+| tree shape, no-duplicates, freshness, and length bounds | `inv()` components, revealed where the operation needs them |
 
-`assert(self.cpu_array == old(self).cpu_array)` after a function call is redundant
-if the called function's ensures already frames cpu_array. Delete and verify.
+Do not retain both a summary relation and all of its consequences. A semantic
+postcondition should be the public contract; field-by-field consequences can be
+derived by consumers that actually need them.
 
-### 4. Merge duplicate asserts
+### 2. Move derived facts to the callee that consumes them
 
-Two `assert forall|c: CpuId|` with the same antecedent but different consequents
-(dom-only + value) → merge into one with combined consequent.
+If a helper can derive a fact from `old(self).inv()`, require `inv()` and reveal
+the relevant component inside that helper immediately before use. Do not make
+every caller prove and forward the expanded consequences.
 
-### 5. Remove duplicate Page/Process lock_id asserts
+This is especially effective for:
 
-Same assert appearing twice in one proof block → delete the second occurrence.
+- container ancestor sequence membership/no-duplicates/depth facts;
+- thread-key freshness derived from `thread_pages_wf` and
+  `thread_locked_match_lctx`;
+- queue/list overflow bounds derived by invariant lemmas;
+- `perms_wf`, page initialization, and physical-permission presence.
 
-## What Is Irreducible
+This shrinks both the caller proof and the helper contract while keeping the
+dependency explicit at the actual consumption point.
 
-After all the above, the remaining proof code is minimal:
+### 3. Use one canonical lock witness chain
 
-- **Pre-boundary scoped reveals** (`assert(X) by { reveal(P) }`): opaque predicate
-  cost. Provides ground facts for boundary's held-object forall triggers.
-- **wunlock precondition asserts** (cache perms forall): exec call precondition
-  that requires explicit perm facts not derivable from inv().
-- **kernel_u_eq proof**: postcondition requires, uses ghost captures legitimately.
-- **Lock ordering asserts** (spec_gt, lock_id comparisons): exec call preconditions
-  for wlock that require arithmetic reasoning.
+For a held object, the preferred caller-facing facts are:
 
-## Anti-Patterns to Grep For
+1. `LockPerm.state() is WriteLock`;
+2. `LockPerm.thread_id() == lctx.thread_id()`;
+3. the object's key is in `lctx.lock_map()`;
+4. that key maps to `LockPerm.lock_id()`;
+5. `locked_objects_match_lctx(lctx)`.
 
-```bash
-# Debugging asserts (always removable)
-grep -n "// STEP\|// after\|// Post-" src/kernel/implementation/*.rs
+Together with `inv()`, these usually imply object-domain membership,
+`wlocked_by`, and equality with the object's internal write-lock id. Reveal only
+the relevant `*_locked_match_lctx` predicate in the callee when the low-level
+lock primitive needs those consequences.
 
-# Duplicate asserts (same line appearing twice in a proof block)
-# Framing asserts after calls (redundant with ensures)
-grep -n "assert(self\.\w* == old(self)\.\w*)" src/kernel/implementation/*.rs
+For quantified permission maps, quantify only the permission and lock-map facts
+the next wrapper consumes. Avoid carrying object-side `wf`, `wlocked_by`,
+`being_killed`, and internal lock-id equalities when the wrapper can recover
+them from the canonical chain.
 
-# Bridging assert foralls (fix trigger on callee, then delete)
-grep -n "assert forall.*by {" src/kernel/implementation/*.rs
-```
+### 4. Prefer exact frame relations over consequence bundles
 
-## Session Results (allocate_free_4k_page.rs)
+Exact equalities and frame predicates are compact proof interfaces:
 
-| Category | Lines removed |
-|----------|--------------|
-| Scheduler bridging assert forall × 4 paths | -32 |
-| Cpu bridging assert forall × 4 paths | -32 |
-| Post-boundary lock_map value asserts | -16 |
-| Post-boundary framing asserts | -8 |
-| STEP debugging asserts | -4 |
-| Duplicate asserts | -6 |
-| **Total** | **~98 lines** |
+- `final(map) == old(map).insert(...)`;
+- `unchanged_except(...)`;
+- `lock_ensures(...)` / `unlock_ensures(...)`;
+- `kernel_u_*_changed(...)`.
 
-All enabled by adding 2 aggressive triggers to boundary spec fns.
+Once one is retained, remove duplicate domain equalities, membership facts,
+lookup equalities, preservation foralls, and individual field deltas that it
+implies.
+
+### 5. Remove proof-only plumbing
+
+Delete unused exec/ghost parameters, snapshots, and generalized return variants
+that exist only to forward redundant facts. Examples validated in this repo:
+
+- an unused `cpu_id` on the allocator slow-path helper;
+- an unused destination-container parameter in ancestor-set recursion;
+- a generic `Error` result that the syscall can no longer return;
+- ghost lock-map snapshots used only by a removable bridge forall.
+
+### 6. Diagnose triggers only after the logical audit
+
+Bridging `assert forall ... by { reveal(...) }` can indicate a trigger problem,
+but first check whether the bridge is logically unnecessary because a stronger
+callee ensure or frame relation already supplies the result.
+
+If a real quantified postcondition is not instantiating, prefer a post-state
+trigger on the narrow exec/spec helper. Do not change triggers on opaque
+invariants without Xiangdong's approval. See
+`feedback_ask_before_invariant_triggers.md` and
+`feedback_aggressive_trigger_eliminates_bridging.md`.
+
+Pre-boundary scoped reveals remain load-bearing when they expose a ground
+lock-map fact from an opaque match predicate. Do not confuse those with
+post-call bridge foralls.
+
+### 7. Delete by fact family and verify immediately
+
+Use a narrow delete-and-verify loop:
+
+1. Remove one logical family, such as duplicate lock facts or one consequence
+   bundle.
+2. Verify the touched function/module.
+3. If it fails, identify the exact downstream precondition instead of restoring
+   the whole bundle.
+4. Run the full verifier after the local passes.
+
+A lower verified count is not automatically a regression: deleting a standalone
+lemma legitimately removes one verification item. Compare errors and behavior,
+not only the count.
+
+## Usually Load-Bearing
+
+- lock-order arithmetic (`spec_gt`, major/id comparisons) required by a wlock;
+- `being_killed() == false` when an unlock/mutation primitive explicitly needs it;
+- phase, snapshot, and `KernelSteps` facts at user/kernel boundaries;
+- exact page/process state changes that define allocator behavior;
+- scoped reveals that expose an opaque predicate's ground membership fact;
+- the final user-visible semantic change predicate.
+
+## Proof-Gap Discipline
+
+Never turn simplification failures into `assume`, `external_body`,
+`spinoff_prover`, trigger changes on invariants, or rlimit increases. A timeout
+can hide an unprovable contract. First locate the missing fact or over-specified
+contract, then either prove it, weaken the redundant requirement, or report the
+gap.
