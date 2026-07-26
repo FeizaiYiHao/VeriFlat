@@ -15,7 +15,7 @@ verus! {
         #[verifier::spinoff_prover]
         pub fn syscall_new_thread(
             &mut self,
-            tracked mut lctx: Tracked<LocalContext>,
+            Tracked(lctx): Tracked<&mut LocalContext>,
             Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId,
         ) -> (ret: RetValueType)
@@ -58,21 +58,6 @@ verus! {
                     || ret is ErrorNoQuota
                     || ret is Error,
         {
-            proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
-                assert(self.cpu_array.inv());
-                assert(self.container_map.perms_wf());
-                assert(self.allocator_4k_map.perms_wf());
-                assert(self.process_map.perms_wf());
-                reveal(cpu_objects_unlocked);
-                reveal(container_objects_unlocked);
-                reveal(allocator_objects_unlocked);
-                reveal(process_objects_unlocked);
-            }
-
             assert(
                 {
                     &&&
@@ -92,41 +77,44 @@ verus! {
                         == self.container_map.spec_index(self.cpu_array.spec_index(cpu_id).view().view().owning_container).view_rodata().view().depth
                 }
             ) by {
+                reveal(cpu_array_wf);
+                reveal(container_perms_wf);
+                reveal(process_perms_wf);
                 reveal(container_cpu_wf);
                 reveal(process_cpu_wf);
                 reveal(container_process_wf);
             };
 
-            let ghost entry_lctx = lctx@;
             proof {
-                crate::kernel::implementation::syscall_alloc_quota::all_unlocked_imply_locked_objects_match_lctx(&*self, &lctx);
+                reveal(cpu_objects_unlocked);
+                reveal(container_objects_unlocked);
+                reveal(allocator_objects_unlocked);
+                reveal(process_objects_unlocked);
+                crate::kernel::implementation::syscall_alloc_quota::all_unlocked_imply_locked_objects_match_lctx(&*self, &*lctx);
             }
 
             // ---- Lock #1: the running cpu. ----
-            let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut lctx));
+            let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut *lctx));
             let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process.unwrap();
+
+            assert(self.process_map.perms_wf()) by { reveal(process_perms_wf); };
+            assert(self.container_map.perms_wf()) by { reveal(container_perms_wf); }
 
             // The process's container + scheduler are fixed by rodata (immutable,
             // lock-free readable): read them before taking the process lock so the
             // scheduler (major 103) can be acquired ahead of the process (105).
             let proc_container = self.process_map.borrow_rodata(process_ptr).borrow().owning_container;
-            proof {
-                reveal(container_process_wf);
-                assert(self.container_map.dom().contains(proc_container));
-            }
+            assert(self.container_map.dom().contains(proc_container)) by { reveal(container_process_wf); }
             let scheduler_ptr = self.container_map.borrow_rodata(proc_container).borrow().scheduler;
 
             // ---- Lock #2: the container's scheduler (below the process). ----
+            assert(self.scheduler_map.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); }
             proof {
-                reveal(container_scheduler_wf);
-                assert(self.scheduler_map.dom().contains(scheduler_ptr));
-                assert(self.scheduler_map.spec_index(scheduler_ptr).locked_by(&lctx@) == false) by {
+                assert(self.scheduler_map.spec_index(scheduler_ptr).locked_by(&*lctx) == false) by {
                     reveal(scheduler_objects_unlocked);
-                    reveal(KernelK::all_objects_unlocked);
-                    assert(self.scheduler_map.spec_index(scheduler_ptr) == old(self).scheduler_map.spec_index(scheduler_ptr));
-                    assert(old(self).all_objects_unlocked(&entry_lctx));
-                    assert(old(self).scheduler_map.spec_index(scheduler_ptr).locked_by(&entry_lctx) == false);
+                    assert(old(self).all_objects_unlocked(old(lctx)));
+                    assert(old(self).scheduler_map.spec_index(scheduler_ptr).locked_by(old(lctx)) == false);
                 };
                 let sched_lock_id = LockId{
                     container: self.scheduler_map.spec_index(scheduler_ptr).container_depth(),
@@ -135,33 +123,26 @@ verus! {
                     minor: scheduler_ptr,
                 };
                 assert(sched_lock_id.major == SCHEDULER_LOCK_MAJOR) by { reveal(scheduler_perms_wf); };
-                assert(lctx@.obj_id_fresh(KernelObjId::Scheduler(scheduler_ptr)));
-                assert(lctx@.lock_id_acyclic(sched_lock_id)) by { reveal(cpu_locked_match_lctx); };
+                assert(lctx.lock_id_acyclic(sched_lock_id)) by { reveal(cpu_locked_match_lctx); };
             }
-            let Tracked(scheduler_lock_perm) = self.wlock_scheduler(scheduler_ptr, Tracked(&mut lctx));
+            let Tracked(scheduler_lock_perm) = self.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
 
             // ---- Lock #3: the running process (kill-aware). ----
             assert(
                 {
                     &&& self.process_map.dom().contains(process_ptr)
-                    &&& self.process_map.spec_index(process_ptr).locked_by(&lctx@) == false
+                    &&& self.process_map.spec_index(process_ptr).locked_by(&*lctx) == false
                 }
             ) by {
                 reveal(process_objects_unlocked);
-                reveal(KernelK::all_objects_unlocked);
-                assert(self.process_map.spec_index(process_ptr) == old(self).process_map.spec_index(process_ptr));
-                assert(old(self).all_objects_unlocked(&entry_lctx));
+                assert(old(self).all_objects_unlocked(old(lctx)));
             };
-            let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut lctx));
+            let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
             if let (false, _) = process_res {
                 // ===== PROCESS KILLED =====
-                assert(self.process_map.spec_index(process_ptr).being_killed() == true);
-                proof {
-                    reveal(scheduler_perms_wf);
-                    assert(lctx@.lock_map().dom() =~= set![ KernelObjId::Cpu(cpu_id), KernelObjId::Scheduler(scheduler_ptr) ]);
-                }
+                assert(self.scheduler_map.spec_index(scheduler_ptr).inv()) by { reveal(scheduler_perms_wf); };
                 self.release_cpu_and_finish(
-                    Tracked(lctx.get()),
+                    Tracked(&mut *lctx),
                     Tracked(&mut *steps),
                     cpu_id,
                     scheduler_ptr,
@@ -172,20 +153,12 @@ verus! {
             }
             let Tracked(process_lock_perm) = process_res.1.unwrap();
 
-            proof {
-                assert(lctx@.lock_map().dom() =~= set![
-                    KernelObjId::Cpu(cpu_id),
-                    KernelObjId::Scheduler(scheduler_ptr),
-                    KernelObjId::Process(process_ptr),
-                ]);
-            }
-
             // ---- Quota check: the process needs at least one 4k page. ----
             let process_ref = self.process_map.borrow(process_ptr, Tracked(&process_lock_perm));
             if process_ref.quota_4k < 1 {
-                proof { reveal(scheduler_perms_wf); }
+                assert(self.scheduler_map.spec_index(scheduler_ptr).inv()) by { reveal(scheduler_perms_wf); };
                 self.release_cpu_and_process_and_finish(
-                    Tracked(lctx.get()),
+                    Tracked(&mut *lctx),
                     Tracked(&mut *steps),
                     cpu_id,
                     scheduler_ptr,
@@ -206,7 +179,7 @@ verus! {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
             self.add_new_thread_to_proc_container_and_scheduler(
-                Tracked(lctx.get()),
+                Tracked(&mut *lctx),
                 Tracked(&mut *steps),
                 cpu_id,
                 process_ptr,
@@ -233,7 +206,7 @@ verus! {
         #[verifier::spinoff_prover]
         fn add_new_thread_to_proc_container_and_scheduler(
             &mut self,
-            tracked mut lctx: Tracked<LocalContext>,
+            Tracked(lctx): Tracked<&mut LocalContext>,
             Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId,
             process_ptr: RwLockProcessPtr,
@@ -304,8 +277,6 @@ verus! {
             let tracked mut process_lock_perm = process_lock_perm.get();
             let tracked cpu_lock_perm = cpu_lock_perm.get();
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
-            let ghost entry_steps_len = steps.steps.len();
-            let ghost entry_self = *self;
 
             proof { reveal(container_perms_wf); }
             let alloc_ptr_4k = self.container_map.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
@@ -314,9 +285,6 @@ verus! {
             proof {
                 reveal(container_process_wf);
                 reveal(container_allocator_wf);
-                assert(self.container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr));
-                assert(self.allocator_4k_map.dom().contains(alloc_ptr_4k));
-                assert(process_effective_quota_4k(self.process_map.spec_index(process_ptr)) >= 1);
                 crate::kernel::implementation::allocate_free_4k_page::lemma_effective_quota_ge_1_imply_total_free_pages_pos(self, container_ptr, alloc_ptr_4k, process_ptr);
                 assert forall|obj_id: KernelObjId| #![auto]
                     lctx.lock_map().dom().contains(obj_id)
@@ -345,8 +313,6 @@ verus! {
             // staged the page but that projects to nothing).
             proof {
                 steps.begin_user_view_step(&*self, &mut *lctx);
-                // old_u is the U projection of the K state at begin time.
-                assert(steps.steps.last().old_u == kernel_k_to_kernel_u(*self));
             }
 
             // ---- create_thread_from_staged_page preconditions ----
@@ -358,8 +324,6 @@ verus! {
                 reveal(container_uppertree_seq_wf);
                 reveal(container_tree_wf);
                 reveal(container_tree_fields_wf);
-                assert(self.container_map.dom().contains(container_ptr));
-                assert(self.container_map.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr);
                 assert forall|i: int| #![auto]
                     0 <= i < self.container_map.spec_index(container_ptr).view().uppertree_seq.view().len()
                     implies self.container_map.dom().contains(self.container_map.spec_index(container_ptr).view().uppertree_seq.view()[i]) by {
@@ -375,32 +339,19 @@ verus! {
                     reveal(thread_locked_match_lctx);
                 };
                 // push_tail overflow guards: thread / queue counts are bounded by NUM_PAGES.
+                assert(self.scheduler_map.dom().contains(scheduler_ptr)) by {
+                    reveal(scheduler_locked_match_lctx);
+                };
                 lemma_inv_imply_owned_threads_len_bounded(&*self, process_ptr);
                 lemma_inv_imply_scheduler_queue_len_bounded(&*self, scheduler_ptr);
                 // The scheduler stayed held across alloc (its lock_map key survived),
                 // so its dom + write-lock state + being_killed carry over.
-                assert(self.scheduler_map.dom().contains(scheduler_ptr));
                 assert(self.scheduler_map.spec_index(scheduler_ptr).wlocked_by(&*lctx)) by {
                     reveal(scheduler_locked_match_lctx);
-                };
-                assert(self.scheduler_map.spec_index(scheduler_ptr).being_killed() == false) by {
-                    reveal(scheduler_perms_wf);
                 };
                 assert(scheduler_lock_perm.lock_id() == self.scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id) by {
                     reveal(scheduler_locked_match_lctx);
                 };
-                // The process entered temp_alloc_clean (empty caches); alloc staged
-                // exactly page_ptr into the 4k cache, so it is now {page_ptr} and
-                // the 2m/1g caches are still empty.
-                assert(entry_self.process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view()
-                    =~= Set::<PagePtr>::empty()) by {
-                    reveal(process_perms_wf);
-                    entry_self.process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view().lemma_len0_is_empty();
-                };
-                assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view()
-                    =~= Set::<PagePtr>::empty().insert(page_ptr));
-                assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_2m.view().len() == 0);
-                assert(self.process_map.spec_index(process_ptr).view().temp_alloc_cache_1g.view().len() == 0);
             }
             let (thread_ptr, Tracked(thread_lock_perm)) = self.create_thread_from_staged_page(
                 page_ptr, process_ptr, container_ptr, scheduler_ptr,
@@ -410,37 +361,23 @@ verus! {
             // Release every lock (reverse acquire order): thread, page, scheduler,
             // process, cpu.
             let ghost k_post_create = *self;
-            proof {
-                // All lock_map membership + values + held lock state from
-                // locked_objects_match_lctx (thread_id preserved through alloc +
-                // wlock_scheduler + begin_user_view_step, so each perm still matches).
-                reveal(thread_locked_match_lctx);
-                reveal(page_locked_match_lctx);
-                reveal(scheduler_locked_match_lctx);
-                reveal(process_locked_match_lctx);
-                reveal(cpu_locked_match_lctx);
-                reveal(scheduler_perms_wf);
-                reveal(process_perms_wf);
-                // The cpu key is held now (entry lock_map was {Cpu,Scheduler,Process};
-                // alloc added Page, create_thread added Thread), and it survives the
-                // four unlocks below (each removes only its own key), giving
-                // wunlock_cpu its precondition.
-                assert(lctx.lock_map().dom().contains(KernelObjId::Cpu(cpu_id)));
-                assert(self.cpu_array.spec_index(cpu_id).view().wlocked_by(&*lctx));
-            }
             self.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
             self.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
+            assert(lctx.lock_map().dom().contains(KernelObjId::Scheduler(scheduler_ptr)));
+            assert(lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)] == scheduler_lock_perm.lock_id());
+            assert(lctx.lock_map().dom().contains(KernelObjId::Process(process_ptr)));
+            assert(lctx.lock_map()[KernelObjId::Process(process_ptr)] == process_lock_perm.lock_id());
             self.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+            assert(lctx.lock_map().dom().contains(KernelObjId::Process(process_ptr)));
+            assert(lctx.lock_map()[KernelObjId::Process(process_ptr)] == process_lock_perm.lock_id());
             self.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-            proof { reveal(cpu_locked_match_lctx); }
+            assert(lctx.lock_map().dom().contains(KernelObjId::Cpu(cpu_id)));
+            assert(lctx.lock_map()[KernelObjId::Cpu(cpu_id)] == cpu_lock_perm.lock_id());
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             // Close the user-view step.
             proof {
                 steps.end_user_view_step(&*self, &mut *lctx);
-                assert(steps.steps.len() == entry_steps_len + 1);
-                assert(steps.steps.last().new_k == *self);
-                assert(steps.steps.last().new_u == kernel_k_to_kernel_u(*self));
                 // new_u == kernel_k_to_kernel_u(k_post_create) because wunlock
                 // only changes lock state (framing lemma).
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(&k_post_create, self);
@@ -466,7 +403,7 @@ verus! {
         #[verifier::spinoff_prover]
         fn release_cpu_and_finish(
             &mut self,
-            tracked mut lctx: Tracked<LocalContext>,
+            Tracked(lctx): Tracked<&mut LocalContext>,
             Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId,
             scheduler_ptr: RwLockSchedulerPtr,
@@ -504,22 +441,16 @@ verus! {
             let tracked cpu_lock_perm = cpu_lock_perm.get();
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
 
-            let ghost entry_steps_len = steps.steps.len();
+            proof { steps.begin_user_view_step(&*self, &mut *lctx); }
 
-            proof { steps.begin_user_view_step(&*self, lctx.borrow_mut()); }
-
-            self.wunlock_scheduler(scheduler_ptr, Tracked(&mut lctx), Tracked(scheduler_lock_perm));
-            self.wunlock_cpu(cpu_id, Tracked(&mut lctx), Tracked(cpu_lock_perm));
+            self.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+            self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
             proof {
-                steps.end_user_view_step(&*self, lctx.borrow_mut());
-                assert(steps.steps.len() == entry_steps_len + 1);
-                assert(steps.steps.last().new_k == *self);
-                assert(steps.steps.last().new_u == kernel_k_to_kernel_u(*self));
-                assert(steps.steps.last().old_u == steps.steps.last().new_u);
+                steps.end_user_view_step(&*self, &mut *lctx);
             }
         }
 
@@ -528,7 +459,7 @@ verus! {
         #[verifier::spinoff_prover]
         fn release_cpu_and_process_and_finish(
             &mut self,
-            tracked mut lctx: Tracked<LocalContext>,
+            Tracked(lctx): Tracked<&mut LocalContext>,
             Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId,
             scheduler_ptr: RwLockSchedulerPtr,
@@ -585,23 +516,17 @@ verus! {
             let tracked cpu_lock_perm = cpu_lock_perm.get();
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
 
-            let ghost entry_steps_len = steps.steps.len();
+            proof { steps.begin_user_view_step(&*self, &mut *lctx); }
 
-            proof { steps.begin_user_view_step(&*self, lctx.borrow_mut()); }
-
-            self.wunlock_scheduler(scheduler_ptr, Tracked(&mut lctx), Tracked(scheduler_lock_perm));
-            self.wunlock_process(process_ptr, Tracked(&mut lctx), Tracked(process_lock_perm));
-            self.wunlock_cpu(cpu_id, Tracked(&mut lctx), Tracked(cpu_lock_perm));
+            self.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+            self.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+            self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
             proof {
-                steps.end_user_view_step(&*self, lctx.borrow_mut());
-                assert(steps.steps.len() == entry_steps_len + 1);
-                assert(steps.steps.last().new_k == *self);
-                assert(steps.steps.last().new_u == kernel_k_to_kernel_u(*self));
-                assert(steps.steps.last().old_u == steps.steps.last().new_u);
+                steps.end_user_view_step(&*self, &mut *lctx);
             }
         }
 
@@ -945,12 +870,6 @@ verus! {
             proof {
                 let pre_u = kernel_k_to_kernel_u(*old(self));
                 let post_u = kernel_k_to_kernel_u(*self);
-                // cpu_array unchanged (ensures: final.cpu_array == old.cpu_array).
-                assert(post_u.cpu_array =~= pre_u.cpu_array);
-                // process_map domain unchanged.
-                assert(post_u.process_map.dom() =~= pre_u.process_map.dom());
-                // process_ptr in domain.
-                assert(pre_u.process_map.dom().contains(process_ptr));
                 // quota_4k decreased by 1.
                 assert(post_u.process_map[process_ptr].quota_4k as int
                     == pre_u.process_map[process_ptr].quota_4k as int - 1);
@@ -960,16 +879,6 @@ verus! {
                 assert(post_u.process_map[process_ptr].owned_threads.subrange(
                     0, pre_u.process_map[process_ptr].owned_threads.len() as int)
                     == pre_u.process_map[process_ptr].owned_threads);
-                // Other fields of process_ptr preserved.
-                assert(post_u.process_map[process_ptr].pagetable == pre_u.process_map[process_ptr].pagetable);
-                assert(post_u.process_map[process_ptr].quota_2m == pre_u.process_map[process_ptr].quota_2m);
-                assert(post_u.process_map[process_ptr].quota_1g == pre_u.process_map[process_ptr].quota_1g);
-                assert(post_u.process_map[process_ptr].parent == pre_u.process_map[process_ptr].parent);
-                assert(post_u.process_map[process_ptr].children == pre_u.process_map[process_ptr].children);
-                assert(post_u.process_map[process_ptr].depth == pre_u.process_map[process_ptr].depth);
-                assert(post_u.process_map[process_ptr].uppertree_seq == pre_u.process_map[process_ptr].uppertree_seq);
-                assert(post_u.process_map[process_ptr].subtree_set == pre_u.process_map[process_ptr].subtree_set);
-                assert(post_u.process_map[process_ptr].killed == pre_u.process_map[process_ptr].killed);
                 // Other processes unchanged.
                 assert(forall|p: RwLockProcessPtr|
                     #![trigger post_u.process_map[p]]
@@ -1193,17 +1102,14 @@ verus! {
             let process_depth = process_ro.depth;
             let proc_pagetable = process_ro.pagetable;
 
-            // ---- 2. Read upper_container_seq (Ghost/spec read, no lock needed) ----
-            let ghost upper_seq = self.container_map.spec_index(container_ptr).view().uppertree_seq.view();
-
-            // ---- 3. Construct the fresh Thread value ----
+            // ---- 2. Construct the fresh Thread value ----
             let thread_value = Thread::new_fresh(
                 container_ptr,
                 container_depth,
                 process_ptr,
                 process_depth,
                 proc_pagetable,
-                Ghost(upper_seq),
+                Ghost(self.container_map.spec_index(container_ptr).view().uppertree_seq.view()),
             );
 
             // ---- 4. Take perm_4k from the page + flip state ----
@@ -1380,8 +1286,7 @@ verus! {
                     && final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
                     && final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed(),
     {
-        let ghost new_dc_threads = container_map.spec_index(dc).view_user_ghost().owned_threads.view().insert(t_ptr);
-        container_map.update_user_ghost(dc, ContainerGhostU { owned_threads: Ghost(new_dc_threads) });
+        container_map.update_user_ghost(dc, ContainerGhostU { owned_threads: Ghost(container_map.spec_index(dc).view_user_ghost().owned_threads.view().insert(t_ptr)) });
         add_thread_to_ancestor_sets(container_map, dc, t_ptr, uppers);
     }
 
@@ -1427,8 +1332,7 @@ verus! {
     {
         if uppers.len() > 0 {
             let c0 = uppers[0];
-            let ghost new_c_indirect = container_map.spec_index(c0).view_kernel_ghost().owned_indirect_threads.view().insert(t_ptr);
-            container_map.update_kernel_ghost(c0, ContainerGhostK { owned_indirect_threads: Ghost(new_c_indirect) });
+            container_map.update_kernel_ghost(c0, ContainerGhostK { owned_indirect_threads: Ghost(container_map.spec_index(c0).view_kernel_ghost().owned_indirect_threads.view().insert(t_ptr)) });
             add_thread_to_ancestor_sets(container_map, dc, t_ptr, uppers.drop_first());
             assert(!uppers.drop_first().contains(c0)) by {
                 if uppers.drop_first().contains(c0) {
