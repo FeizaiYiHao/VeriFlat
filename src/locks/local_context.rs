@@ -68,6 +68,34 @@ impl LocalContext{
                 self.lock_id_acyclic(lock_id1) == self.lock_id_acyclic(lock_id2)
     {
     }
+
+    /// TCB: Update a lock_map value during Release phase.
+    /// Safe because: (1) no more locking can occur in Release,
+    /// (2) the boundary will check lock_id_aligned afterwards.
+    #[verifier::external_body]
+    pub proof fn update_lock_id(
+        tracked &mut self,
+        obj_id: KernelObjId,
+        new_lock_id: LockId,
+    )
+        requires
+            old(self).kernel_view_locking_state() is Release,
+            old(self).lock_map().dom().contains(obj_id),
+        ensures
+            final(self).lock_map() =~= old(self).lock_map().insert(obj_id, new_lock_id),
+            final(self).lock_map().dom() == old(self).lock_map().dom(),
+            forall|other: KernelObjId|
+                #![trigger final(self).lock_map().dom().contains(other)]
+                #![trigger final(self).lock_map()[other]]
+                other != obj_id && final(self).lock_map().dom().contains(other)
+                ==> old(self).lock_map().dom().contains(other)
+                    && final(self).lock_map()[other] == old(self).lock_map()[other],
+            final(self).thread_id() == old(self).thread_id(),
+            final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
+            final(self).user_view_locking_state() == old(self).user_view_locking_state(),
+    {
+        unimplemented!()
+    }
 }
 
     pub open spec fn lock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool{
@@ -79,6 +107,13 @@ impl LocalContext{
         new.user_view_locking_state() == old.user_view_locking_state()
         &&&
         new.lock_map() =~= old.lock_map().insert(obj_id, lock_id)
+        &&&
+        forall|other: KernelObjId|
+            #![trigger new.lock_map().dom().contains(other)]
+            #![trigger new.lock_map()[other]]
+            other != obj_id && new.lock_map().dom().contains(other)
+            ==> old.lock_map().dom().contains(other)
+                && new.lock_map()[other] == old.lock_map()[other]
     }
 
     /// Precondition for releasing any lock guarded by `T`.
@@ -91,7 +126,7 @@ impl LocalContext{
         T::is_user_visible() ==> old.user_view_locking_state() is Release
     }
 
-    pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool{
+    pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_token: LockToken, obj_id: KernelObjId) -> bool{
         &&&
         new.thread_id() == old.thread_id()
         &&&
@@ -102,6 +137,13 @@ impl LocalContext{
         new.user_view_locking_state() == old.user_view_locking_state()
         &&&
         new.lock_map() =~= old.lock_map().remove(obj_id)
+        &&&
+        forall|other: KernelObjId|
+            #![trigger new.lock_map().dom().contains(other)]
+            #![trigger new.lock_map()[other]]
+            other != obj_id && new.lock_map().dom().contains(other)
+            ==> old.lock_map().dom().contains(other)
+                && new.lock_map()[other] == old.lock_map()[other]
     }
 
 }

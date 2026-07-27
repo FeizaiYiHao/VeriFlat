@@ -139,8 +139,8 @@ impl RwLockInner{
 }
 
 pub enum RwLockState{
-    Write{thread_id: LockThreadId, lock_id: LockId},
-    Read{reader_map: Map<LockThreadId, LockId>},
+    Write{thread_id: LockThreadId, lock_id: LockToken},
+    Read{reader_map: Map<LockThreadId, LockToken>},
     None,
 }
 
@@ -486,7 +486,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
 
             old(lctx).lock_map().dom().contains(obj_id@),
-            old(lctx).lock_map()[obj_id@] == lp@.lock_id(),
         ensures
             wunlock_ensures(*old(self), *final(self)),
             unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id(), obj_id@),
@@ -551,7 +550,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
 
             old(lctx).lock_map().dom().contains(obj_id@),
-            old(lctx).lock_map()[obj_id@] == lp@.lock_id(),
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
@@ -616,7 +614,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
                 // Lock acquired with the given lock_id.
                 &&&
-                final(self).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: lock_id@ }
+                final(self).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap()@.lock_id() }
                 &&&
                 final(self).inv()
                 &&&
@@ -632,7 +630,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 ret.1.unwrap()@.state() is WriteLock
                 &&&
-                ret.1.unwrap()@.lock_id() == lock_id@
+                ret.1.unwrap()@.lock_id() == final(self).locking_thread()->Write_lock_id
                 &&&
                 ret.1.unwrap()@.thread_id() == final(lctx).thread_id()
 
@@ -667,7 +665,7 @@ pub open spec fn wlock_requires<T: LockUserVisibilityTrait, ROT, KGhostT, UGhost
 
 pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
     &&&
-    new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_id }
+    new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_perm.lock_id() }
     &&&
     new.inv()
     &&&
@@ -686,7 +684,7 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibil
     &&&
     lock_perm.state() is WriteLock
     &&&
-    lock_perm.lock_id() == lock_id
+    new.locking_thread()->Write_lock_id == lock_perm.lock_id()
     &&&
     lock_perm.thread_id() == thread_id
 }
@@ -800,4 +798,3 @@ impl<T:LockIdTrait, const HAS_KILL_STATE: bool> LockIdTrait for RwLock<T, (), ()
 }
 
 }
-

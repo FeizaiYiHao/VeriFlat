@@ -140,6 +140,13 @@ verus! {
                 _ => false,
             }
         }
+        pub open spec fn is_owned(&self) -> bool {
+            match self.state{
+                PageState::Owned4k{..}
+                |PageState::Owned2m{..} => true,
+                _ => false,
+            }
+        }
         pub open spec fn is_merged(&self) -> bool {
             match self.state{
                 PageState::Merged2m 
@@ -193,7 +200,13 @@ verus! {
             Self::merged_page_lock_major()
         }
         open spec fn lock_major_default(&self) -> LockMajorId {
-            Self::allocated_page_lock_major()
+            // TODO: Allocated4k should get a relatively high major (TBD).
+            // For now it keeps ALLOCATED_PAGE_MAJOR = 1000.
+            if self.is_owned() {
+                OWNED_PAGE_LOCK_MAJOR
+            } else {
+                Self::allocated_page_lock_major()
+            }
         }
         open spec fn lock_major_1_predicate(&self) -> bool {
             self.is_free()

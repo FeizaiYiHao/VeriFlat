@@ -9,14 +9,18 @@ pub tracked enum LockState {
     WriteLock,
 }
 
+/// Opaque identity of an acquired lock instance. This authorizes access to an
+/// `RwLock` but deliberately carries no deadlock-ordering information.
+pub type LockToken = usize;
+
 pub tracked struct LockPerm {
     local_thread_id: LockThreadId,
-    lock_id: LockId,
+    lock_id: LockToken,
     state: LockState,
 }
 
 impl LockPerm{
-    pub closed spec fn lock_id(&self) -> LockId{
+    pub closed spec fn lock_id(&self) -> LockToken{
         self.lock_id
     }
 
