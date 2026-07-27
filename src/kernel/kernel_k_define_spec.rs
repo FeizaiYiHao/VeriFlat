@@ -245,13 +245,6 @@ verus! {
                 self.locked_objects_match_lctx(old(lctx)),
             ensures
                 final(lctx).lock_map() =~= old(lctx).lock_map().insert(obj_id, new_lock_id),
-                final(lctx).lock_map().dom() == old(lctx).lock_map().dom(),
-                forall|other: KernelObjId|
-                    #![trigger final(lctx).lock_map().dom().contains(other)]
-                    #![trigger final(lctx).lock_map()[other]]
-                    other != obj_id && final(lctx).lock_map().dom().contains(other)
-                    ==> old(lctx).lock_map().dom().contains(other)
-                        && final(lctx).lock_map()[other] == old(lctx).lock_map()[other],
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -552,15 +545,8 @@ verus! {
             page_lock_id_aligned(old_pages, old_lctx),
             new_pages.unchanged_except(&old_pages, page_index),
             new_pages.lock_id_by_index(page_index) == new_lock_id,
-            new_lctx.lock_map().dom().contains(KernelObjId::Page(page_index)),
-            new_lctx.lock_map()[KernelObjId::Page(page_index)] == new_lock_id,
-            forall|i: PageIndex|
-                #![auto]
-                i != page_index
-                    && new_lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                ==> old_lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                    && new_lctx.lock_map()[KernelObjId::Page(i)]
-                        == old_lctx.lock_map()[KernelObjId::Page(i)],
+            new_lctx.lock_map() =~= old_lctx.lock_map().insert(
+                KernelObjId::Page(page_index), new_lock_id),
         ensures
             page_lock_id_aligned(new_pages, new_lctx),
     {
@@ -575,11 +561,6 @@ verus! {
                 if i == page_index {
                     assert(new_lctx.lock_map()[KernelObjId::Page(i)] == new_lock_id);
                 } else {
-                    assert(i != page_index
-                        && new_lctx.lock_map().dom().contains(KernelObjId::Page(i)));
-                    assert(old_lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                        && new_lctx.lock_map()[KernelObjId::Page(i)]
-                            == old_lctx.lock_map()[KernelObjId::Page(i)]) by {};
                     assert(old_lctx.lock_map().dom().contains(KernelObjId::Page(i)));
                     assert(new_lctx.lock_map()[KernelObjId::Page(i)]
                         == old_lctx.lock_map()[KernelObjId::Page(i)]);
@@ -626,6 +607,34 @@ verus! {
                     == old_lctx.lock_map()[KernelObjId::Page(i)]);
             }
         }
+    }
+
+    /// Instantiate a boundary's quantified page frame for one held page.
+    pub proof fn held_page_aligned_after_boundary(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        page_index: PageIndex,
+    )
+        requires
+            page_index_wf(page_index),
+            pre_lctx.lock_map().dom().contains(KernelObjId::Page(page_index)),
+            page_lock_id_aligned(pre.page_array, pre_lctx),
+            post_lctx.lock_map() == pre_lctx.lock_map(),
+            boundary_pages_preserved(pre, post, pre_lctx),
+            post.locked_objects_match_lctx(post_lctx),
+        ensures
+            post.page_array[page_index]@ == pre.page_array[page_index]@,
+            post_lctx.lock_map().dom().contains(KernelObjId::Page(page_index)),
+            post_lctx.lock_map()[KernelObjId::Page(page_index)]
+                == post.page_array.lock_id_by_index(page_index),
+            post.page_array[page_index]@.locked_by(post_lctx),
+    {
+        reveal(boundary_pages_preserved);
+        reveal(page_lock_id_aligned);
+        reveal(KernelK::locked_objects_match_lctx);
+        reveal(page_locked_match_lctx);
     }
 
     #[verifier::opaque]

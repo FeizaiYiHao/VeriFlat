@@ -2351,11 +2351,7 @@ verus! {
         )
             requires
                 old(self).inv(),
-                old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 cpu_id_valid(cache_cpu),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@.wlocked_by(old(lctx)),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@.being_killed() == false,
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@.locking_thread()->Write_lock_id,
@@ -2421,6 +2417,7 @@ verus! {
                 reveal(cpu_array_wf);
                 reveal(container_perms_wf);
                 reveal(allocator_perms_wf);
+                reveal(allocator_locked_match_lctx);
                 reveal(process_perms_wf);
             }
             self.allocator_4k_map.wunlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
@@ -2726,10 +2723,6 @@ verus! {
         )
             requires
                 old(self).inv(),
-                old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(old(lctx)),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.inv(),
                 unlock_requires::<GlobalPool>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
@@ -2790,19 +2783,12 @@ verus! {
                     lock_perm@.lock_id(),
                     KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
                 ),
-                // ---- pre-existing non-Pool lock_map entries preserved ----
-                forall|k: KernelObjId|
-                    #![trigger old(lctx).lock_map().dom().contains(k)]
-                    #![trigger final(lctx).lock_map().dom().contains(k)]
-                    old(lctx).lock_map().dom().contains(k)
-                        && k != KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)
-                    ==> final(lctx).lock_map().dom().contains(k)
-                        && final(lctx).lock_map()[k] == old(lctx).lock_map()[k],
         {
             proof {
                 reveal(cpu_array_wf);
                 reveal(container_perms_wf);
                 reveal(allocator_perms_wf);
+                reveal(allocator_locked_match_lctx);
                 reveal(process_perms_wf);
             }
             self.allocator_4k_map.wunlock_global_pool(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));

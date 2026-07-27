@@ -83,13 +83,6 @@ impl LocalContext{
             old(self).lock_map().dom().contains(obj_id),
         ensures
             final(self).lock_map() =~= old(self).lock_map().insert(obj_id, new_lock_id),
-            final(self).lock_map().dom() == old(self).lock_map().dom(),
-            forall|other: KernelObjId|
-                #![trigger final(self).lock_map().dom().contains(other)]
-                #![trigger final(self).lock_map()[other]]
-                other != obj_id && final(self).lock_map().dom().contains(other)
-                ==> old(self).lock_map().dom().contains(other)
-                    && final(self).lock_map()[other] == old(self).lock_map()[other],
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
             final(self).user_view_locking_state() == old(self).user_view_locking_state(),
@@ -107,13 +100,6 @@ impl LocalContext{
         new.user_view_locking_state() == old.user_view_locking_state()
         &&&
         new.lock_map() =~= old.lock_map().insert(obj_id, lock_id)
-        &&&
-        forall|other: KernelObjId|
-            #![trigger new.lock_map().dom().contains(other)]
-            #![trigger new.lock_map()[other]]
-            other != obj_id && new.lock_map().dom().contains(other)
-            ==> old.lock_map().dom().contains(other)
-                && new.lock_map()[other] == old.lock_map()[other]
     }
 
     /// Precondition for releasing any lock guarded by `T`.
@@ -137,13 +123,6 @@ impl LocalContext{
         new.user_view_locking_state() == old.user_view_locking_state()
         &&&
         new.lock_map() =~= old.lock_map().remove(obj_id)
-        &&&
-        forall|other: KernelObjId|
-            #![trigger new.lock_map().dom().contains(other)]
-            #![trigger new.lock_map()[other]]
-            other != obj_id && new.lock_map().dom().contains(other)
-            ==> old.lock_map().dom().contains(other)
-                && new.lock_map()[other] == old.lock_map()[other]
     }
 
 }
