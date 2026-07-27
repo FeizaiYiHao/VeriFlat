@@ -128,7 +128,7 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
         lock_perm@.thread_id() == old(lctx).thread_id(),
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
-        old(lctx).lock_map().dom().contains(obj_id@),
+        old(lctx).lock_map_contains(obj_id@),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
@@ -170,7 +170,7 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
             &&&
             ret.1 is None
             &&&
-            final(lctx).lock_map() =~= old(lctx).lock_map()
+            final(lctx).lock_maps_equal(old(lctx))
         },
         ret.0 == true ==>{
             &&&                
@@ -220,7 +220,7 @@ pub fn has_kill_state_wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait
         lock_perm@.thread_id() == old(lctx).thread_id(),
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
-        old(lctx).lock_map().dom().contains(obj_id@),
+        old(lctx).lock_map_contains(obj_id@),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),

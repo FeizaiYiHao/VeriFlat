@@ -164,8 +164,8 @@ verus! {
                 unlock_requires::<Cpu>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).lock_map().dom().contains(KernelObjId::Cpu(cpu_id)),
-                old(lctx).lock_map()[KernelObjId::Cpu(cpu_id)] == old(self).cpu_array.lock_id_by_index(cpu_id),
+                old(lctx).cpu_lock_map().dom().contains(cpu_id),
+                old(lctx).cpu_lock_map()[cpu_id] == old(self).cpu_array.lock_id_by_index(cpu_id),
                 lock_perm@.lock_id() == old(self).cpu_array[cpu_id]@.locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
@@ -217,7 +217,7 @@ verus! {
                     lock_perm@.lock_id(),
                     KernelObjId::Cpu(cpu_id),
                 ),
-                final(lctx).lock_map() =~= old(lctx).lock_map().remove(KernelObjId::Cpu(cpu_id)),
+                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Cpu(cpu_id)),
         {
             proof {
                 reveal(KernelK::locked_objects_match_lctx);
@@ -366,7 +366,7 @@ verus! {
                     &&& old(self).container_map.spec_index(container_ptr).being_killed() == true
                     &&& final(self).container_map.spec_index(container_ptr) == old(self).container_map.spec_index(container_ptr)
                     &&& ret.1 is None
-                    &&& final(lctx).lock_map() =~= old(lctx).lock_map()
+                    &&& final(lctx).lock_maps_equal(old(lctx))
                 },
 
                 // ---- Success: container locked by us, perm returned ----
@@ -542,8 +542,8 @@ verus! {
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self).container_map.spec_index(container_ptr).locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(KernelObjId::Container(container_ptr)),
-                old(lctx).lock_map()[KernelObjId::Container(container_ptr)] == old(self).container_map.lock_id_by_key(container_ptr),
+                old(lctx).container_lock_map().dom().contains(container_ptr),
+                old(lctx).container_lock_map()[container_ptr] == old(self).container_map.lock_id_by_key(container_ptr),
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -993,8 +993,8 @@ verus! {
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
-                old(lctx).lock_map()[KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
+                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Quota(alloc_ptr_4k)),
+                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::Quota(alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -1262,7 +1262,7 @@ verus! {
                     &&& old(self).process_map.spec_index(process_ptr).being_killed() == true
                     &&& final(self).process_map.spec_index(process_ptr) == old(self).process_map.spec_index(process_ptr)
                     &&& ret.1 is None
-                    &&& final(lctx).lock_map() =~= old(lctx).lock_map()
+                    &&& final(lctx).lock_maps_equal(old(lctx))
                 },
 
                 // ---- Success: process locked by us, perm returned ----
@@ -1544,8 +1544,8 @@ verus! {
                 unlock_requires::<Process>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).lock_map().dom().contains(KernelObjId::Process(process_ptr)),
-                old(lctx).lock_map()[KernelObjId::Process(process_ptr)] == old(self).process_map.lock_id_by_key(process_ptr),
+                old(lctx).process_lock_map().dom().contains(process_ptr),
+                old(lctx).process_lock_map()[process_ptr] == old(self).process_map.lock_id_by_key(process_ptr),
                 lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 // The "flushed before wunlock" protocol: the cache must be empty
                 // before releasing the write lock (see doc comment above).
@@ -1600,7 +1600,7 @@ verus! {
                     lock_perm@.lock_id(),
                     KernelObjId::Process(process_ptr),
                 ),
-                final(lctx).lock_map() =~= old(lctx).lock_map().remove(KernelObjId::Process(process_ptr)),
+                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Process(process_ptr)),
         {
             proof {
                 reveal(KernelK::locked_objects_match_lctx);
@@ -1841,8 +1841,8 @@ verus! {
                 unlock_requires::<Thread>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).lock_map().dom().contains(KernelObjId::Thread(thread_ptr)),
-                old(lctx).lock_map()[KernelObjId::Thread(thread_ptr)] == old(self).thread_map.lock_id_by_key(thread_ptr),
+                old(lctx).thread_lock_map().dom().contains(thread_ptr),
+                old(lctx).thread_lock_map()[thread_ptr] == old(self).thread_map.lock_id_by_key(thread_ptr),
                 lock_perm@.lock_id() == old(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id,
                 // The pending-clean protocol: pendings must be flushed before
                 // releasing the write lock (see doc comment above).
@@ -1893,7 +1893,7 @@ verus! {
                     lock_perm@.lock_id(),
                     KernelObjId::Thread(thread_ptr),
                 ),
-                final(lctx).lock_map() =~= old(lctx).lock_map().remove(KernelObjId::Thread(thread_ptr)),
+                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Thread(thread_ptr)),
         {
             proof {
                 reveal(KernelK::locked_objects_match_lctx);
@@ -2355,8 +2355,8 @@ verus! {
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@.locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
-                old(lctx).lock_map()[KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_id(),
+                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu)),
+                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_id(),
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -2727,8 +2727,8 @@ verus! {
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
                 lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)),
-                old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),
+                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::GlobalPool(alloc_ptr_4k)),
+                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::GlobalPool(alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -3061,8 +3061,8 @@ verus! {
                 old(self).page_array[page_index]@.being_killed() == false,
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).lock_map().dom().contains(KernelObjId::Page(page_index)),
-                old(lctx).lock_map()[KernelObjId::Page(page_index)] == old(self).page_array.lock_id_by_index(page_index),
+                old(lctx).page_lock_map().dom().contains(page_index),
+                old(lctx).page_lock_map()[page_index] == old(self).page_array.lock_id_by_index(page_index),
                 lock_perm@.lock_id() == old(self).page_array[page_index]@.locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
@@ -3106,7 +3106,7 @@ verus! {
                     lock_perm@.lock_id(),
                     KernelObjId::Page(page_index),
                 ),
-                final(lctx).lock_map() =~= old(lctx).lock_map().remove(KernelObjId::Page(page_index)),
+                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Page(page_index)),
         {
             proof {
                 reveal(KernelK::locked_objects_match_lctx);
@@ -3287,7 +3287,7 @@ verus! {
                     },
                     KernelObjId::Scheduler(scheduler_ptr),
                 ),
-                final(lctx).lock_map() =~= old(lctx).lock_map().insert(KernelObjId::Scheduler(scheduler_ptr), final(self).scheduler_map.lock_id_by_key(scheduler_ptr)),
+                final(lctx).lock_maps_inserted(old(lctx), KernelObjId::Scheduler(scheduler_ptr), final(self).scheduler_map.lock_id_by_key(scheduler_ptr)),
         {
             proof {
                 reveal(cpu_array_wf);
@@ -3350,8 +3350,8 @@ verus! {
                 unlock_requires::<Scheduler>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).lock_map().dom().contains(KernelObjId::Scheduler(scheduler_ptr)),
-                old(lctx).lock_map()[KernelObjId::Scheduler(scheduler_ptr)] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                old(lctx).scheduler_lock_map().dom().contains(scheduler_ptr),
+                old(lctx).scheduler_lock_map()[scheduler_ptr] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 lock_perm@.lock_id() == old(self).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
@@ -3399,7 +3399,7 @@ verus! {
                     lock_perm@.lock_id(),
                     KernelObjId::Scheduler(scheduler_ptr),
                 ),
-                final(lctx).lock_map() =~= old(lctx).lock_map().remove(KernelObjId::Scheduler(scheduler_ptr)),
+                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Scheduler(scheduler_ptr)),
         {
             proof {
                 reveal(KernelK::locked_objects_match_lctx);
