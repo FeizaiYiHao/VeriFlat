@@ -218,7 +218,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     /// `rodata` / `kernel_ghost` / `user_ghost`, initialized (`is_init`), not
     /// being-killed, and WRITE-LOCKED by the calling thread — so the caller can
     /// immediately `borrow_mut` to finish wiring the object and later `wunlock`
-    /// it. Registers the lock id in `lctx.lock_map()` under `obj_id`, returning
+    /// it. Registers the lock id in the corresponding `lctx` map under `obj_id`, returning
     /// the `LockPerm` (same shape as `wlock`).
     ///
     /// This is the ONLY operation that changes a `LockedMap`'s domain; every
@@ -399,8 +399,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_map().dom().contains(obj_id@),
-            old(lctx).lock_map()[obj_id@] == old(self).lock_id_by_key(key),
+            old(lctx).lock_map_contains(obj_id@),
+            old(lctx).lock_id_for_obj(obj_id@) == old(self).lock_id_by_key(key),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -452,7 +452,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 ret.1 is None
                 &&&
-                final(lctx).lock_map() =~= old(lctx).lock_map()
+                final(lctx).lock_maps_equal(old(lctx))
             },
             ret.0 == true ==>{
                 &&&                
@@ -511,8 +511,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_map().dom().contains(obj_id@),
-            old(lctx).lock_map()[obj_id@] == old(self).lock_id_by_key(key),
+            old(lctx).lock_map_contains(obj_id@),
+            old(lctx).lock_id_for_obj(obj_id@) == old(self).lock_id_by_key(key),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),

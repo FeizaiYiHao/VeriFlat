@@ -16,7 +16,7 @@ verus! {
                 old(self).inv(),
                 old(self).all_objects_unlocked(&lctx),
                 old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
-                lctx.lock_map() == Map::<KernelObjId, LockId>::empty(),
+                lctx.all_lock_maps_empty(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
                 old(steps).steps.len() == 0,
@@ -72,8 +72,10 @@ verus! {
                 reveal(allocator_objects_unlocked);
                 reveal(process_objects_unlocked);
                 crate::kernel::implementation::syscall_alloc_quota::all_unlocked_imply_locked_objects_match_lctx(&*self, &*lctx);
+                lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
             }
 
+            let ghost pre_cpu_lctx = *lctx;
             let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut *lctx));
             let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process.unwrap();
@@ -99,7 +101,36 @@ verus! {
                     minor: scheduler_ptr,
                 };
                 assert(sched_lock_id.major == SCHEDULER_LOCK_MAJOR) by { reveal(scheduler_perms_wf); };
-                assert(lctx.lock_id_acyclic(sched_lock_id)) by { reveal(cpu_locked_match_lctx); };
+                assert(lctx.lock_maps_inserted(
+                    &pre_cpu_lctx,
+                    KernelObjId::Cpu(cpu_id),
+                    self.cpu_array.lock_id_by_index(cpu_id),
+                )) by { reveal(lock_ensures); }
+                pre_cpu_lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
+                assert(sched_lock_id.spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
+                    reveal(cpu_locked_match_lctx);
+                };
+                lctx.lemma_lock_id_acyclic_after_insert(
+                    &pre_cpu_lctx,
+                    KernelObjId::Cpu(cpu_id),
+                    self.cpu_array.lock_id_by_index(cpu_id),
+                    sched_lock_id,
+                );
+            }
+            let ghost pre_scheduler_lctx = *lctx;
+            proof {
+                let process_lock_id = self.process_map.lock_id_by_key(process_ptr);
+                pre_cpu_lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
+                assert(process_lock_id.spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
+                    reveal(cpu_locked_match_lctx);
+                    reveal(process_perms_wf);
+                };
+                pre_scheduler_lctx.lemma_lock_id_acyclic_after_insert(
+                    &pre_cpu_lctx,
+                    KernelObjId::Cpu(cpu_id),
+                    self.cpu_array.lock_id_by_index(cpu_id),
+                    process_lock_id,
+                );
             }
             let Tracked(scheduler_lock_perm) = self.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
 
@@ -112,8 +143,52 @@ verus! {
                 reveal(process_objects_unlocked);
                 assert(old(self).all_objects_unlocked(old(lctx)));
             };
+            proof {
+                let process_lock_id = self.process_map.lock_id_by_key(process_ptr);
+                assert(lctx.lock_maps_inserted(
+                    &pre_scheduler_lctx,
+                    KernelObjId::Scheduler(scheduler_ptr),
+                    self.scheduler_map.lock_id_by_key(scheduler_ptr),
+                )) by { reveal(lock_ensures); }
+                assert(process_lock_id.spec_gt(self.scheduler_map.lock_id_by_key(scheduler_ptr))) by {
+                    reveal(scheduler_locked_match_lctx);
+                };
+                lctx.lemma_lock_id_acyclic_after_insert(
+                    &pre_scheduler_lctx,
+                    KernelObjId::Scheduler(scheduler_ptr),
+                    self.scheduler_map.lock_id_by_key(scheduler_ptr),
+                    process_lock_id,
+                );
+            }
+            let ghost pre_process_lctx = *lctx;
             let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
             if let (false, _) = process_res {
+                proof {
+                    assert(pre_scheduler_lctx.lock_maps_inserted(
+                        &pre_cpu_lctx,
+                        KernelObjId::Cpu(cpu_id),
+                        self.cpu_array.lock_id_by_index(cpu_id),
+                    )) by { reveal(lock_ensures); }
+                    assert(pre_process_lctx.lock_maps_inserted(
+                        &pre_scheduler_lctx,
+                        KernelObjId::Scheduler(scheduler_ptr),
+                        self.scheduler_map.lock_id_by_key(scheduler_ptr),
+                    )) by { reveal(lock_ensures); }
+                    pre_process_lctx.lemma_cpu_scheduler_locks_from_empty(
+                        &pre_cpu_lctx,
+                        &pre_scheduler_lctx,
+                        cpu_id,
+                        scheduler_ptr,
+                        self.cpu_array.lock_id_by_index(cpu_id),
+                        self.scheduler_map.lock_id_by_key(scheduler_ptr),
+                    );
+                    assert(lctx.cpu_lock_map().dom().contains(cpu_id)) by {
+                        reveal(cpu_locked_match_lctx);
+                    };
+                    assert(lctx.scheduler_lock_map().dom().contains(scheduler_ptr)) by {
+                        reveal(scheduler_locked_match_lctx);
+                    };
+                }
                 self.release_cpu_and_finish(
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -125,6 +200,44 @@ verus! {
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.1.unwrap();
+
+            proof {
+                assert(pre_scheduler_lctx.lock_maps_inserted(
+                    &pre_cpu_lctx,
+                    KernelObjId::Cpu(cpu_id),
+                    self.cpu_array.lock_id_by_index(cpu_id),
+                )) by { reveal(lock_ensures); }
+                assert(pre_process_lctx.lock_maps_inserted(
+                    &pre_scheduler_lctx,
+                    KernelObjId::Scheduler(scheduler_ptr),
+                    self.scheduler_map.lock_id_by_key(scheduler_ptr),
+                )) by { reveal(lock_ensures); }
+                assert(lctx.lock_maps_inserted(
+                    &pre_process_lctx,
+                    KernelObjId::Process(process_ptr),
+                    self.process_map.lock_id_by_key(process_ptr),
+                )) by { reveal(lock_ensures); }
+                lctx.lemma_cpu_scheduler_process_locks_from_empty(
+                    &pre_cpu_lctx,
+                    &pre_scheduler_lctx,
+                    &pre_process_lctx,
+                    cpu_id,
+                    scheduler_ptr,
+                    process_ptr,
+                    self.cpu_array.lock_id_by_index(cpu_id),
+                    self.scheduler_map.lock_id_by_key(scheduler_ptr),
+                    self.process_map.lock_id_by_key(process_ptr),
+                );
+                assert(lctx.cpu_lock_map().dom().contains(cpu_id)) by {
+                    reveal(cpu_locked_match_lctx);
+                };
+                assert(lctx.scheduler_lock_map().dom().contains(scheduler_ptr)) by {
+                    reveal(scheduler_locked_match_lctx);
+                };
+                assert(lctx.process_lock_map().dom().contains(process_ptr)) by {
+                    reveal(process_locked_match_lctx);
+                };
+            }
 
             let process_ref = self.process_map.borrow(process_ptr, Tracked(&process_lock_perm));
             if process_ref.quota_4k < 1 {
@@ -144,6 +257,15 @@ verus! {
             // ===== QUOTA SUFFICIENT =====
             proof {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                assert(lctx.page_lock_map().dom() == Set::empty()) by {
+                    assert forall|i: PageIndex|
+                        lctx.page_lock_map().dom().contains(i)
+                        implies false by {
+                        assert(lctx.lock_map_contains(KernelObjId::Page(i)));
+                        reveal(LocalContext::lock_obj_ids_eq);
+                    };
+                };
+                no_held_pages_imply_lock_id_aligned(&*self, &*lctx);
             }
             self.add_new_thread_to_proc_container_and_scheduler(
                 Tracked(&mut *lctx),
@@ -179,21 +301,24 @@ verus! {
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
-                lctx.lock_map().dom() =~= set![
+                lctx.lock_obj_ids_eq(set![
                     KernelObjId::Cpu(cpu_id),
                     KernelObjId::Scheduler(scheduler_ptr),
                     KernelObjId::Process(process_ptr),
-                ],
+                ]),
+                lctx.cpu_lock_map().dom().contains(cpu_id),
+                lctx.scheduler_lock_map().dom().contains(scheduler_ptr),
+                lctx.process_lock_map().dom().contains(process_ptr),
                 cpu_lock_perm@.state() is WriteLock,
                 cpu_lock_perm@.thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Cpu(cpu_id)] == old(self).cpu_array.lock_id_by_index(cpu_id),
+                lctx.cpu_lock_map()[cpu_id] == old(self).cpu_array.lock_id_by_index(cpu_id),
                 cpu_lock_perm@.lock_id() == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
                 old(self).cpu_array.spec_index(cpu_id).view().wlocked_by(&lctx),
                 old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
                 scheduler_lock_perm@.state() is WriteLock,
                 scheduler_lock_perm@.thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                lctx.scheduler_lock_map()[scheduler_ptr] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 scheduler_lock_perm@.lock_id() == old(self).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(self).scheduler_map.spec_index(scheduler_ptr).wlocked_by(&lctx),
@@ -202,7 +327,7 @@ verus! {
                 old(self).container_map.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
                 process_lock_perm@.state() is WriteLock,
                 process_lock_perm@.thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Process(process_ptr)] == old(self).process_map.lock_id_by_key(process_ptr),
+                lctx.process_lock_map()[process_ptr] == old(self).process_map.lock_id_by_key(process_ptr),
                 process_lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 old(self).process_map.dom().contains(process_ptr),
                 old(self).process_map.spec_index(process_ptr).wlocked_by(&lctx),
@@ -210,11 +335,14 @@ verus! {
                 old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
                 old(self).process_map.spec_index(process_ptr).view().quota_4k >= 1,
                 old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
-                lctx.lock_map()[KernelObjId::Cpu(cpu_id)].major == CPU_LOCK_MAJOR_RUNNING,
-                lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)].major == SCHEDULER_LOCK_MAJOR,
-                lctx.lock_map()[KernelObjId::Process(process_ptr)].major == PROCESS_LOCK_MAJOR,
+                lctx.cpu_lock_map()[cpu_id].major == CPU_LOCK_MAJOR_RUNNING,
+                lctx.scheduler_lock_map()[scheduler_ptr].major == SCHEDULER_LOCK_MAJOR,
+                lctx.process_lock_map()[process_ptr].major == PROCESS_LOCK_MAJOR,
                 old(self).locked_objects_match_lctx(&lctx),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
+                final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
                 final(steps).steps.len() == old(steps).steps.len() + 1,
                 final(steps).steps.last().new_k == *final(self),
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
@@ -238,69 +366,101 @@ verus! {
                 // The caller holds exactly CPU, scheduler, and process, and
                 // each recorded value is the current ordering id.  This is
                 // the alignment invariant needed by the allocator boundary.
+                assert forall|i: PageIndex|
+                    lctx.page_lock_map().dom().contains(i)
+                    implies false by {
+                    assert(lctx.lock_map_contains(KernelObjId::Page(i)));
+                    reveal(LocalContext::lock_obj_ids_eq);
+                };
                 assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(LocalContext::lock_obj_ids_eq);
                     reveal(lock_id_aligned);
                     reveal(page_lock_id_aligned);
                 }
                 assert forall|obj_id: KernelObjId| #![auto]
-                    lctx.lock_map().dom().contains(obj_id)
+                    lctx.lock_map_contains(obj_id)
                     implies {
                         &&& obj_id is AllocatorCache == false
                         &&& obj_id is AllocatorGlobalPoll == false
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[0].lock_id().spec_gt(lctx.lock_map().spec_index(obj_id))
+                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[0].lock_id().spec_gt(lctx.lock_id_for_obj(obj_id))
                     } by {
+                    reveal(LocalContext::lock_obj_ids_eq);
                     reveal(allocator_perms_wf);
-                    let held = lctx.lock_map()[obj_id];
+                    let held = lctx.lock_id_for_obj(obj_id);
                     let cache_id = self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[0].lock_id();
                     assert(cache_id.major == ALLOCATOR_CACHE_MAJOR);
                 };
             }
 
             let ghost pre_alloc_lctx = *lctx;
-            assert(pre_alloc_lctx.lock_map().dom().contains(
+            assert(pre_alloc_lctx.lock_map_contains(
                 KernelObjId::Scheduler(scheduler_ptr)));
-            assert(pre_alloc_lctx.lock_map().dom().contains(
+            assert(pre_alloc_lctx.lock_map_contains(
                 KernelObjId::Cpu(cpu_id)));
             let (page_ptr, Tracked(page_lock_perm)) = self.allocate_free_4k_page(
                 alloc_ptr_4k, process_ptr, container_ptr, cpu_id,
                 Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&process_lock_perm),
             );
             let page_index = page_ptr2page_index(page_ptr);
-            assert(lctx.lock_map().dom().contains(
+            assert(lctx.lock_map_contains(
                 KernelObjId::Scheduler(scheduler_ptr)));
-            assert(lctx.lock_map().dom().contains(
+            assert(lctx.lock_map_contains(
                 KernelObjId::Cpu(cpu_id)));
-            assert(lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)]
-                == pre_alloc_lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)]);
-            assert(lctx.lock_map()[KernelObjId::Cpu(cpu_id)]
-                == pre_alloc_lctx.lock_map()[KernelObjId::Cpu(cpu_id)]);
+            assert(lctx.scheduler_lock_map()[scheduler_ptr]
+                == pre_alloc_lctx.scheduler_lock_map()[scheduler_ptr]);
+            assert(lctx.cpu_lock_map()[cpu_id]
+                == pre_alloc_lctx.cpu_lock_map()[cpu_id]);
 
+            let ghost post_allocate = *self;
+            let ghost post_allocate_lctx = *lctx;
+            assert(lock_id_aligned(&post_allocate, &post_allocate_lctx));
             proof {
                 steps.begin_user_view_step(&*self, &mut *lctx);
+                reveal(LocalContext::lock_maps_equal);
+                page_lock_id_aligned_preserved(
+                    post_allocate.page_array, self.page_array,
+                    &post_allocate_lctx, &*lctx,
+                );
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                }
             }
 
-            assert(lctx.lock_map().dom().contains(KernelObjId::Process(process_ptr)));
-            assert(lctx.lock_map().dom().contains(KernelObjId::Page(page_index)));
+            assert(lctx.process_lock_map().dom().contains(process_ptr));
+            assert(lctx.page_lock_map().dom().contains(page_index));
             let (thread_ptr, Tracked(thread_lock_perm)) = self.create_thread_from_staged_page_merged(
                 page_ptr, process_ptr, container_ptr, scheduler_ptr,
                 Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&process_lock_perm), Tracked(&scheduler_lock_perm),
             );
 
             let ghost k_post_create = *self;
+            let ghost k_post_create_lctx = *lctx;
             self.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-            // Retyping the staged page into a thread changes its dynamic
-            // ordering id.  We are now in Release, so refresh the ordering
-            // record before consuming the page lock permission.
             proof {
-                self.update_lock_id_preserving_locked_match(
-                    &mut *lctx,
-                    KernelObjId::Page(page_index),
-                    self.page_array.lock_id_by_index(page_index),
+                reveal(unlock_ensures);
+                reveal(LocalContext::lock_maps_removed);
+                page_lock_id_aligned_preserved(
+                    k_post_create.page_array, self.page_array,
+                    &k_post_create_lctx, &*lctx,
                 );
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                }
             }
+            let ghost pre_page_unlock = *self;
+            let ghost pre_page_unlock_lctx = *lctx;
             self.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
             proof {
-                assert(lctx.lock_map().dom().contains(
+                reveal(unlock_ensures);
+                reveal(LocalContext::lock_maps_removed);
+                page_lock_id_aligned_after_remove(
+                    pre_page_unlock.page_array, self.page_array,
+                    &pre_page_unlock_lctx, &*lctx, page_index,
+                );
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                }
+                assert(lctx.lock_map_contains(
                     KernelObjId::Scheduler(scheduler_ptr)));
                 assert(self.scheduler_map.dom().contains(scheduler_ptr)) by {
                     reveal(scheduler_locked_match_lctx);
@@ -312,11 +472,17 @@ verus! {
                     reveal(scheduler_perms_wf);
                 }
                 scheduler_lock_id_is_static();
-                assert(lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)]
+                assert(lctx.scheduler_lock_map()[scheduler_ptr]
                     == self.scheduler_map.lock_id_by_key(scheduler_ptr));
             }
+            let ghost post_page_unlock = *self;
+            let ghost post_page_unlock_lctx = *lctx;
             self.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
             proof {
+                reveal(unlock_ensures);
+                reveal(LocalContext::lock_maps_removed);
+                assert(self.page_array == post_page_unlock.page_array);
+                assert(lctx.page_lock_map() == post_page_unlock_lctx.page_lock_map());
                 self.update_lock_id_preserving_locked_match(
                     &mut *lctx,
                     KernelObjId::Process(process_ptr),
@@ -324,7 +490,13 @@ verus! {
                 );
             }
             self.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-            assert(lctx.lock_map()[KernelObjId::Cpu(cpu_id)]
+            proof {
+                reveal(unlock_ensures);
+                reveal(LocalContext::lock_maps_removed);
+                assert(self.page_array == post_page_unlock.page_array);
+                assert(lctx.page_lock_map() == post_page_unlock_lctx.page_lock_map());
+            }
+            assert(lctx.cpu_lock_map()[cpu_id]
                 == self.cpu_array.lock_id_by_index(cpu_id));
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
@@ -337,6 +509,15 @@ verus! {
                     steps.steps.last().new_u,
                     process_ptr,
                 ));
+                reveal(unlock_ensures);
+                reveal(LocalContext::lock_maps_removed);
+                assert(self.page_array == post_page_unlock.page_array);
+                assert(lctx.page_lock_map() == post_page_unlock_lctx.page_lock_map());
+                page_lock_id_aligned_preserved(
+                    post_page_unlock.page_array, self.page_array,
+                    &post_page_unlock_lctx, &*lctx,
+                );
+                assert(lock_id_aligned(self, &*lctx)) by { reveal(lock_id_aligned); }
             }
         }
 
@@ -356,15 +537,17 @@ verus! {
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
-                lctx.lock_map().dom() =~= set![ KernelObjId::Cpu(cpu_id), KernelObjId::Scheduler(scheduler_ptr) ],
+                lctx.lock_obj_ids_eq(set![ KernelObjId::Cpu(cpu_id), KernelObjId::Scheduler(scheduler_ptr) ]),
+                lctx.cpu_lock_map().dom().contains(cpu_id),
+                lctx.scheduler_lock_map().dom().contains(scheduler_ptr),
                 cpu_lock_perm.view().state() is WriteLock,
                 cpu_lock_perm.view().thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Cpu(cpu_id)] == old(self).cpu_array.lock_id_by_index(cpu_id),
+                lctx.cpu_lock_map()[cpu_id] == old(self).cpu_array.lock_id_by_index(cpu_id),
                 cpu_lock_perm.view().lock_id() == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
                 old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 scheduler_lock_perm.view().state() is WriteLock,
                 scheduler_lock_perm.view().thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                lctx.scheduler_lock_map()[scheduler_ptr] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 scheduler_lock_perm.view().lock_id() == old(self).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(self).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
@@ -380,7 +563,9 @@ verus! {
 
             proof { steps.begin_user_view_step(&*self, &mut *lctx); }
 
+            assert(lctx.scheduler_lock_map().dom().contains(scheduler_ptr));
             self.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+            assert(lctx.cpu_lock_map().dom().contains(cpu_id));
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
@@ -407,25 +592,28 @@ verus! {
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
-                lctx.lock_map().dom() =~= set![
+                lctx.lock_obj_ids_eq(set![
                     KernelObjId::Cpu(cpu_id),
                     KernelObjId::Scheduler(scheduler_ptr),
                     KernelObjId::Process(process_ptr),
-                ],
+                ]),
+                lctx.cpu_lock_map().dom().contains(cpu_id),
+                lctx.scheduler_lock_map().dom().contains(scheduler_ptr),
+                lctx.process_lock_map().dom().contains(process_ptr),
                 cpu_lock_perm@.state() is WriteLock,
                 cpu_lock_perm@.thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Cpu(cpu_id)] == old(self).cpu_array.lock_id_by_index(cpu_id),
+                lctx.cpu_lock_map()[cpu_id] == old(self).cpu_array.lock_id_by_index(cpu_id),
                 cpu_lock_perm@.lock_id() == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
                 old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 scheduler_lock_perm@.state() is WriteLock,
                 scheduler_lock_perm@.thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Scheduler(scheduler_ptr)] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                lctx.scheduler_lock_map()[scheduler_ptr] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 scheduler_lock_perm@.lock_id() == old(self).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(self).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
                 process_lock_perm@.state() is WriteLock,
                 process_lock_perm@.thread_id() == lctx.thread_id(),
-                lctx.lock_map()[KernelObjId::Process(process_ptr)] == old(self).process_map.lock_id_by_key(process_ptr),
+                lctx.process_lock_map()[process_ptr] == old(self).process_map.lock_id_by_key(process_ptr),
                 process_lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 old(self).process_map.dom().contains(process_ptr),
                 old(self).process_map.spec_index(process_ptr).being_killed() == false,
@@ -443,8 +631,11 @@ verus! {
 
             proof { steps.begin_user_view_step(&*self, &mut *lctx); }
 
+            assert(lctx.scheduler_lock_map().dom().contains(scheduler_ptr));
             self.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+            assert(lctx.process_lock_map().dom().contains(process_ptr));
             self.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+            assert(lctx.cpu_lock_map().dom().contains(cpu_id));
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
@@ -536,7 +727,9 @@ verus! {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 final(self).cpu_array == old(self).cpu_array,
-                final(lctx).lock_map() =~= old(lctx).lock_map().insert(KernelObjId::Thread(page_ptr), final(self).thread_map.lock_id_by_key(page_ptr)),
+                final(self).page_array.unchanged_except(
+                    &old(self).page_array, page_ptr2page_index(page_ptr)),
+                final(lctx).lock_maps_inserted(old(lctx), KernelObjId::Thread(page_ptr), final(self).thread_map.lock_id_by_key(page_ptr)),
         {
             let ghost uppers = old(self).container_map.spec_index(container_ptr).view().uppertree_seq.view();
 
@@ -788,12 +981,12 @@ verus! {
                 process_lock_perm.state() is WriteLock,
                 process_lock_perm.thread_id() == old(lctx).thread_id(),
                 process_lock_perm.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(KernelObjId::Process(process_ptr)),
+                old(lctx).process_lock_map().dom().contains(process_ptr),
                 old(self).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
                 scheduler_lock_perm.state() is WriteLock,
                 scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
                 scheduler_lock_perm.lock_id() == old(self).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(KernelObjId::Scheduler(scheduler_ptr)),
+                old(lctx).scheduler_lock_map().dom().contains(scheduler_ptr),
                 old(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view()
                     =~= Set::<PagePtr>::empty().insert(page_ptr),
                 old(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_2m.view().len() == 0,
@@ -805,9 +998,10 @@ verus! {
                 page_lock_perm.state() is WriteLock,
                 page_lock_perm.thread_id() == old(lctx).thread_id(),
                 page_lock_perm.lock_id() == old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
-                old(lctx).lock_map().dom().contains(
-                    KernelObjId::Page(page_ptr2page_index(page_ptr))),
+                old(lctx).page_lock_map().dom().contains(page_ptr2page_index(page_ptr)),
+                old(lctx).kernel_view_locking_state() is Release,
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
                 ret.0 == page_ptr,
@@ -829,10 +1023,26 @@ verus! {
                 final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == false,
                 page_lock_perm.lock_id() == final(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
                 final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 final(self).cpu_array == old(self).cpu_array,
-                final(lctx).lock_map() =~= old(lctx).lock_map().insert(KernelObjId::Thread(page_ptr), final(self).thread_map.lock_id_by_key(page_ptr)),
+                final(self).page_array.unchanged_except(
+                    &old(self).page_array, page_ptr2page_index(page_ptr)),
+                final(lctx).thread_lock_map() =~= old(lctx).thread_lock_map().insert(
+                    page_ptr, final(self).thread_map.lock_id_by_key(page_ptr)),
+                final(lctx).page_lock_map() =~= old(lctx).page_lock_map().insert(
+                    page_ptr2page_index(page_ptr),
+                    final(self).page_array.lock_id_by_index(page_ptr2page_index(page_ptr))),
+                final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+                final(lctx).process_lock_map() == old(lctx).process_lock_map(),
+                final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
+                final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
+                final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+                final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+                final(lctx).allocator_4k_lock_map() == old(lctx).allocator_4k_lock_map(),
+                final(lctx).allocator_2m_lock_map() == old(lctx).allocator_2m_lock_map(),
+                final(lctx).allocator_1g_lock_map() == old(lctx).allocator_1g_lock_map(),
         {
             let ghost uppers = old(self).container_map.spec_index(container_ptr).view().uppertree_seq.view();
 
@@ -1097,6 +1307,22 @@ verus! {
                     reveal(page_locked_match_lctx);
                     reveal(cpu_locked_match_lctx);
                     reveal(allocator_locked_match_lctx);
+                }
+            }
+            proof {
+                self.update_lock_id_preserving_locked_match(
+                    &mut *lctx,
+                    KernelObjId::Page(page_index),
+                    self.page_array.lock_id_by_index(page_index),
+                );
+                reveal(LocalContext::lock_maps_inserted);
+                page_lock_id_aligned_after_refresh(
+                    old(self).page_array, self.page_array,
+                    old(lctx), &*lctx, page_index,
+                    self.page_array.lock_id_by_index(page_index),
+                );
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
                 }
             }
             proof {

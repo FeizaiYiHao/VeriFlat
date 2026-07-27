@@ -419,7 +419,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         ensures
             update_kernel_ghost_ensures(*old(self), *final(self), new_kernel_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_map() == old(lctx).lock_map(),
+            final(lctx).lock_maps_equal(old(lctx)),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
     {
@@ -445,7 +445,7 @@ impl<T:LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: boo
         ensures
             update_user_ghost_ensures(*old(self), *final(self), new_user_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_map() == old(lctx).lock_map(),
+            final(lctx).lock_maps_equal(old(lctx)),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
     {
@@ -485,7 +485,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
             lp@.thread_id() == old(lctx).thread_id(),
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_map().dom().contains(obj_id@),
+            old(lctx).lock_map_contains(obj_id@),
         ensures
             wunlock_ensures(*old(self), *final(self)),
             unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id(), obj_id@),
@@ -516,7 +516,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 ret.1 is None
                 &&&
-                final(lctx).lock_map() =~= old(lctx).lock_map()
+                final(lctx).lock_maps_equal(old(lctx))
             },
             ret.0 == true ==>{
                 &&&                
@@ -549,7 +549,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lp@.thread_id() == old(lctx).thread_id(),
             lp@.lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_map().dom().contains(obj_id@),
+            old(lctx).lock_map_contains(obj_id@),
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
@@ -638,7 +638,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 &&&
                 final(lctx).thread_id() == old(lctx).thread_id()
                 &&&
-                final(lctx).lock_map() =~= old(lctx).lock_map().insert(obj_id@, lock_id@)
+                final(lctx).lock_maps_inserted(old(lctx), obj_id@, lock_id@)
                 &&&
                 final(lctx).kernel_view_locking_state() is Release
                 &&&

@@ -35,8 +35,8 @@ verus! {
                 old(self).cpu_array.spec_index(old(lctx).thread_id()).view().rlocked_by(old(lctx)),
                 old(self).page_array[page_index]@@.is_mapped(),
                 old(self).page_array.spec_index(page_index).view().view().state is Mapped4k,
-                old(lctx).lock_map().dom().contains(KernelObjId::PageTable(pagetable_root)),
-                old(lctx).lock_map()[KernelObjId::PageTable(pagetable_root)] == pagetable_root.to_lock_id(),
+                old(lctx).lock_map_contains(KernelObjId::PageTable(pagetable_root)),
+                old(lctx).lock_id_for_obj(KernelObjId::PageTable(pagetable_root)) == pagetable_root.to_lock_id(),
 
                 old(self).pagetable_map.dom().contains(pagetable_root),
                 old(self).pagetable_map[pagetable_root].wlocked_by(old(lctx)) == true,
