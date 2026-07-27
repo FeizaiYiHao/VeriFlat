@@ -38,24 +38,18 @@ use vstd::simple_pptr::*;
             ret.0@.value().being_killed() == false,
             ret.0@.value().locking_thread() == (RwLockState::Write {
                 thread_id: final(lctx).thread_id(),
-                lock_id: (LockId{
-                    container: LockOwnerId::NotApp,
-                    process: LockOwnerId::NotApp,
-                    major: thread_value.current_lock_major(),
-                    minor: page_ptr,
-                }),
+                lock_id: ret.1@.lock_id(),
             }),
             // ---- the LockPerm ----
             ret.1@.state() is WriteLock,
             ret.1@.thread_id() == final(lctx).thread_id(),
-            ret.1@.lock_id() == (LockId{
+            // ---- lctx: the thread lock id registered under obj_id ----
+            lock_ensures(old(lctx), final(lctx), thread_value, LockId{
                 container: LockOwnerId::NotApp,
                 process: LockOwnerId::NotApp,
                 major: thread_value.current_lock_major(),
                 minor: page_ptr,
-            }),
-            // ---- lctx: the thread lock id registered under obj_id ----
-            lock_ensures(old(lctx), final(lctx), thread_value, ret.1@.lock_id(), obj_id@),
+            }, obj_id@),
     {
         unimplemented!()
     }

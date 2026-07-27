@@ -16,6 +16,10 @@ pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
 pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
+// Owned pages (Owned4k/Owned2m) are never actually wlock'd — they are retyped
+// immediately. Give them a very low major so they don't interfere with real
+// lock ordering.
+pub const OWNED_PAGE_LOCK_MAJOR:LockMajorId = 1;
 pub const PAGETABLE_PAGE_MAJOR:LockMajorId = 1001;
 
 pub const THREAD_RUNNING_LOCK_MAJOR:LockMajorId = 10000;

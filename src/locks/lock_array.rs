@@ -192,7 +192,7 @@ verus! {
                 lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
 
                 old(lctx).lock_map().dom().contains(obj_id@),
-                old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
+                old(lctx).lock_map()[obj_id@] == old(self).lock_id_by_index(index),
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),

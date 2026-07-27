@@ -60,6 +60,19 @@ LockIdTrait for PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>
     }
 }
 
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,>
+LockIdTrait for PointsTo<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>
+{
+    open spec fn lock_id(&self) -> LockId{
+        LockId{
+            container: self.value().container_depth(),
+            process: self.value().process_depth(),
+            major: self.value().view().current_lock_major(),
+            minor: self.lock_minor(),
+        }
+    }
+}
+
 
 // TODO
 #[verifier::external_body]
@@ -116,7 +129,6 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
         old(lctx).lock_map().dom().contains(obj_id@),
-        old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
@@ -209,7 +221,6 @@ pub fn has_kill_state_wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait
         lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
         old(lctx).lock_map().dom().contains(obj_id@),
-        old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),

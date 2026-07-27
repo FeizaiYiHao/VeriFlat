@@ -270,7 +270,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             final(self)[key].being_killed() == false,
             final(self)[key].locking_thread() == (RwLockState::Write {
                 thread_id: final(lctx).thread_id(),
-                lock_id: final(self).lock_id_by_key(key),
+                lock_id: ret@.lock_id(),
             }),
             final(self).lock_id_by_key(key) == (LockId{
                 container: rodata.container_depth(),
@@ -281,7 +281,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             // ---- the returned write perm ----
             ret@.state() is WriteLock,
             ret@.thread_id() == final(lctx).thread_id(),
-            ret@.lock_id() == final(self).lock_id_by_key(key),
             // ---- lctx: the new lock id is registered under obj_id ----
             lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(key), obj_id@),
     {
@@ -340,6 +339,13 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
+    pub open spec fn lock_id_by_key(&self, key: usize) -> LockId
+        recommends
+            self.dom().contains(key)
+    {
+        self.view().spec_index(key).lock_id()
+    }
+
     pub fn wlock(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
@@ -394,7 +400,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
 
             old(lctx).lock_map().dom().contains(obj_id@),
-            old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
+            old(lctx).lock_map()[obj_id@] == old(self).lock_id_by_key(key),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -506,7 +512,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
 
             old(lctx).lock_map().dom().contains(obj_id@),
-            old(lctx).lock_map()[obj_id@] == lock_perm@.lock_id(),
+            old(lctx).lock_map()[obj_id@] == old(self).lock_id_by_key(key),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),

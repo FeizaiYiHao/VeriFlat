@@ -35,6 +35,17 @@ impl LockMinorTrait for GlobalPool {
     open spec fn lock_minor(&self) -> LockMinorId { self.linked_list.lock_minor() }
 }
 
+impl LockIdTrait for GlobalPool {
+    open spec fn lock_id(&self) -> LockId {
+        LockId{
+            container: self.container_depth(),
+            process: self.process_depth(),
+            major: self.current_lock_major(),
+            minor: self.lock_minor(),
+        }
+    }
+}
+
 impl LockUserVisibilityTrait for GlobalPool {
     open spec fn is_user_visible() -> bool { false }
 }

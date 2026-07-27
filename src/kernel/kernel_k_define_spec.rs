@@ -230,6 +230,46 @@ verus! {
             &&& allocator_locked_match_lctx(self.allocator_1g_map, PageSize::SZ1g, lctx)
         }
 
+        /// Change the dynamic lock id recorded for a still-held object after a
+        /// Release-phase payload transition. The lock permission's token and
+        /// the RwLock's write-token remain unchanged.
+        pub proof fn update_lock_id_preserving_locked_match(
+            &self,
+            tracked lctx: &mut LocalContext,
+            obj_id: KernelObjId,
+            new_lock_id: LockId,
+        )
+            requires
+                old(lctx).kernel_view_locking_state() is Release,
+                old(lctx).lock_map().dom().contains(obj_id),
+                self.locked_objects_match_lctx(old(lctx)),
+            ensures
+                final(lctx).lock_map() =~= old(lctx).lock_map().insert(obj_id, new_lock_id),
+                final(lctx).lock_map().dom() == old(lctx).lock_map().dom(),
+                forall|other: KernelObjId|
+                    #![trigger final(lctx).lock_map().dom().contains(other)]
+                    #![trigger final(lctx).lock_map()[other]]
+                    other != obj_id && final(lctx).lock_map().dom().contains(other)
+                    ==> old(lctx).lock_map().dom().contains(other)
+                        && final(lctx).lock_map()[other] == old(lctx).lock_map()[other],
+                final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
+                self.locked_objects_match_lctx(final(lctx)),
+        {
+            lctx.update_lock_id(obj_id, new_lock_id);
+            reveal(KernelK::locked_objects_match_lctx);
+            reveal(container_locked_match_lctx);
+            reveal(process_locked_match_lctx);
+            reveal(thread_locked_match_lctx);
+            reveal(endpoint_locked_match_lctx);
+            reveal(scheduler_locked_match_lctx);
+            reveal(pagetable_locked_match_lctx);
+            reveal(page_locked_match_lctx);
+            reveal(cpu_locked_match_lctx);
+            reveal(allocator_locked_match_lctx);
+        }
+
         /// Trusted kernel-view step boundary.
         ///
         /// Models "end the current kernel-view atomic section and begin a
@@ -275,6 +315,7 @@ verus! {
                 old(self).inv(),
                 old(lctx).kernel_view_locking_state() is Release,
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
                 kernel_k_to_kernel_u(*old(self)) == old(steps).snap_shot,
             ensures
                 final(self).inv(),
@@ -309,6 +350,284 @@ verus! {
         }
     }
 
+    // ---- Lock-id alignment specs ----
+    // These check that lock_map VALUES equal the current, dynamic lock id of
+    // the corresponding object. They are checked before every boundary.
+
+    #[verifier::opaque]
+    pub open spec fn container_lock_id_aligned(
+        container_map: ContainerLockedMap,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends container_locked_match_lctx(container_map, lctx)
+    {
+        forall|c: RwLockContainerPtr|
+            #![trigger lctx.lock_map()[KernelObjId::Container(c)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Container(c))]
+            #![trigger container_map.lock_id_by_key(c)]
+            lctx.lock_map().dom().contains(KernelObjId::Container(c))
+            ==>
+            container_map.dom().contains(c)
+            && container_map.lock_id_by_key(c) == lctx.lock_map()[KernelObjId::Container(c)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn process_lock_id_aligned(
+        process_map: ProcessLockedMap,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends process_locked_match_lctx(process_map, lctx)
+    {
+        forall|p: RwLockProcessPtr|
+            #![trigger lctx.lock_map()[KernelObjId::Process(p)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Process(p))]
+            #![trigger process_map.lock_id_by_key(p)]
+            lctx.lock_map().dom().contains(KernelObjId::Process(p))
+            ==>
+            process_map.dom().contains(p)
+            && process_map.lock_id_by_key(p) == lctx.lock_map()[KernelObjId::Process(p)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn thread_lock_id_aligned(
+        thread_map: ThreadLockedMap,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends thread_locked_match_lctx(thread_map, lctx)
+    {
+        forall|t: RwLockThreadPtr|
+            #![trigger lctx.lock_map()[KernelObjId::Thread(t)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Thread(t))]
+            #![trigger thread_map.lock_id_by_key(t)]
+            lctx.lock_map().dom().contains(KernelObjId::Thread(t))
+            ==>
+            thread_map.dom().contains(t)
+            && thread_map.lock_id_by_key(t) == lctx.lock_map()[KernelObjId::Thread(t)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn endpoint_lock_id_aligned(
+        endpoint_map: EndpointLockedMap,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends endpoint_locked_match_lctx(endpoint_map, lctx)
+    {
+        forall|e: RwLockEndpointPtr|
+            #![trigger lctx.lock_map()[KernelObjId::Endpoint(e)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))]
+            lctx.lock_map().dom().contains(KernelObjId::Endpoint(e))
+            ==>
+            endpoint_map.dom().contains(e)
+            && LockId{
+                container: LockOwnerId::none(),
+                process: LockOwnerId::none(),
+                major: ENDPOINT_LOCK_MAJOR,
+                minor: e,
+            } == lctx.lock_map()[KernelObjId::Endpoint(e)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn pagetable_lock_id_aligned(
+        pagetable_map: PageTableLockedMap,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends pagetable_locked_match_lctx(pagetable_map, lctx)
+    {
+        forall|pt: RwLockPageTableRoot|
+            #![trigger lctx.lock_map()[KernelObjId::PageTable(pt)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))]
+            #![trigger pt.to_lock_id()]
+            lctx.lock_map().dom().contains(KernelObjId::PageTable(pt))
+            ==>
+            pagetable_map.dom().contains(pt)
+            && pt.to_lock_id() == lctx.lock_map()[KernelObjId::PageTable(pt)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn page_lock_id_aligned(
+        page_array: PageLockedArray,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends page_locked_match_lctx(page_array, lctx)
+    {
+        forall|i: PageIndex|
+            #![trigger lctx.lock_map()[KernelObjId::Page(i)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Page(i))]
+            #![trigger page_array.lock_id_by_index(i)]
+            lctx.lock_map().dom().contains(KernelObjId::Page(i))
+            ==>
+            page_index_wf(i)
+            && page_array.lock_id_by_index(i) == lctx.lock_map()[KernelObjId::Page(i)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn scheduler_lock_id_aligned(
+        scheduler_map: SchedulerLockedMap,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends scheduler_locked_match_lctx(scheduler_map, lctx)
+    {
+        forall|s: RwLockSchedulerPtr|
+            #![trigger lctx.lock_map()[KernelObjId::Scheduler(s)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))]
+            #![trigger scheduler_map.lock_id_by_key(s)]
+            lctx.lock_map().dom().contains(KernelObjId::Scheduler(s))
+            ==>
+            scheduler_map.dom().contains(s)
+            && scheduler_map.lock_id_by_key(s) == lctx.lock_map()[KernelObjId::Scheduler(s)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn cpu_lock_id_aligned(
+        cpu_array: CpuLockedArray,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends cpu_locked_match_lctx(cpu_array, lctx)
+    {
+        forall|c: CpuId|
+            #![trigger lctx.lock_map()[KernelObjId::Cpu(c)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::Cpu(c))]
+            #![trigger cpu_array.spec_index(c).lock_id()]
+            lctx.lock_map().dom().contains(KernelObjId::Cpu(c))
+            ==>
+            cpu_id_valid(c)
+            && cpu_array.spec_index(c).lock_id() == lctx.lock_map()[KernelObjId::Cpu(c)]
+    }
+
+    #[verifier::opaque]
+    pub open spec fn allocator_lock_id_aligned(
+        alloc_map: PageAllocatorUnLockedMap,
+        sz: PageSize,
+        lctx: &LocalContext,
+    ) -> bool
+        recommends allocator_locked_match_lctx(alloc_map, sz, lctx)
+    {
+        &&& (forall|p: RwLockPageAllocatorPtr|
+            #![trigger lctx.lock_map()[KernelObjId::AllocatorQuota(sz, p)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))]
+            #![trigger alloc_map[p].quota.lock_id()]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorQuota(sz, p))
+            ==>
+            alloc_map.dom().contains(p)
+            && alloc_map[p].quota.lock_id() == lctx.lock_map()[KernelObjId::AllocatorQuota(sz, p)])
+        &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
+            #![trigger lctx.lock_map()[KernelObjId::AllocatorCache(sz, p, c)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
+            #![trigger alloc_map[p].cpu_caches[c].lock_id()]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))
+            ==>
+            alloc_map.dom().contains(p)
+            && cpu_id_valid(c)
+            && alloc_map[p].cpu_caches[c].lock_id() == lctx.lock_map()[KernelObjId::AllocatorCache(sz, p, c)])
+        &&& (forall|p: RwLockPageAllocatorPtr|
+            #![trigger lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)]]
+            #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))]
+            #![trigger alloc_map[p].global_pool.lock_id()]
+            lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))
+            ==>
+            alloc_map.dom().contains(p)
+            && alloc_map[p].global_pool.lock_id() == lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)])
+    }
+
+    /// Dynamic ordering ids agree with their currently locked objects before
+    /// a boundary.  Pages are the only object family whose ordering id changes
+    /// with payload state in the implemented transitions; static families are
+    /// preserved by their acquire/release contracts.
+    pub open spec fn lock_id_aligned(k: &KernelK, lctx: &LocalContext) -> bool {
+        page_lock_id_aligned(k.page_array, lctx)
+    }
+
+    /// Preserve page lock-id alignment when a Release-phase transition changes
+    /// one held page's dynamic id and refreshes exactly that lock-map entry.
+    pub proof fn page_lock_id_aligned_after_refresh(
+        old_pages: PageLockedArray,
+        new_pages: PageLockedArray,
+        old_lctx: &LocalContext,
+        new_lctx: &LocalContext,
+        page_index: PageIndex,
+        new_lock_id: LockId,
+    )
+        requires
+            page_index_wf(page_index),
+            page_lock_id_aligned(old_pages, old_lctx),
+            new_pages.unchanged_except(&old_pages, page_index),
+            new_pages.lock_id_by_index(page_index) == new_lock_id,
+            new_lctx.lock_map().dom().contains(KernelObjId::Page(page_index)),
+            new_lctx.lock_map()[KernelObjId::Page(page_index)] == new_lock_id,
+            forall|i: PageIndex|
+                #![auto]
+                i != page_index
+                    && new_lctx.lock_map().dom().contains(KernelObjId::Page(i))
+                ==> old_lctx.lock_map().dom().contains(KernelObjId::Page(i))
+                    && new_lctx.lock_map()[KernelObjId::Page(i)]
+                        == old_lctx.lock_map()[KernelObjId::Page(i)],
+        ensures
+            page_lock_id_aligned(new_pages, new_lctx),
+    {
+        reveal(page_lock_id_aligned);
+        assert forall|i: PageIndex|
+            #![trigger new_lctx.lock_map()[KernelObjId::Page(i)]]
+            new_lctx.lock_map().dom().contains(KernelObjId::Page(i))
+            ==> page_index_wf(i)
+                && new_pages.lock_id_by_index(i)
+                    == new_lctx.lock_map()[KernelObjId::Page(i)] by {
+            if new_lctx.lock_map().dom().contains(KernelObjId::Page(i)) {
+                if i == page_index {
+                    assert(new_lctx.lock_map()[KernelObjId::Page(i)] == new_lock_id);
+                } else {
+                    assert(i != page_index
+                        && new_lctx.lock_map().dom().contains(KernelObjId::Page(i)));
+                    assert(old_lctx.lock_map().dom().contains(KernelObjId::Page(i))
+                        && new_lctx.lock_map()[KernelObjId::Page(i)]
+                            == old_lctx.lock_map()[KernelObjId::Page(i)]) by {};
+                    assert(old_lctx.lock_map().dom().contains(KernelObjId::Page(i)));
+                    assert(new_lctx.lock_map()[KernelObjId::Page(i)]
+                        == old_lctx.lock_map()[KernelObjId::Page(i)]);
+                    assert(new_pages[i] === old_pages[i]);
+                    assert(new_pages.lock_id_by_index(i) == old_pages.lock_id_by_index(i));
+                }
+            }
+        }
+    }
+
+    /// A boundary keeps the lock map intact and preserves every held page.
+    /// Thus it also preserves the page portion of lock-id alignment, even
+    /// though unheld page slots may be changed by interleaved threads.
+    pub proof fn page_lock_id_aligned_after_boundary(
+        old_pages: PageLockedArray,
+        new_pages: PageLockedArray,
+        old_lctx: &LocalContext,
+        new_lctx: &LocalContext,
+    )
+        requires
+            page_lock_id_aligned(old_pages, old_lctx),
+            new_lctx.lock_map() == old_lctx.lock_map(),
+            forall|i: PageIndex|
+                #![auto]
+                old_lctx.lock_map().dom().contains(KernelObjId::Page(i))
+                ==> page_index_wf(i) && new_pages[i]@ == old_pages[i]@,
+        ensures
+            page_lock_id_aligned(new_pages, new_lctx),
+    {
+        reveal(page_lock_id_aligned);
+        assert forall|i: PageIndex|
+            #![trigger new_lctx.lock_map()[KernelObjId::Page(i)]]
+            new_lctx.lock_map().dom().contains(KernelObjId::Page(i))
+            ==> page_index_wf(i)
+                && new_pages.lock_id_by_index(i)
+                    == new_lctx.lock_map()[KernelObjId::Page(i)] by {
+            if new_lctx.lock_map().dom().contains(KernelObjId::Page(i)) {
+                assert(new_lctx.lock_map().dom() == old_lctx.lock_map().dom());
+                assert(old_lctx.lock_map().dom().contains(KernelObjId::Page(i)));
+                assert(page_index_wf(i));
+                assert(new_pages[i]@ == old_pages[i]@);
+                assert(new_pages.lock_id_by_index(i) == old_pages.lock_id_by_index(i));
+                assert(new_lctx.lock_map()[KernelObjId::Page(i)]
+                    == old_lctx.lock_map()[KernelObjId::Page(i)]);
+            }
+        }
+    }
+
     #[verifier::opaque]
     pub open spec fn container_locked_match_lctx(
         container_map: ContainerLockedMap,
@@ -321,8 +640,7 @@ verus! {
             ==>
             container_map.dom().contains(c)
             && container_map[c].locked_by(lctx)
-            && container_map[c].locking_thread() is Write
-            && container_map[c].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Container(c)])
+            && container_map[c].locking_thread() is Write)
         // reverse
         &&& (forall|c: RwLockContainerPtr|
             #![trigger container_map.dom().contains(c)]
@@ -338,8 +656,7 @@ verus! {
             ==>
             process_map.dom().contains(p)
             && process_map[p].locked_by(lctx)
-            && process_map[p].locking_thread() is Write
-            && process_map[p].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Process(p)])
+            && process_map[p].locking_thread() is Write)
         &&& (forall|p: RwLockProcessPtr|
             #![trigger process_map.dom().contains(p)]
             process_map.dom().contains(p) && process_map[p].locked_by(lctx)
@@ -354,8 +671,7 @@ verus! {
             ==>
             thread_map.dom().contains(t)
             && thread_map[t].locked_by(lctx)
-            && thread_map[t].locking_thread() is Write
-            && thread_map[t].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Thread(t)])
+            && thread_map[t].locking_thread() is Write)
         &&& (forall|t: RwLockThreadPtr|
             #![trigger thread_map.dom().contains(t)]
             thread_map.dom().contains(t) && thread_map[t].locked_by(lctx)
@@ -373,8 +689,7 @@ verus! {
             ==>
             endpoint_map.dom().contains(e)
             && endpoint_map[e].locked_by(lctx)
-            && endpoint_map[e].locking_thread() is Write
-            && endpoint_map[e].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Endpoint(e)])
+            && endpoint_map[e].locking_thread() is Write)
         &&& (forall|e: RwLockEndpointPtr|
             #![trigger endpoint_map.dom().contains(e)]
             endpoint_map.dom().contains(e) && endpoint_map[e].locked_by(lctx)
@@ -392,8 +707,7 @@ verus! {
             ==>
             scheduler_map.dom().contains(s)
             && scheduler_map[s].locked_by(lctx)
-            && scheduler_map[s].locking_thread() is Write
-            && scheduler_map[s].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Scheduler(s)])
+            && scheduler_map[s].locking_thread() is Write)
         &&& (forall|s: RwLockSchedulerPtr|
             #![trigger scheduler_map.dom().contains(s)]
             scheduler_map.dom().contains(s) && scheduler_map[s].locked_by(lctx)
@@ -411,8 +725,7 @@ verus! {
             ==>
             pagetable_map.dom().contains(pt)
             && pagetable_map[pt].locked_by(lctx)
-            && pagetable_map[pt].locking_thread() is Write
-            && pagetable_map[pt].locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::PageTable(pt)])
+            && pagetable_map[pt].locking_thread() is Write)
         &&& (forall|pt: RwLockPageTableRoot|
             #![trigger pagetable_map.dom().contains(pt)]
             pagetable_map.dom().contains(pt) && pagetable_map[pt].locked_by(lctx)
@@ -431,18 +744,7 @@ verus! {
             ==>
             page_index_wf(i)
             && page_array[i]@.locked_by(lctx)
-            && page_array[i]@.locking_thread() is Write
-            && page_array[i]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Page(i)]
-            && page_array[i]@.locking_thread()->Write_lock_id.container == LockOwnerId::None
-            && page_array[i]@.locking_thread()->Write_lock_id.process == LockOwnerId::None
-            && page_array[i]@.locking_thread()->Write_lock_id.minor == i
-            && {
-                let mj = page_array[i]@.locking_thread()->Write_lock_id.major;
-                ||| mj == FREE_PAGE_LOCK_MAJOR
-                ||| mj == MAPPED_PAGE_LOCK_MAJOR
-                ||| mj == MERGED_PAGE_LOCK_MAJOR
-                ||| mj == ALLOCATED_PAGE_MAJOR
-            })
+            && page_array[i]@.locking_thread() is Write)
         &&& (forall|i: PageIndex|
             #![trigger page_array[i]@.locked_by(lctx)]
             #![trigger page_array[i]]
@@ -462,8 +764,7 @@ verus! {
             ==>
             cpu_id_valid(c)
             && cpu_array[c]@.locked_by(lctx)
-            && cpu_array[c]@.locking_thread() is Write
-            && cpu_array[c]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::Cpu(c)])
+            && cpu_array[c]@.locking_thread() is Write)
         &&& (forall|c: CpuId|
             #![trigger cpu_array[c]@.locked_by(lctx)]
             #![trigger cpu_array[c]]
@@ -486,8 +787,7 @@ verus! {
             ==>
             alloc_map.dom().contains(p)
             && alloc_map[p].quota.locked_by(lctx)
-            && alloc_map[p].quota.locking_thread() is Write
-            && alloc_map[p].quota.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorQuota(sz, p)])
+            && alloc_map[p].quota.locking_thread() is Write)
         &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
             #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(sz, p, c))]
             #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
@@ -496,12 +796,7 @@ verus! {
             alloc_map.dom().contains(p)
             && cpu_id_valid(c)
             && alloc_map[p].cpu_caches[c]@.locked_by(lctx)
-            && alloc_map[p].cpu_caches[c]@.locking_thread() is Write
-            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorCache(sz, p, c)]
-            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.container == LockOwnerId::NotApp
-            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.process == LockOwnerId::NotApp
-            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.minor == c
-            && alloc_map[p].cpu_caches[c]@.locking_thread()->Write_lock_id.major == ALLOCATOR_CACHE_MAJOR)
+            && alloc_map[p].cpu_caches[c]@.locking_thread() is Write)
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger lctx.lock_map().dom().contains(KernelObjId::AllocatorGlobalPoll(sz, p))]
             #![trigger alloc_map.spec_index(p)]
@@ -509,8 +804,7 @@ verus! {
             ==>
             alloc_map.dom().contains(p)
             && alloc_map[p].global_pool.locked_by(lctx)
-            && alloc_map[p].global_pool.locking_thread() is Write
-            && alloc_map[p].global_pool.locking_thread()->Write_lock_id == lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(sz, p)])
+            && alloc_map[p].global_pool.locking_thread() is Write)
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger alloc_map.dom().contains(p)]
             #![trigger alloc_map.spec_index(p)]
