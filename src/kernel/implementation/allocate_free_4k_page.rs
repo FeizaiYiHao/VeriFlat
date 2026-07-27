@@ -14,18 +14,14 @@ impl KernelK {
         &mut self,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         process_ptr: RwLockProcessPtr,
-        cpu_id: CpuId,
         Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>,
         Tracked(process_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: (PagePtr, Tracked<LockPerm>))
         requires
             old(self).inv(),
-            cpu_id_valid(cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
-            old(self).process_map.dom().contains(process_ptr),
-            old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_lock_perm.state() is WriteLock,
             process_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -48,8 +44,6 @@ impl KernelK {
                 },
         ensures
             final(self).inv(),
-            final(self).process_map.dom().contains(process_ptr),
-            final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
             final(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_lock_perm.lock_id() == final(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
             final(self).process_map.spec_index(process_ptr).view_rodata()
@@ -62,7 +56,6 @@ impl KernelK {
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
             page_ptr_valid(ret.0),
             page_index_wf(page_ptr2page_index(ret.0)),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().wlocked_by(final(lctx)),
             final(self).page_array[page_ptr2page_index(ret.0)].view().being_killed() == false,
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
@@ -108,10 +101,14 @@ impl KernelK {
                 == old(self).process_map.spec_index(process_ptr).view().owned_threads,
     {
         let ghost post_first_boundary = *self;
+        let ghost post_first_boundary_lctx = *lctx;
 
         // Post-boundary: the world has run, but the held process is preserved in
         // full. Re-derive the allocator pointer from the process's container (its
         // rodata is lock-free readable), so the scan targets the current map.
+        assert(self.process_map.dom().contains(process_ptr)) by {
+            reveal(process_locked_match_lctx);
+        };
         assert(self.process_map.perms_wf()) by { reveal(process_perms_wf); };
         let recov_container = self.process_map.borrow_rodata(process_ptr).borrow().owning_container;
         assert(self.container_map.dom().contains(recov_container)) by { reveal(container_process_wf); };
@@ -125,7 +122,6 @@ impl KernelK {
         );
 
         let ghost pre_scan = *self;
-        let ghost pre_scan_lctx = *lctx;
         let tracked cache_perms_ref = cache_perms.borrow();
         assert(Self::cache_perms_match_lctx(
             self.allocator_4k_map, recov_alloc, &*lctx, cache_perms_ref)) by {
@@ -147,9 +143,6 @@ impl KernelK {
             // a held object (its state is pinned); release the caches + pool.
             let ghost pool_lid = self.allocator_4k_map.spec_index(recov_alloc).global_pool.lock_id();
             self.wunlock_all_caches(recov_alloc, Tracked(&mut *lctx), Tracked(cache_perms.get()));
-            assert(self.allocator_4k_map.spec_index(recov_alloc).wf()) by {
-                reveal(allocator_perms_wf);
-            };
             assert(
                 lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, recov_alloc)]
                     == pool_lid
@@ -174,17 +167,13 @@ impl KernelK {
                     KernelObjId::Page(page_index),
                     self.page_array.lock_id_by_index(page_index),
                 );
-                assert forall|i: PageIndex|
-                    #![trigger lctx.lock_map().dom().contains(KernelObjId::Page(i))]
-                    i != page_index
-                        && lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                    ==> pre_scan_lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                        && lctx.lock_map()[KernelObjId::Page(i)]
-                            == pre_scan_lctx.lock_map()[KernelObjId::Page(i)] by {
-                };
+                assert(lctx.lock_map() =~= post_first_boundary_lctx.lock_map().insert(
+                    KernelObjId::Page(page_index),
+                    self.page_array.lock_id_by_index(page_index),
+                ));
                 page_lock_id_aligned_after_refresh(
-                    pre_scan.page_array, self.page_array,
-                    &pre_scan_lctx, &*lctx,
+                    post_first_boundary.page_array, self.page_array,
+                    &post_first_boundary_lctx, &*lctx,
                     page_index, self.page_array.lock_id_by_index(page_index),
                 );
                 assert(lock_id_aligned(self, &*lctx)) by {
@@ -192,6 +181,8 @@ impl KernelK {
                 }
                 let ghost pre_boundary = *self;
                 let ghost pre_boundary_lctx = *lctx;
+                assert(pre_boundary_lctx.lock_map().dom().contains(
+                    KernelObjId::Page(page_index)));
                 self.kernel_step_boundary(&mut *lctx, &mut *steps);
                 assert(self.process_map.spec_index(process_ptr)
                     == pre_boundary.process_map.spec_index(process_ptr)) by {
@@ -204,6 +195,12 @@ impl KernelK {
                     == pre_boundary.container_map.spec_index(recov_container).view_rodata()) by {
                     reveal(boundary_containers_preserved);
                 };
+                held_page_aligned_after_boundary(
+                    &pre_boundary, self, &pre_boundary_lctx, &*lctx, page_index);
+                assert(page_lock_perm.lock_id()
+                    == self.page_array[page_index].view().locking_thread()->Write_lock_id);
+                assert(self.page_array[page_index].view().view().state
+                    == PageState::Owned4k { process_ptr });
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
@@ -218,11 +215,7 @@ impl KernelK {
             self.allocator_4k_map.spec_index(recov_alloc).global_pool.view().lemma_len_view();
         };
 
-        proof {
-            assert(self.process_map.spec_index(process_ptr).wlocked_by(&*lctx)) by { reveal(process_locked_match_lctx); };
-        }
         let ghost pre_pool_stage = *self;
-        let ghost pre_pool_stage_lctx = *lctx;
         let (page_ptr, Tracked(page_lock_perm)) = self.pop_stage_global_4k_page(
             recov_alloc, process_ptr, recov_container,
             Tracked(&mut *lctx), Tracked(pool_perm.borrow()), Tracked(process_lock_perm),
@@ -240,9 +233,6 @@ impl KernelK {
         };
         let ghost pool_lid = self.allocator_4k_map.spec_index(recov_alloc).global_pool.lock_id();
         self.wunlock_all_caches(recov_alloc, Tracked(&mut *lctx), Tracked(cache_perms.get()));
-        assert(self.allocator_4k_map.spec_index(recov_alloc).wf()) by {
-            reveal(allocator_perms_wf);
-        };
         assert(
             lctx.lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, recov_alloc)]
                 == pool_lid
@@ -267,17 +257,13 @@ impl KernelK {
                 KernelObjId::Page(page_index),
                 self.page_array.lock_id_by_index(page_index),
             );
-            assert forall|i: PageIndex|
-                #![trigger lctx.lock_map().dom().contains(KernelObjId::Page(i))]
-                i != page_index
-                    && lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                ==> pre_pool_stage_lctx.lock_map().dom().contains(KernelObjId::Page(i))
-                    && lctx.lock_map()[KernelObjId::Page(i)]
-                        == pre_pool_stage_lctx.lock_map()[KernelObjId::Page(i)] by {
-            };
+            assert(lctx.lock_map() =~= post_first_boundary_lctx.lock_map().insert(
+                KernelObjId::Page(page_index),
+                self.page_array.lock_id_by_index(page_index),
+            ));
             page_lock_id_aligned_after_refresh(
-                pre_pool_stage.page_array, self.page_array,
-                &pre_pool_stage_lctx, &*lctx,
+                post_first_boundary.page_array, self.page_array,
+                &post_first_boundary_lctx, &*lctx,
                 page_index, self.page_array.lock_id_by_index(page_index),
             );
             assert(lock_id_aligned(self, &*lctx)) by {
@@ -285,6 +271,8 @@ impl KernelK {
             }
             let ghost pre_boundary = *self;
             let ghost pre_boundary_lctx = *lctx;
+            assert(pre_boundary_lctx.lock_map().dom().contains(
+                KernelObjId::Page(page_index)));
             self.kernel_step_boundary(&mut *lctx, &mut *steps);
             assert(self.process_map.spec_index(process_ptr)
                 == pre_boundary.process_map.spec_index(process_ptr)) by {
@@ -297,6 +285,12 @@ impl KernelK {
                 == pre_boundary.container_map.spec_index(recov_container).view_rodata()) by {
                 reveal(boundary_containers_preserved);
             };
+            held_page_aligned_after_boundary(
+                &pre_boundary, self, &pre_boundary_lctx, &*lctx, page_index);
+            assert(page_lock_perm.lock_id()
+                == self.page_array[page_index].view().locking_thread()->Write_lock_id);
+            assert(self.page_array[page_index].view().view().state
+                == PageState::Owned4k { process_ptr });
         }
         (page_ptr, Tracked(page_lock_perm))
     }
@@ -321,13 +315,8 @@ impl KernelK {
         requires
             old(self).inv(),
             cpu_id_valid(cpu_id),
-            old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages.view() > 0,
-            old(self).container_map.dom().contains(container_ptr),
             old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-            old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
-            old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             // Process write-lock perm, needed to mutate the process payload
             // (insert the freshly-allocated page into `temp_alloc_cache_4k`).
@@ -357,8 +346,6 @@ impl KernelK {
                 },
         ensures
             final(self).inv(),
-            final(self).process_map.dom().contains(process_ptr),
-            final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
             // ---- held process: not killed, perm still matches (process held throughout) ----
             final(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_lock_perm.lock_id() == final(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
@@ -374,7 +361,6 @@ impl KernelK {
             page_ptr_valid(ret.0),
             // ---- page slot left write-locked, perm handed back (rides across the boundary as a held object) ----
             page_index_wf(page_ptr2page_index(ret.0)),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().wlocked_by(final(lctx)),
             final(self).page_array[page_ptr2page_index(ret.0)].view().being_killed() == false,
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
@@ -421,6 +407,8 @@ impl KernelK {
         proof {
             reveal(allocator_perms_wf);
             reveal(container_process_wf);
+            reveal(container_allocator_wf);
+            reveal(process_locked_match_lctx);
         }
 
         // Fast path: lock the running cpu's cache; the cache is unlocked (no
@@ -505,7 +493,17 @@ impl KernelK {
                     reveal(lock_id_aligned);
                     reveal(page_lock_id_aligned);
                 }
+                let ghost pre_boundary = *self;
+                let ghost pre_boundary_lctx = *lctx;
+                assert(pre_boundary_lctx.lock_map().dom().contains(
+                    KernelObjId::Page(page_index)));
                 self.kernel_step_boundary(&mut *lctx, &mut *steps);
+                held_page_aligned_after_boundary(
+                    &pre_boundary, self, &pre_boundary_lctx, &*lctx, page_index);
+                assert(page_lock_perm.lock_id()
+                    == self.page_array[page_index].view().locking_thread()->Write_lock_id);
+                assert(self.page_array[page_index].view().view().state
+                    == PageState::Owned4k { process_ptr });
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
@@ -607,7 +605,17 @@ impl KernelK {
                     reveal(lock_id_aligned);
                     reveal(page_lock_id_aligned);
                 }
+                let ghost pre_boundary = *self;
+                let ghost pre_boundary_lctx = *lctx;
+                assert(pre_boundary_lctx.lock_map().dom().contains(
+                    KernelObjId::Page(page_index)));
                 self.kernel_step_boundary(&mut *lctx, &mut *steps);
+                held_page_aligned_after_boundary(
+                    &pre_boundary, self, &pre_boundary_lctx, &*lctx, page_index);
+                assert(page_lock_perm.lock_id()
+                    == self.page_array[page_index].view().locking_thread()->Write_lock_id);
+                assert(self.page_array[page_index].view().view().state
+                    == PageState::Owned4k { process_ptr });
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
@@ -680,7 +688,7 @@ impl KernelK {
                     reveal(boundary_cpus_preserved);
         };
         let result = self.alloc_4k_scan_all_caches_and_pool(
-            alloc_ptr_4k, process_ptr, cpu_id,
+            alloc_ptr_4k, process_ptr,
             Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(process_lock_perm),
         );
         proof {
@@ -725,8 +733,6 @@ impl KernelK {
                 ==> old(lctx).lock_map()[k].major <= PROCESS_LOCK_MAJOR,
         ensures
             final(self).inv(),
-            final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
             // ---- only allocator_4k_map lock state moves; every other field byte-equal ----
             final(self).pagetable_map     == old(self).pagetable_map,
             final(self).page_array        == old(self).page_array,
@@ -747,21 +753,9 @@ impl KernelK {
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             lock_id_aligned(final(self), final(lctx)),
             // ---- every cache + the pool is write-locked by us, perm recorded ----
-            forall|c: CpuId|
-                #![trigger ret.0.view().spec_index(c)]
-                cpu_id_valid(c)
-                ==> {
-                    &&& ret.0.view().dom().contains(c)
-                    &&& final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(final(lctx))
-                    &&& final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
-                    &&& ret.0.view().spec_index(c).state() is WriteLock
-                    &&& ret.0.view().spec_index(c).thread_id() == final(lctx).thread_id()
-                    &&& ret.0.view().spec_index(c).lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().locking_thread()->Write_lock_id
-                    &&& final(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c))
-                    &&& final(lctx).lock_map()[KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c)] == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].lock_id()
-                },
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(final(lctx)),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.being_killed() == false,
+            Self::cache_perms_match_lctx(
+                final(self).allocator_4k_map, alloc_ptr_4k,
+                final(lctx), &ret.0.view()),
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
             ret.1.view().lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
@@ -773,6 +767,15 @@ impl KernelK {
                 #![trigger final(lctx).lock_map().dom().contains(k)]
                 old(lctx).lock_map().dom().contains(k)
                 ==> final(lctx).lock_map().dom().contains(k) && final(lctx).lock_map()[k] == old(lctx).lock_map()[k],
+            forall|k: KernelObjId|
+                #![trigger final(lctx).lock_map().dom().contains(k)]
+                final(lctx).lock_map().dom().contains(k)
+                ==> old(lctx).lock_map().dom().contains(k)
+                    || k == KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)
+                    || (k is AllocatorCache
+                        && k->AllocatorCache_0 == PageSize::SZ4k
+                        && k->AllocatorCache_1 == alloc_ptr_4k
+                        && cpu_id_valid(k->AllocatorCache_2)),
             // ---- every held id ≤ pool major (caches 106, pool 107, pre-entry ≤ 105) ----
             forall|k: KernelObjId|
                 #![trigger final(lctx).lock_map().dom().contains(k)]
@@ -822,8 +825,6 @@ impl KernelK {
                     cpu_id_valid(c) && c < cpu
                     ==> {
                         &&& cache_perms.dom().contains(c)
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(&*lctx)
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
                         &&& cache_perms.spec_index(c).state() is WriteLock
                         &&& cache_perms.spec_index(c).thread_id() == lctx.thread_id()
                         &&& cache_perms.spec_index(c).lock_id() == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().locking_thread()->Write_lock_id
@@ -851,6 +852,15 @@ impl KernelK {
                     #![trigger old(lctx).lock_map().dom().contains(k)]
                     old(lctx).lock_map().dom().contains(k)
                     ==> lctx.lock_map().dom().contains(k) && lctx.lock_map()[k] == old(lctx).lock_map()[k],
+                forall|k: KernelObjId|
+                    #![trigger lctx.lock_map().dom().contains(k)]
+                    lctx.lock_map().dom().contains(k)
+                    ==> old(lctx).lock_map().dom().contains(k)
+                        || (k is AllocatorCache
+                            && k->AllocatorCache_0 == PageSize::SZ4k
+                            && k->AllocatorCache_1 == alloc_ptr_4k
+                            && cpu_id_valid(k->AllocatorCache_2)
+                            && k->AllocatorCache_2 < cpu),
             decreases NUM_CPUS - cpu,
         {
             let ghost cache_lid = self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu].lock_id();
@@ -911,6 +921,10 @@ impl KernelK {
                 reveal(cpu_locked_match_lctx);
                 reveal(allocator_locked_match_lctx);
             }
+            assert(Self::cache_perms_match_lctx(
+                self.allocator_4k_map, alloc_ptr_4k, &*lctx, &cache_perms)) by {
+                reveal(KernelK::cache_perms_match_lctx);
+            };
         }
         (Tracked(cache_perms), Tracked(pool_perm))
     }
@@ -930,13 +944,11 @@ impl KernelK {
     )
         requires
             old(self).inv(),
-            old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             old(self).locked_objects_match_lctx(old(lctx)),
             Self::cache_perms_match_lctx(
                 old(self).allocator_4k_map, alloc_ptr_4k, old(lctx), &cache_perms),
         ensures
             final(self).inv(),
-            final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(self).locked_objects_match_lctx(final(lctx)),
@@ -975,19 +987,25 @@ impl KernelK {
     {
         let tracked mut perms = cache_perms;
         proof {
+            reveal(allocator_locked_match_lctx);
+            reveal(allocator_perms_wf);
             assert forall|c: CpuId|
                 #![trigger perms.spec_index(c)]
                 #![trigger perms.dom().contains(c)]
                 cpu_id_valid(c)
                 ==> {
                     &&& perms.dom().contains(c)
-                    &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(&*lctx)
-                    &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
                     &&& perms.spec_index(c).state() is WriteLock
                     &&& perms.spec_index(c).thread_id() == lctx.thread_id()
-                    &&& perms.spec_index(c).lock_id() == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().locking_thread()->Write_lock_id
-                    &&& lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c))
-                    &&& lctx.lock_map()[KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c)] == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].lock_id()
+                    &&& perms.spec_index(c).lock_id()
+                        == self.allocator_4k_map.spec_index(alloc_ptr_4k)
+                            .cpu_caches[c].view().locking_thread()->Write_lock_id
+                    &&& lctx.lock_map().dom().contains(
+                        KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c))
+                    &&& lctx.lock_map()[KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, c)]
+                        == self.allocator_4k_map.spec_index(alloc_ptr_4k)
+                            .cpu_caches[c].lock_id()
                 } by {
                 reveal(KernelK::cache_perms_match_lctx);
             };
@@ -997,7 +1015,6 @@ impl KernelK {
             invariant
                 self.inv(),
                 self.locked_objects_match_lctx(&*lctx),
-                self.allocator_4k_map.dom().contains(alloc_ptr_4k),
                 self.pagetable_map     == old(self).pagetable_map,
                 self.page_array        == old(self).page_array,
                 self.cpu_array         == old(self).cpu_array,
@@ -1021,8 +1038,6 @@ impl KernelK {
                     cpu_id_valid(c) && c >= cpu
                     ==> {
                         &&& perms.dom().contains(c)
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(&*lctx)
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
                         &&& perms.spec_index(c).state() is WriteLock
                         &&& perms.spec_index(c).thread_id() == lctx.thread_id()
                         &&& perms.spec_index(c).lock_id() == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().locking_thread()->Write_lock_id
@@ -1046,8 +1061,10 @@ impl KernelK {
             decreases NUM_CPUS - cpu,
         {
             proof {
-                reveal(allocator_perms_wf);
                 assert(perms.spec_index(cpu).state() is WriteLock);
+                assert(self.allocator_4k_map.dom().contains(alloc_ptr_4k)) by {
+                    reveal(allocator_locked_match_lctx);
+                };
             }
             let tracked cache_perm = perms.tracked_remove(cpu);
             self.wunlock_allocator_cache(alloc_ptr_4k, cpu, Tracked(&mut *lctx), Tracked(cache_perm));
@@ -1090,8 +1107,6 @@ impl KernelK {
             cpu_id_valid(c)
             ==> {
                 &&& cache_perms.dom().contains(c)
-                &&& alloc_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(lctx)
-                &&& alloc_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
                 &&& cache_perms.spec_index(c).state() is WriteLock
                 &&& cache_perms.spec_index(c).thread_id() == lctx.thread_id()
                 &&& cache_perms.spec_index(c).lock_id()
@@ -1115,13 +1130,8 @@ impl KernelK {
         requires
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(self).container_map.dom().contains(container_ptr),
             old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-            old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
-            old(self).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
-            old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_effective_quota_4k(old(self).process_map.spec_index(process_ptr)) >= 1,
             process_lock_perm.state() is WriteLock,
@@ -1138,7 +1148,6 @@ impl KernelK {
                 ==> old(lctx).lock_map()[k].major <= ALLOCATOR_GLOBAL_POLL_MAJOR,
         ensures
             final(self).inv(),
-            final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -1166,19 +1175,15 @@ impl KernelK {
                     &old(self).page_array, page_ptr2page_index(ret.1.unwrap().1))
                 &&& final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool
                     == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool
-                &&& final(self).page_array[page_ptr2page_index(ret.1.unwrap().1)].view().wlocked_by(final(lctx))
                 &&& final(self).page_array[page_ptr2page_index(ret.1.unwrap().1)].view().being_killed() == false
                 &&& ret.1.unwrap().2.view().state() is WriteLock
                 &&& ret.1.unwrap().2.view().thread_id() == final(lctx).thread_id()
                 &&& ret.1.unwrap().2.view().lock_id() == final(self).page_array[page_ptr2page_index(ret.1.unwrap().1)].view().locking_thread()->Write_lock_id
-                &&& final(lctx).lock_map().dom().contains(KernelObjId::Page(page_ptr2page_index(ret.1.unwrap().1)))
                 &&& final(lctx).lock_map() == old(lctx).lock_map().insert(
                     KernelObjId::Page(page_ptr2page_index(ret.1.unwrap().1)),
                     old(self).page_array.lock_id_by_index(page_ptr2page_index(ret.1.unwrap().1)))
                 &&& Self::cache_perms_match_lctx(
                     final(self).allocator_4k_map, alloc_ptr_4k, final(lctx), cache_perms)
-                &&& final(self).process_map.dom().contains(process_ptr)
-                &&& final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx))
                 &&& final(self).process_map.spec_index(process_ptr).being_killed() == false
                 &&& process_lock_perm.lock_id() == final(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id
                 &&& final(self).process_map.spec_index(process_ptr).view_rodata()
@@ -1200,22 +1205,10 @@ impl KernelK {
             },
     {
         proof {
-            assert forall|c: CpuId|
-                #![trigger cache_perms.spec_index(c)]
-                #![trigger cache_perms.dom().contains(c)]
-                cpu_id_valid(c)
-                ==> {
-                    &&& cache_perms.dom().contains(c)
-                    &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(&*lctx)
-                    &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
-                    &&& cache_perms.spec_index(c).state() is WriteLock
-                    &&& cache_perms.spec_index(c).thread_id() == lctx.thread_id()
-                    &&& cache_perms.spec_index(c).lock_id() == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().locking_thread()->Write_lock_id
-                    &&& lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c))
-                    &&& lctx.lock_map()[KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c)] == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].lock_id()
-                } by {
-                reveal(KernelK::cache_perms_match_lctx);
-            };
+            reveal(container_process_wf);
+            reveal(container_allocator_wf);
+            reveal(process_locked_match_lctx);
+            reveal(allocator_locked_match_lctx);
         }
         let mut cpu: CpuId = 0;
         while cpu < NUM_CPUS
@@ -1224,38 +1217,21 @@ impl KernelK {
                 self.inv(),
                 self.locked_objects_match_lctx(&*lctx),
                 lock_id_aligned(self, &*lctx),
-                self.allocator_4k_map.dom().contains(alloc_ptr_4k),
                 lctx.lock_map() == old(lctx).lock_map(),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
                 0 <= cpu <= NUM_CPUS,
-                self.container_map.dom().contains(container_ptr),
                 self.container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-                self.process_map.dom().contains(process_ptr),
                 self.process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
-                self.container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
-                self.process_map.spec_index(process_ptr).wlocked_by(&*lctx),
                 self.process_map.spec_index(process_ptr).being_killed() == false,
                 process_effective_quota_4k(self.process_map.spec_index(process_ptr)) >= 1,
                 process_lock_perm.state() is WriteLock,
                 process_lock_perm.thread_id() == lctx.thread_id(),
                 process_lock_perm.lock_id() == self.process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 lctx.lock_map().dom().contains(KernelObjId::Process(process_ptr)),
-                forall|c: CpuId|
-                    #![trigger cache_perms.spec_index(c)]
-                    #![trigger cache_perms.dom().contains(c)]
-                    cpu_id_valid(c)
-                    ==> {
-                        &&& cache_perms.dom().contains(c)
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().wlocked_by(&*lctx)
-                        &&& self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().being_killed() == false
-                        &&& cache_perms.spec_index(c).state() is WriteLock
-                        &&& cache_perms.spec_index(c).thread_id() == lctx.thread_id()
-                        &&& cache_perms.spec_index(c).lock_id() == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].view().locking_thread()->Write_lock_id
-                        &&& lctx.lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c))
-                        &&& lctx.lock_map()[KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c)] == self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[c].lock_id()
-                    },
+                Self::cache_perms_match_lctx(
+                    self.allocator_4k_map, alloc_ptr_4k, &*lctx, cache_perms),
                 forall|k: KernelObjId|
                     #![trigger lctx.lock_map().dom().contains(k)]
                     lctx.lock_map().dom().contains(k)
@@ -1269,7 +1245,11 @@ impl KernelK {
         {
             proof {
                 reveal(allocator_perms_wf);
+                reveal(allocator_locked_match_lctx);
+                reveal(KernelK::cache_perms_match_lctx);
                 assert(self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu].view().write_lock_perm_match(&cache_perms.spec_index(cpu)));
+                assert(self.allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches[cpu].view().being_killed() == false);
             }
             let cache_ref = self.allocator_4k_map.borrow_cache(
                 alloc_ptr_4k, cpu, Tracked(cache_perms.tracked_borrow(cpu)),
@@ -1323,21 +1303,14 @@ impl KernelK {
             old(self).inv(),
             cpu_id_valid(cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(self).container_map.dom().contains(container_ptr),
             old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-            old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
-            old(self).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id]@.being_killed() == false,
             cache_lock_perm.state() is WriteLock,
             cache_lock_perm.thread_id() == old(lctx).thread_id(),
             cache_lock_perm.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
             old(lctx).lock_map().dom().contains(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cpu_id)),
             old(lctx).lock_map()[KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cpu_id)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].lock_id(),
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id]@@.view().len() > 0,
-            old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_effective_quota_4k(old(self).process_map.spec_index(process_ptr)) >= 1,
             process_lock_perm.state() is WriteLock,
@@ -1361,17 +1334,11 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
-            final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].view().wlocked_by(final(lctx)),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].view().being_killed() == false,
             cache_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].view().locking_thread()->Write_lock_id,
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].lock_id()
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].lock_id(),
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.unchanged_except(
                 &old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches, cpu_id),
-            final(self).process_map.dom().contains(process_ptr),
-            final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
             final(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_lock_perm.lock_id() == final(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
             final(self).process_map.spec_index(process_ptr).view_rodata() == old(self).process_map.spec_index(process_ptr).view_rodata(),
@@ -1384,16 +1351,8 @@ impl KernelK {
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
             ret.1.view().lock_id() == final(self).page_array[page_ptr2page_index(ret.0)].view().locking_thread()->Write_lock_id,
-            final(lctx).lock_map().dom().contains(KernelObjId::Page(page_ptr2page_index(ret.0))),
-            final(lctx).lock_map()[KernelObjId::Page(page_ptr2page_index(ret.0))] == old(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0)),
             // ---- lock_map: gained exactly the page slot; everything else preserved ----
             final(lctx).lock_map() == old(lctx).lock_map().insert(KernelObjId::Page(page_ptr2page_index(ret.0)), old(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0))),
-            forall|k: KernelObjId|
-                #![trigger old(lctx).lock_map().dom().contains(k)]
-                #![trigger final(lctx).lock_map().dom().contains(k)]
-                old(lctx).lock_map().dom().contains(k)
-                ==> final(lctx).lock_map().dom().contains(k)
-                    && final(lctx).lock_map()[k] == old(lctx).lock_map()[k],
             final(self).locked_objects_match_lctx(final(lctx)),
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view()
@@ -1420,6 +1379,9 @@ impl KernelK {
             reveal(process_perms_wf);
             reveal(page_array_wf);
             reveal(page_locked_match_lctx);
+            reveal(allocator_locked_match_lctx);
+            reveal(process_locked_match_lctx);
+            reveal(container_process_wf);
         }
         let cache_ref = self.allocator_4k_map.borrow_cache(
             alloc_ptr_4k, cpu_id, Tracked(cache_lock_perm),
@@ -1673,14 +1635,8 @@ impl KernelK {
         requires
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(self).container_map.dom().contains(container_ptr),
             old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-            old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
-            old(self).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(old(lctx)),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.being_killed() == false,
             global_pool_lock_perm.state() is WriteLock,
             global_pool_lock_perm.thread_id() == old(lctx).thread_id(),
             global_pool_lock_perm.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
@@ -1688,7 +1644,6 @@ impl KernelK {
             old(lctx).lock_map()[KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().view().len() > 0,
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().len() > 0,
-            old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_effective_quota_4k(old(self).process_map.spec_index(process_ptr)) >= 1,
             process_lock_perm.state() is WriteLock,
@@ -1712,17 +1667,11 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
-            final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.wlocked_by(final(lctx)),
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.being_killed() == false,
             global_pool_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id()
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
-            final(self).process_map.dom().contains(process_ptr),
-            final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
             final(self).process_map.spec_index(process_ptr).being_killed() == false,
             process_lock_perm.lock_id() == final(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
             final(self).process_map.spec_index(process_ptr).view_rodata() == old(self).process_map.spec_index(process_ptr).view_rodata(),
@@ -1735,16 +1684,8 @@ impl KernelK {
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
             ret.1.view().lock_id() == final(self).page_array[page_ptr2page_index(ret.0)].view().locking_thread()->Write_lock_id,
-            final(lctx).lock_map().dom().contains(KernelObjId::Page(page_ptr2page_index(ret.0))),
-            final(lctx).lock_map()[KernelObjId::Page(page_ptr2page_index(ret.0))] == old(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0)),
             // ---- lock_map: gained exactly the page slot; everything else preserved ----
             final(lctx).lock_map() == old(lctx).lock_map().insert(KernelObjId::Page(page_ptr2page_index(ret.0)), old(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0))),
-            forall|k: KernelObjId|
-                #![trigger old(lctx).lock_map().dom().contains(k)]
-                #![trigger final(lctx).lock_map().dom().contains(k)]
-                old(lctx).lock_map().dom().contains(k)
-                ==> final(lctx).lock_map().dom().contains(k)
-                    && final(lctx).lock_map()[k] == old(lctx).lock_map()[k],
             final(self).locked_objects_match_lctx(final(lctx)),
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view()
@@ -1769,6 +1710,9 @@ impl KernelK {
             reveal(process_perms_wf);
             reveal(page_array_wf);
             reveal(page_locked_match_lctx);
+            reveal(allocator_locked_match_lctx);
+            reveal(process_locked_match_lctx);
+            reveal(container_process_wf);
         }
         let poll_ref = self.allocator_4k_map.borrow_global_pool(
             alloc_ptr_4k, Tracked(global_pool_lock_perm),
@@ -2234,41 +2178,4 @@ pub proof fn lemma_scan_fail_pool_nonempty(
     lemma_thread_indirect_pending_4k_fold_nonneg(k.container_map.spec_index(container_ptr).view_kernel_ghost().owned_indirect_threads.view(), k.thread_map, k.container_map.spec_index(container_ptr).view_rodata().view().depth as int);
 }
 
-/// The container conservation law forces `total_free_pages >= 1` whenever the
-/// held process has `effective_quota_4k >= 1`: the total equals the sum of
-/// every owned process's effective quota plus both thread-pending folds plus
-/// the allocator quota, and every summand other than the held process's (which
-/// is `>= 1`) is non-negative. Unlike `lemma_scan_fail_pool_nonempty`, this
-/// needs no caches-empty hypothesis — it bounds `total_free_pages`, the LHS of
-/// `allocate_free_4k_page`'s entry precondition, directly.
-pub proof fn lemma_effective_quota_ge_1_imply_total_free_pages_pos(
-    k: &KernelK,
-    container_ptr: RwLockContainerPtr,
-    alloc_ptr_4k: RwLockPageAllocatorPtr,
-    process_ptr: RwLockProcessPtr,
-)
-    requires
-        k.inv(),
-        k.container_map.dom().contains(container_ptr),
-        k.container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
-        k.container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
-        process_effective_quota_4k(k.process_map.spec_index(process_ptr)) >= 1,
-    ensures
-        k.allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages.view() > 0,
-{
-    reveal(container_allocator_wf);
-    reveal(container_process_wf);
-    reveal(container_process_allocator_quota_4k_wf);
-    reveal(process_perms_wf);
-    let owned = k.container_map.spec_index(container_ptr).view().owned_processes.view();
-    assert forall|p: RwLockProcessPtr|
-        #![trigger process_effective_quota_4k(k.process_map.spec_index(p))]
-        owned.contains(p)
-        implies process_effective_quota_4k(k.process_map.spec_index(p)) >= 0 by {
-        assert(k.process_map.spec_index(p).view().quota_4k >= k.process_map.spec_index(p).view().temp_alloc_cache_4k.view().len());
-    };
-    lemma_process_effective_quota_4k_fold_ge_member(owned, k.process_map, process_ptr);
-    lemma_thread_direct_pending_4k_fold_nonneg(k.container_map.spec_index(container_ptr).view_user_ghost().owned_threads.view(), k.thread_map);
-    lemma_thread_indirect_pending_4k_fold_nonneg(k.container_map.spec_index(container_ptr).view_kernel_ghost().owned_indirect_threads.view(), k.thread_map, k.container_map.spec_index(container_ptr).view_rodata().view().depth as int);
-}
 }

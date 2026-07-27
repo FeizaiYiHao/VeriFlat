@@ -17,7 +17,8 @@
 - [Proof simplification methodology](feedback_proof_simplification_methodology.md) — audit contract entailment and consumers before triggers; derive inv/lock/frame consequences locally, remove proof-only plumbing, then delete-and-verify by fact family
 - [2026-07-25 contract/proof simplification](project_contract_proof_simplification_2026_07_25.md) — allocate_free_4k_page + syscall_new_thread + lock wrappers: net -321 lines, exact redundant patterns, retained proof boundaries, 479 verified/0 errors
 - [Lock id frozen at acquire](feedback_lock_id_ordering_frozen_at_acquire.md) — an RwLock's lock_id+major is frozen at lock time from the payload THEN; staged page locks as Free (major 30000) even after retype; drove scheduler major 20000→103
-- [2026-07-26 lock-map alignment refresh](project_lock_id_alignment_refresh_2026_07_26.md) — LockPerm token versus dynamic lock-map id; page refresh before boundary; cache contract cleanup; retained historical-frame bridges
+- [2026-07-26 lock-map alignment refresh](project_lock_id_alignment_refresh_2026_07_26.md) — LockPerm token versus dynamic lock-map id; exact-map composition from the correct snapshot; ground held-page boundary lemma
+- [2026-07-27 follow-up simplification](project_contract_proof_simplification_2026_07_27.md) — removed reintroduced consequence bundles after the token/id split; callee-local invariant recovery; 484 verified/0 errors
 - [Thread wiring COMPLETE](project_thread_wiring_milestone.md) — add_new_thread LIVE, crate 479 verified (2026-07-23), 0 assumes; scheduler→103, rodata-TCB, Option-B alloc, 4 blessed stub lemmas
 - [Syscall postcondition models KernelU](feedback_syscall_postcondition_models_kernel_u.md) — syscall postcondition describe KernelU (user-visible) via old_u/new_u, never KernelK internals
 - [Kernel invariant opaque reveal](project_kernel_invariant_opaque_reveal.md) — all kernel invariants are #[verifier::opaque], must explicitly reveal() in proof blocks
