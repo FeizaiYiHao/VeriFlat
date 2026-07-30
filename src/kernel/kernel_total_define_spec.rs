@@ -83,7 +83,7 @@ impl KernelSteps{
             // (no more locks may be acquired), user flips to Release
             // (user-visible locks may now be released).
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_maps_equal(old(lctx)),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).user_view_locking_state() is Release,
             // Opening a user-view step is pure bookkeeping: it touches neither the
@@ -92,6 +92,8 @@ impl KernelSteps{
             // held-lock ⇄ lctx agreement is carried across unchanged.
             kernel_k.locked_objects_match_lctx(old(lctx))
                 ==> kernel_k.locked_objects_match_lctx(final(lctx)),
+            lock_id_aligned(kernel_k, old(lctx)) ==>
+                lock_id_aligned(kernel_k, final(lctx))
     {
         unimplemented!()
     }
@@ -134,7 +136,7 @@ impl KernelSteps{
             final(self).snap_shot == kernel_k_to_kernel_u(*kernel_k),
             // LocalContext: only the user-view phase changes (back to Acquire).
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_maps_equal(old(lctx)),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             final(lctx).user_view_locking_state() is Acquire,
             // Closing a user-view step touches neither the kernel state nor
@@ -142,6 +144,8 @@ impl KernelSteps{
             // ⇄ lctx agreement is carried across unchanged.
             kernel_k.locked_objects_match_lctx(old(lctx))
                 ==> kernel_k.locked_objects_match_lctx(final(lctx)),
+            lock_id_aligned(kernel_k, old(lctx)) ==>
+                lock_id_aligned(kernel_k, final(lctx)),
     {
         unimplemented!()
     }

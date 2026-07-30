@@ -153,20 +153,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         reveal(LinkedList::wf_value_list);
     }
 
-    /// Expose (past closed `wf`) that the map domain is the perms domain and
-    /// equals the address-list membership. Additive helper.
-    pub proof fn lemma_map_dom(&self)
-        requires
-            self.wf(),
-        ensures
-            self.map().dom() == self.perms@.dom(),
-            forall|a: usize| #![trigger self.map().dom().contains(a)]
-                self.map().dom().contains(a) == self.addr_list@.contains(a),
-    {
-        reveal(LinkedList::wf_perms);
-        reveal(LinkedList::wf_map);
-    }
-
     /// Address ↔ value uniqueness: in a wf list whose VALUES have no
     /// duplicates, the address holding a given value is unique. Concretely,
     /// any two in-domain addresses mapping to the same value are equal.
@@ -449,6 +435,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
             old(self).dom().contains(addr) == false,
+            old(self).map().dom().contains(addr) == false,
     {
         proof{
             reveal(LinkedList::wf_perms);
@@ -663,8 +650,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.wf(),
             self.len() != 0,
         ensures
-            // address is the head, in the (current) domain.
-            ret.0 == self.addr_list@[0],
+            // address is the head, exposed only through the logical map.
             self.dom().contains(ret.0),
             self.map().dom().contains(ret.0),
             // value is the head element, == map[head].
@@ -686,11 +672,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         let head_addr = self.head.unwrap();
         let tracked head_perm = self.perms.borrow().tracked_borrow(head_addr);
         let node: &Node<T> = PPtr::<Node<T>>::from_usize(head_addr).borrow(Tracked(head_perm));
-        proof {
-            // wf_head: addr_list[0] == head; wf_map / wf_value_list tie the
-            // borrowed node's value to view()[0] and map()[head].
-            self.lemma_map_dom();
-        }
         (head_addr, node.value)
     }
 
@@ -712,7 +693,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             // The popped node was the head — hence in the pre-pop domain. (Used
             // by callers that need map[ret.0] to be a live entry.)
             old(self).dom().contains(ret.0),
-            ret.0 == old(self).addr_list@[0],
+            old(self).map().dom().contains(ret.0),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
     {

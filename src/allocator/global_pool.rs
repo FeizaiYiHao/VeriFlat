@@ -74,9 +74,10 @@ impl GlobalPool {
     pub fn peek_head(&self) -> (ret: (usize, PagePtr))
         where PagePtr: Copy
         requires self.linked_list.wf(), self.linked_list.len() != 0,
-        ensures ret.0 == self.linked_list.addr_list@[0],
-            self.linked_list.dom().contains(ret.0),
+        ensures self.linked_list.dom().contains(ret.0),
+            self.linked_list.map().dom().contains(ret.0),
             ret.1 == self.linked_list@[0],
+            ret.1 == self.linked_list.map()[ret.0],
     { self.linked_list.peek_head() }
 
     pub proof fn lemma_len_view(&self)

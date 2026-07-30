@@ -48,7 +48,23 @@ verus! {
                 self[i] === old[i]
         }
 
+        #[verifier::opaque]
+        pub open spec fn payloads_unchanged(&self, old: &Self) -> bool {
+            forall|i: usize|
+                #![trigger self.spec_index(i)]
+                0 <= i < N ==>
+                    self.spec_index(i).view().view()
+                        == old.spec_index(i).view().view()
+        }
+
         /// Bridge between `spec_index(i).value` and `view()[i]`.
+        pub proof fn lemma_view_index(&self, index: usize)
+            requires
+                0 <= index < N,
+            ensures
+                self.view()[index as int] == self.spec_index(index).value,
+        {
+        }
 
         #[verifier(external_body)]
         pub fn take(&mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm:Tracked<&LockPerm>) -> (ret:T)
@@ -166,6 +182,7 @@ verus! {
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
+                final(self).payloads_unchanged(old(self)),
 
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -197,6 +214,7 @@ verus! {
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
+                final(self).payloads_unchanged(old(self)),
 
                 final(self)[index]@.locking_thread() is None,
 
@@ -207,7 +225,14 @@ verus! {
                 // transition (matches `LockedMap::wunlock`). user_view is
                 // separately preserved by unlock_ensures.
                 wunlock_ensures(old(self)[index]@, final(self)[index]@),
-                unlock_ensures(old(lctx), final(lctx), final(self)[index]@@, lock_perm@.lock_id(), obj_id@),
+                unlock_ensures(
+                    old(lctx),
+                    final(lctx),
+                    final(self)[index]@@,
+                    lock_perm@.lock_id(),
+                    obj_id@,
+                    old(self).lock_id_by_index(index),
+                ),
         {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }

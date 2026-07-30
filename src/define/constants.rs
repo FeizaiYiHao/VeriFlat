@@ -69,6 +69,11 @@ pub open spec fn cpu_id_valid(cpu_id: CpuId) -> bool{
     0 <= cpu_id < NUM_CPUS
 }
 
+pub open spec fn edp_idx_valid(edp_idx: EndpointIdx) -> bool{
+    0 <= edp_idx < MAX_NUM_ENDPOINT_DESCRIPTORS
+}
+
+
 pub const PAGE_ENTRY_PRESENT_SHIFT: u64 = 0;
 
 pub const PAGE_ENTRY_WRITE_SHIFT: u64 = 1;

@@ -1,23 +1,29 @@
 use vstd::prelude::*;
+use vstd::assert_seqs_equal;
 use crate::*;
 verus! {
     impl KernelK{
-        pub fn syscall_alloc_quota_4k(&mut self, tracked mut lctx: Tracked<LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, alloc_amount: usize) -> (ret: RetValueType)
+        pub fn syscall_alloc_quota_4k(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, alloc_amount: usize) -> (ret: RetValueType)
             requires
                 cpu_id_valid(cpu_id),
                 old(self).inv(),
-                old(self).all_objects_unlocked(&lctx),
                 old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
-                lctx.all_lock_maps_empty(),
-                lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() is Acquire,
+                old(lctx).kernel_view_locking_state() is Acquire,
+                old(lctx).user_view_locking_state() is Acquire,
+                old(lctx).lock_id_set() =~= Set::<LockId>::empty(),
+                old(self).all_objects_unlocked(old(lctx)),
                 old(steps).steps.len() == 0,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
+                old(self).locked_objects_match_lctx(old(lctx)),
+                old(lctx).wf(),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(steps).steps.len() == 1,
                 final(steps).steps.last().new_k == *final(self),
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
-                final(self).all_objects_unlocked(&lctx),
+                final(self).all_objects_unlocked(final(lctx)),
+                final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
                 ret is Success
                     || ret is ErrorContainerKilled
                     || ret is ErrorContainerQuotaInsufficient
@@ -40,20 +46,6 @@ verus! {
                         )
                 },
         {
-            proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
-                assert(self.cpu_array.inv());
-                assert(self.container_map.perms_wf());
-                assert(self.allocator_4k_map.perms_wf());
-                assert(self.process_map.perms_wf());
-                reveal(cpu_objects_unlocked);
-                reveal(container_objects_unlocked);
-                reveal(allocator_objects_unlocked);
-                reveal(process_objects_unlocked);
-            }
             assert(
                 {
                     &&&
@@ -75,50 +67,29 @@ verus! {
                         self.container_map.spec_index(self.cpu_array.spec_index(cpu_id).view().view().owning_container).view_rodata().view().depth
                 }
             ) by {
+                reveal(cpu_array_wf);
+                reveal(container_perms_wf);
+                reveal(process_perms_wf);
                 reveal(container_cpu_wf);
                 reveal(process_cpu_wf);
                 reveal(container_process_wf);
             };
-            proof {
-                all_unlocked_imply_locked_objects_match_lctx(&*self, &lctx);
-                lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
-            }
 
-            let ghost pre_cpu_lctx = lctx;
-            let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut lctx));
+            let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
-            let thread_ptr = cpu.current_thread.unwrap();
             let process_ptr = cpu.current_process.unwrap();
             let container_ptr = cpu.owning_container;
-            proof {
-                let container_lock_id = self.container_map.lock_id_by_key(container_ptr);
-                assert(lctx.lock_maps_inserted(
-                    &pre_cpu_lctx,
-                    KernelObjId::Cpu(cpu_id),
-                    self.cpu_array.lock_id_by_index(cpu_id),
-                )) by { reveal(lock_ensures); }
-                pre_cpu_lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
-                assert(container_lock_id.spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
-                    reveal(cpu_locked_match_lctx);
-                };
-                lctx.lemma_lock_id_acyclic_after_insert(
-                    &pre_cpu_lctx,
-                    KernelObjId::Cpu(cpu_id),
-                    self.cpu_array.lock_id_by_index(cpu_id),
-                    container_lock_id,
-                );
-            }
-            let ghost pre_container_lctx = lctx;
-            let container_res = self.wlock_container_unless_killed(container_ptr, Tracked(&mut lctx));
+            let container_res = self.wlock_container_unless_killed(container_ptr, Tracked(lctx));
             if let (false, _) = container_res{
                 proof {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                    steps.begin_user_view_step(&*self, &mut lctx);
+                    steps.begin_user_view_step(&*self, lctx);
                 }
-                self.wunlock_cpu(cpu_id, Tracked(&mut lctx), Tracked(cpu_lock_perm));
+                self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    steps.end_user_view_step(&*self, &mut lctx);
+                    steps.end_user_view_step(&*self, lctx);
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    self.lock_id_set_empty_imply_all_objects_unlocked(&*lctx);
                 }
                 return RetValueType::ErrorContainerKilled;
             }
@@ -134,68 +105,13 @@ verus! {
                     &&&
                     self.allocator_4k_map.spec_index(alloc_ptr_4k).quota.view().container_depth
                         == self.container_map.spec_index(container_ptr).view_rodata().view().depth
-                    &&&
-                    self.allocator_4k_map.spec_index(alloc_ptr_4k).quota.locked_by(&lctx) == false
                 }
             ) by {
+                reveal(allocator_perms_wf);
                 reveal(container_allocator_wf);
-                reveal(allocator_objects_unlocked);
             };
 
-            proof {
-                let quota_lock_id = self.allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id();
-                assert(lctx.lock_maps_inserted(
-                    &pre_container_lctx,
-                    KernelObjId::Container(container_ptr),
-                    self.container_map.lock_id_by_key(container_ptr),
-                )) by { reveal(lock_ensures); }
-                pre_cpu_lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
-                assert(quota_lock_id.spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_perms_wf);
-                };
-                pre_container_lctx.lemma_lock_id_acyclic_after_insert(
-                    &pre_cpu_lctx,
-                    KernelObjId::Cpu(cpu_id),
-                    self.cpu_array.lock_id_by_index(cpu_id),
-                    quota_lock_id,
-                );
-                assert(quota_lock_id.spec_gt(self.container_map.lock_id_by_key(container_ptr))) by {
-                    reveal(container_locked_match_lctx);
-                };
-                lctx.lemma_lock_id_acyclic_after_insert(
-                    &pre_container_lctx,
-                    KernelObjId::Container(container_ptr),
-                    self.container_map.lock_id_by_key(container_ptr),
-                    quota_lock_id,
-                );
-            }
-            let ghost pre_quota_lctx = lctx;
-            proof {
-                let process_lock_id = self.process_map.lock_id_by_key(process_ptr);
-                pre_cpu_lctx.lemma_all_lock_maps_empty_imply_lock_id_acyclic();
-                assert(process_lock_id.spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
-                    reveal(cpu_locked_match_lctx);
-                    reveal(process_perms_wf);
-                };
-                pre_container_lctx.lemma_lock_id_acyclic_after_insert(
-                    &pre_cpu_lctx,
-                    KernelObjId::Cpu(cpu_id),
-                    self.cpu_array.lock_id_by_index(cpu_id),
-                    process_lock_id,
-                );
-                assert(process_lock_id.spec_gt(self.container_map.lock_id_by_key(container_ptr))) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_perms_wf);
-                };
-                pre_quota_lctx.lemma_lock_id_acyclic_after_insert(
-                    &pre_container_lctx,
-                    KernelObjId::Container(container_ptr),
-                    self.container_map.lock_id_by_key(container_ptr),
-                    process_lock_id,
-                );
-            }
-            let Tracked(quota_lock_perm) = self.wlock_quota_4k(alloc_ptr_4k, Tracked(&mut lctx));
+            let Tracked(quota_lock_perm) = self.wlock_quota_4k(alloc_ptr_4k, Tracked(lctx));
 
             let quota_ref = self.allocator_4k_map.borrow_quota(
                 alloc_ptr_4k, Tracked(&quota_lock_perm),
@@ -203,48 +119,32 @@ verus! {
             if quota_ref.value < alloc_amount {
                 proof {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                    steps.begin_user_view_step(&*self, &mut lctx);
+                    steps.begin_user_view_step(&*self, lctx);
                 }
-                self.wunlock_cpu(cpu_id, Tracked(&mut lctx), Tracked(cpu_lock_perm));
-                self.wunlock_container(container_ptr, Tracked(&mut lctx), Tracked(container_lock_perm));
-                self.wunlock_quota_4k(alloc_ptr_4k, Tracked(&mut lctx), Tracked(quota_lock_perm));
+                self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                self.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
+                self.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 proof {
-                    steps.end_user_view_step(&*self, &mut lctx);
+                    steps.end_user_view_step(&*self, lctx);
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    self.lock_id_set_empty_imply_all_objects_unlocked(&*lctx);
                 }
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
 
-            proof {
-                let process_lock_id = self.process_map.lock_id_by_key(process_ptr);
-                assert(lctx.lock_maps_inserted(
-                    &pre_quota_lctx,
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
-                    self.allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
-                )) by { reveal(lock_ensures); }
-                assert(process_lock_id.spec_gt(self.allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id())) by {
-                    reveal(allocator_locked_match_lctx);
-                };
-                lctx.lemma_lock_id_acyclic_after_insert(
-                    &pre_quota_lctx,
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
-                    self.allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
-                    process_lock_id,
-                );
-            }
-            let ghost pre_process_lctx = lctx;
-            let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut lctx));
+            let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(lctx));
             if let (false, _) = process_res {
                 proof {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                    steps.begin_user_view_step(&*self, &mut lctx);
+                    steps.begin_user_view_step(&*self, lctx);
                 }
-                self.wunlock_cpu(cpu_id, Tracked(&mut lctx), Tracked(cpu_lock_perm));
-                self.wunlock_container(container_ptr, Tracked(&mut lctx), Tracked(container_lock_perm));
-                self.wunlock_quota_4k(alloc_ptr_4k, Tracked(&mut lctx), Tracked(quota_lock_perm));
+                self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                self.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
+                self.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 proof {
-                    steps.end_user_view_step(&*self, &mut lctx);
+                    steps.end_user_view_step(&*self, lctx);
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    self.lock_id_set_empty_imply_all_objects_unlocked(&*lctx);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
@@ -254,32 +154,25 @@ verus! {
             if alloc_amount > usize::MAX - process_quota_4k {
                 proof {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                    steps.begin_user_view_step(&*self, &mut lctx);
+                    steps.begin_user_view_step(&*self, lctx);
                 }
-                self.wunlock_cpu(cpu_id, Tracked(&mut lctx), Tracked(cpu_lock_perm));
-                self.wunlock_container(container_ptr, Tracked(&mut lctx), Tracked(container_lock_perm));
-                self.wunlock_quota_4k(alloc_ptr_4k, Tracked(&mut lctx), Tracked(quota_lock_perm));
-                self.wunlock_process(process_ptr, Tracked(&mut lctx), Tracked(process_lock_perm));
+                self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                self.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
+                self.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
+                self.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
                 proof {
-                    steps.end_user_view_step(&*self, &mut lctx);
+                    steps.end_user_view_step(&*self, lctx);
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    self.lock_id_set_empty_imply_all_objects_unlocked(&*lctx);
                 }
                 return RetValueType::ErrorProcessQuotaOverflow;
             }
 
             proof {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                reveal(LocalContext::all_lock_maps_empty);
-                reveal(LocalContext::lock_maps_inserted);
-                assert(pre_cpu_lctx.page_lock_map().dom() == Set::empty());
-                assert(pre_container_lctx.page_lock_map() == pre_cpu_lctx.page_lock_map());
-                assert(pre_quota_lctx.page_lock_map() == pre_container_lctx.page_lock_map());
-                assert(pre_process_lctx.page_lock_map() == pre_quota_lctx.page_lock_map());
-                assert(lctx.page_lock_map() == pre_process_lctx.page_lock_map());
-                no_held_pages_imply_lock_id_aligned(&*self, &lctx);
             }
             self.commit_alloc_quota_4k(
-                Tracked(&mut lctx),
+                Tracked(lctx),
                 Tracked(&mut *steps),
                 cpu_id,
                 container_ptr,
@@ -292,15 +185,7 @@ verus! {
                 Tracked(process_lock_perm),
             );
             proof {
-                reveal(cpu_objects_unlocked);
-                reveal(page_objects_unlocked);
-                reveal(container_objects_unlocked);
-                reveal(process_objects_unlocked);
-                reveal(thread_objects_unlocked);
-                reveal(endpoint_objects_unlocked);
-                reveal(pagetable_objects_unlocked);
-                reveal(scheduler_objects_unlocked);
-                reveal(allocator_objects_unlocked);
+                self.lock_id_set_empty_imply_all_objects_unlocked(&*lctx);
             }
             return  RetValueType::Success;
         }
@@ -329,33 +214,26 @@ verus! {
                 cpu_lock_perm@.state() is WriteLock,
                 cpu_lock_perm@.thread_id() == old(lctx).thread_id(),
                 cpu_lock_perm@.lock_id() == old(self).cpu_array[cpu_id]@.locking_thread()->Write_lock_id,
-                old(lctx).cpu_lock_map().dom().contains(cpu_id),
-                old(lctx).cpu_lock_map()[cpu_id] == old(self).cpu_array.lock_id_by_index(cpu_id),
                 old(self).cpu_array[cpu_id]@.wlocked_by(old(lctx)),
                 old(self).cpu_array[cpu_id]@.being_killed() == false,
                 old(self).container_map.dom().contains(container_ptr),
-                old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
                 container_lock_perm@.state() is WriteLock,
                 container_lock_perm@.thread_id() == old(lctx).thread_id(),
                 container_lock_perm@.lock_id() == old(self).container_map.spec_index(container_ptr).locking_thread()->Write_lock_id,
-                old(lctx).container_lock_map().dom().contains(container_ptr),
-                old(lctx).container_lock_map()[container_ptr] == old(self).container_map.lock_id_by_key(container_ptr),
+                old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(self).container_map.spec_index(container_ptr).being_killed() == false,
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.wlocked_by(old(lctx)),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.is_init(),
                 quota_lock_perm@.state() is WriteLock,
                 quota_lock_perm@.thread_id() == old(lctx).thread_id(),
                 quota_lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locking_thread()->Write_lock_id,
-                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Quota(alloc_ptr_4k)),
-                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::Quota(alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
+                    .wlocked_by(old(lctx)),
                 old(self).process_map.dom().contains(process_ptr),
-                old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
                 process_lock_perm@.state() is WriteLock,
                 process_lock_perm@.thread_id() == old(lctx).thread_id(),
                 process_lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
-                old(lctx).process_lock_map().dom().contains(process_ptr),
-                old(lctx).process_lock_map()[process_ptr] == old(self).process_map.lock_id_by_key(process_ptr),
+                old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
                 old(self).process_map.spec_index(process_ptr).being_killed() == false,
                 old(self).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
                 old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
@@ -391,17 +269,16 @@ verus! {
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
                 final(lctx).thread_id() == old(lctx).thread_id(),
-                final(lctx).cpu_lock_map() =~= old(lctx).cpu_lock_map().remove(cpu_id),
-                final(lctx).container_lock_map() =~= old(lctx).container_lock_map().remove(container_ptr),
-                final(lctx).allocator_4k_lock_map() =~= old(lctx).allocator_4k_lock_map().remove(AllocatorLockObjId::Quota(alloc_ptr_4k)),
-                final(lctx).process_lock_map() =~= old(lctx).process_lock_map().remove(process_ptr),
-                final(lctx).thread_lock_map() =~= old(lctx).thread_lock_map(),
-                final(lctx).endpoint_lock_map() =~= old(lctx).endpoint_lock_map(),
-                final(lctx).scheduler_lock_map() =~= old(lctx).scheduler_lock_map(),
-                final(lctx).pagetable_lock_map() =~= old(lctx).pagetable_lock_map(),
-                final(lctx).page_lock_map() =~= old(lctx).page_lock_map(),
-                final(lctx).allocator_2m_lock_map() =~= old(lctx).allocator_2m_lock_map(),
-                final(lctx).allocator_1g_lock_map() =~= old(lctx).allocator_1g_lock_map(),
+                final(lctx).wf(),
+                final(lctx).lock_id_set() =~=
+                    old(lctx).lock_id_set()
+                        .remove(old(self).cpu_array.lock_id_by_index(cpu_id))
+                        .remove(old(self).container_map.lock_id_by_key(container_ptr))
+                        .remove(
+                            old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                                .quota.lock_id(),
+                        )
+                        .remove(old(self).process_map.lock_id_by_key(process_ptr)),
                 final(steps).steps.len() == old(steps).steps.len() + 1,
                 final(steps).steps.last().old_u == kernel_k_to_kernel_u(*old(self)),
                 final(steps).steps.last().new_k == *final(self),
@@ -413,11 +290,17 @@ verus! {
                     alloc_amount as int,
                 ),
         {
-            let ghost pre_self = *self;
             proof {
                 steps.begin_user_view_step(&*self, &mut *lctx);
-                reveal(process_perms_wf);
-                reveal(allocator_perms_wf);
+                assert(
+                    self.process_map.perms_wf()
+                    && self.process_map.spec_index(process_ptr).is_init()
+                ) by {
+                    reveal(process_perms_wf);
+                };
+                assert(self.allocator_4k_map.perms_wf()) by {
+                    reveal(allocator_perms_wf);
+                };
             }
             {
                 let process_mut = self.process_map.borrow_mut(
@@ -437,27 +320,18 @@ verus! {
             }
 
             proof {
-                assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
-                assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
                 assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
-                assert(thread_perms_wf(self.thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
                     assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
-                    };
-                    assert(container_page_owner_wf(self.container_map, self.page_array)) by {
-                        reveal(container_page_owner_wf);
                     };
                     assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
                         reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
                         reveal(mapped_4k_page_pagetable_wf);
                         reveal(mapped_2m_page_pagetable_wf);
                         reveal(mapped_1g_page_pagetable_wf);
-                    };
-                    assert(container_pages_wf(self.page_array, self.container_map)) by {
-                        reveal(container_pages_wf);
                     };
                     assert(process_pages_wf(self.page_array, self.process_map)) by {
                         reveal(process_pages_wf);
@@ -475,54 +349,34 @@ verus! {
                     assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map)) by {
                         crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_1g_wf_forall();
                     };
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
                     assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
-                        reveal(process_staged_pages_4k_wf);
-                        reveal(process_staged_pages_2m_wf);
-                        reveal(process_staged_pages_1g_wf);
+                        lemma_process_staged_pages_wf_preserved_for_view_eq(
+                            old(self).process_map,
+                            self.process_map,
+                            self.page_array,
+                        );
                     };
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
                     };
-                    assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
-                        reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
-                    };
-                    assert(container_allocator_free_1g_page_wf(self.container_map, self.allocator_1g_map, self.page_array)) by {
-                        reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
-                    };
                 };
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf);
-                        per_container_process_tree_wf_preserved_for_tree_fields_eq(self.container_map, pre_self.process_map, self.process_map);
+                        per_container_process_tree_wf_preserved_for_tree_fields_eq(
+                            self.container_map,
+                            old(self).process_map,
+                            self.process_map,
+                        );
                     };
-                    assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by { reveal(container_endpoint_wf); };
-                    assert(container_cpu_wf(self.container_map, self.cpu_array)) by { reveal(container_cpu_wf); };
-                    assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by {
-                        reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
-                        reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
-                    };
-                    assert(container_scheduler_wf(self.container_map, self.scheduler_map)) by { reveal(container_scheduler_wf); };
-                    assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by {
-                        reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
-                    };
-                    assert(container_thread_wf(self.container_map, self.thread_map)) by { reveal(container_thread_wf); };
                     assert(process_cpu_wf(self.process_map, self.cpu_array)) by { reveal(process_cpu_wf); };
                     assert(process_thread_wf(self.process_map, self.thread_map)) by { reveal(process_thread_wf); };
                 };
@@ -533,19 +387,18 @@ verus! {
                     reveal(cpu_dirty_map_contains_pagetable_pcid_match);
                     reveal(container_cpu_wf);
                 };
-                assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
                     reveal(container_locked_match_lctx);
                     reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
                     reveal(page_locked_match_lctx);
                     reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(
+                    self.allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+                ) by {
+                    reveal(allocator_perms_wf);
+                };
             }
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
             self.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
@@ -553,47 +406,15 @@ verus! {
             self.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
             proof {
                 steps.end_user_view_step(&*self, lctx);
-                kernel_process_quota_4k_changed_imply_kernel_u_changed(&pre_self, self, process_ptr, alloc_amount as int);
-                reveal(LocalContext::lock_maps_equal);
-                reveal(LocalContext::lock_maps_removed);
-                reveal(unlock_ensures);
-                assert(lctx.page_lock_map() == old(lctx).page_lock_map());
-                page_lock_id_aligned_preserved(
-                    old(self).page_array, self.page_array,
-                    old(lctx), &*lctx,
+                kernel_process_quota_4k_changed_imply_kernel_u_changed(
+                    old(self),
+                    self,
+                    process_ptr,
+                    alloc_amount as int,
                 );
-                assert(lock_id_aligned(self, &*lctx)) by { reveal(lock_id_aligned); }
             }
         }
 
-    }
-
-    pub proof fn all_unlocked_imply_locked_objects_match_lctx(k: &KernelK, lctx: &LocalContext)
-        requires
-            k.all_objects_unlocked(lctx),
-            lctx.all_lock_maps_empty(),
-        ensures
-            k.locked_objects_match_lctx(lctx),
-    {
-        reveal(LocalContext::all_lock_maps_empty);
-        reveal(cpu_objects_unlocked);
-        reveal(page_objects_unlocked);
-        reveal(container_objects_unlocked);
-        reveal(process_objects_unlocked);
-        reveal(thread_objects_unlocked);
-        reveal(endpoint_objects_unlocked);
-        reveal(pagetable_objects_unlocked);
-        reveal(scheduler_objects_unlocked);
-        reveal(allocator_objects_unlocked);
-        reveal(container_locked_match_lctx);
-        reveal(process_locked_match_lctx);
-        reveal(thread_locked_match_lctx);
-        reveal(endpoint_locked_match_lctx);
-        reveal(scheduler_locked_match_lctx);
-        reveal(pagetable_locked_match_lctx);
-        reveal(page_locked_match_lctx);
-        reveal(cpu_locked_match_lctx);
-        reveal(allocator_locked_match_lctx);
     }
 
     pub open spec fn kernel_u_only_process_quota_4k_changed(
@@ -676,34 +497,6 @@ verus! {
     {
         let pre_u = kernel_k_to_kernel_u(*pre);
         let post_u = kernel_k_to_kernel_u(*post);
-        assert(post_u.cpu_array =~= pre_u.cpu_array) by {
-            assert forall|i: int|
-                0 <= i < NUM_CPUS
-                implies #[trigger] post_u.cpu_array[i] == pre_u.cpu_array[i]
-            by {
-                assert(post.cpu_array.spec_index(i as usize).value.view()
-                    == pre.cpu_array.spec_index(i as usize).value.view());
-            }
-        };
-        assert(post_u.process_map.dom() =~= pre_u.process_map.dom());
-        assert(pre_u.process_map.dom().contains(process_ptr));
-        assert(post_u.process_map.dom().contains(process_ptr));
-        assert(post.get_process_pagetable(process_ptr) == pre.get_process_pagetable(process_ptr)) by {
-            let pt = post.process_map.spec_index(process_ptr).view().pagetable;
-            assert(post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view());
-        };
-        assert forall|p: RwLockProcessPtr|
-            #[trigger] pre_u.process_map.dom().contains(p) && p != process_ptr
-            implies post_u.process_map[p] == pre_u.process_map[p]
-        by {
-            assert(pre.process_map.dom().contains(p));
-            assert(post.process_map.spec_index(p).view() == pre.process_map.spec_index(p).view());
-            assert(post.process_map.spec_index(p).view_rodata() == pre.process_map.spec_index(p).view_rodata());
-            assert(post.process_map.spec_index(p).being_killed() == pre.process_map.spec_index(p).being_killed());
-            let pt = post.process_map.spec_index(p).view().pagetable;
-            assert(post.get_process_pagetable(p) == pre.get_process_pagetable(p)) by {
-                assert(post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view());
-            };
-        };
+        assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
     }
 }

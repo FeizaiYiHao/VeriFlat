@@ -23,7 +23,7 @@
 
 set -euo pipefail
 CURRENT_DIR="$( cd "$( dirname "$0" )" >/dev/null 2>&1 && pwd )"
-VERUS="$CURRENT_DIR/verus/source/target-verus/release/verus"
+VERIFY="$CURRENT_DIR/verify.sh"
 
 # Only print functions whose SMT time exceeds this many milliseconds.
 THRESHOLD_MS=100
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-ARGS=("$CURRENT_DIR/src/lib.rs" --time --output-json --num-threads "$THREADS")
+ARGS=(--time --output-json --num-threads "$THREADS")
 [ -n "$MODULE" ] && ARGS+=(--verify-only-module "$MODULE")
 
 # Temp JSON stays inside the project tree (/tmp is outside the sandbox).
@@ -45,7 +45,7 @@ JSON="$CURRENT_DIR/.smt_times.json"
 trap 'rm -f "$JSON"' EXIT
 
 # JSON → stdout; build noise + `note:` lines → stderr (discarded).
-"$VERUS" "${ARGS[@]}" 2>/dev/null > "$JSON" || true
+"$VERIFY" "${ARGS[@]}" 2>/dev/null > "$JSON" || true
 
 awk '
   /"function":/ {

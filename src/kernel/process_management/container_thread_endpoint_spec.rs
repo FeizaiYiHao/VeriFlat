@@ -10,7 +10,11 @@ verus! {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
-            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
+            thread_map.dom().contains(t_ptr) 
+            &&
+            edp_idx_valid(edp_index)
+            && 
+            thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
             ==>
             endpoint_map.dom().contains(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap())
             &&
@@ -20,7 +24,11 @@ verus! {
             #![trigger endpoint_map.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index))]
             endpoint_map.dom().contains(e_ptr) && endpoint_map.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index))
             ==>
-            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) == Some(e_ptr)
+            thread_map.dom().contains(t_ptr) 
+            &&
+            edp_idx_valid(edp_index)
+            && 
+            thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) == Some(e_ptr)
     }
 
     #[verifier::opaque]
@@ -58,7 +66,12 @@ verus! {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
-            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
+            #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors, edp_idx_valid(edp_index)]
+            thread_map.dom().contains(t_ptr) 
+            &&
+            edp_idx_valid(edp_index)
+            && 
+            thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
             ==>
             {
                 |||

@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 verus! {
 
-#[verifier::opaque]
 pub open spec fn cpu_objects_unlocked(cpu_array: CpuLockedArray, lctx: &LocalContext) -> bool {
     forall|cpu_i: CpuId|
         #![trigger cpu_array.spec_index(cpu_i).view()]
@@ -12,7 +11,6 @@ pub open spec fn cpu_objects_unlocked(cpu_array: CpuLockedArray, lctx: &LocalCon
         cpu_array.spec_index(cpu_i).view().locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn page_objects_unlocked(page_array: PageLockedArray, lctx: &LocalContext) -> bool {
     forall|p_i: PageIndex|
         #![trigger page_array.spec_index(p_i)]
@@ -21,7 +19,6 @@ pub open spec fn page_objects_unlocked(page_array: PageLockedArray, lctx: &Local
         page_array.spec_index(p_i).view().locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn container_objects_unlocked(container_map: ContainerLockedMap, lctx: &LocalContext) -> bool {
     forall|c_ptr: RwLockContainerPtr|
         #![trigger container_map.dom().contains(c_ptr)]
@@ -30,7 +27,6 @@ pub open spec fn container_objects_unlocked(container_map: ContainerLockedMap, l
         container_map.spec_index(c_ptr).locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn process_objects_unlocked(process_map: ProcessLockedMap, lctx: &LocalContext) -> bool {
     forall|p_ptr: RwLockProcessPtr|
         #![trigger process_map.dom().contains(p_ptr)]
@@ -39,7 +35,6 @@ pub open spec fn process_objects_unlocked(process_map: ProcessLockedMap, lctx: &
         process_map.spec_index(p_ptr).locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn thread_objects_unlocked(thread_map: ThreadLockedMap, lctx: &LocalContext) -> bool {
     forall|t_ptr: RwLockThreadPtr|
         #![trigger thread_map.spec_index(t_ptr)]
@@ -48,7 +43,6 @@ pub open spec fn thread_objects_unlocked(thread_map: ThreadLockedMap, lctx: &Loc
         thread_map.spec_index(t_ptr).locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn endpoint_objects_unlocked(endpoint_map: EndpointLockedMap, lctx: &LocalContext) -> bool {
     forall|e_ptr: RwLockEndpointPtr|
         #![trigger endpoint_map.spec_index(e_ptr)]
@@ -57,7 +51,6 @@ pub open spec fn endpoint_objects_unlocked(endpoint_map: EndpointLockedMap, lctx
         endpoint_map.spec_index(e_ptr).locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn pagetable_objects_unlocked(pagetable_map: PageTableLockedMap, lctx: &LocalContext) -> bool {
     forall|pt_ptr: RwLockPageTableRoot|
         #![trigger pagetable_map.spec_index(pt_ptr).locked_by(lctx)]
@@ -66,7 +59,6 @@ pub open spec fn pagetable_objects_unlocked(pagetable_map: PageTableLockedMap, l
         pagetable_map.spec_index(pt_ptr).locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn scheduler_objects_unlocked(scheduler_map: SchedulerLockedMap, lctx: &LocalContext) -> bool {
     forall|s_ptr: RwLockSchedulerPtr|
         #![trigger scheduler_map.spec_index(s_ptr).locked_by(lctx)]
@@ -75,7 +67,6 @@ pub open spec fn scheduler_objects_unlocked(scheduler_map: SchedulerLockedMap, l
         scheduler_map.spec_index(s_ptr).locked_by(lctx) == false
 }
 
-#[verifier::opaque]
 pub open spec fn allocator_objects_unlocked(alloc_map: PageAllocatorUnLockedMap, lctx: &LocalContext) -> bool {
     &&&
     forall|alloc_ptr: RwLockPageAllocatorPtr|
@@ -123,6 +114,32 @@ impl KernelK{
         &&& allocator_objects_unlocked(self.allocator_4k_map, lctx)
         &&& allocator_objects_unlocked(self.allocator_2m_map, lctx)
         &&& allocator_objects_unlocked(self.allocator_1g_map, lctx)
+    }
+
+    pub proof fn lock_id_set_empty_imply_all_objects_unlocked(
+        &self,
+        lctx: &LocalContext,
+    )
+        requires
+            self.locked_objects_match_lctx(lctx),
+            lctx.wf(),
+            lctx.lock_id_set() =~= Set::<LockId>::empty(),
+        ensures
+            self.all_objects_unlocked(lctx),
+    {
+        assert(self.all_objects_unlocked(lctx)) by {
+            reveal(container_locked_match_lctx);
+            reveal(process_locked_match_lctx);
+            reveal(thread_locked_match_lctx);
+            reveal(endpoint_locked_match_lctx);
+            reveal(scheduler_locked_match_lctx);
+            reveal(pagetable_locked_match_lctx);
+            reveal(page_locked_match_lctx);
+            reveal(cpu_locked_match_lctx);
+            reveal(allocator_4k_locked_match_lctx);
+            reveal(allocator_2m_locked_match_lctx);
+            reveal(allocator_1g_locked_match_lctx);
+        };
     }
 }
 }
