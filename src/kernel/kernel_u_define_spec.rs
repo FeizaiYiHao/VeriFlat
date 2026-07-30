@@ -107,34 +107,18 @@ verus! {
     {
         let pre_u = kernel_k_to_kernel_u(*pre);
         let post_u = kernel_k_to_kernel_u(*post);
-        // cpu_array: element-wise, from the per-slot payload-view equality.
         assert(post_u.cpu_array =~= pre_u.cpu_array) by {
             assert forall|i: int|
                 0 <= i < NUM_CPUS
                 implies #[trigger] post_u.cpu_array[i] == pre_u.cpu_array[i]
-            by {
-                assert(post.cpu_array.spec_index(i as usize).value.view()
-                    == pre.cpu_array.spec_index(i as usize).value.view());
-            }
+            by {}
         };
-        // process_map: same domain, and each projection reads only this process's
-        // `view()` / `view_rodata()` / `being_killed()` plus the pointed-to
-        // pagetable's `view()` (via `get_process_pagetable`).
         assert(post_u.process_map =~= pre_u.process_map) by {
-            assert(post_u.process_map.dom() =~= pre_u.process_map.dom());
             assert forall|ptr: RwLockProcessPtr|
                 #[trigger] post_u.process_map.dom().contains(ptr)
                 implies post_u.process_map[ptr] == pre_u.process_map[ptr]
-            by {
-                assert(pre.process_map.dom().contains(ptr));
-                // Same pagetable ptr (projected field) ==> that entry's `view()` is equal.
-                let pt = post.process_map.spec_index(ptr).view().pagetable;
-                assert(post.get_process_pagetable(ptr) == pre.get_process_pagetable(ptr)) by {
-                    assert(post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view());
-                };
-            }
+            by {}
         };
-        assert(post_u == pre_u);
     }
 
 }

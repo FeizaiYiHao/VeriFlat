@@ -1,4 +1,7 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_sets_equal};
+use vstd::map::assert_maps_equal_internal;
+use vstd::set_lib::assert_sets_equal_internal;
 use crate::*;
 use core::sync::atomic::*;
 use vstd::std_specs::cmp::*;
@@ -31,6 +34,7 @@ pub tracked struct LCtxtState{
 /// map whenever a lock acquisition checks the global ordering.
 pub tracked struct LocalContext{
     thread_id: LockThreadId,
+    lock_id_set: Set<LockId>,
     container_lock_map: Map<RwLockContainerPtr, LockId>,
     process_lock_map: Map<RwLockProcessPtr, LockId>,
     thread_lock_map: Map<RwLockThreadPtr, LockId>,
@@ -45,19 +49,13 @@ pub tracked struct LocalContext{
     state: LCtxtState,
 }
 
-/// One opaque universal ordering check for one homogeneous ledger map.
-/// `LocalContext::lock_id_acyclic` combines an instance for every KernelK
-/// lock-bearing field.
-#[verifier::opaque]
-pub open spec fn lock_map_acyclic<K>(lock_map: Map<K, LockId>, lock_id: LockId) -> bool {
-    forall|key: K|
-        lock_map.dom().contains(key)
-        ==> lock_id.spec_gt(lock_map[key])
-}
-
 impl LocalContext{
     pub closed spec fn thread_id(&self) -> LockThreadId {
         self.thread_id
+    }
+
+    pub closed spec fn lock_id_set(&self) -> Set<LockId> {
+        self.lock_id_set
     }
 
     pub closed spec fn container_lock_map(&self) -> Map<RwLockContainerPtr, LockId> {
@@ -120,8 +118,80 @@ impl LocalContext{
         self.state.user_view_locking_state
     }
 
+    #[verifier::opaque]
     pub open spec fn wf(&self) -> bool {
-        true
+        &&& forall|lock_id: LockId|
+            #![trigger self.lock_id_set().contains(lock_id)]
+            self.lock_id_set().contains(lock_id)
+            ==
+            {
+                |||
+                self.cpu_lock_map().values().contains(lock_id)
+                |||
+                self.page_lock_map().values().contains(lock_id)
+                |||
+                self.container_lock_map().values().contains(lock_id)
+                |||
+                self.process_lock_map().values().contains(lock_id)
+                |||
+                self.thread_lock_map().values().contains(lock_id)
+                |||
+                self.endpoint_lock_map().values().contains(lock_id)
+                |||
+                self.scheduler_lock_map().values().contains(lock_id)
+                |||
+                self.pagetable_lock_map().values().contains(lock_id)
+                |||
+                self.allocator_4k_lock_map().values().contains(lock_id)
+                |||
+                self.allocator_2m_lock_map().values().contains(lock_id)
+                |||
+                self.allocator_1g_lock_map().values().contains(lock_id)
+            }
+        &&& forall|cpu_id: CpuId|
+            #![trigger self.cpu_lock_map().dom().contains(cpu_id)]
+            self.cpu_lock_map().dom().contains(cpu_id)
+            ==> self.lock_id_set().contains(self.cpu_lock_map()[cpu_id])
+        &&& forall|page_index: PageIndex|
+            #![trigger self.page_lock_map().dom().contains(page_index)]
+            self.page_lock_map().dom().contains(page_index)
+            ==> self.lock_id_set().contains(self.page_lock_map()[page_index])
+        &&& forall|container_ptr: RwLockContainerPtr|
+            #![trigger self.container_lock_map().dom().contains(container_ptr)]
+            self.container_lock_map().dom().contains(container_ptr)
+            ==> self.lock_id_set().contains(self.container_lock_map()[container_ptr])
+        &&& forall|process_ptr: RwLockProcessPtr|
+            #![trigger self.process_lock_map().dom().contains(process_ptr)]
+            self.process_lock_map().dom().contains(process_ptr)
+            ==> self.lock_id_set().contains(self.process_lock_map()[process_ptr])
+        &&& forall|thread_ptr: RwLockThreadPtr|
+            #![trigger self.thread_lock_map().dom().contains(thread_ptr)]
+            self.thread_lock_map().dom().contains(thread_ptr)
+            ==> self.lock_id_set().contains(self.thread_lock_map()[thread_ptr])
+        &&& forall|endpoint_ptr: RwLockEndpointPtr|
+            #![trigger self.endpoint_lock_map().dom().contains(endpoint_ptr)]
+            self.endpoint_lock_map().dom().contains(endpoint_ptr)
+            ==> self.lock_id_set().contains(self.endpoint_lock_map()[endpoint_ptr])
+        &&& forall|scheduler_ptr: RwLockSchedulerPtr|
+            #![trigger self.scheduler_lock_map().dom().contains(scheduler_ptr)]
+            self.scheduler_lock_map().dom().contains(scheduler_ptr)
+            ==> self.lock_id_set().contains(self.scheduler_lock_map()[scheduler_ptr])
+        &&& forall|pagetable_ptr: RwLockPageTableRoot|
+            #![trigger self.pagetable_lock_map().dom().contains(pagetable_ptr)]
+            self.pagetable_lock_map().dom().contains(pagetable_ptr)
+            ==> self.lock_id_set().contains(self.pagetable_lock_map()[pagetable_ptr])
+        &&& forall|obj_id: AllocatorLockObjId|
+            #![trigger self.allocator_4k_lock_map().dom().contains(obj_id)]
+            self.allocator_4k_lock_map().dom().contains(obj_id)
+            ==> self.lock_id_set().contains(self.allocator_4k_lock_map()[obj_id])
+        &&& forall|obj_id: AllocatorLockObjId|
+            #![trigger self.allocator_2m_lock_map().dom().contains(obj_id)]
+            self.allocator_2m_lock_map().dom().contains(obj_id)
+            ==> self.lock_id_set().contains(self.allocator_2m_lock_map()[obj_id])
+        &&& forall|obj_id: AllocatorLockObjId|
+            #![trigger self.allocator_1g_lock_map().dom().contains(obj_id)]
+            self.allocator_1g_lock_map().dom().contains(obj_id)
+            ==> self.lock_id_set().contains(self.allocator_1g_lock_map()[obj_id])
     }
 
     /// Test whether one logical object is registered in its corresponding
@@ -192,6 +262,8 @@ impl LocalContext{
     }
 
     pub open spec fn lock_maps_equal(&self, other: &Self) -> bool {
+        &&& self.wf() == other.wf()
+        &&& self.lock_id_set() =~= other.lock_id_set()
         &&& self.container_lock_map() =~= other.container_lock_map()
         &&& self.process_lock_map() =~= other.process_lock_map()
         &&& self.thread_lock_map() =~= other.thread_lock_map()
@@ -206,17 +278,19 @@ impl LocalContext{
     }
 
     pub open spec fn all_lock_maps_empty(&self) -> bool {
-        &&& self.container_lock_map() == Map::<RwLockContainerPtr, LockId>::empty()
-        &&& self.process_lock_map() == Map::<RwLockProcessPtr, LockId>::empty()
-        &&& self.thread_lock_map() == Map::<RwLockThreadPtr, LockId>::empty()
-        &&& self.endpoint_lock_map() == Map::<RwLockEndpointPtr, LockId>::empty()
-        &&& self.scheduler_lock_map() == Map::<RwLockSchedulerPtr, LockId>::empty()
-        &&& self.pagetable_lock_map() == Map::<RwLockPageTableRoot, LockId>::empty()
-        &&& self.page_lock_map() == Map::<PageIndex, LockId>::empty()
-        &&& self.cpu_lock_map() == Map::<CpuId, LockId>::empty()
-        &&& self.allocator_4k_lock_map() == Map::<AllocatorLockObjId, LockId>::empty()
-        &&& self.allocator_2m_lock_map() == Map::<AllocatorLockObjId, LockId>::empty()
-        &&& self.allocator_1g_lock_map() == Map::<AllocatorLockObjId, LockId>::empty()
+        &&& self.wf()
+        &&& self.lock_id_set() =~= Set::<LockId>::empty()
+        &&& self.container_lock_map() =~= Map::<RwLockContainerPtr, LockId>::empty()
+        &&& self.process_lock_map() =~= Map::<RwLockProcessPtr, LockId>::empty()
+        &&& self.thread_lock_map() =~= Map::<RwLockThreadPtr, LockId>::empty()
+        &&& self.endpoint_lock_map() =~= Map::<RwLockEndpointPtr, LockId>::empty()
+        &&& self.scheduler_lock_map() =~= Map::<RwLockSchedulerPtr, LockId>::empty()
+        &&& self.pagetable_lock_map() =~= Map::<RwLockPageTableRoot, LockId>::empty()
+        &&& self.page_lock_map() =~= Map::<PageIndex, LockId>::empty()
+        &&& self.cpu_lock_map() =~= Map::<CpuId, LockId>::empty()
+        &&& self.allocator_4k_lock_map() =~= Map::<AllocatorLockObjId, LockId>::empty()
+        &&& self.allocator_2m_lock_map() =~= Map::<AllocatorLockObjId, LockId>::empty()
+        &&& self.allocator_1g_lock_map() =~= Map::<AllocatorLockObjId, LockId>::empty()
     }
 
     /// A short-lived operation-level description of which logical locks are
@@ -234,7 +308,12 @@ impl LocalContext{
         obj_id: KernelObjId,
         lock_id: LockId,
     ) -> bool {
-        match obj_id {
+        &&& self.lock_id_set() =~= if old.lock_map_contains(obj_id) {
+            old.lock_id_set().remove(old.lock_id_for_obj(obj_id)).insert(lock_id)
+        } else {
+            old.lock_id_set().insert(lock_id)
+        }
+        &&& match obj_id {
             KernelObjId::Container(c) =>
                 self.container_lock_map() =~= old.container_lock_map().insert(c, lock_id)
                 && self.process_lock_map() =~= old.process_lock_map()
@@ -447,7 +526,9 @@ impl LocalContext{
         old: &Self,
         obj_id: KernelObjId,
     ) -> bool {
-        match obj_id {
+        &&& self.lock_id_set() =~=
+            old.lock_id_set().remove(old.lock_id_for_obj(obj_id))
+        &&& match obj_id {
             KernelObjId::Container(c) => self.container_lock_map() =~= old.container_lock_map().remove(c) && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
             KernelObjId::Process(p) => self.process_lock_map() =~= old.process_lock_map().remove(p) && self.container_lock_map() =~= old.container_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
             KernelObjId::Thread(t) => self.thread_lock_map() =~= old.thread_lock_map().remove(t) && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
@@ -468,21 +549,13 @@ impl LocalContext{
         }
     }
 
-    /// Predicate: `lock_id` is strictly greater than every id held in every
-    /// per-KernelK-layout map.  This remains a global ordering relation while
-    /// avoiding a heterogeneous quantified key space.
+    /// Predicate: `lock_id` is strictly greater than every currently held id.
+    /// `wf()` ties this compact set to the per-KernelK-layout typed maps.
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
-        &&& lock_map_acyclic(self.container_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.process_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.thread_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.endpoint_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.scheduler_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.pagetable_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.page_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.cpu_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.allocator_4k_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.allocator_2m_lock_map(), lock_id)
-        &&& lock_map_acyclic(self.allocator_1g_lock_map(), lock_id)
+        forall|held_lock_id: LockId|
+            #![trigger self.lock_id_set().contains(held_lock_id)]
+            self.lock_id_set().contains(held_lock_id)
+            ==> lock_id.spec_gt(held_lock_id)
     }
 
     pub open spec fn obj_id_fresh(&self, obj_id: KernelObjId) -> bool {
@@ -499,7 +572,6 @@ impl LocalContext{
     {
         reveal(LocalContext::all_lock_maps_empty);
         reveal(LocalContext::lock_id_acyclic);
-        reveal(lock_map_acyclic);
     }
 
     /// A single lock acquisition preserves every prospective acyclic ordering
@@ -522,7 +594,6 @@ impl LocalContext{
     {
         reveal(LocalContext::lock_id_acyclic);
         reveal(LocalContext::lock_maps_inserted);
-        reveal(lock_map_acyclic);
     }
 
     /// Common syscall lock prefixes are stated once over the concrete typed
@@ -674,6 +745,7 @@ impl LocalContext{
                 lock_id),
             !old.lock_map_contains(
                 KernelObjId::AllocatorCache(PageSize::SZ4k, allocator_ptr, cpu_id)),
+            old.lock_id_acyclic(lock_id),
             self.lock_maps_removed(
                 after_insert,
                 KernelObjId::AllocatorCache(PageSize::SZ4k, allocator_ptr, cpu_id)),
@@ -683,10 +755,23 @@ impl LocalContext{
         reveal(LocalContext::lock_maps_inserted);
         reveal(LocalContext::lock_maps_removed);
         reveal(LocalContext::lock_maps_equal);
-        assert(old.allocator_4k_lock_map().insert(
+        reveal(LocalContext::lock_id_acyclic);
+        assert(!old.lock_id_set().contains(lock_id)) by {
+            reveal(LockId::spec_gt);
+            reveal(LockOwnerId::spec_eq);
+            reveal(LockOwnerId::spec_gt);
+        };
+        assert_sets_equal!(
+            old.lock_id_set().insert(lock_id).remove(lock_id)
+                == old.lock_id_set()
+        );
+        assert_maps_equal!(old.allocator_4k_lock_map().insert(
             AllocatorLockObjId::Cache(allocator_ptr, cpu_id), lock_id).remove(
-            AllocatorLockObjId::Cache(allocator_ptr, cpu_id))
-            =~= old.allocator_4k_lock_map());
+            AllocatorLockObjId::Cache(allocator_ptr, cpu_id)),
+            old.allocator_4k_lock_map());
+        assert(self.wf() == old.wf()) by {
+            reveal(LocalContext::wf);
+        };
     }
 
     pub proof fn lemma_allocator_4k_global_pool_remove_restores(
@@ -703,6 +788,7 @@ impl LocalContext{
                 lock_id),
             !old.lock_map_contains(
                 KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, allocator_ptr)),
+            old.lock_id_acyclic(lock_id),
             self.lock_maps_removed(
                 after_insert,
                 KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, allocator_ptr)),
@@ -712,129 +798,22 @@ impl LocalContext{
         reveal(LocalContext::lock_maps_inserted);
         reveal(LocalContext::lock_maps_removed);
         reveal(LocalContext::lock_maps_equal);
-        assert(old.allocator_4k_lock_map().insert(
-            AllocatorLockObjId::GlobalPool(allocator_ptr), lock_id).remove(
-            AllocatorLockObjId::GlobalPool(allocator_ptr))
-            =~= old.allocator_4k_lock_map());
-    }
-
-    /// Reassemble the per-map acyclicity conjuncts from an operation-local
-    /// bound over the logical object ids.  This is the bridge used by lock
-    /// acquisition proofs that reason about a heterogeneous operation lock
-    /// set, while the stored ledger and the solver-facing acyclicity predicate
-    /// remain split by KernelK layout.
-    pub proof fn lemma_lock_id_acyclic_from_obj_id_bound(&self, lock_id: LockId)
-        requires
-            forall|obj_id: KernelObjId|
-                self.lock_map_contains(obj_id)
-                ==> lock_id.spec_gt(self.lock_id_for_obj(obj_id)),
-        ensures
-            self.lock_id_acyclic(lock_id),
-    {
         reveal(LocalContext::lock_id_acyclic);
-        reveal(lock_map_acyclic);
-
-        assert forall|c: RwLockContainerPtr|
-            self.container_lock_map().dom().contains(c)
-            implies lock_id.spec_gt(self.container_lock_map()[c]) by {
-            assert(self.lock_map_contains(KernelObjId::Container(c)));
-            assert(self.lock_id_for_obj(KernelObjId::Container(c)) == self.container_lock_map()[c]);
+        assert(!old.lock_id_set().contains(lock_id)) by {
+            reveal(LockId::spec_gt);
+            reveal(LockOwnerId::spec_eq);
+            reveal(LockOwnerId::spec_gt);
         };
-        assert forall|p: RwLockProcessPtr|
-            self.process_lock_map().dom().contains(p)
-            implies lock_id.spec_gt(self.process_lock_map()[p]) by {
-            assert(self.lock_map_contains(KernelObjId::Process(p)));
-            assert(self.lock_id_for_obj(KernelObjId::Process(p)) == self.process_lock_map()[p]);
-        };
-        assert forall|t: RwLockThreadPtr|
-            self.thread_lock_map().dom().contains(t)
-            implies lock_id.spec_gt(self.thread_lock_map()[t]) by {
-            assert(self.lock_map_contains(KernelObjId::Thread(t)));
-            assert(self.lock_id_for_obj(KernelObjId::Thread(t)) == self.thread_lock_map()[t]);
-        };
-        assert forall|e: RwLockEndpointPtr|
-            self.endpoint_lock_map().dom().contains(e)
-            implies lock_id.spec_gt(self.endpoint_lock_map()[e]) by {
-            assert(self.lock_map_contains(KernelObjId::Endpoint(e)));
-            assert(self.lock_id_for_obj(KernelObjId::Endpoint(e)) == self.endpoint_lock_map()[e]);
-        };
-        assert forall|s: RwLockSchedulerPtr|
-            self.scheduler_lock_map().dom().contains(s)
-            implies lock_id.spec_gt(self.scheduler_lock_map()[s]) by {
-            assert(self.lock_map_contains(KernelObjId::Scheduler(s)));
-            assert(self.lock_id_for_obj(KernelObjId::Scheduler(s)) == self.scheduler_lock_map()[s]);
-        };
-        assert forall|pt: RwLockPageTableRoot|
-            self.pagetable_lock_map().dom().contains(pt)
-            implies lock_id.spec_gt(self.pagetable_lock_map()[pt]) by {
-            assert(self.lock_map_contains(KernelObjId::PageTable(pt)));
-            assert(self.lock_id_for_obj(KernelObjId::PageTable(pt)) == self.pagetable_lock_map()[pt]);
-        };
-        assert forall|i: PageIndex|
-            self.page_lock_map().dom().contains(i)
-            implies lock_id.spec_gt(self.page_lock_map()[i]) by {
-            assert(self.lock_map_contains(KernelObjId::Page(i)));
-            assert(self.lock_id_for_obj(KernelObjId::Page(i)) == self.page_lock_map()[i]);
-        };
-        assert forall|c: CpuId|
-            self.cpu_lock_map().dom().contains(c)
-            implies lock_id.spec_gt(self.cpu_lock_map()[c]) by {
-            assert(self.lock_map_contains(KernelObjId::Cpu(c)));
-            assert(self.lock_id_for_obj(KernelObjId::Cpu(c)) == self.cpu_lock_map()[c]);
-        };
-        assert forall|obj: AllocatorLockObjId|
-            self.allocator_4k_lock_map().dom().contains(obj)
-            implies lock_id.spec_gt(self.allocator_4k_lock_map()[obj]) by {
-            match obj {
-                AllocatorLockObjId::Quota(p) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorQuota(PageSize::SZ4k, p)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorQuota(PageSize::SZ4k, p)) == self.allocator_4k_lock_map()[obj]);
-                }
-                AllocatorLockObjId::Cache(p, c) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorCache(PageSize::SZ4k, p, c)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorCache(PageSize::SZ4k, p, c)) == self.allocator_4k_lock_map()[obj]);
-                }
-                AllocatorLockObjId::GlobalPool(p) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p)) == self.allocator_4k_lock_map()[obj]);
-                }
-            }
-        };
-        assert forall|obj: AllocatorLockObjId|
-            self.allocator_2m_lock_map().dom().contains(obj)
-            implies lock_id.spec_gt(self.allocator_2m_lock_map()[obj]) by {
-            match obj {
-                AllocatorLockObjId::Quota(p) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorQuota(PageSize::SZ2m, p)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorQuota(PageSize::SZ2m, p)) == self.allocator_2m_lock_map()[obj]);
-                }
-                AllocatorLockObjId::Cache(p, c) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorCache(PageSize::SZ2m, p, c)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorCache(PageSize::SZ2m, p, c)) == self.allocator_2m_lock_map()[obj]);
-                }
-                AllocatorLockObjId::GlobalPool(p) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p)) == self.allocator_2m_lock_map()[obj]);
-                }
-            }
-        };
-        assert forall|obj: AllocatorLockObjId|
-            self.allocator_1g_lock_map().dom().contains(obj)
-            implies lock_id.spec_gt(self.allocator_1g_lock_map()[obj]) by {
-            match obj {
-                AllocatorLockObjId::Quota(p) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorQuota(PageSize::SZ1g, p)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorQuota(PageSize::SZ1g, p)) == self.allocator_1g_lock_map()[obj]);
-                }
-                AllocatorLockObjId::Cache(p, c) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorCache(PageSize::SZ1g, p, c)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorCache(PageSize::SZ1g, p, c)) == self.allocator_1g_lock_map()[obj]);
-                }
-                AllocatorLockObjId::GlobalPool(p) => {
-                    assert(self.lock_map_contains(KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p)));
-                    assert(self.lock_id_for_obj(KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p)) == self.allocator_1g_lock_map()[obj]);
-                }
-            }
+        assert_sets_equal!(
+            old.lock_id_set().insert(lock_id).remove(lock_id)
+                == old.lock_id_set()
+        );
+        assert_maps_equal!(old.allocator_4k_lock_map().insert(
+            AllocatorLockObjId::GlobalPool(allocator_ptr), lock_id).remove(
+            AllocatorLockObjId::GlobalPool(allocator_ptr)),
+            old.allocator_4k_lock_map());
+        assert(self.wf() == old.wf()) by {
+            reveal(LocalContext::wf);
         };
     }
 
@@ -853,6 +832,24 @@ impl LocalContext{
     {
     }
 
+    /// TCB: explicitly close the acquire phase without releasing a lock.
+    /// This is used when a payload mutation changes a held object's dynamic
+    /// ordering id: enter Release first, then refresh that id before the first
+    /// physical unlock.
+    #[verifier::external_body]
+    pub proof fn enter_kernel_view_release(tracked &mut self)
+        requires
+            old(self).kernel_view_locking_state() is Acquire,
+        ensures
+            final(self).thread_id() == old(self).thread_id(),
+            final(self).kernel_view_locking_state() is Release,
+            final(self).user_view_locking_state() == old(self).user_view_locking_state(),
+            final(self).lock_maps_equal(old(self)),
+            final(self).wf(),
+    {
+        unimplemented!()
+    }
+
     /// TCB: update one held dynamic lock id during Release.  The selected map
     /// is determined by the same `KernelObjId` dispatch as the lock primitive.
     #[verifier::external_body]
@@ -869,6 +866,7 @@ impl LocalContext{
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
             final(self).user_view_locking_state() == old(self).user_view_locking_state(),
+            final(self).wf(),
     {
         unimplemented!()
     }
@@ -879,6 +877,8 @@ pub open spec fn lock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:
     &&& new.kernel_view_locking_state() is Acquire
     &&& new.user_view_locking_state() == old.user_view_locking_state()
     &&& new.lock_maps_inserted(old, obj_id, lock_id)
+    &&& new.lock_id_set() == old.lock_id_set().insert(lock_id)
+    &&& new.wf()
 }
 
 /// Precondition for releasing any lock guarded by `T`.
@@ -886,12 +886,21 @@ pub open spec fn unlock_requires<T:LockUserVisibilityTrait>(old:&LocalContext) -
     T::is_user_visible() ==> old.user_view_locking_state() is Release
 }
 
-pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_token: LockToken, obj_id: KernelObjId) -> bool {
+pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(
+    old: &LocalContext,
+    new: &LocalContext,
+    value: T,
+    lock_token: LockToken,
+    obj_id: KernelObjId,
+    lock_id: LockId,
+) -> bool {
     &&& new.thread_id() == old.thread_id()
     &&& old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
     &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
     &&& new.user_view_locking_state() == old.user_view_locking_state()
     &&& new.lock_maps_removed(old, obj_id)
+    &&& new.lock_id_set() == old.lock_id_set().remove(lock_id)
+    &&& new.wf()
 }
 
 }

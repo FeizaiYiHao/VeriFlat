@@ -136,7 +136,14 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
         final(perm).value().locking_thread() is None,
 
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(old(lctx), final(lctx), final(perm).value().view(), lock_perm@.lock_id(), obj_id@),
+        unlock_ensures(
+            old(lctx),
+            final(lctx),
+            final(perm).value().view(),
+            lock_perm@.lock_id(),
+            obj_id@,
+            old(lctx).lock_id_for_obj(obj_id@),
+        ),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>;
@@ -229,7 +236,14 @@ pub fn has_kill_state_wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait
 
         old(perm).value().being_killed() == final(perm).value().being_killed(),
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(old(lctx), final(lctx), final(perm).value().view(), lock_perm@.lock_id(), obj_id@),
+        unlock_ensures(
+            old(lctx),
+            final(lctx),
+            final(perm).value().view(),
+            lock_perm@.lock_id(),
+            obj_id@,
+            old(lctx).lock_id_for_obj(obj_id@),
+        ),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>;

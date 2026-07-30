@@ -20,6 +20,10 @@
 - [2026-07-26 lock-map alignment refresh](project_lock_id_alignment_refresh_2026_07_26.md) — LockPerm token versus dynamic lock-map id; exact-map composition from the correct snapshot; ground held-page boundary lemma
 - [2026-07-27 follow-up simplification](project_contract_proof_simplification_2026_07_27.md) — removed reintroduced consequence bundles after the token/id split; callee-local invariant recovery; 484 verified/0 errors
 - [2026-07-27 payload-mutation wrappers](project_payload_mutation_wrapper_2026_07_27.md) — wrapper contracts now preserve match/alignment; retype wrapper owns page-id refresh; 497 verified/0 errors, cost comparison recorded
+- [2026-07-27 locker/unlocker alignment](project_locker_unlocker_alignment_2026_07_27.md) — all raw lock wrappers now preserve alignment; explicit enter-Release TCB breaks the retype/refresh/unlock cycle; 498 verified/0 errors
+- [2026-07-28 syscall_alloc_quota cleanup](project_syscall_alloc_quota_2026_07_28.md) — lock-id-set callsite path, scoped reveal-only proofs, retained structural fold/tree boundaries, and final timing snapshot
+- [2026-07-28 syscall object-state/lock-id tracking](project_syscall_new_thread_lock_id_tracking_2026_07_28.md) — syscall callsites track direct object lock state plus lock-id set; typed maps are wrapper-internal; complete verification and profiler snapshot recorded
+- [2026-07-29 typed locked-match framing](project_typed_locked_match_2026_07_29.md) — locked-match predicates now take the typed map plus thread id; allocator split 4k/2m/1g; allocator/new-thread timing and two remaining proof-design decisions recorded
 - [Thread wiring COMPLETE](project_thread_wiring_milestone.md) — add_new_thread LIVE, crate 479 verified (2026-07-23), 0 assumes; scheduler→103, rodata-TCB, Option-B alloc, 4 blessed stub lemmas
 - [Syscall postcondition models KernelU](feedback_syscall_postcondition_models_kernel_u.md) — syscall postcondition describe KernelU (user-visible) via old_u/new_u, never KernelK internals
 - [Kernel invariant opaque reveal](project_kernel_invariant_opaque_reveal.md) — all kernel invariants are #[verifier::opaque], must explicitly reveal() in proof blocks

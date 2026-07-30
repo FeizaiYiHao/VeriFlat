@@ -229,6 +229,8 @@ verus! {
                 let cpu_id = page_array.spec_index(page_index).view().view().state->Free4k_state->PreCpuCache_cpu_id;
 
                 &&&
+                cpu_id_valid(cpu_id)
+                &&&
                 allocator_4k_map.dom().contains(allocator_ptr_4k)
                 &&&
                 allocator_4k_map.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))

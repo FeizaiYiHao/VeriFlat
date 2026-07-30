@@ -409,7 +409,14 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             final(self)[key].locking_thread() is None,
 
             wunlock_ensures(old(self)[key], final(self)[key]),
-            unlock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_perm@.lock_id(), obj_id@),
+            unlock_ensures(
+                old(lctx),
+                final(lctx),
+                final(self)[key]@,
+                lock_perm@.lock_id(),
+                obj_id@,
+                old(self).lock_id_by_key(key),
+            ),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         let ret = wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
@@ -521,7 +528,14 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self)[key].being_killed() == final(self)[key].being_killed(),
 
             wunlock_ensures(old(self)[key], final(self)[key]),
-            unlock_ensures(old(lctx), final(lctx), final(self)[key]@, lock_perm@.lock_id(), obj_id@),
+            unlock_ensures(
+                old(lctx),
+                final(lctx),
+                final(self)[key]@,
+                lock_perm@.lock_id(),
+                obj_id@,
+                old(self).lock_id_by_key(key),
+            ),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         let ret = has_kill_state_wunlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);

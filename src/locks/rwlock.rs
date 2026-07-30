@@ -219,6 +219,24 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         &&&
         self.locking_thread()->Write_thread_id == lctx.thread_id()
     } 
+    pub open spec fn wlocked_by_thread(&self, thread_id: LockThreadId) -> bool {
+        &&&
+        self.locking_thread() is Write
+        &&&
+        self.locking_thread()->Write_thread_id == thread_id
+    }
+    pub open spec fn rlocked_by_thread(&self, thread_id: LockThreadId) -> bool {
+        &&&
+        self.locking_thread() is Read
+        &&&
+        self.locking_thread()->Read_reader_map.dom().contains(thread_id)
+    }
+    pub open spec fn locked_by_thread(&self, thread_id: LockThreadId) -> bool {
+        |||
+        self.rlocked_by_thread(thread_id)
+        |||
+        self.wlocked_by_thread(thread_id)
+    }
     pub open spec fn locked_by(&self, lctx:&LocalContext) -> bool{
         |||
         self.rlocked_by(lctx)
@@ -488,7 +506,14 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
             old(lctx).lock_map_contains(obj_id@),
         ensures
             wunlock_ensures(*old(self), *final(self)),
-            unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id(), obj_id@),
+            unlock_ensures(
+                old(lctx),
+                final(lctx),
+                final(self).view(),
+                lp@.lock_id(),
+                obj_id@,
+                old(lctx).lock_id_for_obj(obj_id@),
+            ),
     {
         self.lock.wunlock();
     }
@@ -553,7 +578,14 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
-            unlock_ensures(old(lctx), final(lctx), final(self).view(), lp@.lock_id(), obj_id@),
+            unlock_ensures(
+                old(lctx),
+                final(lctx),
+                final(self).view(),
+                lp@.lock_id(),
+                obj_id@,
+                old(lctx).lock_id_for_obj(obj_id@),
+            ),
     {
         self.lock.wunlock();
     }

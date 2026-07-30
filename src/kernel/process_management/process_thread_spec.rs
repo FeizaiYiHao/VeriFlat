@@ -9,7 +9,8 @@ verus! {
             thread_map: ThreadLockedMap) -> bool {
         &&&
         forall|p_ptr:RwLockProcessPtr, t_ptr:RwLockThreadPtr|
-            #![trigger process_map.spec_index(p_ptr).view(), thread_map.spec_index(t_ptr).view()]
+            #![trigger process_map.spec_index(p_ptr), thread_map.spec_index(t_ptr)]
+            #![trigger process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)]
             process_map.dom().contains(p_ptr) && process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
             ==>
             thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().owning_proc == p_ptr
@@ -22,7 +23,7 @@ verus! {
                 == t_ptr
         &&&
         forall|t_ptr:RwLockThreadPtr|
-            #![trigger thread_map.spec_index(t_ptr).view().owning_proc]
+            #![trigger thread_map.spec_index(t_ptr)]
             thread_map.dom().contains(t_ptr)
             ==>
             process_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc)

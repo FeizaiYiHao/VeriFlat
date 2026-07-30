@@ -1,6 +1,18 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
+    #[verifier::opaque]
+    spec fn page_payloads_unchanged(
+        new_pages: PageLockedArray,
+        old_pages: PageLockedArray,
+    ) -> bool {
+        forall|i: PageIndex|
+            #![trigger new_pages.spec_index(i).view().view()]
+            page_index_wf(i) ==>
+                new_pages.spec_index(i).view().view()
+                    == old_pages.spec_index(i).view().view()
+    }
+
     impl KernelK{
         pub fn wlock_cpu(
             &mut self,
@@ -9,17 +21,23 @@ verus! {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 cpu_id_valid(cpu_id),
-                wlock_requires(old(self).cpu_array[cpu_id]@, old(lctx)),
+                old(lctx).kernel_view_locking_state() is Acquire,
+                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).cpu_array.lock_id_by_index(cpu_id)),
-                old(lctx).obj_id_fresh(KernelObjId::Cpu(cpu_id)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (cpu now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -53,18 +71,28 @@ verus! {
                     final(lctx).thread_id(),
                     ret@,
                 ),
-                lock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).cpu_array[cpu_id]@@,
-                    old(self).cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                    final(self).cpu_array.lock_id_by_index(cpu_id),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
+                assert(old(self).cpu_array.inv()) by {
+                    reveal(cpu_array_wf);
+                };
+                assert(old(lctx).obj_id_fresh(KernelObjId::Cpu(cpu_id))) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(cpu_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(wlock_requires(old(self).cpu_array[cpu_id]@, old(lctx))) by {
+                    reveal(wlock_requires);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(cpu_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             let ret = self.cpu_array.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
             proof {
@@ -75,56 +103,79 @@ verus! {
                 assert(thread_perms_wf(self.thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
-                assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+                assert(self.memory_management_inv()) by {
+                    assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+                    };
+                    assert(container_page_owner_wf(self.container_map, self.page_array)) by {
+                        reveal(container_page_owner_wf);
+                    };
+                    assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
+                        reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
+                    };
+                    assert(container_pages_wf(self.page_array, self.container_map)) by {
+                        reveal(container_pages_wf);
+                    };
+                    assert(process_pages_wf(self.page_array, self.process_map)) by {
+                        reveal(process_pages_wf);
+                    };
+                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(container_process_allocator_quota_4k_wf);
+                        reveal(container_process_allocator_quota_2m_wf);
+                        reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf);
+                    };
+                    assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(container_allocator_wf);
+                    };
                 };
-                assert(container_page_owner_wf(self.container_map, self.page_array)) by {
-                    reveal(container_page_owner_wf);
-                };
-                assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
-                    reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
-                };
-                assert(container_pages_wf(self.page_array, self.container_map)) by {
-                    reveal(container_pages_wf);
-                };
-                assert(process_pages_wf(self.page_array, self.process_map)) by {
-                    reveal(process_pages_wf);
-                };
-                assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(container_process_allocator_quota_4k_wf);
-                    reveal(container_process_allocator_quota_2m_wf);
-                    reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf);
-                };
-                assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(container_allocator_wf);
-                };
-                assert(self.allocator_free_pages_wf());
-                assert(self.memory_management_inv());
                 // ---- process_management_inv ----
-                assert(container_tree_wf(self.root_container, self.container_map));
-                assert(container_process_wf(self.container_map, self.process_map)) by {
-                    reveal(container_process_wf);
+                assert(container_tree_wf(self.root_container, self.container_map)) by {
+                    reveal(KernelK::inv);
+                    reveal(KernelK::process_management_inv);
                 };
-                assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
-                    reveal(container_process_wf); reveal(per_container_process_tree_wf);
+                    assert(container_process_wf(self.container_map, self.process_map)) by {
+                        reveal(container_process_wf);
+                    };
+                    assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
+                        reveal(container_process_wf);
+                        reveal(per_container_process_tree_wf);
+                    };
+                    assert(container_cpu_wf(self.container_map, self.cpu_array)) by {
+                        reveal(KernelK::inv);
+                        reveal(KernelK::process_management_inv);
+                        reveal(container_perms_wf);
+                        reveal(container_cpu_wf);
+                        reveal(LockedArray::unchanged_except);
+                        reveal(wlock_ensures);
+                    };
+                    assert(container_thread_endpoint_wf(
+                        self.container_map,
+                        self.thread_map,
+                        self.endpoint_map,
+                    )) by {
+                        reveal(container_endpoint_wf);
+                        reveal(thread_endpoint_ref_counter_wf);
+                        reveal(thread_endpoint_queue_wf);
+                        reveal(container_thread_endpoint_wf);
+                    };
+                    assert(container_thread_scheduler_wf(
+                        self.container_map,
+                        self.thread_map,
+                        self.scheduler_map,
+                    )) by {
+                        reveal(container_thread_wf);
+                        reveal(container_scheduler_wf);
+                        reveal(container_thread_scheduler_wf);
+                    };
+                    assert(process_cpu_wf(self.process_map, self.cpu_array)) by {
+                        reveal(process_cpu_wf);
+                    };
+                    assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by {
+                        reveal(thread_cpu_wf);
+                    };
+                assert(self.process_management_inv()) by {
+                    reveal(KernelK::process_management_inv);
                 };
-                assert(container_cpu_wf(self.container_map, self.cpu_array)) by {
-                    reveal(container_cpu_wf);
-                };
-                assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by {
-                    reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
-                    reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
-                };
-                assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by {
-                    reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
-                };
-                assert(process_cpu_wf(self.process_map, self.cpu_array)) by {
-                    reveal(process_cpu_wf);
-                };
-                assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by {
-                    reveal(thread_cpu_wf);
-                };
-                assert(self.process_management_inv());
                 // ---- inv() direct conjuncts ----
                 assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by {
                     reveal(cpu_dirty_map_contains_container_processes);
@@ -134,19 +185,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: cpu slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
                     reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(lock_ensures);
+                    reveal(LocalContext::lock_maps_inserted);
+                };
             }
             ret
         }
@@ -159,21 +210,27 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 cpu_id_valid(cpu_id),
                 old(self).cpu_array[cpu_id]@.being_killed() == false,
+                old(self).cpu_array[cpu_id]@.wlocked_by(old(lctx)),
                 unlock_requires::<Cpu>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).cpu_lock_map().dom().contains(cpu_id),
-                old(lctx).cpu_lock_map()[cpu_id] == old(self).cpu_array.lock_id_by_index(cpu_id),
-                lock_perm@.lock_id() == old(self).cpu_array[cpu_id]@.locking_thread()->Write_lock_id,
+                lock_perm@.lock_id()
+                    == old(self).cpu_array[cpu_id]@.locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (cpu now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -207,24 +264,27 @@ verus! {
                 // for the phase transition (same trap as the NOTE on
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).cpu_array[cpu_id]@@,
-                    lock_perm@.lock_id(),
-                    KernelObjId::Cpu(cpu_id),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).cpu_array.lock_id_by_index(cpu_id),
                 ),
-                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Cpu(cpu_id)),
         {
             proof {
-                reveal(KernelK::locked_objects_match_lctx);
-                reveal(cpu_locked_match_lctx);
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
+                assert(old(self).cpu_array.inv()) by {
+                    reveal(cpu_array_wf);
+                };
+                assert(old(lctx).cpu_lock_map().dom().contains(cpu_id)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(cpu_locked_match_lctx);
+                };
+                assert(old(lctx).cpu_lock_map()[cpu_id]
+                    == old(self).cpu_array.lock_id_by_index(cpu_id)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(cpu_locked_match_lctx);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             self.cpu_array.wunlock(cpu_id, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Cpu(cpu_id)));
             // Re-establish inv(). Only `cpu_array[cpu_id]`'s lock state moved
@@ -238,33 +298,36 @@ verus! {
                 assert(thread_perms_wf(self.thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
-                assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+                assert(self.memory_management_inv()) by {
+                    assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+                    };
+                    assert(container_page_owner_wf(self.container_map, self.page_array)) by {
+                        reveal(container_page_owner_wf);
+                    };
+                    assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
+                        reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
+                    };
+                    assert(container_pages_wf(self.page_array, self.container_map)) by {
+                        reveal(container_pages_wf);
+                    };
+                    assert(process_pages_wf(self.page_array, self.process_map)) by {
+                        reveal(process_pages_wf);
+                    };
+                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(container_process_allocator_quota_4k_wf);
+                        reveal(container_process_allocator_quota_2m_wf);
+                        reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf);
+                    };
+                    assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
+                        reveal(container_allocator_wf);
+                    };
                 };
-                assert(container_page_owner_wf(self.container_map, self.page_array)) by {
-                    reveal(container_page_owner_wf);
-                };
-                assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
-                    reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
-                };
-                assert(container_pages_wf(self.page_array, self.container_map)) by {
-                    reveal(container_pages_wf);
-                };
-                assert(process_pages_wf(self.page_array, self.process_map)) by {
-                    reveal(process_pages_wf);
-                };
-                assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(container_process_allocator_quota_4k_wf);
-                    reveal(container_process_allocator_quota_2m_wf);
-                    reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf);
-                };
-                assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                    reveal(container_allocator_wf);
-                };
-                assert(self.allocator_free_pages_wf());
-                assert(self.memory_management_inv());
                 // ---- process_management_inv ----
-                assert(container_tree_wf(self.root_container, self.container_map));
+                assert(container_tree_wf(self.root_container, self.container_map)) by {
+                    reveal(KernelK::inv);
+                    reveal(KernelK::process_management_inv);
+                };
                 assert(container_process_wf(self.container_map, self.process_map)) by {
                     reveal(container_process_wf);
                 };
@@ -272,7 +335,12 @@ verus! {
                     reveal(container_process_wf); reveal(per_container_process_tree_wf);
                 };
                 assert(container_cpu_wf(self.container_map, self.cpu_array)) by {
+                    reveal(KernelK::inv);
+                    reveal(KernelK::process_management_inv);
+                    reveal(container_perms_wf);
                     reveal(container_cpu_wf);
+                    reveal(LockedArray::unchanged_except);
+                    reveal(wunlock_ensures);
                 };
                 assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by {
                     reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
@@ -287,7 +355,9 @@ verus! {
                 assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by {
                     reveal(thread_cpu_wf);
                 };
-                assert(self.process_management_inv());
+                assert(self.process_management_inv()) by {
+                    reveal(KernelK::process_management_inv);
+                };
                 // ---- inv() direct conjuncts ----
                 assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by {
                     reveal(cpu_dirty_map_contains_container_processes);
@@ -297,19 +367,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: cpu slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
                     reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(unlock_ensures);
+                    reveal(LocalContext::lock_maps_removed);
+                };
             }
         }
 
@@ -321,19 +391,23 @@ verus! {
         ) -> (ret: (bool, Option<Tracked<LockPerm>>))
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).container_map.dom().contains(container_ptr),
-                old(self).container_map.spec_index(container_ptr).locked_by(old(lctx)) == false,
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).container_map.lock_id_by_key(container_ptr)),
-                old(lctx).obj_id_fresh(KernelObjId::Container(container_ptr)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (success: container locked; failure: no-op) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only container_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -366,7 +440,7 @@ verus! {
                     &&& old(self).container_map.spec_index(container_ptr).being_killed() == true
                     &&& final(self).container_map.spec_index(container_ptr) == old(self).container_map.spec_index(container_ptr)
                     &&& ret.1 is None
-                    &&& final(lctx).lock_maps_equal(old(lctx))
+                    &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
                 },
 
                 // ---- Success: container locked by us, perm returned ----
@@ -381,19 +455,33 @@ verus! {
                         final(lctx).thread_id(),
                         ret.1.unwrap()@,
                     )
-                    &&& lock_ensures(
-                        old(lctx),
-                        final(lctx),
-                        old(self).container_map.spec_index(container_ptr).view(),
-                        old(self).container_map.lock_id_by_key(container_ptr),
-                        KernelObjId::Container(container_ptr),
+                    &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                        final(self).container_map.lock_id_by_key(container_ptr),
                     )
                 },
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
+                assert(old(self).container_map.perms_wf()) by {
+                    reveal(container_perms_wf);
+                };
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::Container(container_ptr)
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(container_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(
+                    old(self).container_map.spec_index(container_ptr)
+                        .locked_by(old(lctx)) == false
+                ) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(container_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             let res = self.container_map.wlock_unless_killed(
                 container_ptr,
@@ -432,7 +520,6 @@ verus! {
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf);
                         reveal(container_allocator_wf);
@@ -492,19 +579,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: success locks container, failure is a no-op ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
                     reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(lock_ensures);
+                    reveal(LocalContext::lock_maps_inserted);
+                };
             }
             res
         }
@@ -535,22 +622,28 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).container_map.dom().contains(container_ptr),
-                old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(self).container_map.spec_index(container_ptr).being_killed() == false,
                 unlock_requires::<Container>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id() == old(self).container_map.spec_index(container_ptr).locking_thread()->Write_lock_id,
-                old(lctx).container_lock_map().dom().contains(container_ptr),
-                old(lctx).container_lock_map()[container_ptr] == old(self).container_map.lock_id_by_key(container_ptr),
+                lock_perm@.lock_id()
+                    == old(self).container_map.spec_index(container_ptr)
+                        .locking_thread()->Write_lock_id,
+                old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (container now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only container_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -584,21 +677,31 @@ verus! {
                 // for the phase transition (same trap as the NOTE on
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).container_map.spec_index(container_ptr).view(),
-                    lock_perm@.lock_id(),
-                    KernelObjId::Container(container_ptr),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).container_map.lock_id_by_key(container_ptr),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
+                assert(old(self).container_map.perms_wf()) by {
+                    reveal(container_perms_wf);
+                };
+                assert(old(self).container_map.spec_index(container_ptr).inv()) by {
+                    reveal(container_perms_wf);
+                };
+                assert(old(lctx).container_lock_map().dom().contains(
+                    container_ptr,
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(container_locked_match_lctx);
+                };
+                assert(old(lctx).container_lock_map()[container_ptr]
+                    == old(self).container_map.lock_id_by_key(container_ptr)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(container_locked_match_lctx);
+                };
             }
             self.container_map.wunlock(
                 container_ptr,
@@ -643,7 +746,6 @@ verus! {
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf);
                         reveal(container_allocator_wf);
@@ -692,34 +794,6 @@ verus! {
                     };
                     assert(container_thread_wf(self.container_map, self.thread_map)) by {
                         reveal(container_thread_wf);
-                        assert(forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|
-                                #![trigger self.container_map.dom().contains(c_ptr), self.thread_map.dom().contains(t_ptr)]
-                                self.container_map.dom().contains(c_ptr) && self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t_ptr)
-                                ==>
-                                self.thread_map.dom().contains(t_ptr) && self.thread_map.spec_index(t_ptr).view().owning_container == c_ptr
-                                &&
-                                self.thread_map.spec_index(t_ptr).view().container_depth == self.container_map.spec_index(c_ptr).view_rodata().view().depth
-                                &&
-                                self.thread_map.spec_index(t_ptr).view().upper_container_seq == self.container_map.spec_index(c_ptr).view().uppertree_seq);
-                        assert(forall|t_ptr:RwLockThreadPtr|
-                                #![trigger self.thread_map.spec_index(t_ptr).view().owning_container]
-                                self.thread_map.dom().contains(t_ptr)
-                                ==>
-                                self.container_map.dom().contains(self.thread_map.spec_index(t_ptr).view().owning_container)
-                                &&
-                                self.container_map.spec_index(self.thread_map.spec_index(t_ptr).view().owning_container).view_user_ghost().owned_threads.view().contains(t_ptr));
-                        assert(forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|
-                                #![trigger self.container_map.dom().contains(c_ptr), self.thread_map.dom().contains(t_ptr)]
-                                self.container_map.dom().contains(c_ptr) && self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().contains(t_ptr)
-                                ==>
-                                self.thread_map.dom().contains(t_ptr) );
-                        assert(forall|t_ptr:RwLockThreadPtr, c_ptr:RwLockContainerPtr,|
-                                #![trigger self.thread_map.spec_index(t_ptr).view().upper_container_seq.view().contains(c_ptr)]
-                                self.thread_map.dom().contains(t_ptr) && self.thread_map.spec_index(t_ptr).view().upper_container_seq.view().contains(c_ptr)
-                                ==>
-                                self.container_map.dom().contains(c_ptr)
-                                &&
-                                self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().contains(t_ptr));
                     };
                 };
                 // ---- inv() direct conjuncts ----
@@ -731,19 +805,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: container slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
                     reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(unlock_ensures);
+                    reveal(LocalContext::lock_maps_removed);
+                };
             }
         }
 
@@ -755,18 +829,24 @@ verus! {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                wlock_requires(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota, old(lctx)),
+                old(lctx).kernel_view_locking_state() is Acquire,
+                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id()),
-                old(lctx).obj_id_fresh(KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (quota now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's quota lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -785,6 +865,7 @@ verus! {
 
                 // ---- allocator_4k_map: dom unchanged; only the targeted entry's quota lock state changed ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
+                final(self).allocator_4k_map.perms_wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
@@ -806,36 +887,38 @@ verus! {
                     final(lctx).thread_id(),
                     ret@,
                 ),
-                lock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.view(),
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
+                assert(old(self).allocator_4k_map.perms_wf()) by {
+                    reveal(allocator_perms_wf);
+                };
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(wlock_requires(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
+                    old(lctx),
+                )) by {
+                    reveal(wlock_requires);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                    reveal(wlock_requires);
+                };
             }
             let ret = self.allocator_4k_map.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
             proof {
-                assert forall|aptr: RwLockPageAllocatorPtr|
-                    #![trigger self.allocator_4k_map.spec_index(aptr)]
-                    self.allocator_4k_map.dom().contains(aptr)
-                implies
-                    self.allocator_4k_map.spec_index(aptr).global_pool == old(self).allocator_4k_map.spec_index(aptr).global_pool
-                    && self.allocator_4k_map.spec_index(aptr).cpu_caches == old(self).allocator_4k_map.spec_index(aptr).cpu_caches
-                    && self.allocator_4k_map.spec_index(aptr).quota.view() == old(self).allocator_4k_map.spec_index(aptr).quota.view()
-                    && self.allocator_4k_map.spec_index(aptr).total_free_pages == old(self).allocator_4k_map.spec_index(aptr).total_free_pages
-                by {
-                    if aptr != alloc_ptr_4k {
-                        assert(self.allocator_4k_map.spec_index(aptr) == old(self).allocator_4k_map.spec_index(aptr));
-                    }
-                };
                 // ---- subsystems_inv ----
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -873,16 +956,6 @@ verus! {
                                 == self.allocator_4k_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
                         by {
                             let aptr = self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k;
-                            let depth = self.container_map.spec_index(c_ptr).view_rodata().view().depth as int;
-                            lemma_process_effective_quota_4k_fold_eq(
-                                self.container_map.spec_index(c_ptr).view().owned_processes.view(),
-                                old(self).process_map, self.process_map);
-                            lemma_thread_direct_pending_4k_fold_eq(
-                                self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                                old(self).thread_map, self.thread_map);
-                            lemma_thread_indirect_pending_4k_fold_eq_at_depth(
-                                self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(),
-                                old(self).thread_map, self.thread_map, depth);
                             assert(self.allocator_4k_map.dom().contains(aptr)) by {
                                 reveal(container_allocator_wf);
                             };
@@ -895,24 +968,13 @@ verus! {
                             };
                         };
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map));
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map));
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(process_staged_pages_wf(self.process_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
                     };
@@ -925,7 +987,10 @@ verus! {
                 };
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
+                    assert(container_tree_wf(self.root_container, self.container_map)) by {
+                        reveal(KernelK::inv);
+                        reveal(KernelK::process_management_inv);
+                    };
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
@@ -953,19 +1018,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: quota slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(lock_ensures);
+                    reveal(LocalContext::lock_maps_inserted);
+                };
             }
             ret
         }
@@ -985,23 +1050,30 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.wlocked_by(old(lctx)),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.inv(),
                 unlock_requires::<crate::allocator::allocator_quota::AllocatorQuota>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locking_thread()->Write_lock_id,
-                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Quota(alloc_ptr_4k)),
-                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::Quota(alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
+                lock_perm@.lock_id()
+                    == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
+                        .locking_thread()->Write_lock_id,
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
+                    .wlocked_by(old(lctx)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (quota now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's quota lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -1036,6 +1108,7 @@ verus! {
                 // for the phase transition (same trap as the NOTE on
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_quota) ----
@@ -1043,19 +1116,27 @@ verus! {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                 ),
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.view(),
-                    lock_perm@.lock_id(),
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
+                assert(old(self).allocator_4k_map.perms_wf()) by {
+                    reveal(allocator_perms_wf);
+                };
+                assert(old(lctx).allocator_4k_lock_map().dom().contains(
+                    AllocatorLockObjId::Quota(alloc_ptr_4k),
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(old(lctx).allocator_4k_lock_map()[
+                    AllocatorLockObjId::Quota(alloc_ptr_4k)
+                ] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .quota.lock_id()) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                };
             }
             self.allocator_4k_map.wunlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
 
@@ -1097,16 +1178,6 @@ verus! {
                                 == self.allocator_4k_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
                         by {
                             let aptr = self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k;
-                            let depth = self.container_map.spec_index(c_ptr).view_rodata().view().depth as int;
-                            lemma_process_effective_quota_4k_fold_eq(
-                                self.container_map.spec_index(c_ptr).view().owned_processes.view(),
-                                old(self).process_map, self.process_map);
-                            lemma_thread_direct_pending_4k_fold_eq(
-                                self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                                old(self).thread_map, self.thread_map);
-                            lemma_thread_indirect_pending_4k_fold_eq_at_depth(
-                                self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(),
-                                old(self).thread_map, self.thread_map, depth);
                             assert(self.allocator_4k_map.dom().contains(aptr)) by {
                                 reveal(container_allocator_wf);
                             };
@@ -1119,24 +1190,13 @@ verus! {
                             };
                         };
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map));
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map));
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(process_staged_pages_wf(self.process_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
                     };
@@ -1149,7 +1209,10 @@ verus! {
                 };
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
+                    assert(container_tree_wf(self.root_container, self.container_map)) by {
+                        reveal(KernelK::inv);
+                        reveal(KernelK::process_management_inv);
+                    };
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
@@ -1177,19 +1240,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: quota slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(unlock_ensures);
+                    reveal(LocalContext::lock_maps_removed);
+                };
             }
         }
 
@@ -1217,19 +1280,23 @@ verus! {
         ) -> (ret: (bool, Option<Tracked<LockPerm>>))
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).process_map.dom().contains(process_ptr),
-                old(self).process_map.spec_index(process_ptr).locked_by(old(lctx)) == false,
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).process_map.lock_id_by_key(process_ptr)),
-                old(lctx).obj_id_fresh(KernelObjId::Process(process_ptr)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (success: process locked; failure: no-op) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only process_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -1262,7 +1329,7 @@ verus! {
                     &&& old(self).process_map.spec_index(process_ptr).being_killed() == true
                     &&& final(self).process_map.spec_index(process_ptr) == old(self).process_map.spec_index(process_ptr)
                     &&& ret.1 is None
-                    &&& final(lctx).lock_maps_equal(old(lctx))
+                    &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
                 },
 
                 // ---- Success: process locked by us, perm returned ----
@@ -1277,12 +1344,8 @@ verus! {
                         final(lctx).thread_id(),
                         ret.1.unwrap()@,
                     )
-                    &&& lock_ensures(
-                        old(lctx),
-                        final(lctx),
-                        old(self).process_map.spec_index(process_ptr).view(),
-                        old(self).process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr),
+                    &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                        final(self).process_map.lock_id_by_key(process_ptr),
                     )
                     // The just-locked process has a clean temp-alloc cache (the
                     // "flushed before wunlock" protocol — see `wunlock_process`).
@@ -1290,10 +1353,27 @@ verus! {
                 },
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
+                assert(old(self).process_map.perms_wf()) by {
+                    reveal(process_perms_wf);
+                };
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::Process(process_ptr),
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(process_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(
+                    old(self).process_map.spec_index(process_ptr)
+                        .locked_by(old(lctx)) == false
+                ) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(process_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             let res = self.process_map.wlock_unless_killed(
                 process_ptr,
@@ -1391,11 +1471,9 @@ verus! {
 
                         };
                     };
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {
                         reveal(process_pagetable_match);
                     };
@@ -1403,16 +1481,11 @@ verus! {
                     // (process view()) + page_array; both preserved here, so lift it
                     // via the view-equality preservation lemma.
                     assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
+                        reveal(process_perms_wf);
                         reveal(process_staged_pages_4k_wf);
                         reveal(process_staged_pages_2m_wf);
                         reveal(process_staged_pages_1g_wf);
                     };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
                     };
@@ -1425,7 +1498,10 @@ verus! {
                 };
                 // ---- process_management_inv ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
+                    assert(container_tree_wf(self.root_container, self.container_map)) by {
+                        reveal(KernelK::inv);
+                        reveal(KernelK::process_management_inv);
+                    };
                     assert(container_process_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf);
                     };
@@ -1434,7 +1510,10 @@ verus! {
                     // container's process tree carries over via the lemma.
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
-                        assert(per_container_process_tree_wf(old(self).container_map, old(self).process_map));
+                        assert(per_container_process_tree_wf(old(self).container_map, old(self).process_map)) by {
+                            reveal(KernelK::inv);
+                            reveal(KernelK::process_management_inv);
+                        };
                         assert forall|c_ptr: RwLockContainerPtr| #![auto]
                             self.container_map.dom().contains(c_ptr)
                         implies
@@ -1486,19 +1565,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: success locks process, failure is a no-op ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
                     reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(lock_ensures);
+                    reveal(LocalContext::lock_maps_inserted);
+                };
             }
             // Success-only ensures: the just-locked process has a clean
             // temp-alloc cache. From `old(self).inv()` the entry-pre invariant
@@ -1509,10 +1588,11 @@ verus! {
             // the post-lock view.
             proof {
                 if res.0 == true {
-                    reveal(process_perms_wf);
-                    reveal(process_temp_alloc_empty_unless_wlocked);
-                    assert(old(self).process_map.spec_index(process_ptr).locking_thread() is Write == false);
-                    assert(old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean());
+                    assert(self.process_map.spec_index(process_ptr).view().temp_alloc_clean()) by {
+                        reveal(process_perms_wf);
+                        reveal(process_temp_alloc_empty_unless_wlocked);
+                        reveal(wlock_ensures);
+                    };
                 }
             }
             res
@@ -1540,23 +1620,32 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
+                old(self).process_map.dom().contains(process_ptr),
                 old(self).process_map.spec_index(process_ptr).being_killed() == false,
+                old(self).process_map.spec_index(process_ptr)
+                    .wlocked_by(old(lctx)),
                 unlock_requires::<Process>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).process_lock_map().dom().contains(process_ptr),
-                old(lctx).process_lock_map()[process_ptr] == old(self).process_map.lock_id_by_key(process_ptr),
-                lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
+                lock_perm@.lock_id()
+                    == old(self).process_map.spec_index(process_ptr)
+                        .locking_thread()->Write_lock_id,
                 // The "flushed before wunlock" protocol: the cache must be empty
                 // before releasing the write lock (see doc comment above).
                 old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (process now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only process_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -1590,25 +1679,31 @@ verus! {
                 // for the phase transition (same trap as the NOTE on
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).process_map.spec_index(process_ptr).view(),
-                    lock_perm@.lock_id(),
-                    KernelObjId::Process(process_ptr),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).process_map.lock_id_by_key(process_ptr),
                 ),
-                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Process(process_ptr)),
         {
             proof {
-                reveal(KernelK::locked_objects_match_lctx);
-                reveal(process_locked_match_lctx);
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
+                assert(old(self).process_map.perms_wf()) by {
+                    reveal(process_perms_wf);
+                };
+                assert(old(lctx).process_lock_map().dom().contains(
+                    process_ptr,
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(process_locked_match_lctx);
+                };
+                assert(old(lctx).process_lock_map()[process_ptr]
+                    == old(self).process_map.lock_id_by_key(process_ptr)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(process_locked_match_lctx);
+                };
+                assert(old(self).process_map.spec_index(process_ptr).inv()) by {
+                    reveal(process_perms_wf);
+                };
             }
             self.process_map.wunlock(
                 process_ptr,
@@ -1709,25 +1804,18 @@ verus! {
                                 old(self).process_map, self.process_map);
                         };
                     };
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by {
                         reveal(process_pagetable_match);
                     };
                     assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
+                        reveal(process_perms_wf);
                         reveal(process_staged_pages_4k_wf);
                         reveal(process_staged_pages_2m_wf);
                         reveal(process_staged_pages_1g_wf);
                     };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
                         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
                     };
@@ -1740,7 +1828,10 @@ verus! {
                 };
                 // ---- process_management_inv ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
+                    assert(container_tree_wf(self.root_container, self.container_map)) by {
+                        reveal(KernelK::inv);
+                        reveal(KernelK::process_management_inv);
+                    };
                     assert(container_process_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf);
                     };
@@ -1749,7 +1840,10 @@ verus! {
                     // container's process tree carries over via the lemma.
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
-                        assert(per_container_process_tree_wf(old(self).container_map, old(self).process_map));
+                        assert(per_container_process_tree_wf(old(self).container_map, old(self).process_map)) by {
+                            reveal(KernelK::inv);
+                            reveal(KernelK::process_management_inv);
+                        };
                         assert forall|c_ptr: RwLockContainerPtr| #![auto]
                             self.container_map.dom().contains(c_ptr)
                         implies
@@ -1801,19 +1895,19 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: process slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
                     reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(unlock_ensures);
+                    reveal(LocalContext::lock_maps_removed);
+                };
             }
         }
 
@@ -1837,13 +1931,17 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
+                old(self).thread_map.dom().contains(thread_ptr),
                 old(self).thread_map.spec_index(thread_ptr).being_killed() == false,
+                old(self).thread_map.spec_index(thread_ptr)
+                    .wlocked_by(old(lctx)),
                 unlock_requires::<Thread>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).thread_lock_map().dom().contains(thread_ptr),
-                old(lctx).thread_lock_map()[thread_ptr] == old(self).thread_map.lock_id_by_key(thread_ptr),
-                lock_perm@.lock_id() == old(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+                lock_perm@.lock_id()
+                    == old(self).thread_map.spec_index(thread_ptr)
+                        .locking_thread()->Write_lock_id,
                 // The pending-clean protocol: pendings must be flushed before
                 // releasing the write lock (see doc comment above).
                 old(self).thread_map.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -1851,6 +1949,7 @@ verus! {
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (thread now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
@@ -1883,21 +1982,14 @@ verus! {
                 // `unlock_ensures` transitions it Acquire -> Release (same trap as
                 // the NOTE on wunlock_process / LockedArray::wunlock).
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).thread_map.spec_index(thread_ptr).view(),
-                    lock_perm@.lock_id(),
-                    KernelObjId::Thread(thread_ptr),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).thread_map.lock_id_by_key(thread_ptr),
                 ),
-                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Thread(thread_ptr)),
         {
             proof {
-                reveal(KernelK::locked_objects_match_lctx);
-                reveal(thread_locked_match_lctx);
                 reveal(scheduler_locked_match_lctx);
                 reveal(process_locked_match_lctx);
                 reveal(cpu_array_wf);
@@ -1906,6 +1998,17 @@ verus! {
                 reveal(thread_perms_wf);
                 reveal(scheduler_perms_wf);
                 reveal(process_perms_wf);
+                assert(old(lctx).thread_lock_map().dom().contains(
+                    thread_ptr,
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(thread_locked_match_lctx);
+                };
+                assert(old(lctx).thread_lock_map()[thread_ptr]
+                    == old(self).thread_map.lock_id_by_key(thread_ptr)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(thread_locked_match_lctx);
+                };
             }
             self.thread_map.wunlock(
                 thread_ptr,
@@ -2028,7 +2131,6 @@ verus! {
                     };
                     assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { reveal(container_allocator_wf); };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
                     assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
                         reveal(process_staged_pages_4k_wf); reveal(process_staged_pages_2m_wf); reveal(process_staged_pages_1g_wf);
@@ -2111,15 +2213,7 @@ verus! {
                 assert(self.inv());
                 // ---- locked_objects_match_lctx: thread slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
                     reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
                 }
             }
         }
@@ -2133,24 +2227,41 @@ verus! {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 cpu_id_valid(cache_cpu),
-                wlock_requires(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@, old(lctx)),
+                old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{
                     container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].container_depth(),
                     process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].process_depth(),
                     major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@@.current_lock_major(),
                     minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_minor(),
                 }),
-                old(lctx).obj_id_fresh(KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
+                kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (cache now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
+                forall|page_index: PageIndex|
+                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    page_index_wf(page_index)
+                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
+                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
+                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                forall|process_ptr: RwLockProcessPtr|
+                    #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
+                    old(self).process_map.dom().contains(process_ptr)
+                        && old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))
+                    ==> final(self).process_map.dom().contains(process_ptr)
+                        && final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx))
+                        && final(self).process_map.spec_index(process_ptr).locked_by(final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's cache lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -2169,6 +2280,7 @@ verus! {
 
                 // ---- allocator_4k_map: dom unchanged; only the targeted entry's cache lock state changed ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
+                final(self).allocator_4k_map.perms_wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
@@ -2196,23 +2308,44 @@ verus! {
                     final(lctx).thread_id(),
                     ret@,
                 ),
-                lock_ensures(
-                    old(lctx), final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@@,
-                    LockId{
-                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].container_depth(),
-                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].process_depth(),
-                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@@.current_lock_major(),
-                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_minor(),
-                    },
-                    KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches[cache_cpu].lock_id(),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
+                assert(
+                    old(self).cpu_array.inv()
+                    && old(self).container_map.perms_wf()
+                    && old(self).allocator_4k_map.perms_wf()
+                    && old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+                    && old(self).process_map.perms_wf()
+                ) by {
+                    reveal(cpu_array_wf);
+                    reveal(container_perms_wf);
+                    reveal(allocator_perms_wf);
+                    reveal(process_perms_wf);
+                };
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu),
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(wlock_requires(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches[cache_cpu]@,
+                    old(lctx),
+                )) by {
+                    reveal(wlock_requires);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             let ret = self.allocator_4k_map.wlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
@@ -2244,48 +2377,14 @@ verus! {
                     assert(container_process_allocator_quota_4k_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map)) by {
                         reveal(container_process_allocator_quota_4k_wf);
                         reveal(container_allocator_wf);
-                        // assert forall|c_ptr: RwLockContainerPtr|
-                        //     #![trigger self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k]
-                        //     self.container_map.dom().contains(c_ptr)
-                        // implies
-                        //     self.container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_4k(self.process_map.spec_index(p_ptr))})
-                        //         + self.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
-                        //         + self.container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + self.thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
-                        //         + self.allocator_4k_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
-                        //         == self.allocator_4k_map.spec_index(self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
-                        // by {
-                        //     let aptr = self.container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k;
-                        //     let depth = self.container_map.spec_index(c_ptr).view_rodata().view().depth as int;
-                        //     assert(self.allocator_4k_map.dom().contains(aptr)) by {
-                        //         reveal(container_allocator_wf);
-                        //     };
-                            // assert(old(self).container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_4k(old(self).process_map.spec_index(p_ptr))})
-                            //     + old(self).container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + old(self).thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
-                            //     + old(self).container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + old(self).thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(old(self).container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
-                            //     + old(self).allocator_4k_map.spec_index(aptr).quota.view().view()
-                            //     == old(self).allocator_4k_map.spec_index(aptr).total_free_pages.view()) by {
-                            //     reveal(container_process_allocator_quota_4k_wf);
-                            // };
-                        // };
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map));
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map));
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(process_staged_pages_wf(self.process_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
                     assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
                         reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
@@ -2296,7 +2395,6 @@ verus! {
                 };
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
@@ -2324,19 +2422,17 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: cache slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(page_lock_id_aligned);
+                };
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
             ret
         }
@@ -2351,19 +2447,40 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
+                old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 cpu_id_valid(cache_cpu),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@.locking_thread()->Write_lock_id,
-                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu)),
-                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_id(),
+                lock_perm@.lock_id()
+                    == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches[cache_cpu]@.locking_thread()->Write_lock_id,
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches[cache_cpu]@.wlocked_by(old(lctx)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
+                kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (cache now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
+                forall|page_index: PageIndex|
+                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    page_index_wf(page_index)
+                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
+                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
+                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                forall|process_ptr: RwLockProcessPtr|
+                    #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
+                    old(self).process_map.dom().contains(process_ptr)
+                        && old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))
+                    ==> final(self).process_map.dom().contains(process_ptr)
+                        && final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx))
+                        && final(self).process_map.spec_index(process_ptr).locked_by(final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's cache lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -2382,6 +2499,7 @@ verus! {
 
                 // ---- allocator_4k_map: dom unchanged; only the targeted entry's cache lock state changed (now unlocked) ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
+                final(self).allocator_4k_map.perms_wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
@@ -2398,6 +2516,7 @@ verus! {
                 // in an Acquire section (same trap as the NOTE on
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_cache) ----
@@ -2405,20 +2524,41 @@ verus! {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@,
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@,
                 ),
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@@,
-                    lock_perm@.lock_id(),
-                    KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches[cache_cpu].lock_id(),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(allocator_locked_match_lctx);
-                reveal(process_perms_wf);
+                assert(
+                    old(self).cpu_array.inv()
+                    && old(self).container_map.perms_wf()
+                    && old(self).allocator_4k_map.perms_wf()
+                    && old(self).process_map.perms_wf()
+                ) by {
+                    reveal(cpu_array_wf);
+                    reveal(container_perms_wf);
+                    reveal(allocator_perms_wf);
+                    reveal(process_perms_wf);
+                };
+                assert(old(lctx).allocator_4k_lock_map().dom().contains(
+                    AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu),
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(old(lctx).allocator_4k_lock_map()[
+                    AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu)
+                ] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches.lock_id_by_index(cache_cpu)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+                ) by {
+                    reveal(allocator_perms_wf);
+                };
             }
             self.allocator_4k_map.wunlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
 
@@ -2451,24 +2591,13 @@ verus! {
                         reveal(container_process_allocator_quota_4k_wf);
                         reveal(container_allocator_wf);
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map));
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map));
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(process_staged_pages_wf(self.process_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
                     assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
                         reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
@@ -2479,7 +2608,6 @@ verus! {
                 };
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
@@ -2507,19 +2635,17 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: cache slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(page_lock_id_aligned);
+                };
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
         }
 
@@ -2531,23 +2657,40 @@ verus! {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                wlock_requires(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool, old(lctx)),
+                old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{
                     container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
                     process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
                     major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
                     minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
                 }),
-                old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
+                kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (global pool now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
+                forall|page_index: PageIndex|
+                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    page_index_wf(page_index)
+                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
+                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
+                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                forall|process_ptr: RwLockProcessPtr|
+                    #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
+                    old(self).process_map.dom().contains(process_ptr)
+                        && old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))
+                    ==> final(self).process_map.dom().contains(process_ptr)
+                        && final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx))
+                        && final(self).process_map.spec_index(process_ptr).locked_by(final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -2592,23 +2735,43 @@ verus! {
                     final(lctx).thread_id(),
                     ret@,
                 ),
-                lock_ensures(
-                    old(lctx), final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view(),
-                    LockId{
-                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
-                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
-                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
-                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
-                    },
-                    KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .global_pool.lock_id(),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
+                assert(
+                    old(self).cpu_array.inv()
+                    && old(self).container_map.perms_wf()
+                    && old(self).allocator_4k_map.perms_wf()
+                    && old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+                    && old(self).process_map.perms_wf()
+                ) by {
+                    reveal(cpu_array_wf);
+                    reveal(container_perms_wf);
+                    reveal(allocator_perms_wf);
+                    reveal(process_perms_wf);
+                };
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(wlock_requires(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
+                    old(lctx),
+                )) by {
+                    reveal(wlock_requires);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             let ret = self.allocator_4k_map.wlock_global_pool(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
@@ -2641,24 +2804,13 @@ verus! {
                         reveal(container_process_allocator_quota_4k_wf);
                         reveal(container_allocator_wf);
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map));
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map));
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(process_staged_pages_wf(self.process_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
                     assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
                         reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
@@ -2669,7 +2821,6 @@ verus! {
                 };
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
@@ -2697,19 +2848,17 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: global pool slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(page_lock_id_aligned);
+                };
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
             ret
         }
@@ -2723,19 +2872,42 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
+                old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 unlock_requires::<GlobalPool>(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
-                old(lctx).allocator_4k_lock_map().dom().contains(AllocatorLockObjId::GlobalPool(alloc_ptr_4k)),
-                old(lctx).allocator_4k_lock_map()[AllocatorLockObjId::GlobalPool(alloc_ptr_4k)] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),
+                lock_perm@.lock_id()
+                    == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool
+                        .locking_thread()->Write_lock_id,
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .global_pool.wlocked_by(old(lctx)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
+                kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (global pool now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+                forall|page_index: PageIndex|
+                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    page_index_wf(page_index)
+                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
+                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
+                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                forall|process_ptr: RwLockProcessPtr|
+                    #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
+                    old(self).process_map.dom().contains(process_ptr)
+                        && old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))
+                    ==> final(self).process_map.dom().contains(process_ptr)
+                        && final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx))
+                        && final(self).process_map.spec_index(process_ptr).locked_by(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -2769,6 +2941,7 @@ verus! {
                 // in an Acquire section (same trap as the NOTE on
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_global_pool) ----
@@ -2776,20 +2949,41 @@ verus! {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 ),
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view(),
-                    lock_perm@.lock_id(),
-                    KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .global_pool.lock_id(),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(allocator_locked_match_lctx);
-                reveal(process_perms_wf);
+                assert(
+                    old(self).cpu_array.inv()
+                    && old(self).container_map.perms_wf()
+                    && old(self).allocator_4k_map.perms_wf()
+                    && old(self).process_map.perms_wf()
+                ) by {
+                    reveal(cpu_array_wf);
+                    reveal(container_perms_wf);
+                    reveal(allocator_perms_wf);
+                    reveal(process_perms_wf);
+                };
+                assert(old(lctx).allocator_4k_lock_map().dom().contains(
+                    AllocatorLockObjId::GlobalPool(alloc_ptr_4k),
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(old(lctx).allocator_4k_lock_map()[
+                    AllocatorLockObjId::GlobalPool(alloc_ptr_4k)
+                ] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .global_pool.lock_id()) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+                ) by {
+                    reveal(allocator_perms_wf);
+                };
             }
             self.allocator_4k_map.wunlock_global_pool(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
 
@@ -2822,24 +3016,13 @@ verus! {
                         reveal(container_process_allocator_quota_4k_wf);
                         reveal(container_allocator_wf);
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map));
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map));
-                    assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map));
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(container_allocator_wf);
                     };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
                         reveal(allocator_free_page_ptrs_wf);
                     };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(hugepage_2m_wf(self.page_array));
-                    assert(hugepage_1g_wf(self.page_array));
-                    assert(page_pagetable_wf(self.pagetable_map, self.page_array));
-                    assert(pagetable_pages_wf(self.pagetable_map, self.page_array));
-                    assert(thread_pages_wf(self.thread_map, self.page_array));
-                    assert(process_staged_pages_wf(self.process_map, self.page_array));
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array));
                     lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
                     assert(container_allocator_free_2m_page_wf(self.container_map, self.allocator_2m_map, self.page_array)) by {
                         reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
@@ -2850,7 +3033,6 @@ verus! {
                 };
                 // ---- process_management_inv: container_map, process_map, etc. all byte-equal ----
                 assert(self.process_management_inv()) by {
-                    assert(container_tree_wf(self.root_container, self.container_map));
                     assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                         reveal(container_process_wf); reveal(per_container_process_tree_wf);
@@ -2878,19 +3060,17 @@ verus! {
                     reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
+                assert(self.inv()) by {
+                    reveal(KernelK::inv);
+                };
                 // ---- locked_objects_match_lctx: global pool slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
-                }
+                    reveal(allocator_4k_locked_match_lctx);
+                };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(page_lock_id_aligned);
+                };
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
             }
         }
 
@@ -2902,17 +3082,19 @@ verus! {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 page_index_wf(page_index),
-                wlock_requires(old(self).page_array[page_index]@, old(lctx)),
+                old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).page_array.lock_id_by_index(page_index)),
-                old(lctx).obj_id_fresh(KernelObjId::Page(page_index)),
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (page slot now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+                final(self).page_array[page_index]@.wlocked_by(final(lctx)),
 
                 // ---- Field framing: only page_array's slot lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -2946,24 +3128,36 @@ verus! {
                     final(lctx).thread_id(),
                     ret@,
                 ),
-                lock_ensures(
-                    old(lctx), final(lctx),
-                    final(self).page_array[page_index]@@,
-                    old(self).page_array.lock_id_by_index(page_index),
-                    KernelObjId::Page(page_index),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                    final(self).page_array.lock_id_by_index(page_index),
                 ),
         {
             proof {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(allocator_perms_wf);
-                reveal(process_perms_wf);
-                reveal(page_array_wf);
+                assert(old(self).page_array.inv()) by {
+                    reveal(page_array_wf);
+                };
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::Page(page_index),
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(page_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(wlock_requires(old(self).page_array[page_index]@, old(lctx))) by {
+                    reveal(wlock_requires);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(page_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
-            let ghost pre = *self;
             let ret = self.page_array.wlock(page_index, Tracked(&mut *lctx), Ghost(KernelObjId::Page(page_index)));
             proof {
-                reveal(page_array_wf);
+                assert(page_array_wf(self.page_array)) by {
+                    reveal(page_array_wf);
+                };
                 // ---- subsystems_inv ----
                 assert(cpu_array_wf(self.cpu_array, self.default_pagetable.view())) by { reveal(cpu_array_wf); };
                 assert(container_perms_wf(self.container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -2973,6 +3167,7 @@ verus! {
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(self.memory_management_inv()) by {
+                    reveal(LockedArray::payloads_unchanged);
                     assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
                     };
@@ -2987,7 +3182,6 @@ verus! {
                         reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf);
                     };
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { reveal(container_allocator_wf); };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
                     assert(hugepage_2m_wf(self.page_array)) by { reveal(hugepage_2m_wf); };
                     assert(hugepage_1g_wf(self.page_array)) by { reveal(hugepage_1g_wf); };
@@ -3031,18 +3225,9 @@ verus! {
                     reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
                 // ---- locked_objects_match_lctx: page slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
                     reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
                 }
             }
             ret
@@ -3057,17 +3242,19 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 page_index_wf(page_index),
                 old(self).page_array[page_index]@.being_killed() == false,
+                old(self).page_array[page_index]@.wlocked_by(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).page_lock_map().dom().contains(page_index),
-                old(lctx).page_lock_map()[page_index] == old(self).page_array.lock_id_by_index(page_index),
-                lock_perm@.lock_id() == old(self).page_array[page_index]@.locking_thread()->Write_lock_id,
+                lock_perm@.lock_id()
+                    == old(self).page_array[page_index]@.locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (page slot now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
@@ -3096,39 +3283,25 @@ verus! {
                 // `unlock_ensures` flips it Acquire → Release (same trap as the
                 // `LockedArray::wunlock` NOTE).
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
                 wunlock_ensures(old(self).page_array[page_index]@, final(self).page_array[page_index]@),
-                unlock_ensures(
-                    old(lctx), final(lctx),
-                    final(self).page_array[page_index]@@,
-                    lock_perm@.lock_id(),
-                    KernelObjId::Page(page_index),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).page_array.lock_id_by_index(page_index),
                 ),
-                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Page(page_index)),
         {
-            proof {
-                reveal(KernelK::locked_objects_match_lctx);
-                reveal(scheduler_locked_match_lctx);
-                reveal(process_locked_match_lctx);
-                reveal(scheduler_perms_wf);
-                reveal(process_perms_wf);
-            }
-            // proof {
-            //     reveal(cpu_array_wf);
-            //     reveal(container_perms_wf);
-            //     reveal(allocator_perms_wf);
-            //     reveal(process_perms_wf);
-                // reveal(page_array_wf);
-            // }
-            // let ghost pre = *self;
-            // assert(unlock_requires::<Page>(&*lctx)) by { assert(!Page::is_user_visible()); };
             assert(self.page_array.inv()) by {reveal(page_array_wf);};
-            assert(self.page_array[page_index]@.wlocked_by(&*lctx)) by {
+            assert(lctx.page_lock_map().dom().contains(page_index)) by {
                 reveal(KernelK::locked_objects_match_lctx);
                 reveal(page_locked_match_lctx);
-            }
+            };
+            assert(lctx.page_lock_map()[page_index]
+                == self.page_array.lock_id_by_index(page_index)) by {
+                reveal(KernelK::locked_objects_match_lctx);
+                reveal(page_locked_match_lctx);
+            };
             self.page_array.wunlock(page_index, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Page(page_index)));
             proof {
                 // ---- subsystems_inv ----
@@ -3141,6 +3314,14 @@ verus! {
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 // ---- memory_management_inv ----
                 assert(self.memory_management_inv()) by {
+                    assert(page_payloads_unchanged(
+                        self.page_array,
+                        old(self).page_array,
+                    )) by {
+                        reveal(page_payloads_unchanged);
+                        reveal(LockedArray::payloads_unchanged);
+                    };
+                    reveal(page_payloads_unchanged);
                     assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
                         reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
                     };
@@ -3155,7 +3336,6 @@ verus! {
                         reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf);
                     };
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { reveal(container_allocator_wf); };
-                    assert(self.allocator_free_pages_wf());
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
                     assert(hugepage_2m_wf(self.page_array)) by { reveal(hugepage_2m_wf); };
                     assert(hugepage_1g_wf(self.page_array)) by { reveal(hugepage_1g_wf); };
@@ -3199,18 +3379,9 @@ verus! {
                     reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf);
                 };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pagetable_map, self.cpu_array)) by { reveal(tlb_wf_spec); };
-                assert(self.inv());
                 // ---- locked_objects_match_lctx: page slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
                     reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
                 }
             }
         }
@@ -3222,22 +3393,27 @@ verus! {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
-                wlock_requires(old(self).scheduler_map.spec_index(scheduler_ptr), old(lctx)),
+                old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{
                     container: old(self).scheduler_map.spec_index(scheduler_ptr).container_depth(),
                     process: old(self).scheduler_map.spec_index(scheduler_ptr).process_depth(),
                     major: old(self).scheduler_map.spec_index(scheduler_ptr).view().current_lock_major(),
                     minor: scheduler_ptr,
                 }),
-                old(lctx).obj_id_fresh(KernelObjId::Scheduler(scheduler_ptr)),
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (scheduler now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only scheduler_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -3276,18 +3452,9 @@ verus! {
                     final(lctx).thread_id(),
                     ret@,
                 ),
-                lock_ensures(
-                    old(lctx), final(lctx),
-                    final(self).scheduler_map.spec_index(scheduler_ptr).view(),
-                    LockId{
-                        container: old(self).scheduler_map.spec_index(scheduler_ptr).container_depth(),
-                        process: old(self).scheduler_map.spec_index(scheduler_ptr).process_depth(),
-                        major: old(self).scheduler_map.spec_index(scheduler_ptr).view().current_lock_major(),
-                        minor: scheduler_ptr,
-                    },
-                    KernelObjId::Scheduler(scheduler_ptr),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
+                    final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 ),
-                final(lctx).lock_maps_inserted(old(lctx), KernelObjId::Scheduler(scheduler_ptr), final(self).scheduler_map.lock_id_by_key(scheduler_ptr)),
         {
             proof {
                 reveal(cpu_array_wf);
@@ -3295,6 +3462,25 @@ verus! {
                 reveal(allocator_perms_wf);
                 reveal(process_perms_wf);
                 reveal(scheduler_perms_wf);
+                assert(old(lctx).obj_id_fresh(
+                    KernelObjId::Scheduler(scheduler_ptr),
+                )) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(scheduler_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
+                assert(wlock_requires(
+                    old(self).scheduler_map.spec_index(scheduler_ptr),
+                    old(lctx),
+                )) by {
+                    reveal(wlock_requires);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(scheduler_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                };
             }
             let ret = self.scheduler_map.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
@@ -3325,16 +3511,13 @@ verus! {
                 assert(self.inv());
                 // ---- locked_objects_match_lctx: scheduler slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
                     reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
                 }
+                reveal(lock_id_aligned);
+                page_lock_id_aligned_preserved(
+                    old(self).page_array, self.page_array,
+                    old(lctx), &*lctx,
+                );
             }
             ret
         }
@@ -3347,19 +3530,28 @@ verus! {
         )
             requires
                 old(self).inv(),
+                old(lctx).wf(),
                 unlock_requires::<Scheduler>(old(lctx)),
+                old(self).scheduler_map.dom().contains(scheduler_ptr),
+                old(self).scheduler_map.spec_index(scheduler_ptr)
+                    .wlocked_by(old(lctx)),
                 lock_perm@.state() is WriteLock,
                 lock_perm@.thread_id() == old(lctx).thread_id(),
-                old(lctx).scheduler_lock_map().dom().contains(scheduler_ptr),
-                old(lctx).scheduler_lock_map()[scheduler_ptr] == old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
-                lock_perm@.lock_id() == old(self).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
+                lock_perm@.lock_id()
+                    == old(self).scheduler_map.spec_index(scheduler_ptr)
+                        .locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                final(lctx).wf(),
 
                 // ---- Every held lock still matches lctx (scheduler now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
+
+                // ---- Dynamic lock ids remain aligned ----
+                lock_id_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only scheduler_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -3386,6 +3578,7 @@ verus! {
                 // `unlock_ensures` flips it Acquire → Release (same trap as the
                 // `LockedArray::wunlock` NOTE).
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
@@ -3393,22 +3586,27 @@ verus! {
                     old(self).scheduler_map.spec_index(scheduler_ptr),
                     final(self).scheduler_map.spec_index(scheduler_ptr),
                 ),
-                unlock_ensures(
-                    old(lctx), final(lctx),
-                    final(self).scheduler_map.spec_index(scheduler_ptr).view(),
-                    lock_perm@.lock_id(),
-                    KernelObjId::Scheduler(scheduler_ptr),
+                final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
+                    old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 ),
-                final(lctx).lock_maps_removed(old(lctx), KernelObjId::Scheduler(scheduler_ptr)),
         {
             proof {
-                reveal(KernelK::locked_objects_match_lctx);
-                reveal(scheduler_locked_match_lctx);
                 reveal(cpu_array_wf);
                 reveal(container_perms_wf);
                 reveal(allocator_perms_wf);
                 reveal(process_perms_wf);
                 reveal(scheduler_perms_wf);
+                assert(old(lctx).scheduler_lock_map().dom().contains(
+                    scheduler_ptr,
+                )) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(scheduler_locked_match_lctx);
+                };
+                assert(old(lctx).scheduler_lock_map()[scheduler_ptr]
+                    == old(self).scheduler_map.lock_id_by_key(scheduler_ptr)) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(scheduler_locked_match_lctx);
+                };
             }
             self.scheduler_map.wunlock(scheduler_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
@@ -3439,16 +3637,13 @@ verus! {
                 assert(self.inv());
                 // ---- locked_objects_match_lctx: scheduler slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
-                    reveal(container_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(thread_locked_match_lctx);
-                    reveal(endpoint_locked_match_lctx);
                     reveal(scheduler_locked_match_lctx);
-                    reveal(pagetable_locked_match_lctx);
-                    reveal(page_locked_match_lctx);
-                    reveal(cpu_locked_match_lctx);
-                    reveal(allocator_locked_match_lctx);
                 }
+                reveal(lock_id_aligned);
+                page_lock_id_aligned_preserved(
+                    old(self).page_array, self.page_array,
+                    old(lctx), &*lctx,
+                );
             }
         }
 
