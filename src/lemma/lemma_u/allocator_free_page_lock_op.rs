@@ -67,9 +67,6 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
         assert(post.allocator_4k_map.spec_index(alloc).owning_container == pre.allocator_4k_map.spec_index(alloc).owning_container);
         assert(post.allocator_4k_map.spec_index(alloc).global_pool.view() == pre.allocator_4k_map.spec_index(alloc).global_pool.view());
         assert(pre.page_array.spec_index(page_index)@@.inv());
-        assert forall|i: CpuId| #![trigger post.allocator_4k_map.spec_index(alloc).cpu_caches.spec_index(i)] cpu_id_valid(i) implies
-            post.allocator_4k_map.spec_index(alloc).cpu_caches.spec_index(i).view().view()
-                == pre.allocator_4k_map.spec_index(alloc).cpu_caches.spec_index(i).view().view() by {};
     };
 
     assert forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
@@ -97,6 +94,115 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
             == post.allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view());
         assert(post.allocator_4k_map.spec_index(alloc_ptr).owning_container == pre.allocator_4k_map.spec_index(alloc_ptr).owning_container);
         assert(post.page_array.spec_index(page_ptr2page_index(page_ptr)) == pre.page_array.spec_index(page_ptr2page_index(page_ptr)));
+    };
+}
+
+/// Forall-lifted form of the field-framing lemma. The old and new invariant
+/// terms jointly bind `pre` and `post`; callers only need to introduce this
+/// rule in the scoped assertion that asks for the new invariant.
+pub proof fn lemma_no_change_imply_container_allocator_free_4k_page_wf_forall()
+    ensures
+        forall|pre: KernelK, post: KernelK|
+            #![trigger
+                container_allocator_free_4k_page_wf(
+                    pre.container_map,
+                    pre.allocator_4k_map,
+                    pre.page_array,
+                ),
+                container_allocator_free_4k_page_wf(
+                    post.container_map,
+                    post.allocator_4k_map,
+                    post.page_array,
+                )
+            ]
+            container_allocator_free_4k_page_wf(
+                pre.container_map,
+                pre.allocator_4k_map,
+                pre.page_array,
+            )
+            && container_page_owner_wf(pre.container_map, pre.page_array)
+            && container_allocator_wf(
+                pre.container_map,
+                pre.allocator_4k_map,
+                pre.allocator_2m_map,
+                pre.allocator_1g_map,
+            )
+            && page_array_wf(pre.page_array)
+            && post.page_array == pre.page_array
+            && post.container_map.dom() == pre.container_map.dom()
+            && (forall|c: RwLockContainerPtr|
+                #![trigger post.container_map.spec_index(c).view_rodata()]
+                post.container_map.dom().contains(c) ==>
+                    post.container_map.spec_index(c).view_rodata()
+                        == pre.container_map.spec_index(c).view_rodata())
+            && post.allocator_4k_map.dom() == pre.allocator_4k_map.dom()
+            && (forall|a: RwLockPageAllocatorPtr|
+                #![trigger post.allocator_4k_map.spec_index(a).owning_container]
+                post.allocator_4k_map.dom().contains(a) ==>
+                    post.allocator_4k_map.spec_index(a).owning_container
+                        == pre.allocator_4k_map.spec_index(a).owning_container
+                    && post.allocator_4k_map.spec_index(a).global_pool.view()
+                        == pre.allocator_4k_map.spec_index(a).global_pool.view())
+            && (forall|a: RwLockPageAllocatorPtr, i: CpuId|
+                #![trigger post.allocator_4k_map.spec_index(a)
+                    .cpu_caches.spec_index(i).view().view()]
+                post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
+                    post.allocator_4k_map.spec_index(a).cpu_caches
+                        .spec_index(i).view().view()
+                    == pre.allocator_4k_map.spec_index(a).cpu_caches
+                        .spec_index(i).view().view())
+            ==>
+                container_allocator_free_4k_page_wf(
+                    post.container_map,
+                    post.allocator_4k_map,
+                    post.page_array,
+                ),
+{
+    assert forall|pre: KernelK, post: KernelK|
+        #![auto]
+        container_allocator_free_4k_page_wf(
+            pre.container_map,
+            pre.allocator_4k_map,
+            pre.page_array,
+        )
+        && container_page_owner_wf(pre.container_map, pre.page_array)
+        && container_allocator_wf(
+            pre.container_map,
+            pre.allocator_4k_map,
+            pre.allocator_2m_map,
+            pre.allocator_1g_map,
+        )
+        && page_array_wf(pre.page_array)
+        && post.page_array == pre.page_array
+        && post.container_map.dom() == pre.container_map.dom()
+        && (forall|c: RwLockContainerPtr| #![auto]
+            post.container_map.dom().contains(c) ==>
+                post.container_map.spec_index(c).view_rodata()
+                    == pre.container_map.spec_index(c).view_rodata())
+        && post.allocator_4k_map.dom() == pre.allocator_4k_map.dom()
+        && (forall|a: RwLockPageAllocatorPtr| #![auto]
+            post.allocator_4k_map.dom().contains(a) ==>
+                post.allocator_4k_map.spec_index(a).owning_container
+                    == pre.allocator_4k_map.spec_index(a).owning_container
+                && post.allocator_4k_map.spec_index(a).global_pool.view()
+                    == pre.allocator_4k_map.spec_index(a).global_pool.view())
+        && (forall|a: RwLockPageAllocatorPtr, i: CpuId| #![auto]
+            post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
+                post.allocator_4k_map.spec_index(a).cpu_caches
+                    .spec_index(i).view().view()
+                == pre.allocator_4k_map.spec_index(a).cpu_caches
+                    .spec_index(i).view().view())
+    implies
+        container_allocator_free_4k_page_wf(
+            post.container_map,
+            post.allocator_4k_map,
+            post.page_array,
+        )
+    by {
+        lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
+            pre,
+            post,
+        );
     };
 }
 

@@ -56,23 +56,6 @@ impl CpuTLB{
             <==>
             cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid)
     }
-
-
-    pub open spec fn tlb_va_wf(&self) -> bool{
-        &&&
-        forall|cpu_id: CpuId, pcid:Pcid, va:VAddr|
-            #![auto]
-            cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid)
-            ==>
-            {
-                &&&
-                self[(cpu_id, pcid)].tlb_4k().contains_key(va) ==> va_4k_valid(va)
-                &&&
-                self[(cpu_id, pcid)].tlb_2m().contains_key(va) ==> va_2m_valid(va)
-                &&&
-                self[(cpu_id, pcid)].tlb_1g().contains_key(va) ==> va_1g_valid(va)
-            }
-    }
     // pub open spec fn disjoint_cpu_has_no_tlb_entry(&self) -> bool{
     //     &&&
     //     forall|cpu_id:CpuId|

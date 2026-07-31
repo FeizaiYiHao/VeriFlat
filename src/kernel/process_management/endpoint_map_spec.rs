@@ -2,20 +2,21 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    impl KernelK{
-        pub open spec fn endpoint_perms_wf(&self) -> bool{
-            &&&
-            self.endpoint_map.perms_wf()
-            &&&
-            self.endpoints_inv()
-        }
-        pub open spec fn endpoints_inv(&self) -> bool{
+    #[verifier::opaque]
+    pub open spec fn endpoint_perms_wf(endpoint_map: EndpointLockedMap) -> bool {
         &&&
-        forall|endpoint_p:RwLockEndpointPtr|
-            #![auto]
-            self.endpoint_map.dom().contains(endpoint_p)
-            ==>
-            self.endpoint_map[endpoint_p].inv()
+        endpoint_map.perms_wf()
+        &&&
+        endpoints_inv(endpoint_map)
     }
+
+    #[verifier::opaque]
+    pub open spec fn endpoints_inv(endpoint_map: EndpointLockedMap) -> bool {
+        &&&
+        forall|endpoint_p: RwLockEndpointPtr|
+            #![auto]
+            endpoint_map.dom().contains(endpoint_p)
+            ==>
+            endpoint_map.spec_index(endpoint_p).inv()
     }
 }

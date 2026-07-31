@@ -10,9 +10,6 @@ pub mod container_allocator_pages_spec;
 pub mod container_allocator_process_thread_spec;
 
 pub mod page_mapping_spec;
-// pub mod page_array_pagetable_map_impl;
-
-// pub mod pagetable_tlb_spec;
 pub mod process_pagetable_spec;
 
 pub mod allocator_spec;

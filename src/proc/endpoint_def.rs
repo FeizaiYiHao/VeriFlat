@@ -18,15 +18,4 @@ impl LockInvTrait for Endpoint {
     }
 }
 
-
-impl Endpoint {
-    pub open spec fn rf_counter_is_full(&self) -> bool {
-        self.rf_counter == usize::MAX
-    }
-
-    pub open spec fn get_owning_threads(&self) -> Set<(RwLockThreadPtr, EndpointIdx)> {
-        self.owning_threads@
-    }
-}
-
 } // verus!

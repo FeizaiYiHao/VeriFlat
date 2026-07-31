@@ -79,9 +79,9 @@ total_line="$(grep '^__TOTAL__' "$JSON.rows" || true)"
 n_funcs="$(printf '%s' "$total_line" | cut -f2)"
 total_ms="$(printf '%s' "$total_line" | cut -f3)"
 
-# Keep only rows above the threshold, sorted slowest-first.
+# Keep rows above the threshold plus every failure, sorted slowest-first.
 shown="$(grep -v '^__TOTAL__' "$JSON.rows" \
-  | awk -F'\t' -v th="$THRESHOLD_MS" '$1 > th' \
+  | awk -F'\t' -v th="$THRESHOLD_MS" '$1 > th || $3 != "Y"' \
   | sort -t$'\t' -k1,1 -nr)"
 n_shown="$(printf '%s' "$shown" | grep -c . || true)"
 n_hidden=$(( n_funcs - n_shown ))
@@ -91,7 +91,7 @@ printf -- '-%.0s' {1..90}; printf '\n'
 printf '%s\n' "$shown" \
   | awk -F'\t' 'NF >= 5 { printf "%9.1f  %10d  %2s  %-5s  %s\n", $1, $2, $3, $4, $5 }'
 printf -- '-%.0s' {1..90}; printf '\n'
-printf '%9s  %10s      %-5s  TOTAL over %s functions (%s shown > %sms, %s below cutoff)\n' \
+printf '%9s  %10s      %-5s  TOTAL over %s functions (%s shown > %sms or failed, %s passing below cutoff)\n' \
   "$total_ms" "" "" "$n_funcs" "$n_shown" "$THRESHOLD_MS" "$n_hidden"
 
 rm -f "$JSON.rows"

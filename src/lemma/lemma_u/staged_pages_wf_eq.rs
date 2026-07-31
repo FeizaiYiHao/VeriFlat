@@ -9,9 +9,7 @@ verus! {
 // alloc/free). The 4k half genuinely reasons about a 4k stage, so it has NO twin
 // here. Hypothesis: same process dom, per-process temp_alloc_cache_{2m,1g}
 // unchanged, and every Owned{2m,1g} page slot (old or new) keeps its state -- the
-// only fields the halves read. Each has a POINT-WISE form (PREFER at a call site
-// -- no standing quantifier) and a delegating `_forall`. Mirror of the
-// `hugepage`/`pages_wf` families.
+// only fields the halves read.
 
 // process_staged_pages_2m_wf: Owned2m <-> process temp_alloc_cache_2m.
 pub proof fn process_staged_pages_2m_wf_preserved_for_eq(
@@ -39,55 +37,6 @@ pub proof fn process_staged_pages_2m_wf_preserved_for_eq(
     reveal(process_staged_pages_2m_wf);
 }
 
-pub proof fn process_staged_pages_2m_wf_preserved_for_eq_forall()
-    ensures
-        forall|
-            old_process_map: ProcessLockedMap,
-            new_process_map: ProcessLockedMap,
-            old_page_array: PageLockedArray,
-            new_page_array: PageLockedArray,
-        |
-            #![trigger process_staged_pages_2m_wf(old_process_map, old_page_array), process_staged_pages_2m_wf(new_process_map, new_page_array)]
-            (process_staged_pages_2m_wf(old_process_map, old_page_array)
-            && new_process_map.dom() == old_process_map.dom()
-            && (forall|p_ptr: RwLockProcessPtr|
-                #![trigger new_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m]
-                new_process_map.dom().contains(p_ptr)
-                ==> new_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m == old_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m)
-            && (forall|p_i: PageIndex|
-                #![trigger new_page_array.spec_index(p_i).view().view().state]
-                page_index_wf(p_i)
-                && ((old_page_array.spec_index(p_i).view().view().state is Owned2m)
-                    || (new_page_array.spec_index(p_i).view().view().state is Owned2m))
-                ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state))
-            ==>
-            process_staged_pages_2m_wf(new_process_map, new_page_array),
-{
-    assert forall|
-        old_process_map: ProcessLockedMap,
-        new_process_map: ProcessLockedMap,
-        old_page_array: PageLockedArray,
-        new_page_array: PageLockedArray,
-    |
-        (process_staged_pages_2m_wf(old_process_map, old_page_array)
-        && new_process_map.dom() == old_process_map.dom()
-        && (forall|p_ptr: RwLockProcessPtr|
-            #![trigger new_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m]
-            new_process_map.dom().contains(p_ptr)
-            ==> new_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m == old_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m)
-        && (forall|p_i: PageIndex|
-            #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
-            && ((old_page_array.spec_index(p_i).view().view().state is Owned2m)
-                || (new_page_array.spec_index(p_i).view().view().state is Owned2m))
-            ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state))
-        implies
-        process_staged_pages_2m_wf(new_process_map, new_page_array)
-    by {
-        process_staged_pages_2m_wf_preserved_for_eq(old_process_map, new_process_map, old_page_array, new_page_array);
-    };
-}
-
 // process_staged_pages_1g_wf: Owned1g <-> process temp_alloc_cache_1g.
 pub proof fn process_staged_pages_1g_wf_preserved_for_eq(
     old_process_map: ProcessLockedMap,
@@ -112,55 +61,6 @@ pub proof fn process_staged_pages_1g_wf_preserved_for_eq(
         process_staged_pages_1g_wf(new_process_map, new_page_array),
 {
     reveal(process_staged_pages_1g_wf);
-}
-
-pub proof fn process_staged_pages_1g_wf_preserved_for_eq_forall()
-    ensures
-        forall|
-            old_process_map: ProcessLockedMap,
-            new_process_map: ProcessLockedMap,
-            old_page_array: PageLockedArray,
-            new_page_array: PageLockedArray,
-        |
-            #![trigger process_staged_pages_1g_wf(old_process_map, old_page_array), process_staged_pages_1g_wf(new_process_map, new_page_array)]
-            (process_staged_pages_1g_wf(old_process_map, old_page_array)
-            && new_process_map.dom() == old_process_map.dom()
-            && (forall|p_ptr: RwLockProcessPtr|
-                #![trigger new_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g]
-                new_process_map.dom().contains(p_ptr)
-                ==> new_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g == old_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g)
-            && (forall|p_i: PageIndex|
-                #![trigger new_page_array.spec_index(p_i).view().view().state]
-                page_index_wf(p_i)
-                && ((old_page_array.spec_index(p_i).view().view().state is Owned1g)
-                    || (new_page_array.spec_index(p_i).view().view().state is Owned1g))
-                ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state))
-            ==>
-            process_staged_pages_1g_wf(new_process_map, new_page_array),
-{
-    assert forall|
-        old_process_map: ProcessLockedMap,
-        new_process_map: ProcessLockedMap,
-        old_page_array: PageLockedArray,
-        new_page_array: PageLockedArray,
-    |
-        (process_staged_pages_1g_wf(old_process_map, old_page_array)
-        && new_process_map.dom() == old_process_map.dom()
-        && (forall|p_ptr: RwLockProcessPtr|
-            #![trigger new_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g]
-            new_process_map.dom().contains(p_ptr)
-            ==> new_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g == old_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g)
-        && (forall|p_i: PageIndex|
-            #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
-            && ((old_page_array.spec_index(p_i).view().view().state is Owned1g)
-                || (new_page_array.spec_index(p_i).view().view().state is Owned1g))
-            ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state))
-        implies
-        process_staged_pages_1g_wf(new_process_map, new_page_array)
-    by {
-        process_staged_pages_1g_wf_preserved_for_eq(old_process_map, new_process_map, old_page_array, new_page_array);
-    };
 }
 
 }

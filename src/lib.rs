@@ -2,7 +2,6 @@
 
 use vstd::prelude::*;
 pub mod pagetable_seq;
-// pub mod pagetable_map;
 pub mod define;
 pub mod util;
 pub mod lemma;
@@ -18,7 +17,6 @@ pub mod test;
 pub mod kernel;
 
 pub use pagetable_seq::*;
-// pub use pagetable_map::*;
 pub use define::*;
 pub use util::*;
 pub use lemma::*;
