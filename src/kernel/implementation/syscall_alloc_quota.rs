@@ -324,18 +324,9 @@ verus! {
                 assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
-                    assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                        reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
-                    };
-                    assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by {
-                        reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf);
-                        reveal(mapped_4k_page_pagetable_wf);
-                        reveal(mapped_2m_page_pagetable_wf);
-                        reveal(mapped_1g_page_pagetable_wf);
-                    };
-                    assert(process_pages_wf(self.page_array, self.process_map)) by {
-                        reveal(process_pages_wf);
-                    };
+                    assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
+                    assert(container_process_page_pagetable_wf(self.container_map, self.process_map, self.pagetable_map, self.page_array)) by { lemma_no_change_imply_container_process_page_pagetable_wf_forall(); };
+                    assert(process_pages_wf(self.page_array, self.process_map)) by { lemma_no_change_imply_process_pages_wf_forall(); };
                     assert(container_process_allocator_quota_4k_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map)) by {
                         reveal(container_process_allocator_quota_4k_wf);
                         reveal(container_process_wf);
@@ -343,50 +334,21 @@ verus! {
                         crate::kernel::implementation::allocate_free_4k_page::lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, alloc_amount as int);
                         crate::kernel::implementation::allocate_free_4k_page::lemma_process_effective_quota_4k_fold_sum_eq_forall();
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map)) by {
-                        crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_2m_wf_forall();
-                    };
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map)) by {
-                        crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_1g_wf_forall();
-                    };
-                    assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by {
-                        reveal(container_allocator_wf);
-                    };
-                    assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by {
-                        reveal(allocator_free_page_ptrs_wf);
-                    };
-                    assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { reveal(process_pagetable_match); };
-                    assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
-                        lemma_process_staged_pages_wf_preserved_for_view_eq(
-                            old(self).process_map,
-                            self.process_map,
-                            self.page_array,
-                        );
-                    };
-                    assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by {
-                        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(container_page_owner_wf);
-                    };
+                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map)) by { crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_2m_wf_forall(); };
+                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map)) by { crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_1g_wf_forall(); };
+                    assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
+                    assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
+                    assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { lemma_no_change_imply_process_pagetable_match_forall(); };
+                    assert(process_staged_pages_wf(self.process_map, self.page_array)) by { lemma_no_change_imply_process_staged_pages_wf_forall(); };
+                    assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by { lemma_no_change_imply_container_allocator_free_4k_page_wf_forall(); };
                 };
                 assert(self.process_management_inv()) by {
-                    assert(container_process_wf(self.container_map, self.process_map)) by { reveal(container_process_wf); };
-                    assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
-                        reveal(container_process_wf);
-                        per_container_process_tree_wf_preserved_for_tree_fields_eq(
-                            self.container_map,
-                            old(self).process_map,
-                            self.process_map,
-                        );
-                    };
-                    assert(process_cpu_wf(self.process_map, self.cpu_array)) by { reveal(process_cpu_wf); };
-                    assert(process_thread_wf(self.process_map, self.thread_map)) by { reveal(process_thread_wf); };
+                    assert(container_process_wf(self.container_map, self.process_map)) by { lemma_no_change_imply_container_process_wf_forall(); };
+                    assert(per_container_process_tree_wf(self.container_map, self.process_map)) by { lemma_no_change_imply_per_container_process_tree_wf_forall(); };
+                    assert(process_cpu_wf(self.process_map, self.cpu_array)) by { lemma_no_change_imply_process_cpu_wf_forall(); };
+                    assert(process_thread_wf(self.process_map, self.thread_map)) by { lemma_no_change_imply_process_thread_wf_forall(); };
                 };
-                assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by {
-                    reveal(cpu_dirty_map_contains_container_processes);
-                    reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-                    reveal(cpu_dirty_map_proc_pcid_match);
-                    reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-                    reveal(container_cpu_wf);
-                };
+                assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
                     reveal(container_locked_match_lctx);
                     reveal(process_locked_match_lctx);

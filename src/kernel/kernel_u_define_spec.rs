@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
@@ -107,18 +108,8 @@ verus! {
     {
         let pre_u = kernel_k_to_kernel_u(*pre);
         let post_u = kernel_k_to_kernel_u(*post);
-        assert(post_u.cpu_array =~= pre_u.cpu_array) by {
-            assert forall|i: int|
-                0 <= i < NUM_CPUS
-                implies #[trigger] post_u.cpu_array[i] == pre_u.cpu_array[i]
-            by {}
-        };
-        assert(post_u.process_map =~= pre_u.process_map) by {
-            assert forall|ptr: RwLockProcessPtr|
-                #[trigger] post_u.process_map.dom().contains(ptr)
-                implies post_u.process_map[ptr] == pre_u.process_map[ptr]
-            by {}
-        };
+        assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
+        assert_maps_equal!(post_u.process_map, pre_u.process_map);
     }
 
 }

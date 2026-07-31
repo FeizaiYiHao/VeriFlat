@@ -95,13 +95,6 @@ impl KernelK{
     {
         self.pagetable_map.spec_index(self.process_map.spec_index(process_ptr).view().pagetable).view()
     }
-    pub open spec fn get_container_quota_4k(&self, container_ptr:RwLockContainerPtr) -> usize
-        recommends
-            self.container_map.dom().contains(container_ptr)
-    {
-        self.allocator_4k_map.spec_index(self.container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value
-    }
-
     pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool{
         &&& cpu_objects_unlocked(self.cpu_array, lctx)
         &&& page_objects_unlocked(self.page_array, lctx)
@@ -128,6 +121,7 @@ impl KernelK{
             self.all_objects_unlocked(lctx),
     {
         assert(self.all_objects_unlocked(lctx)) by {
+            reveal(LocalContext::wf);
             reveal(container_locked_match_lctx);
             reveal(process_locked_match_lctx);
             reveal(thread_locked_match_lctx);

@@ -30,48 +30,6 @@ pub proof fn hugepage_2m_wf_preserved_for_page_state_eq(
     reveal(hugepage_2m_wf);
 }
 
-// Quantified-fact form of `hugepage_2m_wf_preserved_for_page_state_eq`: a single
-// invocation installs the fact for ALL `(old, new)` arrays, so a caller need not
-// spell out the pair or wrap it in an `assert forall`. Multi-trigger on the
-// source + target `hugepage_2m_wf` terms: fires once the caller has
-// `hugepage_2m_wf(old)` in scope and the goal mentions `hugepage_2m_wf(new)`.
-pub proof fn hugepage_2m_wf_preserved_for_page_state_eq_forall()
-    ensures
-        forall|
-            old_page_array: PageLockedArray,
-            new_page_array: PageLockedArray,
-        |
-            #![trigger hugepage_2m_wf(old_page_array), hugepage_2m_wf(new_page_array)]
-            (hugepage_2m_wf(old_page_array)
-            && forall|p_i: PageIndex|
-                #![trigger new_page_array.spec_index(p_i).view().view().state]
-                page_index_wf(p_i)
-                && (page_state_2m_related(old_page_array.spec_index(p_i).view().view().state)
-                    || page_state_2m_related(new_page_array.spec_index(p_i).view().view().state))
-                ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state
-                    && new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container)
-            ==>
-            hugepage_2m_wf(new_page_array),
-{
-    assert forall|
-        old_page_array: PageLockedArray,
-        new_page_array: PageLockedArray,
-    |
-        (hugepage_2m_wf(old_page_array)
-        && forall|p_i: PageIndex|
-            #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
-            && (page_state_2m_related(old_page_array.spec_index(p_i).view().view().state)
-                || page_state_2m_related(new_page_array.spec_index(p_i).view().view().state))
-            ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state
-                && new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container)
-        implies
-        hugepage_2m_wf(new_page_array)
-    by {
-        hugepage_2m_wf_preserved_for_page_state_eq(old_page_array, new_page_array);
-    };
-}
-
 // 1g twin of `hugepage_2m_wf_preserved_for_page_state_eq`.
 pub proof fn hugepage_1g_wf_preserved_for_page_state_eq(
     old_page_array: PageLockedArray,
@@ -90,45 +48,6 @@ pub proof fn hugepage_1g_wf_preserved_for_page_state_eq(
         hugepage_1g_wf(new_page_array),
 {
     reveal(hugepage_1g_wf);
-}
-
-// Quantified-fact form of `hugepage_1g_wf_preserved_for_page_state_eq`; see the
-// 2m twin for the trigger rationale.
-pub proof fn hugepage_1g_wf_preserved_for_page_state_eq_forall()
-    ensures
-        forall|
-            old_page_array: PageLockedArray,
-            new_page_array: PageLockedArray,
-        |
-            #![trigger hugepage_1g_wf(old_page_array), hugepage_1g_wf(new_page_array)]
-            (hugepage_1g_wf(old_page_array)
-            && forall|p_i: PageIndex|
-                #![trigger new_page_array.spec_index(p_i).view().view().state]
-                page_index_wf(p_i)
-                && (page_state_1g_related(old_page_array.spec_index(p_i).view().view().state)
-                    || page_state_1g_related(new_page_array.spec_index(p_i).view().view().state))
-                ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state
-                    && new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container)
-            ==>
-            hugepage_1g_wf(new_page_array),
-{
-    assert forall|
-        old_page_array: PageLockedArray,
-        new_page_array: PageLockedArray,
-    |
-        (hugepage_1g_wf(old_page_array)
-        && forall|p_i: PageIndex|
-            #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
-            && (page_state_1g_related(old_page_array.spec_index(p_i).view().view().state)
-                || page_state_1g_related(new_page_array.spec_index(p_i).view().view().state))
-            ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state
-                && new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container)
-        implies
-        hugepage_1g_wf(new_page_array)
-    by {
-        hugepage_1g_wf_preserved_for_page_state_eq(old_page_array, new_page_array);
-    };
 }
 
 }
