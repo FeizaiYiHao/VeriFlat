@@ -109,6 +109,7 @@ impl KernelK {
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).scheduler_map == old(self).scheduler_map,
+            final(self).pcid_allocator_map == old(self).pcid_allocator_map,
             final(self).cpu_array == old(self).cpu_array,
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
@@ -294,6 +295,16 @@ impl KernelK {
                         self.pagetable_map,
                     );
                 };
+                assert(process_iommu_table_match(
+                    self.process_map,
+                    self.iommu_table_map,
+                )) by {
+                    process_iommu_table_match_preserved_for_process_reference_fields(
+                        old(self).process_map,
+                        self.process_map,
+                        self.iommu_table_map,
+                    );
+                };
                 assert(hugepage_2m_wf(self.page_array)) by {
                     hugepage_2m_wf_preserved_for_page_state_eq(
                         old(self).page_array,
@@ -316,6 +327,20 @@ impl KernelK {
                     );
                 };
                 assert(pagetable_pages_wf(self.pagetable_map, self.page_array)) by { reveal(pagetable_pages_wf); };
+                assert(iommu_table_pages_wf(self.iommu_table_map, self.page_array)) by {
+                    reveal(iommu_table_pages_wf);
+                };
+                assert(pcid_allocator_pages_wf(
+                    self.page_array,
+                    self.pcid_allocator_map,
+                )) by {
+                    pcid_allocator_pages_wf_preserved_for_page_state_eq(
+                        old(self).page_array,
+                        self.page_array,
+                        old(self).pcid_allocator_map,
+                        self.pcid_allocator_map,
+                    );
+                };
                 assert(thread_pages_wf(self.thread_map, self.page_array)) by { thread_pages_wf_preserved_for_page_state_eq(old(self).thread_map, self.thread_map, old(self).page_array, self.page_array); };
                 assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
                     reveal(process_staged_pages_4k_wf);
@@ -344,6 +369,18 @@ impl KernelK {
             };
             // ---- process_management_inv: container_map, thread_map, etc. all byte-equal ----
             assert(self.process_management_inv()) by {
+                assert(process_pcid_fields_unchanged(
+                    old(self).process_map,
+                    self.process_map,
+                )) by {
+                    reveal(process_pcid_fields_unchanged);
+                };
+                process_pcid_allocator_wf_preserved_for_fields_unchanged(
+                    self.container_map,
+                    old(self).process_map,
+                    self.process_map,
+                    self.pcid_allocator_map,
+                );
                 assert(container_process_wf(
                     self.container_map,
                     self.process_map,
@@ -369,6 +406,24 @@ impl KernelK {
                 };
             };
             // ---- inv() direct conjuncts ----
+            iommu_root_table_process_wf_preserved_for_process_reference_fields(
+                &self.iommu_root_table,
+                old(self).process_map,
+                self.process_map,
+                self.iommu_table_map,
+            );
+            process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+                &self.iommu_root_table,
+                old(self).process_map,
+                self.process_map,
+            );
+            iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+                self.iommu_tlb,
+                &self.iommu_root_table,
+                old(self).process_map,
+                self.process_map,
+                self.iommu_table_map,
+            );
             assert(self.inv()) by {
                 reveal(cpu_dirty_map_contains_container_processes);
                 reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
@@ -485,6 +540,7 @@ impl KernelK {
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).scheduler_map == old(self).scheduler_map,
+            final(self).pcid_allocator_map == old(self).pcid_allocator_map,
             final(self).cpu_array == old(self).cpu_array,
     {
         assert(
@@ -657,6 +713,16 @@ impl KernelK {
                         self.pagetable_map,
                     );
                 };
+                assert(process_iommu_table_match(
+                    self.process_map,
+                    self.iommu_table_map,
+                )) by {
+                    process_iommu_table_match_preserved_for_process_reference_fields(
+                        old(self).process_map,
+                        self.process_map,
+                        self.iommu_table_map,
+                    );
+                };
                 assert(hugepage_2m_wf(self.page_array)) by {
                     hugepage_2m_wf_preserved_for_page_state_eq(
                         old(self).page_array,
@@ -679,6 +745,20 @@ impl KernelK {
                     );
                 };
                 assert(pagetable_pages_wf(self.pagetable_map, self.page_array)) by { reveal(pagetable_pages_wf); };
+                assert(iommu_table_pages_wf(self.iommu_table_map, self.page_array)) by {
+                    reveal(iommu_table_pages_wf);
+                };
+                assert(pcid_allocator_pages_wf(
+                    self.page_array,
+                    self.pcid_allocator_map,
+                )) by {
+                    pcid_allocator_pages_wf_preserved_for_page_state_eq(
+                        old(self).page_array,
+                        self.page_array,
+                        old(self).pcid_allocator_map,
+                        self.pcid_allocator_map,
+                    );
+                };
                 assert(thread_pages_wf(self.thread_map, self.page_array)) by { thread_pages_wf_preserved_for_page_state_eq(old(self).thread_map, self.thread_map, old(self).page_array, self.page_array); };
                 assert(process_staged_pages_wf(self.process_map, self.page_array)) by {
                     reveal(process_staged_pages_4k_wf);
@@ -707,6 +787,18 @@ impl KernelK {
             };
             // ---- process_management_inv: container_map, thread_map, etc. all byte-equal ----
             assert(self.process_management_inv()) by {
+                assert(process_pcid_fields_unchanged(
+                    old(self).process_map,
+                    self.process_map,
+                )) by {
+                    reveal(process_pcid_fields_unchanged);
+                };
+                process_pcid_allocator_wf_preserved_for_fields_unchanged(
+                    self.container_map,
+                    old(self).process_map,
+                    self.process_map,
+                    self.pcid_allocator_map,
+                );
                 assert(container_process_wf(
                     self.container_map,
                     self.process_map,
@@ -732,6 +824,24 @@ impl KernelK {
                 };
             };
             // ---- inv() direct conjuncts ----
+            iommu_root_table_process_wf_preserved_for_process_reference_fields(
+                &self.iommu_root_table,
+                old(self).process_map,
+                self.process_map,
+                self.iommu_table_map,
+            );
+            process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+                &self.iommu_root_table,
+                old(self).process_map,
+                self.process_map,
+            );
+            iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+                self.iommu_tlb,
+                &self.iommu_root_table,
+                old(self).process_map,
+                self.process_map,
+                self.iommu_table_map,
+            );
             assert(self.inv()) by {
                 reveal(cpu_dirty_map_contains_container_processes);
                 reveal(cpu_not_in_dirty_map_imply_not_in_tlb);

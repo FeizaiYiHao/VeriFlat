@@ -13,6 +13,7 @@ verus! {
     pub type CpuLockedArray = LockedArray<Cpu, (), (), (), NUM_CPUS, CPU_HAS_KILL_STATE>;
     pub type ContainerLockedMap = LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhostK, ContainerGhostU, CONTAINER_HAS_KILL_STATE>;
     pub type SchedulerLockedMap = LockedMap<RwLockSchedulerPtr, Scheduler, (), (), (), SCHEDULER_HAS_KILL_STATE>;
+    pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocator, (), (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
     pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), (), ENDPOINT_HAS_KILL_STATE>;
     pub type PageAllocatorUnLockedMap = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>;
     pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
@@ -20,11 +21,13 @@ verus! {
 
     pub struct KernelK{
         pub pagetable_map: PageTableLockedMap,
-        pub iommutable_map: IommuTableLockedMap,
+        pub iommu_table_map: IommuTableLockedMap,
+        pub iommu_root_table: IommuRootTable,
         pub page_array: PageLockedArray,
         pub cpu_array: CpuLockedArray,
         pub container_map: ContainerLockedMap,
         pub scheduler_map: SchedulerLockedMap,
+        pub pcid_allocator_map: PcidAllocatorLockedMap,
         pub process_map: ProcessLockedMap,
         pub thread_map: ThreadLockedMap,
         pub endpoint_map: EndpointLockedMap,
@@ -32,6 +35,7 @@ verus! {
         pub allocator_2m_map: PageAllocatorUnLockedMap,
         pub allocator_1g_map: PageAllocatorUnLockedMap,
         pub cpu_tlb: CpuTLB,
+        pub iommu_tlb: IommuTLB,
 
         pub root_container: RwLockContainerPtr, // Never dies
 
@@ -50,11 +54,17 @@ verus! {
             &&&
             pagetable_perms_wf(self.pagetable_map)
             &&&
+            iommu_table_perms_wf(self.iommu_table_map)
+            &&&
+            self.iommu_root_table.wf()
+            &&&
             page_array_wf(self.page_array)
             &&&
             cpu_array_wf(self.cpu_array, self.default_pagetable.view())
             &&&
             self.cpu_tlb.inv()
+            &&&
+            self.iommu_tlb.inv()
             &&&
             container_perms_wf(self.container_map)
             &&&
@@ -63,6 +73,8 @@ verus! {
             thread_perms_wf(self.thread_map)
             &&&
             scheduler_perms_wf(self.scheduler_map)
+            &&&
+            pcid_allocator_perms_wf(self.pcid_allocator_map)
             &&&
             endpoint_perms_wf(self.endpoint_map)
             &&&
@@ -93,13 +105,22 @@ verus! {
             &&&
             pagetable_pages_wf(self.pagetable_map, self.page_array)     
             &&&
+            iommu_table_pages_wf(self.iommu_table_map, self.page_array)
+            &&&
             thread_pages_wf(self.thread_map, self.page_array)
+            &&&
+            pcid_allocator_pages_wf(
+                self.page_array,
+                self.pcid_allocator_map,
+            )
             &&&
             process_staged_pages_wf(self.process_map, self.page_array)
             &&&
             endpoint_pages_wf(self.endpoint_map, self.page_array)
             &&&
             process_pagetable_match(self.process_map, self.pagetable_map)
+            &&&
+            process_iommu_table_match(self.process_map, self.iommu_table_map)
             &&&
             self.allocator_free_pages_wf()
             &&&
@@ -134,6 +155,17 @@ verus! {
             &&&
             container_scheduler_wf(self.container_map, self.scheduler_map)
             &&&
+            container_pcid_allocator_wf(
+                self.container_map,
+                self.pcid_allocator_map,
+            )
+            &&&
+            process_pcid_allocator_wf(
+                self.container_map,
+                self.process_map,
+                self.pcid_allocator_map,
+            )
+            &&&
             container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)
             &&&
             container_thread_wf(self.container_map, self.thread_map)
@@ -152,6 +184,24 @@ verus! {
             self.memory_management_inv()
             &&&
             self.process_management_inv()
+            &&&
+            iommu_root_table_process_wf(
+                &self.iommu_root_table,
+                self.process_map,
+                self.iommu_table_map,
+            )
+            &&&
+            process_pci_function_ownership_wf(
+                &self.iommu_root_table,
+                self.process_map,
+            )
+            &&&
+            iommu_tlb_wf_spec(
+                self.iommu_tlb,
+                &self.iommu_root_table,
+                self.process_map,
+                self.iommu_table_map,
+            )
             // TLB spec
             &&&
             cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)
@@ -164,7 +214,7 @@ verus! {
             &&&
             self.default_pagetable.view().inv()
             &&&
-            self.default_pagetable.view().pcid_or_ioid() == KERNEL_DEFAULT_PCID
+            self.default_pagetable.view().pcid_value() == KERNEL_DEFAULT_PCID
             &&&
             self.default_pagetable.view().is_empty()
         }
@@ -231,8 +281,16 @@ verus! {
                 self.endpoint_map, lctx.endpoint_lock_map(), lctx.thread_id())
             &&& scheduler_locked_match_lctx(
                 self.scheduler_map, lctx.scheduler_lock_map(), lctx.thread_id())
+            &&& pcid_allocator_locked_match_lctx(
+                self.pcid_allocator_map,
+                lctx.pcid_allocator_lock_map(),
+                lctx.thread_id())
             &&& pagetable_locked_match_lctx(
                 self.pagetable_map, lctx.pagetable_lock_map(), lctx.thread_id())
+            &&& iommu_table_locked_match_lctx(
+                self.iommu_table_map,
+                lctx.iommu_table_lock_map(),
+                lctx.thread_id())
             &&& page_locked_match_lctx(
                 self.page_array, lctx.page_lock_map(), lctx.thread_id())
             &&& cpu_locked_match_lctx(
@@ -327,7 +385,9 @@ verus! {
                 boundary_threads_preserved(old(self), final(self), old(lctx)),
                 boundary_endpoints_preserved(old(self), final(self), old(lctx)),
                 boundary_schedulers_preserved(old(self), final(self), old(lctx)),
+                boundary_pcid_allocators_preserved(old(self), final(self), old(lctx)),
                 boundary_pagetables_preserved(old(self), final(self), old(lctx)),
+                boundary_iommu_tables_preserved(old(self), final(self), old(lctx)),
                 boundary_pages_preserved(old(self), final(self), old(lctx)),
                 boundary_cpus_preserved(old(self), final(self), old(lctx)),
                 boundary_allocators_preserved(old(self), final(self), old(lctx)),
@@ -548,6 +608,28 @@ verus! {
     }
 
     #[verifier::opaque]
+    pub open spec fn pcid_allocator_locked_match_lctx(
+        allocator_map: PcidAllocatorLockedMap,
+        lock_map: Map<RwLockPcidAllocatorPtr, LockId>,
+        thread_id: LockThreadId,
+    ) -> bool {
+        &&& (forall|allocator_ptr: RwLockPcidAllocatorPtr|
+            #![trigger lock_map.dom().contains(allocator_ptr)]
+            lock_map.dom().contains(allocator_ptr)
+            ==>
+            allocator_map.dom().contains(allocator_ptr)
+            && allocator_map[allocator_ptr].locked_by_thread(thread_id)
+            && allocator_map[allocator_ptr].locking_thread() is Write
+            && lock_map[allocator_ptr]
+                == allocator_map.lock_id_by_key(allocator_ptr))
+        &&& (forall|allocator_ptr: RwLockPcidAllocatorPtr|
+            #![trigger allocator_map.dom().contains(allocator_ptr)]
+            allocator_map.dom().contains(allocator_ptr)
+            && allocator_map[allocator_ptr].locked_by_thread(thread_id)
+            ==> lock_map.dom().contains(allocator_ptr))
+    }
+
+    #[verifier::opaque]
     pub open spec fn pagetable_locked_match_lctx(
         pagetable_map: PageTableLockedMap,
         lock_map: Map<RwLockPageTableRoot, LockId>,
@@ -565,6 +647,28 @@ verus! {
             #![trigger pagetable_map.dom().contains(pt)]
             pagetable_map.dom().contains(pt) && pagetable_map[pt].locked_by_thread(thread_id)
             ==> lock_map.dom().contains(pt))
+    }
+
+    #[verifier::opaque]
+    pub open spec fn iommu_table_locked_match_lctx(
+        iommu_table_map: IommuTableLockedMap,
+        lock_map: Map<RwLockPageTableRoot, LockId>,
+        thread_id: LockThreadId,
+    ) -> bool {
+        &&& (forall|iommu_root: RwLockPageTableRoot|
+            #![trigger lock_map.dom().contains(iommu_root)]
+            lock_map.dom().contains(iommu_root)
+            ==>
+            iommu_table_map.dom().contains(iommu_root)
+            && iommu_table_map[iommu_root].locked_by_thread(thread_id)
+            && iommu_table_map[iommu_root].locking_thread() is Write
+            && lock_map[iommu_root]
+                == iommu_table_map.lock_id_by_key(iommu_root))
+        &&& (forall|iommu_root: RwLockPageTableRoot|
+            #![trigger iommu_table_map.dom().contains(iommu_root)]
+            iommu_table_map.dom().contains(iommu_root)
+            && iommu_table_map[iommu_root].locked_by_thread(thread_id)
+            ==> lock_map.dom().contains(iommu_root))
     }
 
     #[verifier::opaque]
@@ -845,12 +949,27 @@ verus! {
                 && post.scheduler_map.spec_index(s).locked_by(post_lctx)
             ==> pre.scheduler_map.dom().contains(s)
                 && pre.scheduler_map.spec_index(s).locked_by(pre_lctx))
+        &&& (forall|allocator_ptr: RwLockPcidAllocatorPtr|
+            #![trigger post.pcid_allocator_map.spec_index(allocator_ptr)
+                .locked_by(post_lctx)]
+            post.pcid_allocator_map.dom().contains(allocator_ptr)
+                && post.pcid_allocator_map.spec_index(allocator_ptr)
+                    .locked_by(post_lctx)
+            ==> pre.pcid_allocator_map.dom().contains(allocator_ptr)
+                && pre.pcid_allocator_map.spec_index(allocator_ptr)
+                    .locked_by(pre_lctx))
         &&& (forall|pt: RwLockPageTableRoot|
             #![trigger post.pagetable_map.spec_index(pt).locked_by(post_lctx)]
             post.pagetable_map.dom().contains(pt)
                 && post.pagetable_map.spec_index(pt).locked_by(post_lctx)
             ==> pre.pagetable_map.dom().contains(pt)
                 && pre.pagetable_map.spec_index(pt).locked_by(pre_lctx))
+        &&& (forall|iommu_root: RwLockPageTableRoot|
+            #![trigger post.iommu_table_map.spec_index(iommu_root).locked_by(post_lctx)]
+            post.iommu_table_map.dom().contains(iommu_root)
+                && post.iommu_table_map.spec_index(iommu_root).locked_by(post_lctx)
+            ==> pre.iommu_table_map.dom().contains(iommu_root)
+                && pre.iommu_table_map.spec_index(iommu_root).locked_by(pre_lctx))
         &&& (forall|i: PageIndex|
             #![trigger post.page_array[i]@.locked_by(post_lctx)]
             page_index_wf(i)
@@ -947,6 +1066,24 @@ verus! {
             ==> post.scheduler_map.dom().contains(s) && post.scheduler_map[s] == pre.scheduler_map[s]
     }
 
+    pub open spec fn boundary_pcid_allocators_preserved(
+        pre: &KernelK,
+        post: &KernelK,
+        lctx: &LocalContext,
+    ) -> bool {
+        forall|allocator_ptr: RwLockPcidAllocatorPtr|
+            #![trigger lctx.pcid_allocator_lock_map().dom().contains(allocator_ptr)]
+            #![trigger pre.pcid_allocator_map.spec_index(allocator_ptr).locked_by(lctx)]
+            #![trigger pre.pcid_allocator_map.dom().contains(allocator_ptr)]
+            #![trigger post.pcid_allocator_map.dom().contains(allocator_ptr)]
+            (lctx.pcid_allocator_lock_map().dom().contains(allocator_ptr)
+                || (pre.pcid_allocator_map.dom().contains(allocator_ptr)
+                    && pre.pcid_allocator_map.spec_index(allocator_ptr).locked_by(lctx)))
+            ==> post.pcid_allocator_map.dom().contains(allocator_ptr)
+                && post.pcid_allocator_map[allocator_ptr]
+                    == pre.pcid_allocator_map[allocator_ptr]
+    }
+
     pub open spec fn boundary_pagetables_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
         forall|pt: RwLockPageTableRoot|
             #![trigger lctx.pagetable_lock_map().dom().contains(pt)]
@@ -956,6 +1093,24 @@ verus! {
             (lctx.pagetable_lock_map().dom().contains(pt)
                 || (pre.pagetable_map.dom().contains(pt) && pre.pagetable_map.spec_index(pt).locked_by(lctx)))
             ==> post.pagetable_map.dom().contains(pt) && post.pagetable_map[pt] == pre.pagetable_map[pt]
+    }
+
+    pub open spec fn boundary_iommu_tables_preserved(
+        pre: &KernelK,
+        post: &KernelK,
+        lctx: &LocalContext,
+    ) -> bool {
+        forall|iommu_root: RwLockPageTableRoot|
+            #![trigger lctx.iommu_table_lock_map().dom().contains(iommu_root)]
+            #![trigger pre.iommu_table_map.spec_index(iommu_root).locked_by(lctx)]
+            #![trigger pre.iommu_table_map.dom().contains(iommu_root)]
+            #![trigger post.iommu_table_map.dom().contains(iommu_root)]
+            (lctx.iommu_table_lock_map().dom().contains(iommu_root)
+                || (pre.iommu_table_map.dom().contains(iommu_root)
+                    && pre.iommu_table_map.spec_index(iommu_root).locked_by(lctx)))
+            ==> post.iommu_table_map.dom().contains(iommu_root)
+                && post.iommu_table_map[iommu_root]
+                    == pre.iommu_table_map[iommu_root]
     }
 
     pub open spec fn boundary_pages_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {

@@ -13,6 +13,7 @@ pub mod linkedlist;
 pub mod cpu;
 pub mod proc;
 pub mod allocator;
+pub mod iommu;
 pub mod test;
 pub mod kernel;
 
@@ -28,6 +29,7 @@ pub use linkedlist::*;
 pub use cpu::*;
 pub use proc::*;
 pub use allocator::*;
+pub use iommu::*;
 pub use kernel::*;
 
 verus! {

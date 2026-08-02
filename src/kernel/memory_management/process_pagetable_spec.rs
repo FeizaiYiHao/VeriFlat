@@ -13,7 +13,7 @@ pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetabl
         &&
         pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().proc_ptr == proc_ptr
         &&
-        pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_or_ioid() == process_map.spec_index(proc_ptr).view().pcid
+        pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_value() == process_map.spec_index(proc_ptr).view().pcid
             
         
     &&&

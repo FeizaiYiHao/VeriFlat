@@ -19,7 +19,6 @@ use crate::lemma::lemma_u::*;
 pub struct PageTable<const TABLE_TYPE:PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
-    pub ioid: Option<IOid>,
     pub kernel_l4_end: usize,
     pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
@@ -37,7 +36,7 @@ pub struct PageTable<const TABLE_TYPE:PTType> {
 
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub fn new(
-        pcid_or_ioid: usize,
+        pcid: Option<Pcid>,
         kernel_entries_ghost: Ghost<Seq<PageEntry>>,
         page_map_ptr: PageMapPtr,
         Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
@@ -60,11 +59,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 0 <= i < mem_end_l4_index ==> kernel_entries_ghost@[i as int]
                     == page_map_perm.value()[i],
             0 <= mem_end_l4_index < 512,
-
+            TABLE_TYPE == PT_TYPE ==> pcid is Some,
+            TABLE_TYPE == IOMMU_TYPE ==> pcid is None,
             TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
         ensures
             ret.wf(),
-            ret.pcid_or_ioid() == pcid_or_ioid,
+            ret.pcid == pcid,
             ret.kernel_l4_end == mem_end_l4_index,
             ret.page_closure() == Set::empty().insert(page_map_ptr),
             ret.mapping_4k() == Map::<VAddr, MapEntry>::empty(),
@@ -81,8 +81,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             );
         let mut ret = Self {
             cr3: page_map_ptr,
-            pcid: if TABLE_TYPE == PT_TYPE {Some(pcid_or_ioid)}else{None},
-            ioid: if TABLE_TYPE == IOMMU_TYPE {Some(pcid_or_ioid)}else{None},
+            pcid,
             kernel_l4_end: mem_end_l4_index,
             l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()),
@@ -121,7 +120,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(ret.rwx_upper_level_entries());
         assert(ret.table_pages_wf());
         assert(ret.kernel_entries_wf());
-        assert(ret.pcid_ioid_wf());
 
         ret
     }
@@ -154,19 +152,19 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         self.mapping_1g@
     }
 
-    pub open   spec fn pcid_ioid_wf(&self) -> bool {
+    pub open spec fn pcid_wf(&self) -> bool {
         &&&
-        TABLE_TYPE == PT_TYPE ==> self.pcid is Some && self.ioid is None
+        TABLE_TYPE == PT_TYPE ==> self.pcid is Some
         &&&
-        TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None && self.ioid is Some
+        TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None
     }
 
-    pub open spec fn pcid_or_ioid(&self) -> usize{
-        if TABLE_TYPE == PT_TYPE{
-            self.pcid.unwrap()
-        }else{
-            self.ioid.unwrap()
-        }
+    pub open spec fn pcid_value(&self) -> Pcid
+        recommends
+            TABLE_TYPE == PT_TYPE,
+            self.pcid is Some,
+    {
+        self.pcid.unwrap()
     }
 
     pub open   spec fn wf_l4(&self) -> bool {
@@ -664,7 +662,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         &&& self.rwx_upper_level_entries()
         &&& self.table_pages_wf()
         &&& self.kernel_entries_wf()
-        &&& self.pcid_ioid_wf()
+        &&& self.pcid_wf()
     }
     pub broadcast proof fn reveal_page_table_wf(&self)
         ensures
@@ -711,7 +709,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 &&& self.rwx_upper_level_entries()
                 &&& self.table_pages_wf()
                 &&& self.kernel_entries_wf()
-                &&& self.pcid_ioid_wf()
+                &&& self.pcid_wf()
             },
     {
     }
@@ -836,7 +834,11 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         }
         
         open spec fn lock_major_default(&self) -> LockMajorId {
-            PAGE_TABLE_LOCK_MAJOR
+            if TABLE_TYPE == PT_TYPE {
+                PAGE_TABLE_LOCK_MAJOR
+            } else {
+                IOMMU_TABLE_LOCK_MAJOR
+            }
         }
         
         open spec fn lock_major_1_predicate(&self) -> bool {
@@ -864,6 +866,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     
         open spec fn process_depth(&self) -> LockOwnerId {
             LockOwnerId::none()
+        }
+    }
+
+    impl<const TABLE_TYPE:PTType> LockUserVisibilityTrait for PageTable<TABLE_TYPE> {
+        open spec fn is_user_visible() -> bool {
+            true
         }
     }
 

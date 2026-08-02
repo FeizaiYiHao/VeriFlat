@@ -124,3 +124,36 @@ unrecorded U-mutations:
 If a syscall mutates U outside of a `begin/end_user_view_step` pair, the
 snap_shot stays stale, and the next `kernel_step_boundary` will fail to
 verify. This mechanically enforces "U-mutations only inside user-steps."
+
+## Open design issue: DMA mappings
+
+The IOMMU-table structural model deliberately does not yet connect
+`PageTable<IOMMU_TYPE>::mapping_{4k,2m,1g}` to `Page` reverse mappings or
+reference counts. Do not reuse `Page::mappings` for this without first fixing
+the DMA model: it currently represents CPU page-table mappings, and a physical
+page may need simultaneous CPU and DMA mappings. Before adding IOMMU map/unmap
+operations, decide at least:
+
+- whether `Page` gets a separate `io_mappings` relation;
+- whether `ref_count` counts CPU and DMA references together or separately;
+- how mapping size and I/O pages interact with `PageState::Mapped*`;
+- which container/process ownership rule applies to DMA-visible pages.
+
+The IOTLB layer has its own `iova_{4k,2m,1g}_valid` predicates and does not
+apply the CPU kernel-VA range restriction. The underlying
+`PageTable<IOMMU_TYPE>` still reuses `VAddr` and the CPU page-table mapping
+model, so specialize that table's address-validity rules before implementing
+DMA map/unmap operations.
+
+Until those choices are made, keep DMA mapping invariants and operations out
+of `KernelK::memory_management_inv`.
+
+## PCID allocator backing page
+
+`PcidAllocator` contains `[usize; PCID_MAX]`, so its 4096 runtime counters
+occupy 32 KiB on the 64-bit target. The allocator map object, including the
+generic `RwLock` header, is backed by one 2 MiB page. A compile-time assertion
+checks that the complete lock object fits, while `pcid_allocator_pages_wf`
+connects it to an `Allocated2m { AsPcidAllocator }` base page. The global
+`hugepage_2m_wf` invariant supplies the 2 MiB base alignment and the associated
+`Merged2m` tail-page structure.

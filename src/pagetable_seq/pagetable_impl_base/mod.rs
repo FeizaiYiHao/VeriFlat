@@ -688,7 +688,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(self).mapping_2m() =~= old(self).mapping_2m(),
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).kernel_entries =~= old(self).kernel_entries,
-            final(self).pcid_or_ioid() =~= old(self).pcid_or_ioid(),
+            final(self).pcid == old(self).pcid,
             final(self).cr3 =~= old(self).cr3,
             final(self).proc_ptr =~= old(self).proc_ptr,
     {
@@ -822,7 +822,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         // assert(self.kernel_entries_wf()) by {
         //     broadcast use PageTable::reveal_page_table_additional_wf;
         // }; 
-        // assert(self.pcid_ioid_wf()) by {
+        // assert(self.pcid_wf()) by {
         //     broadcast use PageTable::reveal_page_table_additional_wf;
         // }; 
         // assert(self.tlb_wf()) by {
@@ -842,4 +842,3 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 } // verus!
 
 mod destructive;
-

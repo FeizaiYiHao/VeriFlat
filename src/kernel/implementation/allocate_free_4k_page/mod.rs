@@ -815,6 +815,23 @@ impl KernelK {
                 )) by {
                     reveal(pagetable_pages_wf);
                 };
+                assert(iommu_table_pages_wf(
+                    self.iommu_table_map,
+                    self.page_array,
+                )) by {
+                    reveal(iommu_table_pages_wf);
+                };
+                assert(pcid_allocator_pages_wf(
+                    self.page_array,
+                    self.pcid_allocator_map,
+                )) by {
+                    pcid_allocator_pages_wf_preserved_for_page_state_eq(
+                        old(self).page_array,
+                        self.page_array,
+                        old(self).pcid_allocator_map,
+                        self.pcid_allocator_map,
+                    );
+                };
                 assert(thread_pages_wf(
                     self.thread_map,
                     self.page_array,
@@ -1259,9 +1276,12 @@ impl KernelK {
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             // ---- only allocator_4k_map lock state moves; every other field byte-equal ----
             final(self).pagetable_map     == old(self).pagetable_map,
+            final(self).iommu_table_map     == old(self).iommu_table_map,
+            final(self).iommu_root_table     == old(self).iommu_root_table,
             final(self).page_array        == old(self).page_array,
             final(self).cpu_array         == old(self).cpu_array,
             final(self).cpu_tlb           == old(self).cpu_tlb,
+            final(self).iommu_tlb           == old(self).iommu_tlb,
             final(self).root_container    == old(self).root_container,
             final(self).container_map     == old(self).container_map,
             final(self).scheduler_map     == old(self).scheduler_map,
@@ -1307,9 +1327,12 @@ impl KernelK {
                 lock_id_aligned(self, &*lctx),
                 self.allocator_4k_map.dom().contains(alloc_ptr_4k),
                 self.pagetable_map     == old(self).pagetable_map,
+                self.iommu_table_map     == old(self).iommu_table_map,
+                self.iommu_root_table     == old(self).iommu_root_table,
                 self.page_array        == old(self).page_array,
                 self.cpu_array         == old(self).cpu_array,
                 self.cpu_tlb           == old(self).cpu_tlb,
+                self.iommu_tlb           == old(self).iommu_tlb,
                 self.root_container    == old(self).root_container,
                 self.container_map     == old(self).container_map,
                 self.scheduler_map     == old(self).scheduler_map,
@@ -1459,9 +1482,12 @@ impl KernelK {
                     && final(self).process_map.spec_index(process_ptr).locked_by(final(lctx)),
             // ---- only allocator_4k_map cache lock state moves; every other field byte-equal ----
             final(self).pagetable_map     == old(self).pagetable_map,
+            final(self).iommu_table_map     == old(self).iommu_table_map,
+            final(self).iommu_root_table     == old(self).iommu_root_table,
             final(self).page_array        == old(self).page_array,
             final(self).cpu_array         == old(self).cpu_array,
             final(self).cpu_tlb           == old(self).cpu_tlb,
+            final(self).iommu_tlb           == old(self).iommu_tlb,
             final(self).root_container    == old(self).root_container,
             final(self).container_map     == old(self).container_map,
             final(self).scheduler_map     == old(self).scheduler_map,
@@ -1490,9 +1516,12 @@ impl KernelK {
                 self.locked_objects_match_lctx(&*lctx),
                 lock_id_aligned(self, &*lctx),
                 self.pagetable_map     == old(self).pagetable_map,
+                self.iommu_table_map     == old(self).iommu_table_map,
+                self.iommu_root_table     == old(self).iommu_root_table,
                 self.page_array        == old(self).page_array,
                 self.cpu_array         == old(self).cpu_array,
                 self.cpu_tlb           == old(self).cpu_tlb,
+                self.iommu_tlb           == old(self).iommu_tlb,
                 self.root_container    == old(self).root_container,
                 self.container_map     == old(self).container_map,
                 self.scheduler_map     == old(self).scheduler_map,
@@ -1747,6 +1776,7 @@ impl KernelK {
                     == old(self).process_map.spec_index(process_ptr).view().owned_threads
                 &&& final(self).container_map == old(self).container_map
                 &&& final(self).scheduler_map == old(self).scheduler_map
+                &&& final(self).pcid_allocator_map == old(self).pcid_allocator_map
                 &&& final(self).cpu_array == old(self).cpu_array
             },
     {

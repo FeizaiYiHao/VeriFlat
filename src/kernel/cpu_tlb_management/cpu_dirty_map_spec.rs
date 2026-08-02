@@ -50,7 +50,7 @@ verus! {
             ==>
             pagetable_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid].unwrap().pagetable_ptr)
             &&
-            pagetable_map.spec_index(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid].unwrap().pagetable_ptr).view().pcid_or_ioid() == pcid
+            pagetable_map.spec_index(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap()[pcid].unwrap().pagetable_ptr).view().pcid_value() == pcid
     }
 
     #[verifier::opaque]

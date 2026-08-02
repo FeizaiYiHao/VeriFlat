@@ -247,10 +247,14 @@ verus! {
                 final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
                 final(self).allocator_2m_map  == old(self).allocator_2m_map,
@@ -339,16 +343,58 @@ verus! {
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { lemma_no_change_imply_process_pagetable_match_forall(); };
+                    assert(process_iommu_table_match(self.process_map, self.iommu_table_map)) by {
+                        reveal(process_quota_4k_framed_fields_unchanged);
+                        reveal(process_iommu_table_match);
+                    };
                     assert(process_staged_pages_wf(self.process_map, self.page_array)) by { lemma_no_change_imply_process_staged_pages_wf_forall(); };
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by { lemma_no_change_imply_container_allocator_free_4k_page_wf_forall(); };
                 };
                 assert(self.process_management_inv()) by {
+                    assert(process_pcid_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_quota_4k_framed_fields_unchanged);
+                        reveal(process_pcid_fields_unchanged);
+                    };
+                    process_pcid_allocator_wf_preserved_for_fields_unchanged(
+                        self.container_map,
+                        old(self).process_map,
+                        self.process_map,
+                        self.pcid_allocator_map,
+                    );
                     assert(container_process_wf(self.container_map, self.process_map)) by { lemma_no_change_imply_container_process_wf_forall(); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by { lemma_no_change_imply_per_container_process_tree_wf_forall(); };
                     assert(process_cpu_wf(self.process_map, self.cpu_array)) by { lemma_no_change_imply_process_cpu_wf_forall(); };
                     assert(process_thread_wf(self.process_map, self.thread_map)) by { lemma_no_change_imply_process_thread_wf_forall(); };
                 };
                 assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
+                assert(process_reference_fields_unchanged(
+                    old(self).process_map,
+                    self.process_map,
+                )) by {
+                    reveal(process_quota_4k_framed_fields_unchanged);
+                    reveal(process_reference_fields_unchanged);
+                };
+                iommu_root_table_process_wf_preserved_for_process_reference_fields(
+                    &self.iommu_root_table,
+                    old(self).process_map,
+                    self.process_map,
+                    self.iommu_table_map,
+                );
+                process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+                    &self.iommu_root_table,
+                    old(self).process_map,
+                    self.process_map,
+                );
+                iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+                    self.iommu_tlb,
+                    &self.iommu_root_table,
+                    old(self).process_map,
+                    self.process_map,
+                    self.iommu_table_map,
+                );
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
                     reveal(container_locked_match_lctx);
                     reveal(process_locked_match_lctx);
@@ -391,6 +437,7 @@ verus! {
         &&& new_u.process_map[process_ptr].quota_4k as int
                 == old_u.process_map[process_ptr].quota_4k as int + delta
         &&& new_u.process_map[process_ptr].pagetable      == old_u.process_map[process_ptr].pagetable
+        &&& new_u.process_map[process_ptr].iommu_table    == old_u.process_map[process_ptr].iommu_table
         &&& new_u.process_map[process_ptr].quota_2m       == old_u.process_map[process_ptr].quota_2m
         &&& new_u.process_map[process_ptr].quota_1g       == old_u.process_map[process_ptr].quota_1g
         &&& new_u.process_map[process_ptr].parent         == old_u.process_map[process_ptr].parent
@@ -413,6 +460,8 @@ verus! {
         delta: int,
     )
         requires
+            post.iommu_table_map == pre.iommu_table_map,
+            post.iommu_root_table == pre.iommu_root_table,
             forall|pt: RwLockPageTableRoot|
                 #![trigger post.pagetable_map.spec_index(pt).view()]
                 post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view(),
@@ -439,6 +488,8 @@ verus! {
                 == pre.process_map.spec_index(process_ptr).view().owned_threads,
             post.process_map.spec_index(process_ptr).view().pagetable
                 == pre.process_map.spec_index(process_ptr).view().pagetable,
+            post.process_map.spec_index(process_ptr).view().iommu_table
+                == pre.process_map.spec_index(process_ptr).view().iommu_table,
             post.process_map.spec_index(process_ptr).view_rodata()
                 == pre.process_map.spec_index(process_ptr).view_rodata(),
             post.process_map.spec_index(process_ptr).being_killed()

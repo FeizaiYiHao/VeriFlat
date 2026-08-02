@@ -558,6 +558,8 @@ verus! {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 final(self).pagetable_map == old(self).pagetable_map,
+                final(self).iommu_table_map == old(self).iommu_table_map,
+                final(self).iommu_root_table == old(self).iommu_root_table,
                 final(self).process_map.unchanged_except(
                     &old(self).process_map, process_ptr),
                 final(self).cpu_array == old(self).cpu_array,
@@ -1053,8 +1055,6 @@ verus! {
                     == old(self).process_map.spec_index(process_ptr).view().quota_4k - 1,
                 final(self).process_map.spec_index(process_ptr).view().pcid
                     == old(self).process_map.spec_index(process_ptr).view().pcid,
-                final(self).process_map.spec_index(process_ptr).view().ioid
-                    == old(self).process_map.spec_index(process_ptr).view().ioid,
                 final(self).process_map.spec_index(process_ptr).view().iommu_table
                     == old(self).process_map.spec_index(process_ptr).view().iommu_table,
                 final(self).process_map.spec_index(process_ptr).view().pagetable
@@ -1129,11 +1129,15 @@ verus! {
                     final(self).thread_map.spec_index(page_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is None,
 
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
                 final(self).allocator_4k_map  == old(self).allocator_4k_map,
                 final(self).allocator_2m_map  == old(self).allocator_2m_map,
@@ -1635,6 +1639,7 @@ verus! {
                 == old_u.process_map[process_ptr].owned_threads
         // Every other field of the targeted process preserved.
         &&& new_u.process_map[process_ptr].pagetable      == old_u.process_map[process_ptr].pagetable
+        &&& new_u.process_map[process_ptr].iommu_table    == old_u.process_map[process_ptr].iommu_table
         &&& new_u.process_map[process_ptr].quota_2m       == old_u.process_map[process_ptr].quota_2m
         &&& new_u.process_map[process_ptr].quota_1g       == old_u.process_map[process_ptr].quota_1g
         &&& new_u.process_map[process_ptr].parent         == old_u.process_map[process_ptr].parent
