@@ -5,9 +5,10 @@ use crate::*;
 
 pub struct Process {
     pub pcid: Pcid,
-    pub ioid: Option<IOid>,
     pub pagetable: RwLockPageTableRoot,
     pub iommu_table: Option<RwLockPageTableRoot>,
+    pub pci_function_ref_counter: usize,
+    pub owned_pci_functions: Ghost<Set<PciBdf>>,
 
     pub quota_4k: usize,
     pub quota_2m: usize,
@@ -31,7 +32,7 @@ pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, (), (), PROCES
 
 pub ghost struct ProcessU {
     pub pagetable: PageTable<PT_TYPE>,
-    // pub iommu_table: Option<PageTable<IOMMU_TYPE>>,
+    pub iommu_table: Option<PageTable<IOMMU_TYPE>>,
     
     pub quota_4k: usize,
     pub quota_2m: usize,
@@ -78,9 +79,9 @@ impl Process{
         &&&
         self.uppertree_seq.wf()
         &&&
-        self.iommu_table_wf()
+        self.pagetable_iommu_table_different()
         &&&
-        self.pagetable_iommutable_different()
+        self.pci_function_ownership_wf()
         &&&
         self.at_least_one_thread()
         &&&
@@ -98,13 +99,17 @@ impl Process{
         &&&
         self.quota_1g >= self.temp_alloc_cache_1g.view().len()
     }
-    pub open spec fn iommu_table_wf(&self) -> bool {
-        &&&
-        self.ioid is Some == self.iommu_table is Some
-    }
-    pub open spec fn pagetable_iommutable_different(&self) -> bool {
+    pub open spec fn pagetable_iommu_table_different(&self) -> bool {
         &&&
         self.iommu_table is Some ==> self.iommu_table.unwrap() != self.pagetable
+    }
+    pub open spec fn pci_function_ownership_wf(&self) -> bool {
+        &&& self.pci_function_ref_counter
+            == self.owned_pci_functions.view().len()
+        &&& forall|bdf: PciBdf|
+            #![trigger self.owned_pci_functions.view().contains(bdf)]
+            self.owned_pci_functions.view().contains(bdf)
+            ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2)
     }
     pub open spec fn at_least_one_thread(&self) -> bool{
         &&&

@@ -59,12 +59,32 @@ pub open spec fn pagetable_objects_unlocked(pagetable_map: PageTableLockedMap, l
         pagetable_map.spec_index(pt_ptr).locked_by(lctx) == false
 }
 
+pub open spec fn iommu_table_objects_unlocked(
+    iommu_table_map: IommuTableLockedMap,
+    lctx: &LocalContext,
+) -> bool {
+    forall|iommu_root: RwLockPageTableRoot|
+        #![trigger iommu_table_map.spec_index(iommu_root).locked_by(lctx)]
+        iommu_table_map.dom().contains(iommu_root)
+        ==> iommu_table_map.spec_index(iommu_root).locked_by(lctx) == false
+}
+
 pub open spec fn scheduler_objects_unlocked(scheduler_map: SchedulerLockedMap, lctx: &LocalContext) -> bool {
     forall|s_ptr: RwLockSchedulerPtr|
         #![trigger scheduler_map.spec_index(s_ptr).locked_by(lctx)]
         scheduler_map.dom().contains(s_ptr)
         ==>
         scheduler_map.spec_index(s_ptr).locked_by(lctx) == false
+}
+
+pub open spec fn pcid_allocator_objects_unlocked(
+    allocator_map: PcidAllocatorLockedMap,
+    lctx: &LocalContext,
+) -> bool {
+    forall|allocator_ptr: RwLockPcidAllocatorPtr|
+        #![trigger allocator_map.spec_index(allocator_ptr).locked_by(lctx)]
+        allocator_map.dom().contains(allocator_ptr)
+        ==> allocator_map.spec_index(allocator_ptr).locked_by(lctx) == false
 }
 
 pub open spec fn allocator_objects_unlocked(alloc_map: PageAllocatorUnLockedMap, lctx: &LocalContext) -> bool {
@@ -95,6 +115,21 @@ impl KernelK{
     {
         self.pagetable_map.spec_index(self.process_map.spec_index(process_ptr).view().pagetable).view()
     }
+
+    pub open spec fn get_process_iommu_table(
+        &self,
+        process_ptr: RwLockProcessPtr,
+    ) -> Option<PageTable<IOMMU_TYPE>>
+        recommends
+            self.process_map.dom().contains(process_ptr),
+    {
+        match self.process_map.spec_index(process_ptr).view().iommu_table {
+            Some(iommu_root) => Some(
+                self.iommu_table_map.spec_index(iommu_root).view(),
+            ),
+            None => None,
+        }
+    }
     pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool{
         &&& cpu_objects_unlocked(self.cpu_array, lctx)
         &&& page_objects_unlocked(self.page_array, lctx)
@@ -103,7 +138,9 @@ impl KernelK{
         &&& thread_objects_unlocked(self.thread_map, lctx)
         &&& endpoint_objects_unlocked(self.endpoint_map, lctx)
         &&& pagetable_objects_unlocked(self.pagetable_map, lctx)
+        &&& iommu_table_objects_unlocked(self.iommu_table_map, lctx)
         &&& scheduler_objects_unlocked(self.scheduler_map, lctx)
+        &&& pcid_allocator_objects_unlocked(self.pcid_allocator_map, lctx)
         &&& allocator_objects_unlocked(self.allocator_4k_map, lctx)
         &&& allocator_objects_unlocked(self.allocator_2m_map, lctx)
         &&& allocator_objects_unlocked(self.allocator_1g_map, lctx)
@@ -127,7 +164,9 @@ impl KernelK{
             reveal(thread_locked_match_lctx);
             reveal(endpoint_locked_match_lctx);
             reveal(scheduler_locked_match_lctx);
+            reveal(pcid_allocator_locked_match_lctx);
             reveal(pagetable_locked_match_lctx);
+            reveal(iommu_table_locked_match_lctx);
             reveal(page_locked_match_lctx);
             reveal(cpu_locked_match_lctx);
             reveal(allocator_4k_locked_match_lctx);

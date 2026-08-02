@@ -28,6 +28,7 @@
 - [Syscall postcondition models KernelU](feedback_syscall_postcondition_models_kernel_u.md) — syscall postcondition describe KernelU (user-visible) via old_u/new_u, never KernelK internals
 - [Kernel invariant opaque reveal](project_kernel_invariant_opaque_reveal.md) — all kernel invariants are #[verifier::opaque], must explicitly reveal() in proof blocks
 - [Memory model core concepts](project_memory_model_core_concepts.md) — Page metadata vs PagePtr physical address vs PagePerm ownership; page_index2page_ptr mapping; perm field Tracked<Option<PagePerm>>
+- [IOMMU identity model](project_iommu_identity_and_static_root_table.md) — BDF-derived DID; opaque 385-page root/owner table with total owner and optional-root Seq3 interfaces; per-process BDF counter+reverse set makes zero-count deletion scan-free; one global per-DID IOTLB without dirty bitmap
 - [upper_container_seq read-only no lock](feedback_upper_container_seq_readonly_no_lock.md) — read-only spec field access needs no lock
 - [Struct literal parens](feedback_verus_struct_literal_parens.md) — ensures/requires struct literals must be wrapped in parentheses
 - [view() sequence bridge assert](feedback_verus_view_sequence_bridge_assert.md) — when view() and underlying sequence don't auto-equate, add explicit forall bridge assert

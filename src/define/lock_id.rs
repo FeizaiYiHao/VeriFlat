@@ -10,6 +10,7 @@ pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
 pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 3;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
+pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;
 pub const PROCESS_LOCK_MAJOR:LockMajorId = 105;
 pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
 
@@ -27,7 +28,8 @@ pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
 pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
 
 pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = 10003;
-pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = 10004;
+pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
+pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
 
 // The scheduler sits in the container tier (below the process, major 105) so a
 // syscall can hold it across a page allocation: it must top the container/quota
@@ -238,7 +240,9 @@ pub ghost enum KernelObjId {
     Thread(RwLockThreadPtr),
     Endpoint(RwLockEndpointPtr),
     Scheduler(RwLockSchedulerPtr),
+    PcidAllocator(RwLockPcidAllocatorPtr),
     PageTable(RwLockPageTableRoot),
+    IommuTable(RwLockPageTableRoot),
     Page(PageIndex),
     Cpu(CpuId),
     AllocatorQuota(PageSize, RwLockPageAllocatorPtr),

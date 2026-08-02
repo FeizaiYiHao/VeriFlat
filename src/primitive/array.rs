@@ -2,6 +2,7 @@ use vstd::prelude::*;
 verus! {
 use core::mem::MaybeUninit;
 
+#[repr(C)]
 pub struct Array<A, const N: usize>{
     pub seq: Ghost<Seq<A>>,
     pub ar: [A;N]

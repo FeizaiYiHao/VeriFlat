@@ -42,6 +42,7 @@ verus! {
                     let p_ro = kernel_k.process_map.spec_index(ptr).view_rodata().view();
                     ProcessU {
                         pagetable: kernel_k.get_process_pagetable(ptr),
+                        iommu_table: kernel_k.get_process_iommu_table(ptr),
                         quota_4k: p.quota_4k,
                         quota_2m: p.quota_2m,
                         quota_1g: p.quota_1g,
@@ -77,6 +78,11 @@ verus! {
             forall|pt: RwLockPageTableRoot|
                 #![trigger post.pagetable_map.spec_index(pt).view()]
                 post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view(),
+            // No implemented operation moves an IOMMU-table lock yet, so the
+            // current framing surface preserves the whole map. This can be
+            // weakened to per-entry views when those operations are added.
+            post.iommu_table_map == pre.iommu_table_map,
+            post.iommu_root_table == pre.iommu_root_table,
             // process_map: same domain, and per process only the fields
             // `ProcessU` projects are read — quota/tree fields off `view()`,
             // `parent`/`depth` off `view_rodata()`, and `being_killed()`. NOT
@@ -95,6 +101,7 @@ verus! {
                     && post.process_map.spec_index(ptr).view().subtree_set.view() == pre.process_map.spec_index(ptr).view().subtree_set.view()
                     && post.process_map.spec_index(ptr).view().owned_threads.view() == pre.process_map.spec_index(ptr).view().owned_threads.view()
                     && post.process_map.spec_index(ptr).view().pagetable == pre.process_map.spec_index(ptr).view().pagetable
+                    && post.process_map.spec_index(ptr).view().iommu_table == pre.process_map.spec_index(ptr).view().iommu_table
                     && post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata()
                     && post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed(),
             // cpu_array: per-slot payload `view()`.

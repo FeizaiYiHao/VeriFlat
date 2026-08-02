@@ -16,10 +16,13 @@ pub proof fn memory_management_inv_preserved_for_page_lock_op(
         pagetable_perms_wf(pre.pagetable_map),
         page_array_wf(post.page_array),
         post.pagetable_map == pre.pagetable_map,
+        post.iommu_table_map == pre.iommu_table_map,
+        post.iommu_root_table == pre.iommu_root_table,
         post.container_map == pre.container_map,
         post.process_map == pre.process_map,
         post.thread_map == pre.thread_map,
         post.endpoint_map == pre.endpoint_map,
+        post.pcid_allocator_map == pre.pcid_allocator_map,
         post.allocator_4k_map == pre.allocator_4k_map,
         post.allocator_2m_map == pre.allocator_2m_map,
         post.allocator_1g_map == pre.allocator_1g_map,
@@ -79,9 +82,26 @@ pub proof fn memory_management_inv_preserved_for_page_lock_op(
         reveal(LockedArray::payloads_unchanged);
         reveal(pagetable_pages_wf);
     };
+    assert(iommu_table_pages_wf(
+        post.iommu_table_map,
+        post.page_array,
+    )) by {
+        reveal(LockedArray::payloads_unchanged);
+        reveal(iommu_table_pages_wf);
+    };
     assert(thread_pages_wf(post.thread_map, post.page_array)) by {
         reveal(LockedArray::payloads_unchanged);
         reveal(thread_pages_wf);
+    };
+    assert(pcid_allocator_pages_wf(
+        post.page_array,
+        post.pcid_allocator_map,
+    )) by {
+        pcid_allocator_pages_wf_preserved_for_page_payloads_unchanged(
+            pre.page_array,
+            post.page_array,
+            post.pcid_allocator_map,
+        );
     };
     assert(process_staged_pages_wf(post.process_map, post.page_array)) by {
         reveal(LockedArray::payloads_unchanged);
