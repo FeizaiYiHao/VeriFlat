@@ -3,6 +3,7 @@
 - [No self-added spinoff_prover](feedback_no_self_added_spinoff_prover.md) — Never add #[verifier::spinoff_prover] on your own; it's Xiangdong's call
 - [wunlock_process temp-alloc protocol](project_wunlock_process_temp_alloc_protocol.md) — wunlock_process requires temp_alloc_clean; flush staged pages before unlocking
 - [Lemma scoping](feedback_lemma_scoping.md) — scope lemmas into EXISTING consumer asserts only; a new assert-by for a ground-fact lemma backfires; forall-ensures lemmas are the reveal-like ones worth scoping
+- [No global full-invariant proof wrappers](feedback_no_single_function_global_proof_wrappers.md) — never hide complete kernel/subsystem invariant re-establishment in a global lemma, even for a lock/unlock pair; keep it local and globalize only reusable field or individual-invariant facts
 - [alloc_free_4k rlimit drivers](project_alloc_free_4k_rlimit_drivers.md) — profiler: allocate_free_4k_page is 54% of module rlimit; dominated by Set fold axioms + allocator/cpu-cache inv() deep quantifiers, not ground lemmas
 - [match_lctx wrapper contract](project_match_lctx_wrapper_contract.md) — the 6 4k-path lock wrappers now carry locked_objects_match_lctx in requires/ensures; cut allocate_free_4k_page 83%; Batch 2 (cpu/container/quota/process) done + begin/end_user_view_step frame it
 - [alloc_free_4k postconditions](project_alloc_free_4k_postconditions.md) — full functional postconditions proven; scan_caches_and_alloc spec-gap fix; "cost wall" was a proof-gap mirage (fix the gap, not the budget)

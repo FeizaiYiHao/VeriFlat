@@ -91,10 +91,56 @@ verus! {
                     )) by {
                         reveal(cpu_array_wf);
                     };
-                    kernel_inv_preserved_for_cpu_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_cpu_wf(
+                            self.container_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_perms_wf);
+                            reveal(container_cpu_wf);
+                        };
+                        assert(process_cpu_wf(
+                            self.process_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(process_cpu_wf);
+                        };
+                        assert(thread_cpu_wf(
+                            self.thread_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(thread_cpu_wf);
+                        };
+                    };
+                    assert(cpu_dirty_map_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.cpu_array,
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                    )) by {
+                        reveal(LockedArray::payloads_unchanged);
+                        reveal(cpu_dirty_map_contains_container_processes);
+                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                        reveal(cpu_dirty_map_proc_pcid_match);
+                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+                        reveal(container_cpu_wf);
+                    };
+                    assert(tlb_wf_spec(
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                        self.cpu_array,
+                    )) by {
+                        reveal(LockedArray::payloads_unchanged);
+                        reveal(tlb_wf_spec);
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: cpu slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -204,10 +250,56 @@ verus! {
                     )) by {
                         reveal(cpu_array_wf);
                     };
-                    kernel_inv_preserved_for_cpu_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_cpu_wf(
+                            self.container_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_perms_wf);
+                            reveal(container_cpu_wf);
+                        };
+                        assert(process_cpu_wf(
+                            self.process_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(process_cpu_wf);
+                        };
+                        assert(thread_cpu_wf(
+                            self.thread_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(thread_cpu_wf);
+                        };
+                    };
+                    assert(cpu_dirty_map_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.cpu_array,
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                    )) by {
+                        reveal(LockedArray::payloads_unchanged);
+                        reveal(cpu_dirty_map_contains_container_processes);
+                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                        reveal(cpu_dirty_map_proc_pcid_match);
+                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+                        reveal(container_cpu_wf);
+                    };
+                    assert(tlb_wf_spec(
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                        self.cpu_array,
+                    )) by {
+                        reveal(LockedArray::payloads_unchanged);
+                        reveal(tlb_wf_spec);
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: cpu slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -343,10 +435,180 @@ verus! {
                             container_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_container_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(container_page_owner_wf(
+                            self.container_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_process_page_pagetable_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_process_page_pagetable_wf);
+                            reveal(container_process_wf);
+                            reveal(process_pagetable_match);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_pages_wf(
+                            self.page_array,
+                            self.container_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_pages_wf);
+                        };
+                        assert(container_process_allocator_quota_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_process_allocator_quota_2m_wf);
+                            reveal(container_process_allocator_quota_1g_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_free_4k_page_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_2m_page_wf(
+                            self.container_map,
+                            self.allocator_2m_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_free_2m_page_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_1g_page_wf(
+                            self.container_map,
+                            self.allocator_1g_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_free_1g_page_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_tree_wf(
+                            self.root_container,
+                            self.container_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            container_no_change_to_tree_fields_imply_wf(
+                                old(self).root_container,
+                                old(self).container_map,
+                                self.container_map,
+                            );
+                        };
+                        assert(container_process_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_process_wf);
+                        };
+                        assert(per_container_process_tree_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(per_container_process_tree_wf);
+                        };
+                        assert(container_cpu_wf(
+                            self.container_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_cpu_wf);
+                        };
+                        assert(container_thread_endpoint_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_endpoint_wf);
+                            reveal(thread_endpoint_ref_counter_wf);
+                            reveal(thread_endpoint_queue_wf);
+                            reveal(container_thread_endpoint_wf);
+                        };
+                        assert(container_thread_scheduler_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                            reveal(container_scheduler_wf);
+                            reveal(container_thread_scheduler_wf);
+                        };
+                        assert(container_endpoint_wf(
+                            self.container_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_endpoint_wf);
+                        };
+                        assert(container_scheduler_wf(
+                            self.container_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_scheduler_wf);
+                        };
+                        assert(container_thread_wf(
+                            self.container_map,
+                            self.thread_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                        };
+                    };
+                    assert(cpu_dirty_map_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.cpu_array,
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                    )) by {
+                        reveal(container_invariant_fields_unchanged);
+                        reveal(cpu_dirty_map_contains_container_processes);
+                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                        reveal(cpu_dirty_map_proc_pcid_match);
+                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+                        reveal(container_cpu_wf);
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: success locks container, failure is a no-op ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -495,10 +757,180 @@ verus! {
                             container_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_container_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(container_page_owner_wf(
+                            self.container_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_process_page_pagetable_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_process_page_pagetable_wf);
+                            reveal(container_process_wf);
+                            reveal(process_pagetable_match);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_pages_wf(
+                            self.page_array,
+                            self.container_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_pages_wf);
+                        };
+                        assert(container_process_allocator_quota_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_process_allocator_quota_2m_wf);
+                            reveal(container_process_allocator_quota_1g_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_free_4k_page_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_2m_page_wf(
+                            self.container_map,
+                            self.allocator_2m_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_free_2m_page_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_1g_page_wf(
+                            self.container_map,
+                            self.allocator_1g_map,
+                            self.page_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_allocator_free_1g_page_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_tree_wf(
+                            self.root_container,
+                            self.container_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            container_no_change_to_tree_fields_imply_wf(
+                                old(self).root_container,
+                                old(self).container_map,
+                                self.container_map,
+                            );
+                        };
+                        assert(container_process_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_process_wf);
+                        };
+                        assert(per_container_process_tree_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(per_container_process_tree_wf);
+                        };
+                        assert(container_cpu_wf(
+                            self.container_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_cpu_wf);
+                        };
+                        assert(container_thread_endpoint_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_endpoint_wf);
+                            reveal(thread_endpoint_ref_counter_wf);
+                            reveal(thread_endpoint_queue_wf);
+                            reveal(container_thread_endpoint_wf);
+                        };
+                        assert(container_thread_scheduler_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                            reveal(container_scheduler_wf);
+                            reveal(container_thread_scheduler_wf);
+                        };
+                        assert(container_endpoint_wf(
+                            self.container_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_endpoint_wf);
+                        };
+                        assert(container_scheduler_wf(
+                            self.container_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_scheduler_wf);
+                        };
+                        assert(container_thread_wf(
+                            self.container_map,
+                            self.thread_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                        };
+                    };
+                    assert(cpu_dirty_map_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.cpu_array,
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                    )) by {
+                        reveal(container_invariant_fields_unchanged);
+                        reveal(cpu_dirty_map_contains_container_processes);
+                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+                        reveal(cpu_dirty_map_proc_pcid_match);
+                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+                        reveal(container_cpu_wf);
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: container slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -626,10 +1058,104 @@ verus! {
                             alloc_ptr_4k,
                         );
                     };
-                    kernel_inv_preserved_for_allocator_4k_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(allocator_quota_value_framed_fields_unchanged(
+                        old(self).allocator_4k_map,
+                        self.allocator_4k_map,
+                    )) by {
+                        reveal(allocator_4k_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies {
+                                let alloc_ptr = self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k;
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                            } by {
+                                assert(old(self).allocator_4k_map.dom().contains(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                )) by {
+                                    reveal(container_allocator_wf);
+                                };
+                                assert(self.allocator_4k_map.spec_index(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                ).owning_container
+                                    == old(self).allocator_4k_map.spec_index(
+                                        self.container_map.spec_index(c_ptr)
+                                            .view_rodata().view().allocator_ptr_4k,
+                                    ).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_container_allocator_wf_forall();
+                        };
+                        assert(allocator_free_page_ptrs_wf(
+                            self.allocator_4k_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_free_page_ptrs_wf_forall();
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
+                                    .cpu_caches.spec_index(cpu_id).view().view()]
+                                self.allocator_4k_map.dom().contains(a_ptr)
+                                    && cpu_id_valid(cpu_id)
+                            implies
+                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                            by {
+                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
+                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: quota slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -765,10 +1291,104 @@ verus! {
                             alloc_ptr_4k,
                         );
                     };
-                    kernel_inv_preserved_for_allocator_4k_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(allocator_quota_value_framed_fields_unchanged(
+                        old(self).allocator_4k_map,
+                        self.allocator_4k_map,
+                    )) by {
+                        reveal(allocator_4k_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies {
+                                let alloc_ptr = self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k;
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                            } by {
+                                assert(old(self).allocator_4k_map.dom().contains(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                )) by {
+                                    reveal(container_allocator_wf);
+                                };
+                                assert(self.allocator_4k_map.spec_index(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                ).owning_container
+                                    == old(self).allocator_4k_map.spec_index(
+                                        self.container_map.spec_index(c_ptr)
+                                            .view_rodata().view().allocator_ptr_4k,
+                                    ).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_container_allocator_wf_forall();
+                        };
+                        assert(allocator_free_page_ptrs_wf(
+                            self.allocator_4k_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_free_page_ptrs_wf_forall();
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
+                                    .cpu_caches.spec_index(cpu_id).view().view()]
+                                self.allocator_4k_map.dom().contains(a_ptr)
+                                    && cpu_id_valid(cpu_id)
+                            implies
+                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                            by {
+                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
+                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: quota slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -924,10 +1544,211 @@ verus! {
                             process_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_process_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(process_quota_4k_framed_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(container_process_page_pagetable_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            lemma_no_change_imply_container_process_page_pagetable_wf_forall();
+                        };
+                        assert(process_pages_wf(
+                            self.page_array,
+                            self.process_map,
+                        )) by {
+                            lemma_no_change_imply_process_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            reveal(process_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies
+                                self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().fold(
+                                        0,
+                                        |sum: int, p_ptr: RwLockProcessPtr|
+                                            sum + process_effective_quota_4k(
+                                                self.process_map.spec_index(p_ptr),
+                                            ),
+                                    )
+                                    == old(self).container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view().fold(
+                                            0,
+                                            |sum: int, p_ptr: RwLockProcessPtr|
+                                                sum + process_effective_quota_4k(
+                                                    old(self).process_map.spec_index(p_ptr),
+                                                ),
+                                        )
+                            by {
+                                assert(self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().subset_of(
+                                        old(self).process_map.dom(),
+                                    )) by {
+                                    reveal(container_process_wf);
+                                };
+                                lemma_process_effective_quota_4k_fold_eq(
+                                    self.container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view(),
+                                    old(self).process_map,
+                                    self.process_map,
+                                );
+                            };
+                        };
+                        assert(container_process_allocator_quota_2m_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_2m_map,
+                        )) by {
+                            reveal(process_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_2m_wf);
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_2m]
+                                self.container_map.dom().contains(c_ptr)
+                            implies
+                                self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().fold(
+                                        0,
+                                        |sum: int, p_ptr: RwLockProcessPtr|
+                                            sum + process_effective_quota_2m(
+                                                self.process_map.spec_index(p_ptr),
+                                            ),
+                                    )
+                                    == old(self).container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view().fold(
+                                            0,
+                                            |sum: int, p_ptr: RwLockProcessPtr|
+                                                sum + process_effective_quota_2m(
+                                                    old(self).process_map.spec_index(p_ptr),
+                                                ),
+                                        )
+                            by {
+                                assert(self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().subset_of(
+                                        old(self).process_map.dom(),
+                                    )) by {
+                                    reveal(container_process_wf);
+                                };
+                                lemma_process_effective_quota_2m_fold_eq(
+                                    self.container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view(),
+                                    old(self).process_map,
+                                    self.process_map,
+                                );
+                            };
+                        };
+                        assert(container_process_allocator_quota_1g_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(process_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_1g_wf);
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_1g]
+                                self.container_map.dom().contains(c_ptr)
+                            implies
+                                self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().fold(
+                                        0,
+                                        |sum: int, p_ptr: RwLockProcessPtr|
+                                            sum + process_effective_quota_1g(
+                                                self.process_map.spec_index(p_ptr),
+                                            ),
+                                    )
+                                    == old(self).container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view().fold(
+                                            0,
+                                            |sum: int, p_ptr: RwLockProcessPtr|
+                                                sum + process_effective_quota_1g(
+                                                    old(self).process_map.spec_index(p_ptr),
+                                                ),
+                                        )
+                            by {
+                                assert(self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().subset_of(
+                                        old(self).process_map.dom(),
+                                    )) by {
+                                    reveal(container_process_wf);
+                                };
+                                lemma_process_effective_quota_1g_fold_eq(
+                                    self.container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view(),
+                                    old(self).process_map,
+                                    self.process_map,
+                                );
+                            };
+                        };
+                        assert(process_pagetable_match(
+                            self.process_map,
+                            self.pagetable_map,
+                        )) by {
+                            lemma_no_change_imply_process_pagetable_match_forall();
+                        };
+                        assert(process_staged_pages_wf(
+                            self.process_map,
+                            self.page_array,
+                        )) by {
+                            lemma_no_change_imply_process_staged_pages_wf_forall();
+                        };
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_process_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            lemma_no_change_imply_container_process_wf_forall();
+                        };
+                        assert(per_container_process_tree_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            lemma_no_change_imply_per_container_process_tree_wf_forall();
+                        };
+                        assert(process_cpu_wf(
+                            self.process_map,
+                            self.cpu_array,
+                        )) by {
+                            lemma_no_change_imply_process_cpu_wf_forall();
+                        };
+                        assert(process_thread_wf(
+                            self.process_map,
+                            self.thread_map,
+                        )) by {
+                            lemma_no_change_imply_process_thread_wf_forall();
+                        };
+                    };
+                    assert(cpu_dirty_map_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.cpu_array,
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                    )) by {
+                        lemma_no_change_imply_cpu_dirty_map_wf_forall();
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: success locks process, failure is a no-op ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1091,10 +1912,211 @@ verus! {
                             process_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_process_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(process_quota_4k_framed_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(container_process_page_pagetable_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            lemma_no_change_imply_container_process_page_pagetable_wf_forall();
+                        };
+                        assert(process_pages_wf(
+                            self.page_array,
+                            self.process_map,
+                        )) by {
+                            lemma_no_change_imply_process_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            reveal(process_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies
+                                self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().fold(
+                                        0,
+                                        |sum: int, p_ptr: RwLockProcessPtr|
+                                            sum + process_effective_quota_4k(
+                                                self.process_map.spec_index(p_ptr),
+                                            ),
+                                    )
+                                    == old(self).container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view().fold(
+                                            0,
+                                            |sum: int, p_ptr: RwLockProcessPtr|
+                                                sum + process_effective_quota_4k(
+                                                    old(self).process_map.spec_index(p_ptr),
+                                                ),
+                                        )
+                            by {
+                                assert(self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().subset_of(
+                                        old(self).process_map.dom(),
+                                    )) by {
+                                    reveal(container_process_wf);
+                                };
+                                lemma_process_effective_quota_4k_fold_eq(
+                                    self.container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view(),
+                                    old(self).process_map,
+                                    self.process_map,
+                                );
+                            };
+                        };
+                        assert(container_process_allocator_quota_2m_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_2m_map,
+                        )) by {
+                            reveal(process_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_2m_wf);
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_2m]
+                                self.container_map.dom().contains(c_ptr)
+                            implies
+                                self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().fold(
+                                        0,
+                                        |sum: int, p_ptr: RwLockProcessPtr|
+                                            sum + process_effective_quota_2m(
+                                                self.process_map.spec_index(p_ptr),
+                                            ),
+                                    )
+                                    == old(self).container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view().fold(
+                                            0,
+                                            |sum: int, p_ptr: RwLockProcessPtr|
+                                                sum + process_effective_quota_2m(
+                                                    old(self).process_map.spec_index(p_ptr),
+                                                ),
+                                        )
+                            by {
+                                assert(self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().subset_of(
+                                        old(self).process_map.dom(),
+                                    )) by {
+                                    reveal(container_process_wf);
+                                };
+                                lemma_process_effective_quota_2m_fold_eq(
+                                    self.container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view(),
+                                    old(self).process_map,
+                                    self.process_map,
+                                );
+                            };
+                        };
+                        assert(container_process_allocator_quota_1g_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(process_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_1g_wf);
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_1g]
+                                self.container_map.dom().contains(c_ptr)
+                            implies
+                                self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().fold(
+                                        0,
+                                        |sum: int, p_ptr: RwLockProcessPtr|
+                                            sum + process_effective_quota_1g(
+                                                self.process_map.spec_index(p_ptr),
+                                            ),
+                                    )
+                                    == old(self).container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view().fold(
+                                            0,
+                                            |sum: int, p_ptr: RwLockProcessPtr|
+                                                sum + process_effective_quota_1g(
+                                                    old(self).process_map.spec_index(p_ptr),
+                                                ),
+                                        )
+                            by {
+                                assert(self.container_map.spec_index(c_ptr).view()
+                                    .owned_processes.view().subset_of(
+                                        old(self).process_map.dom(),
+                                    )) by {
+                                    reveal(container_process_wf);
+                                };
+                                lemma_process_effective_quota_1g_fold_eq(
+                                    self.container_map.spec_index(c_ptr).view()
+                                        .owned_processes.view(),
+                                    old(self).process_map,
+                                    self.process_map,
+                                );
+                            };
+                        };
+                        assert(process_pagetable_match(
+                            self.process_map,
+                            self.pagetable_map,
+                        )) by {
+                            lemma_no_change_imply_process_pagetable_match_forall();
+                        };
+                        assert(process_staged_pages_wf(
+                            self.process_map,
+                            self.page_array,
+                        )) by {
+                            lemma_no_change_imply_process_staged_pages_wf_forall();
+                        };
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_process_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            lemma_no_change_imply_container_process_wf_forall();
+                        };
+                        assert(per_container_process_tree_wf(
+                            self.container_map,
+                            self.process_map,
+                        )) by {
+                            lemma_no_change_imply_per_container_process_tree_wf_forall();
+                        };
+                        assert(process_cpu_wf(
+                            self.process_map,
+                            self.cpu_array,
+                        )) by {
+                            lemma_no_change_imply_process_cpu_wf_forall();
+                        };
+                        assert(process_thread_wf(
+                            self.process_map,
+                            self.thread_map,
+                        )) by {
+                            lemma_no_change_imply_process_thread_wf_forall();
+                        };
+                    };
+                    assert(cpu_dirty_map_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.cpu_array,
+                        self.cpu_tlb,
+                        self.pagetable_map,
+                    )) by {
+                        lemma_no_change_imply_cpu_dirty_map_wf_forall();
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: process slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1230,10 +2252,119 @@ verus! {
                             thread_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_thread_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            container_process_allocator_quota_4k_wf_preserved_for_thread_fields(
+                                old(self).container_map,
+                                old(self).process_map,
+                                old(self).thread_map,
+                                self.thread_map,
+                                old(self).allocator_4k_map,
+                            );
+                        };
+                        assert(container_process_allocator_quota_2m_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_2m_map,
+                        )) by {
+                            container_process_allocator_quota_2m_wf_preserved_for_thread_fields(
+                                old(self).container_map,
+                                old(self).process_map,
+                                old(self).thread_map,
+                                self.thread_map,
+                                old(self).allocator_2m_map,
+                            );
+                        };
+                        assert(container_process_allocator_quota_1g_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            container_process_allocator_quota_1g_wf_preserved_for_thread_fields(
+                                old(self).container_map,
+                                old(self).process_map,
+                                old(self).thread_map,
+                                self.thread_map,
+                                old(self).allocator_1g_map,
+                            );
+                        };
+                        assert(thread_pages_wf(
+                            self.thread_map,
+                            self.page_array,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(thread_pages_wf);
+                        };
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(thread_endpoint_ref_counter_wf(
+                            self.thread_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(thread_endpoint_ref_counter_wf);
+                        };
+                        assert(thread_endpoint_queue_wf(
+                            self.thread_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(thread_endpoint_queue_wf);
+                        };
+                        assert(container_thread_endpoint_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.endpoint_map,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(container_endpoint_wf);
+                            reveal(thread_endpoint_ref_counter_wf);
+                            reveal(thread_endpoint_queue_wf);
+                            reveal(container_thread_endpoint_wf);
+                        };
+                        assert(container_thread_scheduler_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                            reveal(container_scheduler_wf);
+                            reveal(container_thread_scheduler_wf);
+                        };
+                        assert(container_thread_wf(
+                            self.container_map,
+                            self.thread_map,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                        };
+                        assert(process_thread_wf(
+                            self.process_map,
+                            self.thread_map,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(process_thread_wf);
+                        };
+                        assert(thread_cpu_wf(
+                            self.thread_map,
+                            self.cpu_array,
+                        )) by {
+                            reveal(thread_invariant_fields_unchanged);
+                            reveal(thread_cpu_wf);
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: thread slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1342,6 +2473,14 @@ verus! {
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .cpu_caches[cache_cpu].lock_id(),
                 ),
+                final(lctx).lock_maps_inserted(
+                    old(lctx),
+                    KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
+                    ),
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches[cache_cpu].lock_id(),
+                ),
         {
             proof {
                 assert(
@@ -1394,10 +2533,104 @@ verus! {
                             cache_cpu,
                         );
                     };
-                    kernel_inv_preserved_for_allocator_4k_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(allocator_quota_value_framed_fields_unchanged(
+                        old(self).allocator_4k_map,
+                        self.allocator_4k_map,
+                    )) by {
+                        reveal(allocator_4k_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies {
+                                let alloc_ptr = self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k;
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                            } by {
+                                assert(old(self).allocator_4k_map.dom().contains(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                )) by {
+                                    reveal(container_allocator_wf);
+                                };
+                                assert(self.allocator_4k_map.spec_index(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                ).owning_container
+                                    == old(self).allocator_4k_map.spec_index(
+                                        self.container_map.spec_index(c_ptr)
+                                            .view_rodata().view().allocator_ptr_4k,
+                                    ).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_container_allocator_wf_forall();
+                        };
+                        assert(allocator_free_page_ptrs_wf(
+                            self.allocator_4k_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_free_page_ptrs_wf_forall();
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
+                                    .cpu_caches.spec_index(cpu_id).view().view()]
+                                self.allocator_4k_map.dom().contains(a_ptr)
+                                    && cpu_id_valid(cpu_id)
+                            implies
+                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                            by {
+                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
+                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: cache slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1504,6 +2737,12 @@ verus! {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .cpu_caches[cache_cpu].lock_id(),
                 ),
+                final(lctx).lock_maps_removed(
+                    old(lctx),
+                    KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
+                    ),
+                ),
         {
             proof {
                 assert(
@@ -1547,10 +2786,104 @@ verus! {
                             cache_cpu,
                         );
                     };
-                    kernel_inv_preserved_for_allocator_4k_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(allocator_quota_value_framed_fields_unchanged(
+                        old(self).allocator_4k_map,
+                        self.allocator_4k_map,
+                    )) by {
+                        reveal(allocator_4k_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies {
+                                let alloc_ptr = self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k;
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                            } by {
+                                assert(old(self).allocator_4k_map.dom().contains(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                )) by {
+                                    reveal(container_allocator_wf);
+                                };
+                                assert(self.allocator_4k_map.spec_index(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                ).owning_container
+                                    == old(self).allocator_4k_map.spec_index(
+                                        self.container_map.spec_index(c_ptr)
+                                            .view_rodata().view().allocator_ptr_4k,
+                                    ).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_container_allocator_wf_forall();
+                        };
+                        assert(allocator_free_page_ptrs_wf(
+                            self.allocator_4k_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_free_page_ptrs_wf_forall();
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
+                                    .cpu_caches.spec_index(cpu_id).view().view()]
+                                self.allocator_4k_map.dom().contains(a_ptr)
+                                    && cpu_id_valid(cpu_id)
+                            implies
+                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                            by {
+                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
+                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: cache slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1655,6 +2988,14 @@ verus! {
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .global_pool.lock_id(),
                 ),
+                final(lctx).lock_maps_inserted(
+                    old(lctx),
+                    KernelObjId::AllocatorGlobalPoll(
+                        PageSize::SZ4k, alloc_ptr_4k,
+                    ),
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .global_pool.lock_id(),
+                ),
         {
             proof {
                 assert(
@@ -1705,10 +3046,104 @@ verus! {
                             alloc_ptr_4k,
                         );
                     };
-                    kernel_inv_preserved_for_allocator_4k_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(allocator_quota_value_framed_fields_unchanged(
+                        old(self).allocator_4k_map,
+                        self.allocator_4k_map,
+                    )) by {
+                        reveal(allocator_4k_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies {
+                                let alloc_ptr = self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k;
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                            } by {
+                                assert(old(self).allocator_4k_map.dom().contains(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                )) by {
+                                    reveal(container_allocator_wf);
+                                };
+                                assert(self.allocator_4k_map.spec_index(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                ).owning_container
+                                    == old(self).allocator_4k_map.spec_index(
+                                        self.container_map.spec_index(c_ptr)
+                                            .view_rodata().view().allocator_ptr_4k,
+                                    ).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_container_allocator_wf_forall();
+                        };
+                        assert(allocator_free_page_ptrs_wf(
+                            self.allocator_4k_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_free_page_ptrs_wf_forall();
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
+                                    .cpu_caches.spec_index(cpu_id).view().view()]
+                                self.allocator_4k_map.dom().contains(a_ptr)
+                                    && cpu_id_valid(cpu_id)
+                            implies
+                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                            by {
+                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
+                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: global pool slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1814,6 +3249,12 @@ verus! {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .global_pool.lock_id(),
                 ),
+                final(lctx).lock_maps_removed(
+                    old(lctx),
+                    KernelObjId::AllocatorGlobalPoll(
+                        PageSize::SZ4k, alloc_ptr_4k,
+                    ),
+                ),
         {
             proof {
                 assert(
@@ -1853,10 +3294,104 @@ verus! {
                             alloc_ptr_4k,
                         );
                     };
-                    kernel_inv_preserved_for_allocator_4k_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(allocator_quota_value_framed_fields_unchanged(
+                        old(self).allocator_4k_map,
+                        self.allocator_4k_map,
+                    )) by {
+                        reveal(allocator_4k_invariant_fields_unchanged);
+                    };
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.memory_management_inv()) by {
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_pages_wf_forall();
+                        };
+                        assert(container_process_allocator_quota_4k_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.thread_map,
+                            self.allocator_4k_map,
+                        )) by {
+                            assert forall|c_ptr: RwLockContainerPtr|
+                                #![trigger self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k]
+                                self.container_map.dom().contains(c_ptr)
+                            implies {
+                                let alloc_ptr = self.container_map.spec_index(c_ptr)
+                                    .view_rodata().view().allocator_ptr_4k;
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
+                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
+                            } by {
+                                assert(old(self).allocator_4k_map.dom().contains(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                )) by {
+                                    reveal(container_allocator_wf);
+                                };
+                                assert(self.allocator_4k_map.spec_index(
+                                    self.container_map.spec_index(c_ptr)
+                                        .view_rodata().view().allocator_ptr_4k,
+                                ).owning_container
+                                    == old(self).allocator_4k_map.spec_index(
+                                        self.container_map.spec_index(c_ptr)
+                                            .view_rodata().view().allocator_ptr_4k,
+                                    ).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            reveal(container_process_allocator_quota_4k_wf);
+                            reveal(container_allocator_wf);
+                        };
+                        assert(container_allocator_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            lemma_no_change_imply_container_allocator_wf_forall();
+                        };
+                        assert(allocator_free_page_ptrs_wf(
+                            self.allocator_4k_map,
+                        )) by {
+                            lemma_no_change_imply_allocator_free_page_ptrs_wf_forall();
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
+                                    .cpu_caches.spec_index(cpu_id).view().view()]
+                                self.allocator_4k_map.dom().contains(a_ptr)
+                                    && cpu_id_valid(cpu_id)
+                            implies
+                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
+                                    .spec_index(cpu_id).view().view()
+                            by {
+                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
+                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
+                                    reveal(allocator_4k_invariant_fields_unchanged);
+                                };
+                                reveal(allocator_4k_invariant_fields_unchanged);
+                            };
+                            reveal(allocator_4k_invariant_fields_unchanged);
+                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: global pool slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1930,6 +3465,11 @@ verus! {
                 final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert(
                     final(self).page_array.lock_id_by_index(page_index),
                 ),
+                final(lctx).lock_maps_inserted(
+                    old(lctx),
+                    KernelObjId::Page(page_index),
+                    final(self).page_array.lock_id_by_index(page_index),
+                ),
         {
             proof {
                 assert(old(self).page_array.inv()) by {
@@ -1962,11 +3502,134 @@ verus! {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        memory_management_inv_preserved_for_page_lock_op(
-                            *old(self),
-                            *self,
-                        );
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(allocator_4k_pages_wf);
+                            reveal(allocator_2m_pages_wf);
+                            reveal(allocator_1g_pages_wf);
+                        };
+                        assert(container_page_owner_wf(
+                            self.container_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_process_page_pagetable_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_process_page_pagetable_wf);
+                        };
+                        assert(container_pages_wf(
+                            self.page_array,
+                            self.container_map,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_pages_wf);
+                        };
+                        assert(process_pages_wf(
+                            self.page_array,
+                            self.process_map,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(process_pages_wf);
+                        };
+                        assert(hugepage_2m_wf(self.page_array)) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(hugepage_2m_wf);
+                        };
+                        assert(hugepage_1g_wf(self.page_array)) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(hugepage_1g_wf);
+                        };
+                        assert(page_pagetable_wf(
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            page_pagetable_wf_preserved_for_page_payloads_unchanged(
+                                old(self).pagetable_map,
+                                self.pagetable_map,
+                                old(self).page_array,
+                                self.page_array,
+                            );
+                        };
+                        assert(pagetable_pages_wf(
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(pagetable_pages_wf);
+                        };
+                        assert(thread_pages_wf(
+                            self.thread_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(thread_pages_wf);
+                        };
+                        assert(process_staged_pages_wf(
+                            self.process_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(process_staged_pages_4k_wf);
+                            reveal(process_staged_pages_2m_wf);
+                            reveal(process_staged_pages_1g_wf);
+                        };
+                        assert(endpoint_pages_wf(
+                            self.endpoint_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(endpoint_pages_wf);
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            page_ptr_lemma1();
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_allocator_free_4k_page_wf);
+                            reveal(allocator_free_page_ptrs_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_2m_page_wf(
+                            self.container_map,
+                            self.allocator_2m_map,
+                            self.page_array,
+                        )) by {
+                            page_ptr_lemma1();
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_allocator_free_2m_page_wf);
+                            reveal(allocator_free_page_ptrs_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_1g_page_wf(
+                            self.container_map,
+                            self.allocator_1g_map,
+                            self.page_array,
+                        )) by {
+                            page_ptr_lemma1();
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_allocator_free_1g_page_wf);
+                            reveal(allocator_free_page_ptrs_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
                     };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: page slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -2042,6 +3705,9 @@ verus! {
                 final(lctx).lock_id_set() =~= old(lctx).lock_id_set().remove(
                     old(self).page_array.lock_id_by_index(page_index),
                 ),
+                final(lctx).lock_maps_removed(
+                    old(lctx), KernelObjId::Page(page_index),
+                ),
         {
             assert({
                 &&& self.page_array.inv()
@@ -2063,11 +3729,134 @@ verus! {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        memory_management_inv_preserved_for_page_lock_op(
-                            *old(self),
-                            *self,
-                        );
+                        assert(allocator_pages_wf(
+                            self.page_array,
+                            self.allocator_4k_map,
+                            self.allocator_2m_map,
+                            self.allocator_1g_map,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(allocator_4k_pages_wf);
+                            reveal(allocator_2m_pages_wf);
+                            reveal(allocator_1g_pages_wf);
+                        };
+                        assert(container_page_owner_wf(
+                            self.container_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_process_page_pagetable_wf(
+                            self.container_map,
+                            self.process_map,
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_process_page_pagetable_wf);
+                        };
+                        assert(container_pages_wf(
+                            self.page_array,
+                            self.container_map,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_pages_wf);
+                        };
+                        assert(process_pages_wf(
+                            self.page_array,
+                            self.process_map,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(process_pages_wf);
+                        };
+                        assert(hugepage_2m_wf(self.page_array)) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(hugepage_2m_wf);
+                        };
+                        assert(hugepage_1g_wf(self.page_array)) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(hugepage_1g_wf);
+                        };
+                        assert(page_pagetable_wf(
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            page_pagetable_wf_preserved_for_page_payloads_unchanged(
+                                old(self).pagetable_map,
+                                self.pagetable_map,
+                                old(self).page_array,
+                                self.page_array,
+                            );
+                        };
+                        assert(pagetable_pages_wf(
+                            self.pagetable_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(pagetable_pages_wf);
+                        };
+                        assert(thread_pages_wf(
+                            self.thread_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(thread_pages_wf);
+                        };
+                        assert(process_staged_pages_wf(
+                            self.process_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(process_staged_pages_4k_wf);
+                            reveal(process_staged_pages_2m_wf);
+                            reveal(process_staged_pages_1g_wf);
+                        };
+                        assert(endpoint_pages_wf(
+                            self.endpoint_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(endpoint_pages_wf);
+                        };
+                        assert(container_allocator_free_4k_page_wf(
+                            self.container_map,
+                            self.allocator_4k_map,
+                            self.page_array,
+                        )) by {
+                            page_ptr_lemma1();
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_allocator_free_4k_page_wf);
+                            reveal(allocator_free_page_ptrs_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_2m_page_wf(
+                            self.container_map,
+                            self.allocator_2m_map,
+                            self.page_array,
+                        )) by {
+                            page_ptr_lemma1();
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_allocator_free_2m_page_wf);
+                            reveal(allocator_free_page_ptrs_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
+                        assert(container_allocator_free_1g_page_wf(
+                            self.container_map,
+                            self.allocator_1g_map,
+                            self.page_array,
+                        )) by {
+                            page_ptr_lemma1();
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(container_allocator_free_1g_page_wf);
+                            reveal(allocator_free_page_ptrs_wf);
+                            reveal(container_allocator_wf);
+                            reveal(container_page_owner_wf);
+                        };
                     };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: page slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -2191,10 +3980,29 @@ verus! {
                             scheduler_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_scheduler_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_scheduler_wf(
+                            self.container_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(scheduler_invariant_fields_unchanged);
+                            reveal(container_scheduler_wf);
+                        };
+                        assert(container_thread_scheduler_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(scheduler_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                            reveal(container_scheduler_wf);
+                            reveal(container_thread_scheduler_wf);
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: scheduler slot gained, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -2314,10 +4122,29 @@ verus! {
                             scheduler_ptr,
                         );
                     };
-                    kernel_inv_preserved_for_scheduler_lock_op(
-                        *old(self),
-                        *self,
-                    );
+                    assert(self.subsystems_inv()) by {
+                        reveal(KernelK::default_pagetable_wf);
+                    };
+                    assert(self.process_management_inv()) by {
+                        assert(container_scheduler_wf(
+                            self.container_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(scheduler_invariant_fields_unchanged);
+                            reveal(container_scheduler_wf);
+                        };
+                        assert(container_thread_scheduler_wf(
+                            self.container_map,
+                            self.thread_map,
+                            self.scheduler_map,
+                        )) by {
+                            reveal(scheduler_invariant_fields_unchanged);
+                            reveal(container_thread_wf);
+                            reveal(container_scheduler_wf);
+                            reveal(container_thread_scheduler_wf);
+                        };
+                    };
+                    reveal(KernelK::inv);
                 };
                 // ---- locked_objects_match_lctx: scheduler slot released, all else framed ----
                 assert(self.locked_objects_match_lctx(&*lctx)) by {

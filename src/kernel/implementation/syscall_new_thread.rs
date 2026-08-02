@@ -102,9 +102,6 @@ verus! {
                 assert(sched_lock_id.spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
                     reveal(cpu_locked_match_lctx);
                 };
-                assert(lctx.lock_id_acyclic(sched_lock_id)) by {
-                    reveal(LocalContext::lock_id_acyclic);
-                };
             }
             proof {
                 let process_lock_id = self.process_map.lock_id_by_key(process_ptr);
@@ -113,9 +110,6 @@ verus! {
                     reveal(process_cpu_wf);
                     reveal(container_process_wf);
                     reveal(cpu_locked_match_lctx);
-                };
-                assert(lctx.lock_id_acyclic(process_lock_id)) by {
-                    reveal(LocalContext::lock_id_acyclic);
                 };
             }
             let Tracked(scheduler_lock_perm) = self.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
@@ -134,9 +128,6 @@ verus! {
                 };
                 assert(process_lock_id.spec_gt(self.scheduler_map.lock_id_by_key(scheduler_ptr))) by {
                     reveal(scheduler_locked_match_lctx);
-                };
-                assert(lctx.lock_id_acyclic(process_lock_id)) by {
-                    reveal(LocalContext::lock_id_acyclic);
                 };
             }
             let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
@@ -271,19 +262,6 @@ verus! {
             proof {
                 assert(self.allocator_4k_map.dom().contains(alloc_ptr_4k)) by {
                     reveal(container_allocator_wf);
-                };
-                assert(lctx.lock_id_acyclic(
-                    self.allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches[cpu_id].lock_id()
-                )) by {
-                    reveal(cpu_locked_match_lctx);
-                    reveal(scheduler_locked_match_lctx);
-                    reveal(process_locked_match_lctx);
-                    reveal(LocalContext::lock_id_acyclic);
-                    reveal(allocator_perms_wf);
-                    reveal(LockId::spec_gt);
-                    reveal(LockOwnerId::spec_eq);
-                    reveal(LockOwnerId::spec_gt);
                 };
             }
 
@@ -983,15 +961,8 @@ verus! {
                         ) by {
                             reveal(process_perms_wf);
                         };
-                        process_thread_wf_preserved_on_thread_add(
-                            old(self).process_map,
-                            self.process_map,
-                            old(self).thread_map,
-                            self.thread_map,
-                            process_ptr,
-                            page_ptr,
-                            node_addr,
-                        );
+                        seq_push_lemma::<RwLockThreadPtr>();
+                        reveal(process_thread_wf);
                     };
                 };
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
@@ -1468,50 +1439,6 @@ verus! {
     {
         assert(container_thread_wf(post_cm, post_tm)) by {
             reveal(container_thread_wf);
-        };
-    }
-
-    /// Preserve process/thread ownership after inserting one fresh thread into
-    /// its process's linked list. The caller supplies only the concrete map and
-    /// linked-list frames produced by `retype_staged_page_to_thread` and
-    /// `LinkedList::push_tail`.
-    pub proof fn process_thread_wf_preserved_on_thread_add(
-        pre_pm: ProcessLockedMap,
-        post_pm: ProcessLockedMap,
-        pre_tm: ThreadLockedMap,
-        post_tm: ThreadLockedMap,
-        process_ptr: RwLockProcessPtr,
-        thread_ptr: RwLockThreadPtr,
-        node_addr: usize,
-    )
-        requires
-            process_thread_wf(pre_pm, pre_tm),
-            pre_pm.dom().contains(process_ptr),
-            !pre_tm.dom().contains(thread_ptr),
-            post_pm.unchanged_except(&pre_pm, process_ptr),
-            post_tm.dom() =~= pre_tm.dom().insert(thread_ptr),
-            forall|t: RwLockThreadPtr| #![auto]
-                pre_tm.dom().contains(t) ==> post_tm.spec_index(t) == pre_tm.spec_index(t),
-            post_pm.spec_index(process_ptr).view().owned_threads.view()
-                =~= pre_pm.spec_index(process_ptr).view().owned_threads.view().push(thread_ptr),
-            post_pm.spec_index(process_ptr).view().owned_threads.map()
-                =~= pre_pm.spec_index(process_ptr).view().owned_threads.map().insert(
-                    node_addr,
-                    thread_ptr,
-                ),
-            !pre_pm.spec_index(process_ptr).view().owned_threads.map().dom().contains(node_addr),
-            post_pm.spec_index(process_ptr).view().pagetable
-                == pre_pm.spec_index(process_ptr).view().pagetable,
-            post_tm.spec_index(thread_ptr).view().owning_proc == process_ptr,
-            post_tm.spec_index(thread_ptr).view().proc_pagetable_ptr
-                == post_pm.spec_index(process_ptr).view().pagetable,
-            post_tm.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == node_addr,
-        ensures
-            process_thread_wf(post_pm, post_tm),
-    {
-        seq_push_lemma::<RwLockThreadPtr>();
-        assert(process_thread_wf(post_pm, post_tm)) by {
-            reveal(process_thread_wf);
         };
     }
 
