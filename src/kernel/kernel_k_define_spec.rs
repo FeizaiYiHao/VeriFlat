@@ -297,6 +297,7 @@ verus! {
                 // LocalContext: phase flips to Acquire; everything else preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).wf(),
+                final(lctx).lock_maps_equal(old(lctx)),
                 final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
                 final(lctx).kernel_view_locking_state() is Acquire,
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -330,6 +331,31 @@ verus! {
                 boundary_pages_preserved(old(self), final(self), old(lctx)),
                 boundary_cpus_preserved(old(self), final(self), old(lctx)),
                 boundary_allocators_preserved(old(self), final(self), old(lctx)),
+                forall|p: RwLockPageAllocatorPtr, c: CpuId|
+                    #![trigger old(self).allocator_4k_map.spec_index(p)
+                        .cpu_caches[c]@.wlocked_by(old(lctx))]
+                    old(self).allocator_4k_map.dom().contains(p)
+                        && cpu_id_valid(c)
+                        && old(self).allocator_4k_map.spec_index(p)
+                            .cpu_caches[c]@.wlocked_by(old(lctx))
+                    ==> final(self).allocator_4k_map.dom().contains(p)
+                        && final(self).allocator_4k_map.spec_index(p)
+                            .cpu_caches[c]@
+                            == old(self).allocator_4k_map.spec_index(p)
+                                .cpu_caches[c]@
+                        && final(self).allocator_4k_map.spec_index(p)
+                            .cpu_caches[c]@.wlocked_by(final(lctx)),
+                forall|p: RwLockPageAllocatorPtr|
+                    #![trigger old(self).allocator_4k_map.spec_index(p)
+                        .global_pool.wlocked_by(old(lctx))]
+                    old(self).allocator_4k_map.dom().contains(p)
+                        && old(self).allocator_4k_map.spec_index(p)
+                            .global_pool.wlocked_by(old(lctx))
+                    ==> final(self).allocator_4k_map.dom().contains(p)
+                        && final(self).allocator_4k_map.spec_index(p).global_pool
+                            == old(self).allocator_4k_map.spec_index(p).global_pool
+                        && final(self).allocator_4k_map.spec_index(p)
+                            .global_pool.wlocked_by(final(lctx)),
                 forall|c: RwLockContainerPtr|
                     #![trigger old(self).container_map.spec_index(c).locked_by(old(lctx))]
                     old(self).container_map.dom().contains(c)

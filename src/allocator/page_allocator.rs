@@ -505,6 +505,105 @@ impl PageAllocator{
         }
         (node_addr, node_perm)
     }
+
+    /// Move the global-pool head into one write-locked CPU cache.  The total
+    /// number of free pages is unchanged: the pool loses one entry and the
+    /// selected cache gains that same entry.
+    pub fn move_global_pool_head_to_cache(
+        &mut self,
+        cpu_id: CpuId,
+        Tracked(lctx): Tracked<&LocalContext>,
+        Tracked(cache_lock_perm): Tracked<&LockPerm>,
+        Tracked(global_pool_lock_perm): Tracked<&LockPerm>,
+    ) -> (ret: (usize, PagePtr))
+        requires
+            old(self).wf(),
+            cpu_id_valid(cpu_id),
+            old(self).cpu_caches[cpu_id]@.wlocked_by(lctx),
+            old(self).cpu_caches[cpu_id]@.is_init(),
+            cache_lock_perm.state() is WriteLock,
+            cache_lock_perm.thread_id() == lctx.thread_id(),
+            cache_lock_perm.lock_id()
+                == old(self).cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
+            old(self).global_pool.wlocked_by(lctx),
+            old(self).global_pool.is_init(),
+            global_pool_lock_perm.state() is WriteLock,
+            global_pool_lock_perm.thread_id() == lctx.thread_id(),
+            global_pool_lock_perm.lock_id()
+                == old(self).global_pool.locking_thread()->Write_lock_id,
+            old(self).global_pool.view().len() > 0,
+            old(self).cpu_caches[cpu_id]@@.linked_list.len()
+                < ALLOCATOR_MAX_WATERMARK,
+            !old(self).cpu_caches[cpu_id]@@.view().contains(
+                old(self).global_pool.view().view()[0]),
+        ensures
+            final(self).wf(),
+            ret.1 == old(self).global_pool.view().view()[0],
+            old(self).global_pool.view().map().dom().contains(ret.0),
+            old(self).global_pool.view().map()[ret.0] == ret.1,
+            final(self).global_pool.view().view()
+                == old(self).global_pool.view().view().skip(1),
+            final(self).global_pool.view().map()
+                == old(self).global_pool.view().map().remove(ret.0),
+            final(self).cpu_caches[cpu_id]@@.view()
+                == old(self).cpu_caches[cpu_id]@@.view().insert(0, ret.1),
+            final(self).cpu_caches[cpu_id]@@.map()
+                == old(self).cpu_caches[cpu_id]@@.map().insert(ret.0, ret.1),
+            !old(self).cpu_caches[cpu_id]@@.map().dom().contains(ret.0),
+            final(self).total_free_pages == old(self).total_free_pages,
+            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
+            final(self).cpu_caches[cpu_id]@.is_init(),
+            final(self).cpu_caches[cpu_id]@.locking_thread()
+                == old(self).cpu_caches[cpu_id]@.locking_thread(),
+            final(self).cpu_caches[cpu_id]@.being_killed()
+                == old(self).cpu_caches[cpu_id]@.being_killed(),
+            final(self).cpu_caches[cpu_id].lock_id()
+                == old(self).cpu_caches[cpu_id].lock_id(),
+            final(self).global_pool.is_init(),
+            final(self).global_pool.locking_thread()
+                == old(self).global_pool.locking_thread(),
+            final(self).global_pool.being_killed()
+                == old(self).global_pool.being_killed(),
+            final(self).global_pool.lock_id()
+                == old(self).global_pool.lock_id(),
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+    {
+        let ghost old_caches = self.cpu_caches;
+        let (node_addr, Tracked(node_perm), page_ptr) = {
+            let pool_mut = self.global_pool.borrow_mut(
+                Tracked(lctx), Tracked(global_pool_lock_perm),
+            );
+            let (_, page_ptr) = pool_mut.peek_head();
+            let (node_addr, Tracked(node_perm)) = pool_mut.linked_list.pop_head();
+            (node_addr, Tracked(node_perm), page_ptr)
+        };
+        {
+            let cache_mut = self.cpu_caches.borrow_mut(
+                cpu_id, Tracked(lctx), Tracked(cache_lock_perm),
+            );
+            assert(cache_mut.linked_list.length != usize::MAX) by {
+                reveal(LinkedList::wf_value_list);
+            };
+            cache_mut.linked_list.push_head(node_addr, Tracked(node_perm));
+        }
+        proof {
+            lemma_cache_len_fold_change_one_array(
+                self.cpu_caches, old_caches, cpu_id as int,
+            );
+            assert(
+                old(self).global_pool.view().len()
+                    == self.global_pool.view().len() + 1
+            ) by {
+                old(self).global_pool.view().lemma_len_view();
+                self.global_pool.view().lemma_len_view();
+            };
+            assert(self.total_free_pages_wf()) by {
+                reveal(PageAllocator::total_free_pages_wf);
+            };
+        }
+        (node_addr, page_ptr)
+    }
 }
 
 /*
