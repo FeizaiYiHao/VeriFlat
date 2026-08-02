@@ -21,6 +21,12 @@ pub open spec fn process_reference_fields_unchanged(
                 == pre.spec_index(p_ptr).view().pagetable
             &&& post.spec_index(p_ptr).view().pcid
                 == pre.spec_index(p_ptr).view().pcid
+            &&& post.spec_index(p_ptr).view().iommu_table
+                == pre.spec_index(p_ptr).view().iommu_table
+            &&& post.spec_index(p_ptr).view().pci_function_ref_counter
+                == pre.spec_index(p_ptr).view().pci_function_ref_counter
+            &&& post.spec_index(p_ptr).view().owned_pci_functions
+                == pre.spec_index(p_ptr).view().owned_pci_functions
         }
 }
 
@@ -52,6 +58,69 @@ pub proof fn process_pagetable_match_preserved_for_process_reference_fields(
 {
     reveal(process_reference_fields_unchanged);
     reveal(process_pagetable_match);
+}
+
+pub proof fn process_iommu_table_match_preserved_for_process_reference_fields(
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    iommu_table_map: IommuTableLockedMap,
+)
+    requires
+        process_iommu_table_match(pre, iommu_table_map),
+        process_reference_fields_unchanged(pre, post),
+    ensures
+        process_iommu_table_match(post, iommu_table_map),
+{
+    reveal(process_reference_fields_unchanged);
+    reveal(process_iommu_table_match);
+}
+
+pub proof fn iommu_root_table_process_wf_preserved_for_process_reference_fields(
+    root_table: &IommuRootTable,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    iommu_table_map: IommuTableLockedMap,
+)
+    requires
+        iommu_root_table_process_wf(root_table, pre, iommu_table_map),
+        process_reference_fields_unchanged(pre, post),
+    ensures
+        iommu_root_table_process_wf(root_table, post, iommu_table_map),
+{
+    reveal(process_reference_fields_unchanged);
+    reveal(iommu_root_table_process_wf);
+}
+
+pub proof fn iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+    iommu_tlb: IommuTLB,
+    root_table: &IommuRootTable,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+    iommu_table_map: IommuTableLockedMap,
+)
+    requires
+        iommu_tlb_wf_spec(iommu_tlb, root_table, pre, iommu_table_map),
+        process_reference_fields_unchanged(pre, post),
+    ensures
+        iommu_tlb_wf_spec(iommu_tlb, root_table, post, iommu_table_map),
+{
+    reveal(process_reference_fields_unchanged);
+    reveal(iommu_tlb_wf_spec);
+}
+
+pub proof fn process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+    root_table: &IommuRootTable,
+    pre: ProcessLockedMap,
+    post: ProcessLockedMap,
+)
+    requires
+        process_pci_function_ownership_wf(root_table, pre),
+        process_reference_fields_unchanged(pre, post),
+    ensures
+        process_pci_function_ownership_wf(root_table, post),
+{
+    reveal(process_reference_fields_unchanged);
+    reveal(process_pci_function_ownership_wf);
 }
 
 pub proof fn container_process_page_pagetable_wf_preserved_for_process_reference_fields(
@@ -143,6 +212,12 @@ pub open spec fn process_quota_4k_framed_fields_unchanged(
                 == pre.spec_index(p_ptr).view().pagetable
             &&& post.spec_index(p_ptr).view().pcid
                 == pre.spec_index(p_ptr).view().pcid
+            &&& post.spec_index(p_ptr).view().iommu_table
+                == pre.spec_index(p_ptr).view().iommu_table
+            &&& post.spec_index(p_ptr).view().pci_function_ref_counter
+                == pre.spec_index(p_ptr).view().pci_function_ref_counter
+            &&& post.spec_index(p_ptr).view().owned_pci_functions
+                == pre.spec_index(p_ptr).view().owned_pci_functions
             &&& post.spec_index(p_ptr).view().temp_alloc_cache_4k
                 == pre.spec_index(p_ptr).view().temp_alloc_cache_4k
             &&& post.spec_index(p_ptr).view().temp_alloc_cache_2m

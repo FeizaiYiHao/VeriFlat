@@ -339,12 +339,16 @@ pub proof fn kernel_inv_preserved_for_thread_lock_op(
             post.thread_map,
         ),
         post.pagetable_map == pre.pagetable_map,
+        post.iommu_table_map == pre.iommu_table_map,
+        post.iommu_root_table == pre.iommu_root_table,
         post.page_array == pre.page_array,
         post.cpu_array == pre.cpu_array,
         post.cpu_tlb == pre.cpu_tlb,
+        post.iommu_tlb == pre.iommu_tlb,
         post.root_container == pre.root_container,
         post.container_map == pre.container_map,
         post.scheduler_map == pre.scheduler_map,
+        post.pcid_allocator_map == pre.pcid_allocator_map,
         post.process_map == pre.process_map,
         post.endpoint_map == pre.endpoint_map,
         post.allocator_4k_map == pre.allocator_4k_map,
@@ -493,12 +497,16 @@ pub proof fn lemma_no_change_imply_kernel_inv_for_thread_lock_op_forall()
                 ==> post.thread_map.spec_index(changed).view()
                     .free_quota_pending_clean())
             && post.pagetable_map == pre.pagetable_map
+            && post.iommu_table_map == pre.iommu_table_map
+            && post.iommu_root_table == pre.iommu_root_table
             && post.page_array == pre.page_array
             && post.cpu_array == pre.cpu_array
             && post.cpu_tlb == pre.cpu_tlb
+            && post.iommu_tlb == pre.iommu_tlb
             && post.root_container == pre.root_container
             && post.container_map == pre.container_map
             && post.scheduler_map == pre.scheduler_map
+            && post.pcid_allocator_map == pre.pcid_allocator_map
             && post.process_map == pre.process_map
             && post.endpoint_map == pre.endpoint_map
             && post.allocator_4k_map == pre.allocator_4k_map
@@ -519,12 +527,16 @@ pub proof fn lemma_no_change_imply_kernel_inv_for_thread_lock_op_forall()
             ==> post.thread_map.spec_index(changed).view()
                 .free_quota_pending_clean())
         && post.pagetable_map == pre.pagetable_map
+        && post.iommu_table_map == pre.iommu_table_map
+        && post.iommu_root_table == pre.iommu_root_table
         && post.page_array == pre.page_array
         && post.cpu_array == pre.cpu_array
         && post.cpu_tlb == pre.cpu_tlb
+        && post.iommu_tlb == pre.iommu_tlb
         && post.root_container == pre.root_container
         && post.container_map == pre.container_map
         && post.scheduler_map == pre.scheduler_map
+        && post.pcid_allocator_map == pre.pcid_allocator_map
         && post.process_map == pre.process_map
         && post.endpoint_map == pre.endpoint_map
         && post.allocator_4k_map == pre.allocator_4k_map

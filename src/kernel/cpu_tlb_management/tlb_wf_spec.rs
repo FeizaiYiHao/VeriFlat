@@ -31,7 +31,7 @@ verus! {
         forall|va: VAddr|
             #![trigger pagetable@.mapping_2m().dom().contains(va)]
             #![trigger cpu_tlb.tlb_2m()[va]]
-            va_2m_valid(va) && cpu_tlb.tlb_4k().dom().contains(va) 
+            va_2m_valid(va) && cpu_tlb.tlb_2m().dom().contains(va)
             ==>
             pagetable@.mapping_2m().dom().contains(va)
             && 

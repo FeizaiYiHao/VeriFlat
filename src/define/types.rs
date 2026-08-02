@@ -48,6 +48,9 @@ pub type RwLockThreadPtr = usize;
 pub type RwLockEndpointPtr = usize;
 pub type RwLockPageAllocatorPtr = usize;
 pub type RwLockSchedulerPtr = usize;
+pub type RwLockPcidAllocatorPtr = usize;
+
+pub type PciBdf = (usize, usize, usize);
 
 // #[derive(Clone, Copy, Debug, PartialEq)]
 // pub struct RwLockPageTableRoot{
@@ -86,8 +89,6 @@ pub type RwLockSchedulerPtr = usize;
 
 // pub type PageEntryPerm = usize;
 pub type Pcid = usize;
-
-pub type IOid = usize;
 
 pub type L4Index = usize;
 
@@ -153,6 +154,7 @@ pub enum Allocated4KPageState {
     AsThread,
     AsEndpoint,
     AsScheduler,
+    AsIommuTableRoot,
     As4KAllocator,
     As2MAllocator,
     As1GAllocator,
@@ -163,6 +165,7 @@ pub enum Allocated4KPageState {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Allocated2MPageState {
     AsContainer,
+    AsPcidAllocator,
 }
 #[allow(inconsistent_fields)]
 #[derive(Clone, Copy, Debug, PartialEq)]

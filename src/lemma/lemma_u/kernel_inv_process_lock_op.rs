@@ -54,12 +54,16 @@ pub proof fn kernel_inv_preserved_for_process_lock_op(
             post.process_map,
         ),
         post.pagetable_map == pre.pagetable_map,
+        post.iommu_table_map == pre.iommu_table_map,
+        post.iommu_root_table == pre.iommu_root_table,
         post.page_array == pre.page_array,
         post.cpu_array == pre.cpu_array,
         post.cpu_tlb == pre.cpu_tlb,
+        post.iommu_tlb == pre.iommu_tlb,
         post.root_container == pre.root_container,
         post.container_map == pre.container_map,
         post.scheduler_map == pre.scheduler_map,
+        post.pcid_allocator_map == pre.pcid_allocator_map,
         post.thread_map == pre.thread_map,
         post.endpoint_map == pre.endpoint_map,
         post.allocator_4k_map == pre.allocator_4k_map,
@@ -234,6 +238,13 @@ pub proof fn kernel_inv_preserved_for_process_lock_op(
             reveal(process_invariant_fields_unchanged);
             reveal(process_pagetable_match);
         };
+        assert(process_iommu_table_match(
+            post.process_map,
+            post.iommu_table_map,
+        )) by {
+            reveal(process_invariant_fields_unchanged);
+            reveal(process_iommu_table_match);
+        };
         assert(process_staged_pages_wf(
             post.process_map,
             post.page_array,
@@ -245,6 +256,19 @@ pub proof fn kernel_inv_preserved_for_process_lock_op(
         };
     };
     assert(post.process_management_inv()) by {
+        assert(process_pcid_fields_unchanged(
+            pre.process_map,
+            post.process_map,
+        )) by {
+            reveal(process_invariant_fields_unchanged);
+            reveal(process_pcid_fields_unchanged);
+        };
+        process_pcid_allocator_wf_preserved_for_fields_unchanged(
+            post.container_map,
+            pre.process_map,
+            post.process_map,
+            post.pcid_allocator_map,
+        );
         assert(container_process_wf(
             post.container_map,
             post.process_map,
@@ -292,6 +316,31 @@ pub proof fn kernel_inv_preserved_for_process_lock_op(
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         reveal(container_cpu_wf);
     };
+    assert(process_reference_fields_unchanged(
+        pre.process_map,
+        post.process_map,
+    )) by {
+        reveal(process_invariant_fields_unchanged);
+        reveal(process_reference_fields_unchanged);
+    };
+    iommu_root_table_process_wf_preserved_for_process_reference_fields(
+        &post.iommu_root_table,
+        pre.process_map,
+        post.process_map,
+        post.iommu_table_map,
+    );
+    process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+        &post.iommu_root_table,
+        pre.process_map,
+        post.process_map,
+    );
+    iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+        post.iommu_tlb,
+        &post.iommu_root_table,
+        pre.process_map,
+        post.process_map,
+        post.iommu_table_map,
+    );
     assert(post.inv()) by {
         reveal(KernelK::inv);
     };
@@ -326,12 +375,16 @@ pub proof fn lemma_no_change_imply_kernel_inv_for_process_lock_op_forall()
             && post.process_map.spec_index(changed).view_rodata()
                 == pre.process_map.spec_index(changed).view_rodata()
             && post.pagetable_map == pre.pagetable_map
+            && post.iommu_table_map == pre.iommu_table_map
+            && post.iommu_root_table == pre.iommu_root_table
             && post.page_array == pre.page_array
             && post.cpu_array == pre.cpu_array
             && post.cpu_tlb == pre.cpu_tlb
+            && post.iommu_tlb == pre.iommu_tlb
             && post.root_container == pre.root_container
             && post.container_map == pre.container_map
             && post.scheduler_map == pre.scheduler_map
+            && post.pcid_allocator_map == pre.pcid_allocator_map
             && post.thread_map == pre.thread_map
             && post.endpoint_map == pre.endpoint_map
             && post.allocator_4k_map == pre.allocator_4k_map
@@ -359,12 +412,16 @@ pub proof fn lemma_no_change_imply_kernel_inv_for_process_lock_op_forall()
         && post.process_map.spec_index(changed).view_rodata()
             == pre.process_map.spec_index(changed).view_rodata()
         && post.pagetable_map == pre.pagetable_map
+        && post.iommu_table_map == pre.iommu_table_map
+        && post.iommu_root_table == pre.iommu_root_table
         && post.page_array == pre.page_array
         && post.cpu_array == pre.cpu_array
         && post.cpu_tlb == pre.cpu_tlb
+        && post.iommu_tlb == pre.iommu_tlb
         && post.root_container == pre.root_container
         && post.container_map == pre.container_map
         && post.scheduler_map == pre.scheduler_map
+        && post.pcid_allocator_map == pre.pcid_allocator_map
         && post.thread_map == pre.thread_map
         && post.endpoint_map == pre.endpoint_map
         && post.allocator_4k_map == pre.allocator_4k_map

@@ -64,11 +64,15 @@ pub proof fn kernel_inv_preserved_for_container_lock_op(
             post.container_map,
         ),
         post.pagetable_map == pre.pagetable_map,
+        post.iommu_table_map == pre.iommu_table_map,
+        post.iommu_root_table == pre.iommu_root_table,
         post.page_array == pre.page_array,
         post.cpu_array == pre.cpu_array,
         post.cpu_tlb == pre.cpu_tlb,
+        post.iommu_tlb == pre.iommu_tlb,
         post.root_container == pre.root_container,
         post.scheduler_map == pre.scheduler_map,
+        post.pcid_allocator_map == pre.pcid_allocator_map,
         post.process_map == pre.process_map,
         post.thread_map == pre.thread_map,
         post.endpoint_map == pre.endpoint_map,
@@ -163,6 +167,24 @@ pub proof fn kernel_inv_preserved_for_container_lock_op(
         };
     };
     assert(post.process_management_inv()) by {
+        assert(container_pcid_allocator_fields_unchanged(
+            pre.container_map,
+            post.container_map,
+        )) by {
+            reveal(container_invariant_fields_unchanged);
+            reveal(container_pcid_allocator_fields_unchanged);
+        };
+        container_pcid_allocator_wf_preserved_for_fields_unchanged(
+            pre.container_map,
+            post.container_map,
+            post.pcid_allocator_map,
+        );
+        process_pcid_allocator_wf_preserved_for_container_fields_unchanged(
+            pre.container_map,
+            post.container_map,
+            post.process_map,
+            post.pcid_allocator_map,
+        );
         assert(container_tree_wf(
             post.root_container,
             post.container_map,

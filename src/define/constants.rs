@@ -41,8 +41,6 @@ pub open spec fn usize_in_range<const RANGE: usize>(value: usize) -> bool{
     0 <= value < RANGE
 }
 
-pub const IOID_MAX: usize = 4096;
-
 pub const MEM_MASK: u64 = 0x0000_ffff_ffff_f000;
 
 pub const MEM_4K_MASK: u64 = 0x0000_ffff_ffff_f000;
@@ -128,6 +126,7 @@ pub const CPU_HAS_KILL_STATE: bool = NO_KILL_STATE;
 
 pub const CONTAINER_HAS_KILL_STATE: bool = HAS_KILL_STATE;
 pub const SCHEDULER_HAS_KILL_STATE: bool = NO_KILL_STATE;
+pub const PCID_ALLOCATOR_HAS_KILL_STATE: bool = NO_KILL_STATE;
 pub const PROCESS_HAS_KILL_STATE: bool = HAS_KILL_STATE;
 pub const THREAD_HAS_KILL_STATE: bool = HAS_KILL_STATE;
 pub const ENDPOINT_HAS_KILL_STATE: bool = NO_KILL_STATE;
