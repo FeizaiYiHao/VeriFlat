@@ -29,11 +29,15 @@ verus! {
 
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -188,11 +192,15 @@ verus! {
 
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -342,11 +350,15 @@ verus! {
 
                 // ---- Field framing: only container_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -519,6 +531,24 @@ verus! {
                         };
                     };
                     assert(self.process_management_inv()) by {
+                        assert(container_pcid_allocator_fields_unchanged(
+                            old(self).container_map,
+                            self.container_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_pcid_allocator_fields_unchanged);
+                        };
+                        container_pcid_allocator_wf_preserved_for_fields_unchanged(
+                            old(self).container_map,
+                            self.container_map,
+                            self.pcid_allocator_map,
+                        );
+                        process_pcid_allocator_wf_preserved_for_container_fields_unchanged(
+                            old(self).container_map,
+                            self.container_map,
+                            self.process_map,
+                            self.pcid_allocator_map,
+                        );
                         assert(container_tree_wf(
                             self.root_container,
                             self.container_map,
@@ -675,11 +705,15 @@ verus! {
 
                 // ---- Field framing: only container_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -841,6 +875,24 @@ verus! {
                         };
                     };
                     assert(self.process_management_inv()) by {
+                        assert(container_pcid_allocator_fields_unchanged(
+                            old(self).container_map,
+                            self.container_map,
+                        )) by {
+                            reveal(container_invariant_fields_unchanged);
+                            reveal(container_pcid_allocator_fields_unchanged);
+                        };
+                        container_pcid_allocator_wf_preserved_for_fields_unchanged(
+                            old(self).container_map,
+                            self.container_map,
+                            self.pcid_allocator_map,
+                        );
+                        process_pcid_allocator_wf_preserved_for_container_fields_unchanged(
+                            old(self).container_map,
+                            self.container_map,
+                            self.process_map,
+                            self.pcid_allocator_map,
+                        );
                         assert(container_tree_wf(
                             self.root_container,
                             self.container_map,
@@ -974,12 +1026,16 @@ verus! {
 
                 // ---- Field framing: only allocator_4k_map's quota lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -1213,12 +1269,16 @@ verus! {
 
                 // ---- Field framing: only allocator_4k_map's quota lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -1447,12 +1507,16 @@ verus! {
 
                 // ---- Field framing: only process_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
                 final(self).allocator_4k_map  == old(self).allocator_4k_map,
@@ -1550,6 +1614,20 @@ verus! {
                     )) by {
                         reveal(process_invariant_fields_unchanged);
                     };
+                    assert(process_pcid_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_invariant_fields_unchanged);
+                        reveal(process_pcid_fields_unchanged);
+                    };
+                    assert(process_reference_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_invariant_fields_unchanged);
+                        reveal(process_reference_fields_unchanged);
+                    };
                     assert(self.subsystems_inv()) by {
                         reveal(KernelK::default_pagetable_wf);
                     };
@@ -1706,6 +1784,16 @@ verus! {
                         )) by {
                             lemma_no_change_imply_process_pagetable_match_forall();
                         };
+                        assert(process_iommu_table_match(
+                            self.process_map,
+                            self.iommu_table_map,
+                        )) by {
+                            process_iommu_table_match_preserved_for_process_reference_fields(
+                                old(self).process_map,
+                                self.process_map,
+                                self.iommu_table_map,
+                            );
+                        };
                         assert(process_staged_pages_wf(
                             self.process_map,
                             self.page_array,
@@ -1714,6 +1802,12 @@ verus! {
                         };
                     };
                     assert(self.process_management_inv()) by {
+                        process_pcid_allocator_wf_preserved_for_fields_unchanged(
+                            self.container_map,
+                            old(self).process_map,
+                            self.process_map,
+                            self.pcid_allocator_map,
+                        );
                         assert(container_process_wf(
                             self.container_map,
                             self.process_map,
@@ -1739,6 +1833,24 @@ verus! {
                             lemma_no_change_imply_process_thread_wf_forall();
                         };
                     };
+                    iommu_root_table_process_wf_preserved_for_process_reference_fields(
+                        &self.iommu_root_table,
+                        old(self).process_map,
+                        self.process_map,
+                        self.iommu_table_map,
+                    );
+                    process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+                        &self.iommu_root_table,
+                        old(self).process_map,
+                        self.process_map,
+                    );
+                    iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+                        self.iommu_tlb,
+                        &self.iommu_root_table,
+                        old(self).process_map,
+                        self.process_map,
+                        self.iommu_table_map,
+                    );
                     assert(cpu_dirty_map_wf(
                         self.container_map,
                         self.process_map,
@@ -1831,12 +1943,16 @@ verus! {
 
                 // ---- Field framing: only process_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
                 final(self).allocator_4k_map  == old(self).allocator_4k_map,
@@ -1917,6 +2033,20 @@ verus! {
                         self.process_map,
                     )) by {
                         reveal(process_invariant_fields_unchanged);
+                    };
+                    assert(process_pcid_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_invariant_fields_unchanged);
+                        reveal(process_pcid_fields_unchanged);
+                    };
+                    assert(process_reference_fields_unchanged(
+                        old(self).process_map,
+                        self.process_map,
+                    )) by {
+                        reveal(process_invariant_fields_unchanged);
+                        reveal(process_reference_fields_unchanged);
                     };
                     assert(self.subsystems_inv()) by {
                         reveal(KernelK::default_pagetable_wf);
@@ -2074,6 +2204,16 @@ verus! {
                         )) by {
                             lemma_no_change_imply_process_pagetable_match_forall();
                         };
+                        assert(process_iommu_table_match(
+                            self.process_map,
+                            self.iommu_table_map,
+                        )) by {
+                            process_iommu_table_match_preserved_for_process_reference_fields(
+                                old(self).process_map,
+                                self.process_map,
+                                self.iommu_table_map,
+                            );
+                        };
                         assert(process_staged_pages_wf(
                             self.process_map,
                             self.page_array,
@@ -2082,6 +2222,12 @@ verus! {
                         };
                     };
                     assert(self.process_management_inv()) by {
+                        process_pcid_allocator_wf_preserved_for_fields_unchanged(
+                            self.container_map,
+                            old(self).process_map,
+                            self.process_map,
+                            self.pcid_allocator_map,
+                        );
                         assert(container_process_wf(
                             self.container_map,
                             self.process_map,
@@ -2107,6 +2253,24 @@ verus! {
                             lemma_no_change_imply_process_thread_wf_forall();
                         };
                     };
+                    iommu_root_table_process_wf_preserved_for_process_reference_fields(
+                        &self.iommu_root_table,
+                        old(self).process_map,
+                        self.process_map,
+                        self.iommu_table_map,
+                    );
+                    process_pci_function_ownership_wf_preserved_for_process_reference_fields(
+                        &self.iommu_root_table,
+                        old(self).process_map,
+                        self.process_map,
+                    );
+                    iommu_tlb_wf_spec_preserved_for_process_reference_fields(
+                        self.iommu_tlb,
+                        &self.iommu_root_table,
+                        old(self).process_map,
+                        self.process_map,
+                        self.iommu_table_map,
+                    );
                     assert(cpu_dirty_map_wf(
                         self.container_map,
                         self.process_map,
@@ -2177,12 +2341,16 @@ verus! {
                 lock_id_aligned(final(self), final(lctx)),
 
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
                 final(self).allocator_4k_map  == old(self).allocator_4k_map,
@@ -2426,12 +2594,16 @@ verus! {
 
                 // ---- Field framing: only allocator_4k_map's cache lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -2693,12 +2865,16 @@ verus! {
 
                 // ---- Field framing: only allocator_4k_map's cache lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -2943,12 +3119,16 @@ verus! {
 
                 // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -3207,12 +3387,16 @@ verus! {
 
                 // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -3432,11 +3616,15 @@ verus! {
 
                 // ---- Field framing: only page_array's slot lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -3569,6 +3757,23 @@ verus! {
                             reveal(LockedArray::payloads_unchanged);
                             reveal(pagetable_pages_wf);
                         };
+                        assert(iommu_table_pages_wf(
+                            self.iommu_table_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(iommu_table_pages_wf);
+                        };
+                        assert(pcid_allocator_pages_wf(
+                            self.page_array,
+                            self.pcid_allocator_map,
+                        )) by {
+                            pcid_allocator_pages_wf_preserved_for_page_payloads_unchanged(
+                                old(self).page_array,
+                                self.page_array,
+                                self.pcid_allocator_map,
+                            );
+                        };
                         assert(thread_pages_wf(
                             self.thread_map,
                             self.page_array,
@@ -3674,11 +3879,15 @@ verus! {
                 lock_id_aligned(final(self), final(lctx)),
 
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
                 final(self).scheduler_map     == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -3796,6 +4005,23 @@ verus! {
                             reveal(LockedArray::payloads_unchanged);
                             reveal(pagetable_pages_wf);
                         };
+                        assert(iommu_table_pages_wf(
+                            self.iommu_table_map,
+                            self.page_array,
+                        )) by {
+                            reveal(LockedArray::payloads_unchanged);
+                            reveal(iommu_table_pages_wf);
+                        };
+                        assert(pcid_allocator_pages_wf(
+                            self.page_array,
+                            self.pcid_allocator_map,
+                        )) by {
+                            pcid_allocator_pages_wf_preserved_for_page_payloads_unchanged(
+                                old(self).page_array,
+                                self.page_array,
+                                self.pcid_allocator_map,
+                            );
+                        };
                         assert(thread_pages_wf(
                             self.thread_map,
                             self.page_array,
@@ -3902,11 +4128,15 @@ verus! {
 
                 // ---- Field framing: only scheduler_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,
@@ -4051,11 +4281,15 @@ verus! {
 
                 // ---- Field framing: only scheduler_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
+                final(self).iommu_table_map     == old(self).iommu_table_map,
+                final(self).iommu_root_table     == old(self).iommu_root_table,
                 final(self).page_array        == old(self).page_array,
                 final(self).cpu_array         == old(self).cpu_array,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).root_container    == old(self).root_container,
                 final(self).container_map     == old(self).container_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
                 final(self).process_map       == old(self).process_map,
                 final(self).thread_map        == old(self).thread_map,
                 final(self).endpoint_map      == old(self).endpoint_map,

@@ -4,11 +4,6 @@ verus! {
 use crate::*;
 use core::mem::offset_of;
 
-pub struct PcidIoidAllocator{
-    pub ref_counters: Array<usize, PCID_MAX>,
-    pub id_to_proc: Ghost<Seq<Set<RwLockProcessPtr>>>,
-}
-
 // Each container uses a 2 MiB pages
 #[repr(C)]
 pub struct Container {
@@ -27,8 +22,7 @@ pub struct ContainerRO {
     pub parent: Option<RwLockContainerPtr>,
     pub depth: usize,
     pub scheduler: RwLockSchedulerPtr,
-    pub pcid_allocator: PcidIoidAllocator,
-    pub ioid_allocator: PcidIoidAllocator,
+    pub pcid_allocator: RwLockPcidAllocatorPtr,
     pub allocator_ptr_4k: RwLockPageAllocatorPtr,
     pub allocator_ptr_2m: RwLockPageAllocatorPtr,
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
@@ -61,8 +55,7 @@ pub ghost struct ContainerU {
     pub parent: Option<RwLockContainerPtr>,    
     pub depth: usize,
     pub scheduler: RwLockSchedulerPtr,
-    pub pcid_allocator: PcidIoidAllocator,
-    pub ioid_allocator: PcidIoidAllocator,
+    pub pcid_allocator: RwLockPcidAllocatorPtr,
     pub allocator_ptr_4k: RwLockPageAllocatorPtr,
     pub allocator_ptr_2m: RwLockPageAllocatorPtr,
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
