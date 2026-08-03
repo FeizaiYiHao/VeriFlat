@@ -424,6 +424,9 @@ impl KernelK {
                 self.process_map,
                 self.iommu_table_map,
             );
+            assert(self.iommu_tlb.inv()) by {
+                reveal(iommu_tlb_wf_spec);
+            };
             assert(self.inv()) by {
                 reveal(cpu_dirty_map_contains_container_processes);
                 reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
@@ -842,6 +845,9 @@ impl KernelK {
                 self.process_map,
                 self.iommu_table_map,
             );
+            assert(self.iommu_tlb.inv()) by {
+                reveal(iommu_tlb_wf_spec);
+            };
             assert(self.inv()) by {
                 reveal(cpu_dirty_map_contains_container_processes);
                 reveal(cpu_not_in_dirty_map_imply_not_in_tlb);

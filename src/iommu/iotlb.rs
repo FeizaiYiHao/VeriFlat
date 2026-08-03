@@ -87,6 +87,7 @@ impl IommuTLB {
         self.view()[did]
     }
 
+    #[verifier::opaque]
     pub open spec fn inv(&self) -> bool {
         forall|did: VtdDomainId|
             #![trigger self.view().dom().contains(did)]
