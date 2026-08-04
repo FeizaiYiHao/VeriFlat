@@ -144,6 +144,8 @@ impl LockInvTrait for Thread {
         &&&
         self.state is BLOCKED == self.blocking_endpoint_index is Some
         &&&
+        self.state is BLOCKED ==> edp_idx_valid(self.blocking_endpoint_index.unwrap())
+        &&&
         self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()) is Some
         &&&
         self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()).unwrap() == self.blocking_endpoint_ptr.unwrap()

@@ -117,6 +117,8 @@ impl KernelK {
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g,
             final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 == old(self).thread_map.spec_index(thread_ptr).view().quota_4k,
+            final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
+                == old(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors,
     {
         assert(
             self.allocator_4k_map.dom().contains(alloc_ptr_4k)
@@ -448,6 +450,8 @@ impl KernelK {
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g,
             final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 == old(self).thread_map.spec_index(thread_ptr).view().quota_4k,
+            final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
+                == old(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors,
     {
         let (cache_perms, pool_perm) = self.wlock_all_caches_and_global_pool(
             alloc_ptr_4k, Tracked(&mut *lctx),
@@ -1860,6 +1864,8 @@ impl KernelK {
                     == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
                 &&& final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                     == old(self).thread_map.spec_index(thread_ptr).view().quota_4k
+                &&& final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
+                    == old(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
                 &&& final(self).container_map == old(self).container_map
                 &&& final(self).scheduler_map == old(self).scheduler_map
                 &&& final(self).pcid_allocator_map == old(self).pcid_allocator_map
