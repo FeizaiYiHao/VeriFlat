@@ -114,7 +114,7 @@ verus! {
                 self.pcid_allocator_map,
             )
             &&&
-            process_staged_pages_wf(self.process_map, self.page_array)
+            thread_staged_pages_wf(self.thread_map, self.page_array)
             &&&
             endpoint_pages_wf(self.endpoint_map, self.page_array)
             &&&
@@ -1040,7 +1040,9 @@ verus! {
             #![trigger post.thread_map.dom().contains(t)]
             (lctx.thread_lock_map().dom().contains(t)
                 || (pre.thread_map.dom().contains(t) && pre.thread_map.spec_index(t).locked_by(lctx)))
-            ==> post.thread_map.dom().contains(t) && post.thread_map[t] == pre.thread_map[t]
+            ==> post.thread_map.dom().contains(t)
+                && post.thread_map[t] == pre.thread_map[t]
+                && post.thread_map.lock_id_by_key(t) == pre.thread_map.lock_id_by_key(t)
     }
 
     pub open spec fn boundary_endpoints_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
@@ -1063,7 +1065,9 @@ verus! {
             #![trigger post.scheduler_map.spec_index(s)]
             (lctx.scheduler_lock_map().dom().contains(s)
                 || (pre.scheduler_map.dom().contains(s) && pre.scheduler_map.spec_index(s).locked_by(lctx)))
-            ==> post.scheduler_map.dom().contains(s) && post.scheduler_map[s] == pre.scheduler_map[s]
+            ==> post.scheduler_map.dom().contains(s)
+                && post.scheduler_map[s] == pre.scheduler_map[s]
+                && post.scheduler_map.lock_id_by_key(s) == pre.scheduler_map.lock_id_by_key(s)
     }
 
     pub open spec fn boundary_pcid_allocators_preserved(

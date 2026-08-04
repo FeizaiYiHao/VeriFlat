@@ -9,8 +9,6 @@ verus! {
         &&&
         process_tree_fields_wf(process_perms)
         &&&
-        process_temp_alloc_empty_unless_wlocked(process_perms)
-        &&&
         forall|p_ptr:RwLockProcessPtr|
             #![auto]
             process_perms.dom().contains(p_ptr)
@@ -211,7 +209,7 @@ verus! {
     /// Framing lemma: if every process in the tree domain has unchanged
     /// tree-relevant fields, then `process_tree_wf` is preserved. Unlike a
     /// `Container`, a `Process.view()` also carries non-tree state
-    /// (`quota_*`, `temp_alloc_cache_*`, `pagetable`, `owned_threads`) that
+    /// (`quota_*`, `pagetable`, `owned_threads`) that
     /// `process_tree_wf` never reads, so requiring full `view()` equality (as
     /// `container_no_change_to_tree_fields_imply_wf` does) would needlessly
     /// shut out callers that stage pages or adjust quota while leaving the tree

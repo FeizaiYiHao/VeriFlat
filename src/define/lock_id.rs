@@ -33,7 +33,7 @@ pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
 
 // The scheduler sits in the container tier (below the process, major 105) so a
 // syscall can hold it across a page allocation: it must top the container/quota
-// but stay under the process + allocator cache (106) + the staged page, whose
+// but stay under the process, thread, allocator cache, and the staged page, whose
 // lock id is frozen at Free4k time (major FREE_PAGE_LOCK_MAJOR = 30000). Locking
 // the scheduler first (103) then the page (30000) is acyclic; the reverse is not.
 pub const SCHEDULER_LOCK_MAJOR:LockMajorId = 103;
@@ -43,7 +43,7 @@ pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
 pub const QUOTA_MAJOR: LockMajorId = 102;
-pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = PROCESS_LOCK_MAJOR + 1;
+pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = THREAD_LOCK_MAJOR + 1;
 pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 // -------------------- End of const --------------------------
 

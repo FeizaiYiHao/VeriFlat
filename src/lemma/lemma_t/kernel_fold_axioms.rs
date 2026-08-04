@@ -162,6 +162,20 @@ pub proof fn lemma_process_effective_quota_4k_fold_ge_member(
 }
 
 #[verifier::external_body]
+pub proof fn lemma_process_effective_quota_4k_fold_nonneg(
+    s: Set<RwLockProcessPtr>,
+    process_map: ProcessLockedMap,
+)
+    requires
+        forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_4k(process_map.spec_index(p))]
+            s.contains(p) ==> process_effective_quota_4k(process_map.spec_index(p)) >= 0,
+    ensures
+        process_effective_quota_4k_fold_sum(s, process_map) >= 0,
+{
+}
+
+#[verifier::external_body]
 pub proof fn lemma_process_effective_quota_2m_fold_change_by(
     s: Set<RwLockProcessPtr>,
     pre: ProcessLockedMap,
@@ -207,6 +221,158 @@ pub proof fn lemma_process_effective_quota_1g_fold_change_by(
 {
 }
 
+/// Trusted fold facts for the independent per-thread quota tier. These have
+/// the same finite-set semantics as the process-quota fold facts above.
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_4k_fold_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t))
+                == thread_effective_quota_4k(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_4k_fold_sum(s, post)
+            == thread_effective_quota_4k_fold_sum(s, pre),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_2m_fold_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_2m(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t))
+                == thread_effective_quota_2m(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_2m_fold_sum(s, post)
+            == thread_effective_quota_2m_fold_sum(s, pre),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_1g_fold_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_1g(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t))
+                == thread_effective_quota_1g(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_1g_fold_sum(s, post)
+            == thread_effective_quota_1g_fold_sum(s, pre),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_4k_fold_change_by(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    mod_t: RwLockThreadPtr,
+    x: int,
+)
+    requires
+        s.contains(mod_t),
+        thread_effective_quota_4k(post.spec_index(mod_t))
+            == thread_effective_quota_4k(pre.spec_index(mod_t)) + x,
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
+            s.contains(t) && t != mod_t ==> thread_effective_quota_4k(post.spec_index(t))
+                == thread_effective_quota_4k(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_4k_fold_sum(s, post)
+            == thread_effective_quota_4k_fold_sum(s, pre) + x,
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_4k_fold_ge_member(
+    s: Set<RwLockThreadPtr>,
+    thread_map: ThreadLockedMap,
+    mem: RwLockThreadPtr,
+)
+    requires
+        s.contains(mem),
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_4k(thread_map.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_4k(thread_map.spec_index(t)) >= 0,
+    ensures
+        thread_effective_quota_4k_fold_sum(s, thread_map)
+            >= thread_effective_quota_4k(thread_map.spec_index(mem)),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+)
+    requires
+        s.contains(new_t) == false,
+        thread_effective_quota_4k(post.spec_index(new_t)) == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t))
+                == thread_effective_quota_4k(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_4k_fold_sum(s.insert(new_t), post)
+            == thread_effective_quota_4k_fold_sum(s, pre),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+)
+    requires
+        s.contains(new_t) == false,
+        thread_effective_quota_2m(post.spec_index(new_t)) == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_2m(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t))
+                == thread_effective_quota_2m(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_2m_fold_sum(s.insert(new_t), post)
+            == thread_effective_quota_2m_fold_sum(s, pre),
+{
+}
+
+#[verifier::external_body]
+pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+    new_t: RwLockThreadPtr,
+)
+    requires
+        s.contains(new_t) == false,
+        thread_effective_quota_1g(post.spec_index(new_t)) == 0,
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_1g(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t))
+                == thread_effective_quota_1g(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_1g_fold_sum(s.insert(new_t), post)
+            == thread_effective_quota_1g_fold_sum(s, pre),
+{
+}
+
 /// Trusted axiom (TCB): thread direct free-quota-pending fold preserved
 /// when per-thread values are unchanged.
 #[verifier::external_body]
@@ -222,8 +388,8 @@ pub proof fn lemma_thread_direct_pending_4k_fold_eq(
                 post.spec_index(t).view().direct_free_quota_pending_4k.view()
                     == pre.spec_index(t).view().direct_free_quota_pending_4k.view(),
     ensures
-        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_4k.view())
-            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()),
+        thread_direct_pending_4k_fold_sum(s, post)
+            == thread_direct_pending_4k_fold_sum(s, pre),
 {
 }
 
@@ -279,8 +445,8 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_eq_at_depth(
                 post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth)
                     == pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth),
     ensures
-        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth))
-            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth)),
+        thread_indirect_pending_4k_fold_sum_at_depth(s, post, depth)
+            == thread_indirect_pending_4k_fold_sum_at_depth(s, pre, depth),
 {
 }
 
@@ -346,8 +512,8 @@ pub proof fn lemma_thread_direct_pending_4k_fold_insert_zero(
                 post.spec_index(t).view().direct_free_quota_pending_4k.view()
                     == pre.spec_index(t).view().direct_free_quota_pending_4k.view(),
     ensures
-        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().direct_free_quota_pending_4k.view())
-            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()),
+        thread_direct_pending_4k_fold_sum(s.insert(new_t), post)
+            == thread_direct_pending_4k_fold_sum(s, pre),
 {
 }
 
@@ -418,8 +584,8 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(
                 post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth)
                     == pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth),
     ensures
-        s.insert(new_t).fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + post.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth))
-            == s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + pre.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth)),
+        thread_indirect_pending_4k_fold_sum_at_depth(s.insert(new_t), post, depth)
+            == thread_indirect_pending_4k_fold_sum_at_depth(s, pre, depth),
 {
 }
 
@@ -467,31 +633,31 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(
 {
 }
 
-/// Trusted axiom (TCB): `process_staged_pages_wf` is preserved when
-/// page_array is unchanged and per-process views (which contain
+/// Trusted axiom (TCB): `thread_staged_pages_wf` is preserved when
+/// page_array is unchanged and per-thread views (which contain
 /// temp_alloc_cache) are unchanged. Narrow: the quantifiers in
-/// `process_staged_pages_{4k,2m,1g}_wf` evaluate identically when their
-/// only free variables (page_array entries and process views) are equal.
+/// `thread_staged_pages_{4k,2m,1g}_wf` evaluate identically when their
+/// only free variables (page_array entries and thread views) are equal.
 #[verifier::external_body]
-pub proof fn lemma_process_staged_pages_wf_preserved_for_view_eq(
-    pre_process_map: ProcessLockedMap,
-    post_process_map: ProcessLockedMap,
+pub proof fn lemma_thread_staged_pages_wf_preserved_for_view_eq(
+    pre_thread_map: ThreadLockedMap,
+    post_thread_map: ThreadLockedMap,
     page_array: PageLockedArray,
 )
     requires
-        process_staged_pages_wf(pre_process_map, page_array),
-        post_process_map.dom() == pre_process_map.dom(),
-        forall|p_ptr: RwLockProcessPtr|
-            #![trigger post_process_map.spec_index(p_ptr).view().temp_alloc_cache_4k]
-            post_process_map.dom().contains(p_ptr) ==>
-                post_process_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view()
-                    == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view()
-                && post_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view()
-                    == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view()
-                && post_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view()
-                    == pre_process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view(),
+        thread_staged_pages_wf(pre_thread_map, page_array),
+        post_thread_map.dom() == pre_thread_map.dom(),
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger post_thread_map.spec_index(t_ptr).view().temp_alloc_cache_4k]
+            post_thread_map.dom().contains(t_ptr) ==>
+                post_thread_map.spec_index(t_ptr).view().temp_alloc_cache_4k.view()
+                    == pre_thread_map.spec_index(t_ptr).view().temp_alloc_cache_4k.view()
+                && post_thread_map.spec_index(t_ptr).view().temp_alloc_cache_2m.view()
+                    == pre_thread_map.spec_index(t_ptr).view().temp_alloc_cache_2m.view()
+                && post_thread_map.spec_index(t_ptr).view().temp_alloc_cache_1g.view()
+                    == pre_thread_map.spec_index(t_ptr).view().temp_alloc_cache_1g.view(),
     ensures
-        process_staged_pages_wf(post_process_map, page_array),
+        thread_staged_pages_wf(post_thread_map, page_array),
 {
 }
 
@@ -504,7 +670,7 @@ pub proof fn lemma_thread_direct_pending_4k_fold_nonneg(
     thread_map: ThreadLockedMap,
 )
     ensures
-        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()) >= 0,
+        thread_direct_pending_4k_fold_sum(s, thread_map) >= 0,
 {
 }
 
@@ -518,7 +684,7 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_nonneg(
     depth: int,
 )
     ensures
-        s.fold(0, |sum: int, t_ptr: RwLockThreadPtr| sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth)) >= 0,
+        thread_indirect_pending_4k_fold_sum_at_depth(s, thread_map, depth) >= 0,
 {
 }
 

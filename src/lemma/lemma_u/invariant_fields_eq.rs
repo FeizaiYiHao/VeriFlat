@@ -218,12 +218,6 @@ pub open spec fn process_quota_4k_framed_fields_unchanged(
                 == pre.spec_index(p_ptr).view().pci_function_ref_counter
             &&& post.spec_index(p_ptr).view().owned_pci_functions
                 == pre.spec_index(p_ptr).view().owned_pci_functions
-            &&& post.spec_index(p_ptr).view().temp_alloc_cache_4k
-                == pre.spec_index(p_ptr).view().temp_alloc_cache_4k
-            &&& post.spec_index(p_ptr).view().temp_alloc_cache_2m
-                == pre.spec_index(p_ptr).view().temp_alloc_cache_2m
-            &&& post.spec_index(p_ptr).view().temp_alloc_cache_1g
-                == pre.spec_index(p_ptr).view().temp_alloc_cache_1g
             &&& post.spec_index(p_ptr).view().parent_linkedlist_node
                 == pre.spec_index(p_ptr).view().parent_linkedlist_node
             &&& post.spec_index(p_ptr).view().children
@@ -474,6 +468,124 @@ pub proof fn lemma_no_change_imply_process_pagetable_match_forall()
     };
 }
 
+pub proof fn lemma_no_change_imply_process_iommu_table_match_forall()
+    ensures
+        forall|pre: ProcessLockedMap,
+            post: ProcessLockedMap,
+            iommu_table_map: IommuTableLockedMap|
+            #![trigger
+                process_iommu_table_match(pre, iommu_table_map),
+                process_iommu_table_match(post, iommu_table_map)
+            ]
+            process_iommu_table_match(pre, iommu_table_map)
+            && process_quota_4k_framed_fields_unchanged(pre, post)
+            ==> process_iommu_table_match(post, iommu_table_map),
+{
+    assert forall|pre: ProcessLockedMap,
+        post: ProcessLockedMap,
+        iommu_table_map: IommuTableLockedMap| #![auto]
+        process_iommu_table_match(pre, iommu_table_map)
+        && process_quota_4k_framed_fields_unchanged(pre, post)
+    implies
+        process_iommu_table_match(post, iommu_table_map)
+    by {
+        assert(process_reference_fields_unchanged(pre, post)) by {
+            reveal(process_reference_fields_unchanged);
+        };
+        process_iommu_table_match_preserved_for_process_reference_fields(pre, post, iommu_table_map);
+    };
+}
+
+pub proof fn lemma_no_change_imply_iommu_root_table_process_wf_forall()
+    ensures
+        forall|root_table: IommuRootTable,
+            pre: ProcessLockedMap,
+            post: ProcessLockedMap,
+            iommu_table_map: IommuTableLockedMap|
+            #![trigger
+                iommu_root_table_process_wf(&root_table, pre, iommu_table_map),
+                iommu_root_table_process_wf(&root_table, post, iommu_table_map)
+            ]
+            iommu_root_table_process_wf(&root_table, pre, iommu_table_map)
+            && process_quota_4k_framed_fields_unchanged(pre, post)
+            ==> iommu_root_table_process_wf(&root_table, post, iommu_table_map),
+{
+    assert forall|root_table: IommuRootTable,
+        pre: ProcessLockedMap,
+        post: ProcessLockedMap,
+        iommu_table_map: IommuTableLockedMap| #![auto]
+        iommu_root_table_process_wf(&root_table, pre, iommu_table_map)
+        && process_quota_4k_framed_fields_unchanged(pre, post)
+    implies
+        iommu_root_table_process_wf(&root_table, post, iommu_table_map)
+    by {
+        assert(process_reference_fields_unchanged(pre, post)) by {
+            reveal(process_reference_fields_unchanged);
+        };
+        iommu_root_table_process_wf_preserved_for_process_reference_fields(&root_table, pre, post, iommu_table_map);
+    };
+}
+
+pub proof fn lemma_no_change_imply_process_pci_function_ownership_wf_forall()
+    ensures
+        forall|root_table: IommuRootTable,
+            pre: ProcessLockedMap,
+            post: ProcessLockedMap|
+            #![trigger
+                process_pci_function_ownership_wf(&root_table, pre),
+                process_pci_function_ownership_wf(&root_table, post)
+            ]
+            process_pci_function_ownership_wf(&root_table, pre)
+            && process_quota_4k_framed_fields_unchanged(pre, post)
+            ==> process_pci_function_ownership_wf(&root_table, post),
+{
+    assert forall|root_table: IommuRootTable,
+        pre: ProcessLockedMap,
+        post: ProcessLockedMap| #![auto]
+        process_pci_function_ownership_wf(&root_table, pre)
+        && process_quota_4k_framed_fields_unchanged(pre, post)
+    implies
+        process_pci_function_ownership_wf(&root_table, post)
+    by {
+        assert(process_reference_fields_unchanged(pre, post)) by {
+            reveal(process_reference_fields_unchanged);
+        };
+        process_pci_function_ownership_wf_preserved_for_process_reference_fields(&root_table, pre, post);
+    };
+}
+
+pub proof fn lemma_no_change_imply_iommu_tlb_wf_spec_forall()
+    ensures
+        forall|iommu_tlb: IommuTLB,
+            root_table: IommuRootTable,
+            pre: ProcessLockedMap,
+            post: ProcessLockedMap,
+            iommu_table_map: IommuTableLockedMap|
+            #![trigger
+                iommu_tlb_wf_spec(iommu_tlb, &root_table, pre, iommu_table_map),
+                iommu_tlb_wf_spec(iommu_tlb, &root_table, post, iommu_table_map)
+            ]
+            iommu_tlb_wf_spec(iommu_tlb, &root_table, pre, iommu_table_map)
+            && process_quota_4k_framed_fields_unchanged(pre, post)
+            ==> iommu_tlb_wf_spec(iommu_tlb, &root_table, post, iommu_table_map),
+{
+    assert forall|iommu_tlb: IommuTLB,
+        root_table: IommuRootTable,
+        pre: ProcessLockedMap,
+        post: ProcessLockedMap,
+        iommu_table_map: IommuTableLockedMap| #![auto]
+        iommu_tlb_wf_spec(iommu_tlb, &root_table, pre, iommu_table_map)
+        && process_quota_4k_framed_fields_unchanged(pre, post)
+    implies
+        iommu_tlb_wf_spec(iommu_tlb, &root_table, post, iommu_table_map)
+    by {
+        assert(process_reference_fields_unchanged(pre, post)) by {
+            reveal(process_reference_fields_unchanged);
+        };
+        iommu_tlb_wf_spec_preserved_for_process_reference_fields(iommu_tlb, &root_table, pre, post, iommu_table_map);
+    };
+}
+
 pub proof fn lemma_no_change_imply_container_process_wf_forall()
     ensures
         forall|container_map: ContainerLockedMap,
@@ -565,28 +677,29 @@ pub proof fn lemma_no_change_imply_container_allocator_wf_forall()
     };
 }
 
-pub proof fn lemma_no_change_imply_process_staged_pages_wf_forall()
+pub proof fn lemma_no_change_imply_thread_staged_pages_wf_forall()
     ensures
-        forall|pre: ProcessLockedMap,
-            post: ProcessLockedMap,
+        forall|pre: ThreadLockedMap,
+            post: ThreadLockedMap,
             page_array: PageLockedArray|
             #![trigger
-                process_staged_pages_wf(pre, page_array),
-                process_staged_pages_wf(post, page_array)
+                thread_staged_pages_wf(pre, page_array),
+                thread_staged_pages_wf(post, page_array)
             ]
-            process_staged_pages_wf(pre, page_array)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> process_staged_pages_wf(post, page_array),
+            thread_staged_pages_wf(pre, page_array)
+            && thread_invariant_fields_unchanged(pre, post)
+            ==> thread_staged_pages_wf(post, page_array),
 {
-    assert forall|pre: ProcessLockedMap,
-        post: ProcessLockedMap,
+    assert forall|pre: ThreadLockedMap,
+        post: ThreadLockedMap,
         page_array: PageLockedArray| #![auto]
-        process_staged_pages_wf(pre, page_array)
-        && process_quota_4k_framed_fields_unchanged(pre, post)
+        thread_staged_pages_wf(pre, page_array)
+        && thread_invariant_fields_unchanged(pre, post)
     implies
-        process_staged_pages_wf(post, page_array)
+        thread_staged_pages_wf(post, page_array)
     by {
-        lemma_process_staged_pages_wf_preserved_for_view_eq(
+        reveal(thread_invariant_fields_unchanged);
+        lemma_thread_staged_pages_wf_preserved_for_view_eq(
             pre,
             post,
             page_array,
