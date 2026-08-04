@@ -239,7 +239,6 @@ verus! {
                 old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
                 alloc_amount <= usize::MAX - old(self).process_map.spec_index(process_ptr).view().quota_4k,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.view().value >= alloc_amount,
-                old(self).process_map.spec_index(process_ptr).view().temp_alloc_clean(),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
@@ -325,7 +324,7 @@ verus! {
 
             proof {
                 assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); reveal(process_temp_alloc_empty_unless_wlocked); };
+                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
                     assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
@@ -343,58 +342,20 @@ verus! {
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { lemma_no_change_imply_process_pagetable_match_forall(); };
-                    assert(process_iommu_table_match(self.process_map, self.iommu_table_map)) by {
-                        reveal(process_quota_4k_framed_fields_unchanged);
-                        reveal(process_iommu_table_match);
-                    };
-                    assert(process_staged_pages_wf(self.process_map, self.page_array)) by { lemma_no_change_imply_process_staged_pages_wf_forall(); };
+                    assert(process_iommu_table_match(self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_process_iommu_table_match_forall(); };
                     assert(container_allocator_free_4k_page_wf(self.container_map, self.allocator_4k_map, self.page_array)) by { lemma_no_change_imply_container_allocator_free_4k_page_wf_forall(); };
                 };
                 assert(self.process_management_inv()) by {
-                    assert(process_pcid_fields_unchanged(
-                        old(self).process_map,
-                        self.process_map,
-                    )) by {
-                        reveal(process_quota_4k_framed_fields_unchanged);
-                        reveal(process_pcid_fields_unchanged);
-                    };
-                    process_pcid_allocator_wf_preserved_for_fields_unchanged(
-                        self.container_map,
-                        old(self).process_map,
-                        self.process_map,
-                        self.pcid_allocator_map,
-                    );
+                    assert(process_pcid_allocator_wf(self.container_map, self.process_map, self.pcid_allocator_map)) by { lemma_no_change_imply_process_pcid_allocator_wf_forall(); };
                     assert(container_process_wf(self.container_map, self.process_map)) by { lemma_no_change_imply_container_process_wf_forall(); };
                     assert(per_container_process_tree_wf(self.container_map, self.process_map)) by { lemma_no_change_imply_per_container_process_tree_wf_forall(); };
                     assert(process_cpu_wf(self.process_map, self.cpu_array)) by { lemma_no_change_imply_process_cpu_wf_forall(); };
                     assert(process_thread_wf(self.process_map, self.thread_map)) by { lemma_no_change_imply_process_thread_wf_forall(); };
                 };
                 assert(cpu_dirty_map_wf(self.container_map, self.process_map, self.cpu_array, self.cpu_tlb, self.pagetable_map)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
-                assert(process_reference_fields_unchanged(
-                    old(self).process_map,
-                    self.process_map,
-                )) by {
-                    reveal(process_quota_4k_framed_fields_unchanged);
-                    reveal(process_reference_fields_unchanged);
-                };
-                iommu_root_table_process_wf_preserved_for_process_reference_fields(
-                    &self.iommu_root_table,
-                    old(self).process_map,
-                    self.process_map,
-                    self.iommu_table_map,
-                );
-                process_pci_function_ownership_wf_preserved_for_process_reference_fields(
-                    &self.iommu_root_table,
-                    old(self).process_map,
-                    self.process_map,
-                );
-                iommu_tlb_wf_spec_preserved_for_process_reference_fields(
-                    self.iommu_tlb,
-                    &self.iommu_root_table,
-                    old(self).process_map,
-                    self.process_map,
-                    self.iommu_table_map,
-                );
+                assert(iommu_root_table_process_wf(&self.iommu_root_table, self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
+                assert(process_pci_function_ownership_wf(&self.iommu_root_table, self.process_map)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
+                assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.iommu_root_table, self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
                 assert(self.locked_objects_match_lctx(&*lctx)) by {
                     reveal(container_locked_match_lctx);
                     reveal(process_locked_match_lctx);

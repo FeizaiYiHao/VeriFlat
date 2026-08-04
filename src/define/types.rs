@@ -184,12 +184,12 @@ pub enum PageState {
     Free4k{state: FreePageAllocatorState},
     Free2m{state: FreePageAllocatorState},
     Free1g{state: FreePageAllocatorState},
-    /// Freshly allocated from the allocator, staged in `process_ptr`'s
-    /// `temp_alloc_cache` while the process write-lock is held. Not yet
+    /// Freshly allocated from the allocator, staged in `thread_ptr`'s
+    /// `temp_alloc_cache` while the thread write-lock is held. Not yet
     /// wired into a page table.
-    Owned4k{process_ptr: RwLockProcessPtr},
-    Owned2m{process_ptr: RwLockProcessPtr},
-    Owned1g{process_ptr: RwLockProcessPtr},
+    Owned4k{thread_ptr: RwLockThreadPtr},
+    Owned2m{thread_ptr: RwLockThreadPtr},
+    Owned1g{thread_ptr: RwLockThreadPtr},
     Mapped4k,
     Mapped2m,
     Mapped1g,
@@ -272,6 +272,8 @@ pub enum RetValueType {
     /// The running process is being torn down (`being_killed()` set on
     /// the process's RwLock).
     ErrorProcessKilled,
+    /// The currently running thread is being torn down.
+    ErrorThreadKilled,
     /// Adding `alloc_amount` to the running process's `quota_4k` would
     /// overflow `usize::MAX`.
     ErrorProcessQuotaOverflow,

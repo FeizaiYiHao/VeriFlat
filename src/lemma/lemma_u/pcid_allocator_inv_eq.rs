@@ -85,6 +85,98 @@ pub proof fn process_pcid_allocator_wf_preserved_for_container_fields_unchanged(
     reveal(process_pcid_allocator_wf);
 }
 
+pub proof fn lemma_no_change_imply_container_pcid_allocator_wf_forall()
+    ensures
+        forall|pre: ContainerLockedMap,
+            post: ContainerLockedMap,
+            pcid_allocator_map: PcidAllocatorLockedMap|
+            #![trigger
+                container_pcid_allocator_wf(pre, pcid_allocator_map),
+                container_pcid_allocator_wf(post, pcid_allocator_map)
+            ]
+            container_pcid_allocator_wf(pre, pcid_allocator_map)
+            && container_invariant_fields_unchanged(pre, post)
+            ==> container_pcid_allocator_wf(post, pcid_allocator_map),
+{
+    assert forall|pre: ContainerLockedMap,
+        post: ContainerLockedMap,
+        pcid_allocator_map: PcidAllocatorLockedMap| #![auto]
+        container_pcid_allocator_wf(pre, pcid_allocator_map)
+        && container_invariant_fields_unchanged(pre, post)
+    implies
+        container_pcid_allocator_wf(post, pcid_allocator_map)
+    by {
+        assert(container_pcid_allocator_fields_unchanged(pre, post)) by {
+            reveal(container_invariant_fields_unchanged);
+            reveal(container_pcid_allocator_fields_unchanged);
+        };
+        container_pcid_allocator_wf_preserved_for_fields_unchanged(pre, post, pcid_allocator_map);
+    };
+}
+
+pub proof fn lemma_no_change_imply_process_pcid_allocator_wf_for_container_fields_forall()
+    ensures
+        forall|pre: ContainerLockedMap,
+            post: ContainerLockedMap,
+            process_map: ProcessLockedMap,
+            pcid_allocator_map: PcidAllocatorLockedMap|
+            #![trigger
+                process_pcid_allocator_wf(pre, process_map, pcid_allocator_map),
+                process_pcid_allocator_wf(post, process_map, pcid_allocator_map)
+            ]
+            process_pcid_allocator_wf(pre, process_map, pcid_allocator_map)
+            && container_process_wf(pre, process_map)
+            && container_invariant_fields_unchanged(pre, post)
+            ==> process_pcid_allocator_wf(post, process_map, pcid_allocator_map),
+{
+    assert forall|pre: ContainerLockedMap,
+        post: ContainerLockedMap,
+        process_map: ProcessLockedMap,
+        pcid_allocator_map: PcidAllocatorLockedMap| #![auto]
+        process_pcid_allocator_wf(pre, process_map, pcid_allocator_map)
+        && container_process_wf(pre, process_map)
+        && container_invariant_fields_unchanged(pre, post)
+    implies
+        process_pcid_allocator_wf(post, process_map, pcid_allocator_map)
+    by {
+        assert(container_pcid_allocator_fields_unchanged(pre, post)) by {
+            reveal(container_invariant_fields_unchanged);
+            reveal(container_pcid_allocator_fields_unchanged);
+        };
+        process_pcid_allocator_wf_preserved_for_container_fields_unchanged(pre, post, process_map, pcid_allocator_map);
+    };
+}
+
+pub proof fn lemma_no_change_imply_process_pcid_allocator_wf_forall()
+    ensures
+        forall|container_map: ContainerLockedMap,
+            pre: ProcessLockedMap,
+            post: ProcessLockedMap,
+            pcid_allocator_map: PcidAllocatorLockedMap|
+            #![trigger
+                process_pcid_allocator_wf(container_map, pre, pcid_allocator_map),
+                process_pcid_allocator_wf(container_map, post, pcid_allocator_map)
+            ]
+            process_pcid_allocator_wf(container_map, pre, pcid_allocator_map)
+            && process_quota_4k_framed_fields_unchanged(pre, post)
+            ==> process_pcid_allocator_wf(container_map, post, pcid_allocator_map),
+{
+    assert forall|container_map: ContainerLockedMap,
+        pre: ProcessLockedMap,
+        post: ProcessLockedMap,
+        pcid_allocator_map: PcidAllocatorLockedMap| #![auto]
+        process_pcid_allocator_wf(container_map, pre, pcid_allocator_map)
+        && process_quota_4k_framed_fields_unchanged(pre, post)
+    implies
+        process_pcid_allocator_wf(container_map, post, pcid_allocator_map)
+    by {
+        assert(process_pcid_fields_unchanged(pre, post)) by {
+            reveal(process_pcid_fields_unchanged);
+        };
+        process_pcid_allocator_wf_preserved_for_fields_unchanged(container_map, pre, post, pcid_allocator_map);
+    };
+}
+
 pub proof fn pcid_allocator_pages_wf_preserved_for_page_payloads_unchanged(
     pre: PageLockedArray,
     post: PageLockedArray,

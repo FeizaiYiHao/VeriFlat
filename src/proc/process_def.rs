@@ -14,12 +14,6 @@ pub struct Process {
     pub quota_2m: usize,
     pub quota_1g: usize,
 
-    /// Pages pulled from the allocator, not yet retyped. Only non-empty while
-    /// the process write-lock is held; flushed before wunlock.
-    pub temp_alloc_cache_4k: Ghost<Set<PagePtr>>,
-    pub temp_alloc_cache_2m: Ghost<Set<PagePtr>>,
-    pub temp_alloc_cache_1g: Ghost<Set<PagePtr>>,
-
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,
     pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_PROCESS_TREE_DEPTH>,
@@ -84,20 +78,6 @@ impl Process{
         self.pci_function_ownership_wf()
         &&&
         self.at_least_one_thread()
-        &&&
-        self.quota_within_bound()
-    }
-    /// Staged pages never exceed the nominal quota, so the effective quota
-    /// (`quota_* - temp_alloc_cache_*.len()`) stays non-negative. This pins the
-    /// conservation fold from below: a container's free-page total is at least
-    /// each owned process's effective quota.
-    pub open spec fn quota_within_bound(&self) -> bool {
-        &&&
-        self.quota_4k >= self.temp_alloc_cache_4k.view().len()
-        &&&
-        self.quota_2m >= self.temp_alloc_cache_2m.view().len()
-        &&&
-        self.quota_1g >= self.temp_alloc_cache_1g.view().len()
     }
     pub open spec fn pagetable_iommu_table_different(&self) -> bool {
         &&&
@@ -177,39 +157,18 @@ impl LockOwnerIdTrait for ProcessRO{
     }
 }
 
-impl Process {
-    pub open spec fn temp_alloc_clean(&self) -> bool {
-        &&& self.temp_alloc_cache_4k.view().len() == 0
-        &&& self.temp_alloc_cache_2m.view().len() == 0
-        &&& self.temp_alloc_cache_1g.view().len() == 0
-    }
-}
-
-/// Effective quota counted in the container conservation law: nominal quota
-/// minus pages temporarily staged in `temp_alloc_cache` (not yet retyped).
+/// Process quota is independent from thread quota. A future transfer operation
+/// moves quota between the two tiers while preserving their sum.
 pub open spec fn process_effective_quota_4k(proc_lock: ProcessRwLock) -> int {
-    proc_lock.view().quota_4k as int - proc_lock.view().temp_alloc_cache_4k.view().len() as int
+    proc_lock.view().quota_4k as int
 }
 
 pub open spec fn process_effective_quota_2m(proc_lock: ProcessRwLock) -> int {
-    proc_lock.view().quota_2m as int - proc_lock.view().temp_alloc_cache_2m.view().len() as int
+    proc_lock.view().quota_2m as int
 }
 
 pub open spec fn process_effective_quota_1g(proc_lock: ProcessRwLock) -> int {
-    proc_lock.view().quota_1g as int - proc_lock.view().temp_alloc_cache_1g.view().len() as int
-}
-
-/// temp_alloc_cache is empty unless the process is write-locked.
-#[verifier::opaque]
-pub open spec fn process_temp_alloc_empty_unless_wlocked(
-    process_map: ProcessLockedMap,
-) -> bool {
-    forall|p_ptr: RwLockProcessPtr|
-        #![trigger process_map.spec_index(p_ptr).locking_thread()]
-        process_map.dom().contains(p_ptr)
-        ==>
-        !(process_map.spec_index(p_ptr).locking_thread() is Write) ==>
-            process_map.spec_index(p_ptr).view().temp_alloc_clean()
+    proc_lock.view().quota_1g as int
 }
 
 } // verus!

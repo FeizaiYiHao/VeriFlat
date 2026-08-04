@@ -39,7 +39,47 @@ verus! {
             process_map: ProcessLockedMap,
         ) -> int {
             owned_processes.fold(0, |sum: int, p_ptr:RwLockProcessPtr| {sum + process_effective_quota_1g(process_map.spec_index(p_ptr))})
+    }
+
+    pub open spec fn thread_effective_quota_4k_fold_sum(
+            owned_threads: Set<RwLockThreadPtr>,
+            thread_map: ThreadLockedMap,
+        ) -> int {
+            owned_threads.fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_effective_quota_4k(thread_map.spec_index(t_ptr))})
         }
+
+    pub open spec fn thread_effective_quota_2m_fold_sum(
+            owned_threads: Set<RwLockThreadPtr>,
+            thread_map: ThreadLockedMap,
+        ) -> int {
+            owned_threads.fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_effective_quota_2m(thread_map.spec_index(t_ptr))})
+        }
+
+    pub open spec fn thread_effective_quota_1g_fold_sum(
+            owned_threads: Set<RwLockThreadPtr>,
+            thread_map: ThreadLockedMap,
+        ) -> int {
+            owned_threads.fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_effective_quota_1g(thread_map.spec_index(t_ptr))})
+        }
+
+    pub open spec fn thread_direct_pending_4k_fold_sum(
+        threads: Set<RwLockThreadPtr>,
+        thread_map: ThreadLockedMap,
+    ) -> int {
+        threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
+            sum + thread_map.spec_index(t_ptr).view()
+                .direct_free_quota_pending_4k.view())
+    }
+
+    pub open spec fn thread_indirect_pending_4k_fold_sum_at_depth(
+        threads: Set<RwLockThreadPtr>,
+        thread_map: ThreadLockedMap,
+        depth: int,
+    ) -> int {
+        threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
+            sum + thread_map.spec_index(t_ptr).view()
+                .indirect_free_quota_pending_4k.view().spec_index(depth))
+    }
 
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_4k_wf(
@@ -58,9 +98,18 @@ verus! {
                 ==>
                 process_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_4k.view()})
+                    thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
-                    container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_4k.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    thread_direct_pending_4k_fold_sum(
+                        container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                        thread_map,
+                    )
+                    +
+                    thread_indirect_pending_4k_fold_sum_at_depth(
+                        container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(),
+                        thread_map,
+                        container_map.spec_index(c_ptr).view_rodata().view().depth as int,
+                    )
                     +
                     allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().view()
                     ==
@@ -80,6 +129,8 @@ verus! {
                 container_map.dom().contains(c_ptr)
                 ==>
                 process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
+                    +
+                    thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
                     container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
                     +
@@ -103,6 +154,8 @@ verus! {
                 container_map.dom().contains(c_ptr)
                 ==>
                 process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
+                    +
+                    thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
                     container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
                     +

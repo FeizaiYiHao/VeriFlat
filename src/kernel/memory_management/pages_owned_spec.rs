@@ -5,14 +5,14 @@ verus! {
 
 // ---------- 4k ----------
 
-/// Bi-directional invariant for `Process.temp_alloc_cache_4k` against
-/// `Page.state == Owned4k{process_ptr}`.
+/// Bi-directional invariant for `Thread.temp_alloc_cache_4k` against
+/// `Page.state == Owned4k{thread_ptr}`.
 ///
-/// Forward: page in Owned4k{p} ==> process p has this page in temp_alloc_cache_4k.
-/// Backward: page in p.temp_alloc_cache_4k ==> page is Owned4k{p} and valid.
+/// Forward: page in Owned4k{t} ==> thread t has this page in temp_alloc_cache_4k.
+/// Backward: page in t.temp_alloc_cache_4k ==> page is Owned4k{t} and valid.
 #[verifier::opaque]
-pub open spec fn process_staged_pages_4k_wf(
-    process_map: ProcessLockedMap,
+pub open spec fn thread_staged_pages_4k_wf(
+    thread_map: ThreadLockedMap,
     page_array: PageLockedArray,
 ) -> bool {
     &&&
@@ -22,29 +22,29 @@ pub open spec fn process_staged_pages_4k_wf(
         && page_array.spec_index(page_index).view().view().state is Owned4k
         ==>
         {
-            let process_ptr = page_array.spec_index(page_index).view().view().state->Owned4k_process_ptr;
+            let thread_ptr = page_array.spec_index(page_index).view().view().state->Owned4k_thread_ptr;
             &&&
-            process_map.dom().contains(process_ptr)
+            thread_map.dom().contains(thread_ptr)
             &&&
-            process_map.spec_index(process_ptr).view().temp_alloc_cache_4k.view().contains(page_index2page_ptr(page_index))
+            thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_index2page_ptr(page_index))
         }
     &&&
-    forall|p_ptr:RwLockProcessPtr, page_ptr:PagePtr|
-        #![trigger process_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
-        process_map.dom().contains(p_ptr)
-        && process_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
+    forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
+        #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
+        thread_map.dom().contains(p_ptr)
+        && thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
         ==>
         page_ptr_valid(page_ptr)
         &&
         page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state ==
-            PageState::Owned4k{process_ptr: p_ptr}
+            PageState::Owned4k{thread_ptr: p_ptr}
 }
 
 // ---------- 2m ----------
 
 #[verifier::opaque]
-pub open spec fn process_staged_pages_2m_wf(
-    process_map: ProcessLockedMap,
+pub open spec fn thread_staged_pages_2m_wf(
+    thread_map: ThreadLockedMap,
     page_array: PageLockedArray,
 ) -> bool {
     &&&
@@ -54,29 +54,29 @@ pub open spec fn process_staged_pages_2m_wf(
         && page_array.spec_index(page_index).view().view().state is Owned2m
         ==>
         {
-            let process_ptr = page_array.spec_index(page_index).view().view().state->Owned2m_process_ptr;
+            let thread_ptr = page_array.spec_index(page_index).view().view().state->Owned2m_thread_ptr;
             &&&
-            process_map.dom().contains(process_ptr)
+            thread_map.dom().contains(thread_ptr)
             &&&
-            process_map.spec_index(process_ptr).view().temp_alloc_cache_2m.view().contains(page_index2page_ptr(page_index))
+            thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_index2page_ptr(page_index))
         }
     &&&
-    forall|p_ptr:RwLockProcessPtr, page_ptr:PagePtr|
-        #![trigger process_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
-        process_map.dom().contains(p_ptr)
-        && process_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
+    forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
+        #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
+        thread_map.dom().contains(p_ptr)
+        && thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
         ==>
         page_ptr_valid(page_ptr)
         &&
         page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state ==
-            PageState::Owned2m{process_ptr: p_ptr}
+            PageState::Owned2m{thread_ptr: p_ptr}
 }
 
 // ---------- 1g ----------
 
 #[verifier::opaque]
-pub open spec fn process_staged_pages_1g_wf(
-    process_map: ProcessLockedMap,
+pub open spec fn thread_staged_pages_1g_wf(
+    thread_map: ThreadLockedMap,
     page_array: PageLockedArray,
 ) -> bool {
     &&&
@@ -86,33 +86,33 @@ pub open spec fn process_staged_pages_1g_wf(
         && page_array.spec_index(page_index).view().view().state is Owned1g
         ==>
         {
-            let process_ptr = page_array.spec_index(page_index).view().view().state->Owned1g_process_ptr;
+            let thread_ptr = page_array.spec_index(page_index).view().view().state->Owned1g_thread_ptr;
             &&&
-            process_map.dom().contains(process_ptr)
+            thread_map.dom().contains(thread_ptr)
             &&&
-            process_map.spec_index(process_ptr).view().temp_alloc_cache_1g.view().contains(page_index2page_ptr(page_index))
+            thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g.view().contains(page_index2page_ptr(page_index))
         }
     &&&
-    forall|p_ptr:RwLockProcessPtr, page_ptr:PagePtr|
-        #![trigger process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)]
-        process_map.dom().contains(p_ptr)
-        && process_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)
+    forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
+        #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)]
+        thread_map.dom().contains(p_ptr)
+        && thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)
         ==>
         page_ptr_valid(page_ptr)
         &&
         page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state ==
-            PageState::Owned1g{process_ptr: p_ptr}
+            PageState::Owned1g{thread_ptr: p_ptr}
 }
 
 // ---------- Combined ----------
 
-pub open spec fn process_staged_pages_wf(
-    process_map: ProcessLockedMap,
+pub open spec fn thread_staged_pages_wf(
+    thread_map: ThreadLockedMap,
     page_array: PageLockedArray,
 ) -> bool {
-    &&& process_staged_pages_4k_wf(process_map, page_array)
-    &&& process_staged_pages_2m_wf(process_map, page_array)
-    &&& process_staged_pages_1g_wf(process_map, page_array)
+    &&& thread_staged_pages_4k_wf(thread_map, page_array)
+    &&& thread_staged_pages_2m_wf(thread_map, page_array)
+    &&& thread_staged_pages_1g_wf(thread_map, page_array)
 }
 
 }

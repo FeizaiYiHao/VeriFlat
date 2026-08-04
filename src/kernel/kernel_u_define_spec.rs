@@ -86,9 +86,7 @@ verus! {
             // process_map: same domain, and per process only the fields
             // `ProcessU` projects are read — quota/tree fields off `view()`,
             // `parent`/`depth` off `view_rodata()`, and `being_killed()`. NOT
-            // the whole `view()`: `temp_alloc_cache_*` is unprojected, so a
-            // caller that stages a page (mutating `view()` but no `ProcessU`
-            // field) can still use this.
+            // the whole `view()`: other kernel-only fields are unprojected.
             post.process_map.dom() =~= pre.process_map.dom(),
             forall|ptr: RwLockProcessPtr|
                 #![trigger post.process_map.spec_index(ptr)]

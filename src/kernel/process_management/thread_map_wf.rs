@@ -10,6 +10,8 @@ verus! {
         threads_inv(thread_map)
         &&&
         thread_free_quota_pending_empty_unless_wlocked(thread_map)
+        &&&
+        thread_temp_alloc_empty_unless_wlocked(thread_map)
     }
     pub open spec fn threads_inv(thread_map: ThreadLockedMap) -> bool{
         &&&

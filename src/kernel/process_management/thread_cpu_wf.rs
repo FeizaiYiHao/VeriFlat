@@ -18,6 +18,11 @@ verus! {
                 thread_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().current_thread.unwrap())
                 &&&
                 thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING{cpu_id: cpu_i})
+                &&&
+                cpu_array.spec_index(cpu_i).view().view().current_process is Some
+                &&&
+                thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_thread.unwrap()).view().owning_proc
+                    == cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()
             }
         &&&
         forall|t_ptr:RwLockThreadPtr|

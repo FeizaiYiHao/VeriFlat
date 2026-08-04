@@ -15,6 +15,18 @@ pub struct Thread {
     pub proc_pagetable_ptr: RwLockPageTableRoot,
     pub proc_linkedlist_node: ExternalNode<RwLockThreadPtr>,
 
+    /// Thread-local quota is independent from the owning process's quota.
+    /// A future transfer syscall moves quota between the two tiers.
+    pub quota_4k: usize,
+    pub quota_2m: usize,
+    pub quota_1g: usize,
+
+    /// Pages pulled from the allocator but not yet retyped. These caches may
+    /// be non-empty only while this thread is write-locked.
+    pub temp_alloc_cache_4k: Ghost<Set<PagePtr>>,
+    pub temp_alloc_cache_2m: Ghost<Set<PagePtr>>,
+    pub temp_alloc_cache_1g: Ghost<Set<PagePtr>>,
+
     pub endpoint_descriptors: Array<Option<RwLockEndpointPtr>, MAX_NUM_ENDPOINT_DESCRIPTORS>,
     pub blocking_endpoint_ptr: Option<RwLockEndpointPtr>,
     pub blocking_endpoint_index: Option<EndpointIdx>,
@@ -96,6 +108,10 @@ impl Thread{
             forall|edp_index: EndpointIdx| #![auto]
                 ret.endpoint_descriptors.view().spec_index(edp_index as int) is None,
             ret.free_quota_pending_clean(),
+            ret.temp_alloc_clean(),
+            ret.quota_4k == 0,
+            ret.quota_2m == 0,
+            ret.quota_1g == 0,
     {
         unimplemented!()
     }
@@ -143,7 +159,50 @@ impl LockInvTrait for Thread {
         self.upper_container_seq.view().len() == self.indirect_free_quota_pending_2m.view().len()
         &&&
         self.upper_container_seq.view().len() == self.indirect_free_quota_pending_1g.view().len()
+        &&&
+        self.quota_within_bound()
     }
+
+}
+
+impl Thread {
+    pub open spec fn temp_alloc_clean(&self) -> bool {
+        &&& self.temp_alloc_cache_4k.view().len() == 0
+        &&& self.temp_alloc_cache_2m.view().len() == 0
+        &&& self.temp_alloc_cache_1g.view().len() == 0
+    }
+
+    pub open spec fn quota_within_bound(&self) -> bool {
+        &&& self.quota_4k >= self.temp_alloc_cache_4k.view().len()
+        &&& self.quota_2m >= self.temp_alloc_cache_2m.view().len()
+        &&& self.quota_1g >= self.temp_alloc_cache_1g.view().len()
+    }
+}
+
+pub open spec fn thread_effective_quota_4k(thread_lock: ThreadRwLock) -> int {
+    thread_lock.view().quota_4k as int
+        - thread_lock.view().temp_alloc_cache_4k.view().len() as int
+}
+
+pub open spec fn thread_effective_quota_2m(thread_lock: ThreadRwLock) -> int {
+    thread_lock.view().quota_2m as int
+        - thread_lock.view().temp_alloc_cache_2m.view().len() as int
+}
+
+pub open spec fn thread_effective_quota_1g(thread_lock: ThreadRwLock) -> int {
+    thread_lock.view().quota_1g as int
+        - thread_lock.view().temp_alloc_cache_1g.view().len() as int
+}
+
+#[verifier::opaque]
+pub open spec fn thread_temp_alloc_empty_unless_wlocked(
+    thread_map: ThreadLockedMap,
+) -> bool {
+    forall|t_ptr: RwLockThreadPtr|
+        #![trigger thread_map.spec_index(t_ptr).locking_thread()]
+        thread_map.dom().contains(t_ptr)
+        ==> !(thread_map.spec_index(t_ptr).locking_thread() is Write)
+        ==> thread_map.spec_index(t_ptr).view().temp_alloc_clean()
 }
 
 #[derive(Clone, Copy)]
