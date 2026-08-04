@@ -304,12 +304,7 @@ pub proof fn lemma_no_change_imply_allocator_pages_wf_forall()
     implies
         allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map)
     by {
-        allocator_4k_pages_wf_preserved_for_page_state_eq(
-            page_array,
-            page_array,
-            pre,
-            post,
-        );
+        allocator_4k_pages_wf_preserved_for_page_state_eq(page_array, page_array, pre, post);
     };
 }
 
@@ -331,12 +326,7 @@ pub proof fn lemma_no_change_imply_process_pages_wf_forall()
     implies
         process_pages_wf(page_array, post)
     by {
-        process_pages_wf_preserved_for_page_state_eq(
-            page_array,
-            page_array,
-            pre,
-            post,
-        );
+        process_pages_wf_preserved_for_page_state_eq(page_array, page_array, pre, post);
     };
 }
 
@@ -399,16 +389,8 @@ pub proof fn lemma_no_change_imply_container_process_page_pagetable_wf_forall()
             page_array,
         )
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
-        container_process_page_pagetable_wf_preserved_for_process_reference_fields(
-            container_map,
-            pre,
-            post,
-            pagetable_map,
-            page_array,
-        );
+        reveal(process_reference_fields_unchanged);
+        container_process_page_pagetable_wf_preserved_for_process_reference_fields(container_map, pre, post, pagetable_map, page_array);
     };
 }
 
@@ -457,14 +439,8 @@ pub proof fn lemma_no_change_imply_process_pagetable_match_forall()
     implies
         process_pagetable_match(post, pagetable_map)
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
-        process_pagetable_match_preserved_for_process_reference_fields(
-            pre,
-            post,
-            pagetable_map,
-        );
+        reveal(process_reference_fields_unchanged);
+        process_pagetable_match_preserved_for_process_reference_fields(pre, post, pagetable_map);
     };
 }
 
@@ -489,9 +465,7 @@ pub proof fn lemma_no_change_imply_process_iommu_table_match_forall()
     implies
         process_iommu_table_match(post, iommu_table_map)
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
+        reveal(process_reference_fields_unchanged);
         process_iommu_table_match_preserved_for_process_reference_fields(pre, post, iommu_table_map);
     };
 }
@@ -519,9 +493,7 @@ pub proof fn lemma_no_change_imply_iommu_root_table_process_wf_forall()
     implies
         iommu_root_table_process_wf(&root_table, post, iommu_table_map)
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
+        reveal(process_reference_fields_unchanged);
         iommu_root_table_process_wf_preserved_for_process_reference_fields(&root_table, pre, post, iommu_table_map);
     };
 }
@@ -547,9 +519,7 @@ pub proof fn lemma_no_change_imply_process_pci_function_ownership_wf_forall()
     implies
         process_pci_function_ownership_wf(&root_table, post)
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
+        reveal(process_reference_fields_unchanged);
         process_pci_function_ownership_wf_preserved_for_process_reference_fields(&root_table, pre, post);
     };
 }
@@ -579,9 +549,7 @@ pub proof fn lemma_no_change_imply_iommu_tlb_wf_spec_forall()
     implies
         iommu_tlb_wf_spec(iommu_tlb, &root_table, post, iommu_table_map)
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
+        reveal(process_reference_fields_unchanged);
         iommu_tlb_wf_spec_preserved_for_process_reference_fields(iommu_tlb, &root_table, pre, post, iommu_table_map);
     };
 }
@@ -607,14 +575,8 @@ pub proof fn lemma_no_change_imply_container_process_wf_forall()
     implies
         container_process_wf(container_map, post)
     by {
-        assert(process_reference_fields_unchanged(pre, post)) by {
-            reveal(process_reference_fields_unchanged);
-        };
-        container_process_wf_preserved_for_process_reference_fields(
-            container_map,
-            pre,
-            post,
-        );
+        reveal(process_reference_fields_unchanged);
+        container_process_wf_preserved_for_process_reference_fields(container_map, pre, post);
     };
 }
 
@@ -699,11 +661,7 @@ pub proof fn lemma_no_change_imply_thread_staged_pages_wf_forall()
         thread_staged_pages_wf(post, page_array)
     by {
         reveal(thread_invariant_fields_unchanged);
-        lemma_thread_staged_pages_wf_preserved_for_view_eq(
-            pre,
-            post,
-            page_array,
-        );
+        lemma_thread_staged_pages_wf_preserved_for_view_eq(pre, post, page_array);
     };
 }
 
@@ -730,11 +688,7 @@ pub proof fn lemma_no_change_imply_per_container_process_tree_wf_forall()
     implies
         per_container_process_tree_wf(container_map, post)
     by {
-        per_container_process_tree_wf_preserved_for_tree_fields_eq(
-            container_map,
-            pre,
-            post,
-        );
+        per_container_process_tree_wf_preserved_for_tree_fields_eq(container_map, pre, post);
     };
 }
 

@@ -11,6 +11,7 @@ pub mod kernel_inv_process_lock_op;
 pub mod kernel_inv_thread_lock_op;
 pub mod kernel_inv_allocator_4k_lock_op;
 pub mod kernel_inv_scheduler_lock_op;
+pub mod kernel_inv_endpoint_lock_op;
 pub mod invariant_fields_eq;
 
 pub use general_u::*;
@@ -26,4 +27,5 @@ pub use kernel_inv_process_lock_op::*;
 pub use kernel_inv_thread_lock_op::*;
 pub use kernel_inv_allocator_4k_lock_op::*;
 pub use kernel_inv_scheduler_lock_op::*;
+pub use kernel_inv_endpoint_lock_op::*;
 pub use invariant_fields_eq::*;

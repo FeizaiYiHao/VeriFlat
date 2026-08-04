@@ -107,6 +107,8 @@ impl KernelK {
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g,
             final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 == old(self).thread_map.spec_index(thread_ptr).view().quota_4k,
+            final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
+                == old(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors,
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).process_map == old(self).process_map,
@@ -472,6 +474,8 @@ impl KernelK {
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g,
             final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 == old(self).thread_map.spec_index(thread_ptr).view().quota_4k,
+            final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
+                == old(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors,
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).process_map == old(self).process_map,
