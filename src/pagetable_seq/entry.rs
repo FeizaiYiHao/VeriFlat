@@ -283,14 +283,14 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     let ghost_execute_disable = Ghost(page_entry.perm.execute_disable);
     let ghost_user = Ghost(page_entry.perm.user);
     let ghost_kernel_present = Ghost(page_entry.perm.kernel_present);
-    assert(ret == ghost_addr@);
+    assert(ret == ghost_addr.view());
 
     if page_entry.perm.present == true {
         assert(((ret | 0x1u64 as usize) & 0x1u64 as usize) != 0) by (bit_vector);
-        assert(((ret | 0x1u64 as usize) & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr@)
+        assert(((ret | 0x1u64 as usize) & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr.view())
             by (bit_vector)
             requires
-                ghost_addr@ & (!0x0000_ffff_ffff_f000u64) as usize == 0 && ghost_addr@ == ret,
+                ghost_addr.view() & (!0x0000_ffff_ffff_f000u64) as usize == 0 && ghost_addr.view() == ret,
         ;
 
         ret = ret | 0x1u64 as usize;
@@ -300,10 +300,10 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
         assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == page_entry.addr);
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert((ghost_ret@ | 0x1u64 as usize) & (!(0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize
+        assert((ghost_ret.view() | 0x1u64 as usize) & (!(0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize
             == 0) by (bit_vector)
             requires
-                ghost_ret@ & (!0x0000_ffff_ffff_f000u64) as usize == 0,
+                ghost_ret.view() & (!0x0000_ffff_ffff_f000u64) as usize == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | MEM_MASK)) as usize == 0);
     } else {
@@ -319,9 +319,9 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
         ;
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert(ghost_addr@ & (!(0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0) by (bit_vector)
+        assert(ghost_addr.view() & (!(0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0) by (bit_vector)
             requires
-                ghost_addr@ & (!0x0000_ffff_ffff_f000u64) as usize == 0,
+                ghost_addr.view() & (!0x0000_ffff_ffff_f000u64) as usize == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | MEM_MASK)) as usize == 0);
     }
@@ -335,30 +335,30 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     if page_entry.perm.ps == true {
         assert(((ret | (0x1u64 << 0x7u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0)
             by (bit_vector);
-        assert(((ret | (0x1u64 << 0x7u64) as usize) & 0x1 as usize) != 0 == ghost_present@)
+        assert(((ret | (0x1u64 << 0x7u64) as usize) & 0x1 as usize) != 0 == ghost_present.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & 0x1u64 as usize) != 0 == ghost_present@,
+                ghost_ret.view() == ret && (ret & 0x1u64 as usize) != 0 == ghost_present.view(),
         ;
         assert(((ret | (0x1u64 << 0x7u64) as usize) & 0x0000_ffff_ffff_f000u64 as usize)
-            == ghost_addr@) by (bit_vector)
+            == ghost_addr.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ghost_ret@ & 0x0000_ffff_ffff_f000u64 as usize)
-                    == ghost_addr@,
+                ghost_ret.view() == ret && (ghost_ret.view() & 0x0000_ffff_ffff_f000u64 as usize)
+                    == ghost_addr.view(),
         ;
         ret = ret | (0x1u64 << 0x7u64) as usize;
 
-        assert((ret & 0x1 as usize) != 0 == ghost_present@);
+        assert((ret & 0x1 as usize) != 0 == ghost_present.view());
         assert(usize2present(ret) == page_entry.perm.present);
         assert((ret & (0x1u64 << 0x7u64) as usize) != 0);
         assert(usize2ps(ret) == page_entry.perm.ps);
-        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr@);
+        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr.view());
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert((ghost_ret@ | (0x1u64 << 0x7u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64
+        assert((ghost_ret.view() | (0x1u64 << 0x7u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64
             | 0x0000_ffff_ffff_f000u64)) as usize == 0) by (bit_vector)
             requires
-                ghost_ret@ & (!(0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0,
+                ghost_ret.view() & (!(0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_PS_MASK | MEM_MASK)) as usize == 0);
     } else {
@@ -389,37 +389,37 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     if page_entry.perm.write == true {
         assert(((ret | (0x1u64 << 0x1u64) as usize) & (0x1u64 << 0x1u64) as usize) != 0)
             by (bit_vector);
-        assert(((ret | (0x1u64 << 0x1u64) as usize) & 0x1 as usize) != 0 == ghost_present@)
+        assert(((ret | (0x1u64 << 0x1u64) as usize) & 0x1 as usize) != 0 == ghost_present.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & 0x1u64 as usize) != 0 == ghost_present@,
+                ghost_ret.view() == ret && (ret & 0x1u64 as usize) != 0 == ghost_present.view(),
         ;
         assert(((ret | (0x1u64 << 0x1u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0
-            == ghost_ps@) by (bit_vector)
+            == ghost_ps.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view(),
         ;
         assert(((ret | (0x1u64 << 0x1u64) as usize) & 0x0000_ffff_ffff_f000u64 as usize)
-            == ghost_addr@) by (bit_vector)
+            == ghost_addr.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ghost_ret@ & 0x0000_ffff_ffff_f000u64 as usize)
-                    == ghost_addr@,
+                ghost_ret.view() == ret && (ghost_ret.view() & 0x0000_ffff_ffff_f000u64 as usize)
+                    == ghost_addr.view(),
         ;
         ret = ret | (0x1u64 << 0x1u64) as usize;
 
-        assert((ret & 0x1 as usize) != 0 == ghost_present@);
+        assert((ret & 0x1 as usize) != 0 == ghost_present.view());
         assert(usize2present(ret) == page_entry.perm.present);
-        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@);
+        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view());
         assert(usize2ps(ret) == page_entry.perm.ps);
         assert((ret & (0x1u64 << 0x1u64) as usize) != 0);
         assert(usize2write(ret) == page_entry.perm.write);
-        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr@);
+        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr.view());
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert((ghost_ret@ | (0x1u64 << 0x1u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
+        assert((ghost_ret.view() | (0x1u64 << 0x1u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
             << 0x1u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0) by (bit_vector)
             requires
-                ghost_ret@ & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x0000_ffff_ffff_f000u64)) as usize
+                ghost_ret.view() & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x0000_ffff_ffff_f000u64)) as usize
                     == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_PS_MASK | PAGE_ENTRY_WRITE_MASK
@@ -456,44 +456,44 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     if page_entry.perm.execute_disable == true {
         assert(((ret | (0x1u64 << 63u64) as usize) & (0x1u64 << 63u64) as usize) != 0)
             by (bit_vector);
-        assert(((ret | (0x1u64 << 63u64) as usize) & 0x1 as usize) != 0 == ghost_present@)
+        assert(((ret | (0x1u64 << 63u64) as usize) & 0x1 as usize) != 0 == ghost_present.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & 0x1u64 as usize) != 0 == ghost_present@,
+                ghost_ret.view() == ret && (ret & 0x1u64 as usize) != 0 == ghost_present.view(),
         ;
-        assert(((ret | (0x1u64 << 63u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@)
+        assert(((ret | (0x1u64 << 63u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view(),
         ;
         assert(((ret | (0x1u64 << 63u64) as usize) & (0x1u64 << 0x1u64) as usize) != 0
-            == ghost_write@) by (bit_vector)
+            == ghost_write.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write.view(),
         ;
         assert(((ret | (0x1u64 << 63u64) as usize) & 0x0000_ffff_ffff_f000u64 as usize)
-            == ghost_addr@) by (bit_vector)
+            == ghost_addr.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ghost_ret@ & 0x0000_ffff_ffff_f000u64 as usize)
-                    == ghost_addr@,
+                ghost_ret.view() == ret && (ghost_ret.view() & 0x0000_ffff_ffff_f000u64 as usize)
+                    == ghost_addr.view(),
         ;
         ret = ret | (0x1u64 << 63u64) as usize;
 
-        assert((ret & 0x1 as usize) != 0 == ghost_present@);
+        assert((ret & 0x1 as usize) != 0 == ghost_present.view());
         assert(usize2present(ret) == page_entry.perm.present);
-        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@);
+        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view());
         assert(usize2ps(ret) == page_entry.perm.ps);
-        assert((ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write@);
+        assert((ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write.view());
         assert(usize2write(ret) == page_entry.perm.write);        
         assert((ret & (0x1u64 << 63u64) as usize) != 0);
         assert(usize2execute_disable(ret) == page_entry.perm.execute_disable);
-        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr@);
+        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr.view());
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert((ghost_ret@ | (0x1u64 << 63u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
+        assert((ghost_ret.view() | (0x1u64 << 63u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
             << 0x1u64 | 0x1u64 << 63u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0) by (bit_vector)
             requires
-                ghost_ret@ & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64 << 0x1u64
+                ghost_ret.view() & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64 << 0x1u64
                     | 0x0000_ffff_ffff_f000u64)) as usize == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_PS_MASK | PAGE_ENTRY_WRITE_MASK
@@ -534,53 +534,53 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     if page_entry.perm.user == true {
         assert(((ret | (0x1u64 << 2u64) as usize) & (0x1u64 << 2u64) as usize) != 0)
             by (bit_vector);
-        assert(((ret | (0x1u64 << 2u64) as usize) & 0x1 as usize) != 0 == ghost_present@)
+        assert(((ret | (0x1u64 << 2u64) as usize) & 0x1 as usize) != 0 == ghost_present.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & 0x1u64 as usize) != 0 == ghost_present@,
+                ghost_ret.view() == ret && (ret & 0x1u64 as usize) != 0 == ghost_present.view(),
         ;
-        assert(((ret | (0x1u64 << 2u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@)
+        assert(((ret | (0x1u64 << 2u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view(),
         ;
         assert(((ret | (0x1u64 << 2u64) as usize) & (0x1u64 << 0x1u64) as usize) != 0
-            == ghost_write@) by (bit_vector)
+            == ghost_write.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write.view(),
         ;
         assert(((ret | (0x1u64 << 2u64) as usize) & (0x1u64 << 63u64) as usize) != 0
-            == ghost_execute_disable@) by (bit_vector)
+            == ghost_execute_disable.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 63u64) as usize) != 0
-                    == ghost_execute_disable@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 63u64) as usize) != 0
+                    == ghost_execute_disable.view(),
         ;
         assert(((ret | (0x1u64 << 2u64) as usize) & 0x0000_ffff_ffff_f000u64 as usize)
-            == ghost_addr@) by (bit_vector)
+            == ghost_addr.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ghost_ret@ & 0x0000_ffff_ffff_f000u64 as usize)
-                    == ghost_addr@,
+                ghost_ret.view() == ret && (ghost_ret.view() & 0x0000_ffff_ffff_f000u64 as usize)
+                    == ghost_addr.view(),
         ;
         ret = ret | (0x1u64 << 2u64) as usize;
 
-        assert((ret & 0x1 as usize) != 0 == ghost_present@);
+        assert((ret & 0x1 as usize) != 0 == ghost_present.view());
         assert(usize2present(ret) == page_entry.perm.present);
-        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@);
+        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view());
         assert(usize2ps(ret) == page_entry.perm.ps);
-        assert((ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write@);
+        assert((ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write.view());
         assert(usize2write(ret) == page_entry.perm.write);
-        assert((ret & (0x1u64 << 63u64) as usize) != 0 == ghost_execute_disable@);
+        assert((ret & (0x1u64 << 63u64) as usize) != 0 == ghost_execute_disable.view());
         assert(usize2execute_disable(ret) == page_entry.perm.execute_disable);
         assert((ret & (0x1u64 << 2u64) as usize) != 0);
         assert(usize2user(ret) == page_entry.perm.user);
-        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr@);
+        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr.view());
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert((ghost_ret@ | (0x1u64 << 2u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
+        assert((ghost_ret.view() | (0x1u64 << 2u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
             << 0x1u64 | 0x1u64 << 63u64 | 0x1u64 << 2u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0)
             by (bit_vector)
             requires
-                ghost_ret@ & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64 << 0x1u64 | 0x1u64 << 63u64
+                ghost_ret.view() & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64 << 0x1u64 | 0x1u64 << 63u64
                     | 0x0000_ffff_ffff_f000u64)) as usize == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_PS_MASK | PAGE_ENTRY_WRITE_MASK
@@ -624,66 +624,66 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     if page_entry.perm.kernel_present == true {
         assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 52u64) as usize) != 0)
             by (bit_vector);
-        assert(((ret | (0x1u64 << 52u64) as usize) & 0x1 as usize) != 0 == ghost_present@)
+        assert(((ret | (0x1u64 << 52u64) as usize) & 0x1 as usize) != 0 == ghost_present.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & 0x1u64 as usize) != 0 == ghost_present@,
+                ghost_ret.view() == ret && (ret & 0x1u64 as usize) != 0 == ghost_present.view(),
         ;
-        assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@)
+        assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view())
             by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view(),
         ;
         assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 0x1u64) as usize) != 0
-            == ghost_write@) by (bit_vector)
+            == ghost_write.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write.view(),
         ;
         assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 2u64) as usize) != 0
-            == ghost_user@) by (bit_vector)
+            == ghost_user.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 2u64) as usize) != 0 == ghost_user@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 2u64) as usize) != 0 == ghost_user.view(),
         ;
         assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 63u64) as usize) != 0
-            == ghost_execute_disable@) by (bit_vector)
+            == ghost_execute_disable.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 63u64) as usize) != 0
-                    == ghost_execute_disable@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 63u64) as usize) != 0
+                    == ghost_execute_disable.view(),
         ;
         assert(((ret | (0x1u64 << 52u64) as usize) & (0x1u64 << 2u64) as usize) != 0
-            == ghost_user@) by (bit_vector)
+            == ghost_user.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ret & (0x1u64 << 2u64) as usize) != 0
-                    == ghost_user@,
+                ghost_ret.view() == ret && (ret & (0x1u64 << 2u64) as usize) != 0
+                    == ghost_user.view(),
         ;
         assert(((ret | (0x1u64 << 52u64) as usize) & 0x0000_ffff_ffff_f000u64 as usize)
-            == ghost_addr@) by (bit_vector)
+            == ghost_addr.view()) by (bit_vector)
             requires
-                ghost_ret@ == ret && (ghost_ret@ & 0x0000_ffff_ffff_f000u64 as usize)
-                    == ghost_addr@,
+                ghost_ret.view() == ret && (ghost_ret.view() & 0x0000_ffff_ffff_f000u64 as usize)
+                    == ghost_addr.view(),
         ;
         ret = ret | (0x1u64 << 52u64) as usize;
 
-        assert((ret & 0x1 as usize) != 0 == ghost_present@);
+        assert((ret & 0x1 as usize) != 0 == ghost_present.view());
         assert(usize2present(ret) == page_entry.perm.present);
-        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps@);
+        assert((ret & (0x1u64 << 0x7u64) as usize) != 0 == ghost_ps.view());
         assert(usize2ps(ret) == page_entry.perm.ps);
-        assert((ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write@);
+        assert((ret & (0x1u64 << 0x1u64) as usize) != 0 == ghost_write.view());
         assert(usize2write(ret) == page_entry.perm.write);
-        assert((ret & (0x1u64 << 63u64) as usize) != 0 == ghost_execute_disable@);
+        assert((ret & (0x1u64 << 63u64) as usize) != 0 == ghost_execute_disable.view());
         assert(usize2execute_disable(ret) == page_entry.perm.execute_disable);
-        assert((ret & (0x1u64 << 2u64) as usize) != 0 == ghost_user@);
+        assert((ret & (0x1u64 << 2u64) as usize) != 0 == ghost_user.view());
         assert(usize2user(ret) == page_entry.perm.user);
         assert((ret & (0x1u64 << 52u64) as usize) != 0);
         assert(usize2kernel_present(ret) == page_entry.perm.kernel_present);
-        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr@);
+        assert((ret & 0x0000_ffff_ffff_f000u64 as usize) == ghost_addr.view());
         assert(usize2pa(ret) == page_entry.addr);
 
-        assert((ghost_ret@ | (0x1u64 << 52u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
+        assert((ghost_ret.view() | (0x1u64 << 52u64) as usize) & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64
             << 0x1u64 | 0x1u64 << 63u64 | 0x1u64 << 2u64 | 0x1u64 << 52u64 | 0x0000_ffff_ffff_f000u64)) as usize == 0)
             by (bit_vector)
             requires
-                ghost_ret@ & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64 << 0x1u64 | 0x1u64 << 63u64 | 0x1u64 << 2u64
+                ghost_ret.view() & (!(0x1u64 | 0x1u64 << 0x7u64 | 0x1u64 << 0x1u64 | 0x1u64 << 63u64 | 0x1u64 << 2u64
                     | 0x0000_ffff_ffff_f000u64 )) as usize == 0,
         ;
         assert(ret & (!(PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_PS_MASK | PAGE_ENTRY_WRITE_MASK

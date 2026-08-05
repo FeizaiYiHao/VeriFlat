@@ -16,34 +16,34 @@ impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockInvT
         &&&
         self.is_init()
         &&&
-        self.value()@.inv()
+        self.value().view().inv()
     }
 }
 impl<T:LockMajorTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockMajorTrait for PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
     open spec fn lock_major_1(&self) -> LockMajorId {
-        self.value()@.lock_major_1()
+        self.value().view().lock_major_1()
     }
     open spec fn lock_major_2(&self) -> LockMajorId {
-        self.value()@.lock_major_2()
+        self.value().view().lock_major_2()
     }    
     open spec fn lock_major_3(&self) -> LockMajorId {
-        self.value()@.lock_major_3()
+        self.value().view().lock_major_3()
     }    
     open spec fn lock_major_default(&self) -> LockMajorId {
-        self.value()@.lock_major_default()
+        self.value().view().lock_major_default()
     }
 
     open spec fn lock_major_1_predicate(&self) -> bool{
-        self.value()@.lock_major_1_predicate()
+        self.value().view().lock_major_1_predicate()
     }
     open spec fn lock_major_2_predicate(&self) -> bool{
-        self.value()@.lock_major_2_predicate()
+        self.value().view().lock_major_2_predicate()
     }
     open spec fn lock_major_3_predicate(&self) -> bool{
-        self.value()@.lock_major_3_predicate()
+        self.value().view().lock_major_3_predicate()
     }
     open spec fn lock_major_default_predicate(&self) -> bool{
-        self.value()@.lock_major_default_predicate()
+        self.value().view().lock_major_default_predicate()
     }
 }  
 
@@ -88,7 +88,7 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibi
             major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }),
-        old(lctx).obj_id_fresh(obj_id@),
+        old(lctx).obj_id_fresh(obj_id.view()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
@@ -98,13 +98,13 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibi
             process: old(perm).value().process_depth(),
             major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
-        }, final(lctx).thread_id(), ret@),
+        }, final(lctx).thread_id(), ret.view()),
         lock_ensures(old(lctx), final(lctx), final(perm).value().view(), LockId{
             container: old(perm).value().container_depth(),
             process: old(perm).value().process_depth(),
             major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
-        }, obj_id@),
+        }, obj_id.view()),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>;
@@ -124,11 +124,11 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
 
         unlock_requires::<T>(old(lctx)),
 
-        lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == old(lctx).thread_id(),
-        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == old(lctx).thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
-        old(lctx).lock_map_contains(obj_id@),
+        old(lctx).lock_map_contains(obj_id.view()),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
@@ -140,9 +140,9 @@ pub fn wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisi
             old(lctx),
             final(lctx),
             final(perm).value().view(),
-            lock_perm@.lock_id(),
-            obj_id@,
-            old(lctx).lock_id_for_obj(obj_id@),
+            lock_perm.view().lock_id(),
+            obj_id.view(),
+            old(lctx).lock_id_for_obj(obj_id.view()),
         ),
 {
      unsafe {
@@ -159,7 +159,7 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
 
         wlock_requires(old(perm).value(), old(lctx)),
         old(lctx).lock_id_acyclic(old(perm).lock_id()),
-        old(lctx).obj_id_fresh(obj_id@),
+        old(lctx).obj_id_fresh(obj_id.view()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
@@ -190,14 +190,14 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + 
                 process: old(perm).value().process_depth(),
                 major: old(perm).value().view().current_lock_major(),
                 minor: old(perm).lock_minor(),
-            }, final(lctx).thread_id(), ret.1.unwrap()@)
+            }, final(lctx).thread_id(), ret.1.unwrap().view())
             &&&
             lock_ensures(old(lctx), final(lctx), final(perm).value().view(), LockId{
                 container: old(perm).value().container_depth(),
                 process: old(perm).value().process_depth(),
                 major: old(perm).value().view().current_lock_major(),
                 minor: old(perm).lock_minor(),
-            }, obj_id@)
+            }, obj_id.view())
         },
 {
      unsafe {
@@ -223,11 +223,11 @@ pub fn has_kill_state_wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait
 
         unlock_requires::<T>(old(lctx)),
 
-        lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == old(lctx).thread_id(),
-        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == old(lctx).thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
-        old(lctx).lock_map_contains(obj_id@),
+        old(lctx).lock_map_contains(obj_id.view()),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
@@ -240,9 +240,9 @@ pub fn has_kill_state_wunlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait
             old(lctx),
             final(lctx),
             final(perm).value().view(),
-            lock_perm@.lock_id(),
-            obj_id@,
-            old(lctx).lock_id_for_obj(obj_id@),
+            lock_perm.view().lock_id(),
+            obj_id.view(),
+            old(lctx).lock_id_for_obj(obj_id.view()),
         ),
 {
      unsafe {
@@ -260,16 +260,16 @@ pub fn take<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr:&PPtr<RwL
         old(perm).value().wlocked_by(lctx),
         old(perm).value().is_init(),
 
-        lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == lctx.thread_id(),
-        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == lctx.thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
 
         take_ensures(old(perm).value(), final(perm).value()),
 
-        ret == old(perm).value()@
+        ret == old(perm).value().view()
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>;
@@ -287,9 +287,9 @@ pub fn put<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr:&PPtr<RwLo
         old(perm).value().wlocked_by(lctx),
         old(perm).value().is_init() == false,
 
-        lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == lctx.thread_id(),
-        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == lctx.thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
@@ -309,8 +309,8 @@ pub fn borrow<'a, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr:&PP
 
         perm.value().is_init(),
 
-        lock_perm@.state() is WriteLock ==> perm.value().write_lock_perm_match(lock_perm@),
-        lock_perm@.state() is ReadLock ==> perm.value().read_lock_perm_match(lock_perm@), 
+        lock_perm.view().state() is WriteLock ==> perm.value().write_lock_perm_match(lock_perm.view()),
+        lock_perm.view().state() is ReadLock ==> perm.value().read_lock_perm_match(lock_perm.view()),
     ensures
         ret == perm.value().view(),
 {
@@ -346,9 +346,9 @@ pub fn borrow_mut<'a, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr
         old(perm).value().wlocked_by(lctx),
         old(perm).value().is_init(),
 
-        lock_perm@.state() is WriteLock,
-        lock_perm@.thread_id() == lctx.thread_id(),
-        lock_perm@.lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == lctx.thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),

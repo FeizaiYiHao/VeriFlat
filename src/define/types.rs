@@ -292,7 +292,7 @@ pub struct VaRange4K {
 
 pub open spec fn spec_va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> bool {
     forall|i: int, j: int|
-        0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_1@[i] != va_range_2@[j]
+        0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_1.view().spec_index(i) != va_range_2.view().spec_index(j)
 }
 
 #[verifier(when_used_as_spec(spec_va_range_disjoint))]
@@ -313,8 +313,8 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
         if va_range_2.start + va_range_2.len * 4096 < va_range_1.start {
             assert(forall|i: usize, j: usize|
                 #![auto]
-                0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_2@[j as int]
-                    == va_range_2.start + j * 4096 && va_range_1@[i as int] == va_range_1.start + i
+                0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_2.view().spec_index(j as int)
+                    == va_range_2.start + j * 4096 && va_range_1.view().spec_index(i as int) == va_range_1.start + i
                     * 4096 && va_range_2.start + j * 4096 < va_range_1.start + i * 4096);
             return true;
         } else {
@@ -341,31 +341,31 @@ impl VaRange4K {
             self.wf(),
         ensures
             forall|i: usize|
-                0 <= i < self.len ==> self@[i as int] == spec_va_add_range(self.start, i),
+                0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range(self.start, i),
             forall|i: usize|
-                0 <= i < self.len ==> self@[i as int] == self.start + i
+                0 <= i < self.len ==> self.view().spec_index(i as int) == self.start + i
                     * 4096  //@Xiangdong Prove this
             ,
     {
     }
 
     pub closed spec fn view(&self) -> Seq<VAddr> {
-        self.view@
+        self.view.view()
     }
 
     pub open spec fn wf(&self) -> bool {
         &&& self.start + self.len * 4096 < usize::MAX
         &&& spec_va_4k_valid(self.start)
-        &&& self@.len() == self.len
-        &&& self@.no_duplicates()
-        &&& forall|i: int| #![trigger self@[i]] 0 <= i < self.len ==> spec_va_4k_valid(self@[i])
+        &&& self.view().len() == self.len
+        &&& self.view().no_duplicates()
+        &&& forall|i: int| #![trigger self.view().spec_index(i)] 0 <= i < self.len ==> spec_va_4k_valid(self.view().spec_index(i))
         &&& self.view_match_spec()
     }
 
     pub closed spec fn view_match_spec(&self) -> bool {
         &&& forall|i: usize|
             #![trigger spec_va_add_range(self.start, i)]
-            0 <= i < self.len ==> spec_va_add_range(self.start, i) == self@[i as int]
+            0 <= i < self.len ==> spec_va_add_range(self.start, i) == self.view().spec_index(i as int)
     }
 
     pub fn new(va: VAddr, len: usize) -> (ret: Self)
@@ -390,7 +390,7 @@ impl VaRange4K {
             self.wf(),
             0 <= i < self.len,
         ensures
-            ret == self@[i as int],
+            ret == self.view().spec_index(i as int),
     {
         va_add_range(self.start, i)
     }

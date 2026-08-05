@@ -94,13 +94,13 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr)]
             container_perms.dom().contains(c_ptr) 
             && 
-            container_perms.spec_index(c_ptr).view().children@.contains(child_c_ptr)
+            container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr)
             ==> 
             container_perms.dom().contains(child_c_ptr)
         &&& 
         forall|c_ptr: RwLockContainerPtr, child_c_ptr: RwLockContainerPtr|
-            #![trigger container_perms.spec_index(c_ptr).view().children@.contains(child_c_ptr)]
-            container_perms.dom().contains(c_ptr) && container_perms.spec_index(c_ptr).view().children@.contains(child_c_ptr) 
+            #![trigger container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr)]
+            container_perms.dom().contains(c_ptr) && container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr)
             ==> 
             container_perms.spec_index(child_c_ptr).view_rodata().view().parent.unwrap() == c_ptr
             &&
@@ -135,9 +135,9 @@ verus! {
             container_perms.dom().contains(container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap())
             ==> 
             {
-                container_perms[container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()].view().children@.contains(c_ptr)
+                container_perms.spec_index(container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()).view().children.view().contains(c_ptr)
                 && 
-                container_perms[container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()].view().children.map()[c_ptr] 
+                container_perms.spec_index(container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()).view().children.map().spec_index(c_ptr)
                     == container_perms.spec_index(c_ptr).view().parent_linkedlist_node.addr()
             }
     }
@@ -151,7 +151,7 @@ verus! {
             && 
             c_ptr != root_container
             ==> 
-            container_perms.spec_index(c_ptr).view().uppertree_seq@[container_perms.spec_index(c_ptr).view_rodata().view().depth - 1] 
+            container_perms.spec_index(c_ptr).view().uppertree_seq.view().spec_index(container_perms.spec_index(c_ptr).view_rodata().view().depth - 1)
                 == container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()
     }
 
@@ -159,18 +159,18 @@ verus! {
     pub open spec fn container_subtree_set_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr, sub_c_ptr: RwLockContainerPtr|
-            #![trigger container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr)]
+            #![trigger container_perms.spec_index(c_ptr).view().subtree_set.view().contains(sub_c_ptr)]
             container_perms.dom().contains(c_ptr)
             && 
-            container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr)
+            container_perms.spec_index(c_ptr).view().subtree_set.view().contains(sub_c_ptr)
             ==> 
             {
                 &&&
                 container_perms.dom().contains(sub_c_ptr)
                 &&&
-                container_perms[sub_c_ptr].view().uppertree_seq@.len() > container_perms.spec_index(c_ptr).view_rodata().view().depth
+                container_perms.spec_index(sub_c_ptr).view().uppertree_seq.view().len() > container_perms.spec_index(c_ptr).view_rodata().view().depth
                 &&& 
-                container_perms[sub_c_ptr].view().uppertree_seq@[container_perms.spec_index(c_ptr).view_rodata().view().depth as int] == c_ptr
+                container_perms.spec_index(sub_c_ptr).view().uppertree_seq.view().spec_index(container_perms.spec_index(c_ptr).view_rodata().view().depth as int) == c_ptr
 
             }
     }
@@ -179,32 +179,32 @@ verus! {
     pub open spec fn container_uppertree_seq_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr, u_ptr: RwLockContainerPtr|
-            #![trigger container_perms.spec_index(c_ptr).view().uppertree_seq@.contains(u_ptr)]
+            #![trigger container_perms.spec_index(c_ptr).view().uppertree_seq.view().contains(u_ptr)]
             container_perms.dom().contains(c_ptr)
             && 
-            container_perms.spec_index(c_ptr).view().uppertree_seq@.contains(u_ptr)
+            container_perms.spec_index(c_ptr).view().uppertree_seq.view().contains(u_ptr)
             ==> 
             container_perms.dom().contains(u_ptr)
             &&
-            container_perms.spec_index(c_ptr).view().uppertree_seq@[container_perms[u_ptr].view_rodata().view().depth as int] == u_ptr 
+            container_perms.spec_index(c_ptr).view().uppertree_seq.view().spec_index(container_perms.spec_index(u_ptr).view_rodata().view().depth as int) == u_ptr
             &&
-            container_perms[u_ptr].view_rodata().view().depth == container_perms.spec_index(c_ptr).view().uppertree_seq@.index_of(u_ptr)
+            container_perms.spec_index(u_ptr).view_rodata().view().depth == container_perms.spec_index(c_ptr).view().uppertree_seq.view().index_of(u_ptr)
             &&
-            container_perms[u_ptr].view().subtree_set@.contains(c_ptr)
+            container_perms.spec_index(u_ptr).view().subtree_set.view().contains(c_ptr)
             &&
-            container_perms[u_ptr].view().uppertree_seq@ =~= container_perms.spec_index(c_ptr).view().uppertree_seq@.subrange(0, container_perms[u_ptr].view_rodata().view().depth as int)
+            container_perms.spec_index(u_ptr).view().uppertree_seq.view() =~= container_perms.spec_index(c_ptr).view().uppertree_seq.view().subrange(0, container_perms.spec_index(u_ptr).view_rodata().view().depth as int)
     }
 
     #[verifier::opaque]
     pub open spec fn container_subtree_set_exclusive(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap,) -> bool {
         &&& 
         forall|c_ptr: RwLockContainerPtr, sub_c_ptr: RwLockContainerPtr|
-            #![trigger container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr), container_perms[sub_c_ptr].view().uppertree_seq@.contains(c_ptr)]
+            #![trigger container_perms.spec_index(c_ptr).view().subtree_set.view().contains(sub_c_ptr), container_perms.spec_index(sub_c_ptr).view().uppertree_seq.view().contains(c_ptr)]
             container_perms.dom().contains(c_ptr) 
             && 
             container_perms.dom().contains(sub_c_ptr) 
             ==> 
-            container_perms.spec_index(c_ptr).view().subtree_set@.contains(sub_c_ptr) == container_perms[sub_c_ptr].view().uppertree_seq@.contains(c_ptr)
+            container_perms.spec_index(c_ptr).view().subtree_set.view().contains(sub_c_ptr) == container_perms.spec_index(sub_c_ptr).view().uppertree_seq.view().contains(c_ptr)
     }
 
     pub open spec fn container_tree_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap,) -> bool {
@@ -253,12 +253,12 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
     requires
         container_perms_wf(*container_perms),
         container_tree_wf(root_container, *container_perms),
-        container_perms@.dom().contains(a_ptr),
-        container_perms@.dom().contains(child_ptr),
+        container_perms.view().dom().contains(a_ptr),
+        container_perms.view().dom().contains(child_ptr),
         a_ptr != child_ptr,
     ensures
-        ret == container_perms[child_ptr].view().uppertree_seq@.contains(a_ptr),
-        ret == container_perms[a_ptr].view().subtree_set@.contains(child_ptr),
+        ret == container_perms.spec_index(child_ptr).view().uppertree_seq.view().contains(a_ptr),
+        ret == container_perms.spec_index(a_ptr).view().subtree_set.view().contains(child_ptr),
 {
     proof {
         reveal(container_perms_wf);
@@ -275,10 +275,10 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
     let depth = current_child_ro.borrow().depth;
     if depth == 0 {
         assert(child_ptr == root_container);
-        assert(container_perms[root_container].view_rodata().view().depth == 0);
-        assert(container_perms[root_container].view().uppertree_seq.view().len() == container_perms[root_container].view_rodata().view().depth);
-        assert(container_perms[root_container].view().uppertree_seq.view().len() == 0);
-        assert(container_perms[root_container].view().uppertree_seq.view().contains(a_ptr) == false);
+        assert(container_perms.spec_index(root_container).view_rodata().view().depth == 0);
+        assert(container_perms.spec_index(root_container).view().uppertree_seq.view().len() == container_perms.spec_index(root_container).view_rodata().view().depth);
+        assert(container_perms.spec_index(root_container).view().uppertree_seq.view().len() == 0);
+        assert(container_perms.spec_index(root_container).view().uppertree_seq.view().contains(a_ptr) == false);
         return false;
     }
     let mut current_c_ptr = child_ptr;

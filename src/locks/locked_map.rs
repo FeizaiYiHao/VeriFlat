@@ -15,31 +15,31 @@ pub struct LockedMap<K, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>{
 
 impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     pub closed spec fn view(&self) -> Map<usize, PointsTo<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>{
-        self.map@
+        self.map.view()
     }
     pub open spec fn dom(&self) -> Set<usize>{
-        self@.dom()
+        self.view().dom()
     }
     pub open spec fn perms_wf(&self) -> bool {
         &&&
         forall|k:usize| 
-            #![trigger self@[k].is_init()]
-            #![trigger self@[k].addr()]
-            #![trigger self@.dom().contains(k)]
-            self@.dom().contains(k)
+            #![trigger self.view().spec_index(k).is_init()]
+            #![trigger self.view().spec_index(k).addr()]
+            #![trigger self.view().dom().contains(k)]
+            self.view().dom().contains(k)
             ==>
             { 
                 &&&
-                self@[k].is_init()
+                self.view().spec_index(k).is_init()
                 &&&
-                self@[k].addr() == k
+                self.view().spec_index(k).addr() == k
             }
     }
     pub open spec fn spec_index(&self, key: usize) -> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>
         recommends
-            self@.dom().contains(key),
+            self.view().dom().contains(key),
     {
-        self@[key].value()
+        self.view().spec_index(key).value()
     }
 
     pub open spec fn unchanged_except(&self, old: &Self, key:usize) -> bool{
@@ -51,7 +51,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             #![trigger old.spec_index(k)]
             old.dom().contains(k) && k != key
             ==>
-            self[k] == old[k]
+            self.spec_index(k) == old.spec_index(k)
     }
 
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
@@ -59,19 +59,19 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(lctx),
-            old(self)[key].is_init(),
+            old(self).spec_index(key).wlocked_by(lctx),
+            old(self).spec_index(key).is_init(),
 
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == lctx.thread_id(),
-            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
-            take_ensures(old(self)[key], final(self)[key]),
+            take_ensures(old(self).spec_index(key), final(self).spec_index(key)),
 
-            ret == old(self)[key]@,
+            ret == old(self).spec_index(key).view(),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         let ret = take(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
@@ -86,17 +86,17 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(lctx),
-            old(self)[key].is_init() == false,
+            old(self).spec_index(key).wlocked_by(lctx),
+            old(self).spec_index(key).is_init() == false,
 
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == lctx.thread_id(),
-            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
-            put_ensures(old(self)[key], final(self)[key], v),
+            put_ensures(old(self).spec_index(key), final(self).spec_index(key), v),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         put(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
@@ -110,12 +110,12 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             self.perms_wf(),
             self.dom().contains(key),
             
-            self[key].is_init(),
+            self.spec_index(key).is_init(),
 
-            lock_perm@.state() is WriteLock ==> self[key].write_lock_perm_match(lock_perm@),
-            lock_perm@.state() is ReadLock ==> self[key].read_lock_perm_match(lock_perm@), 
+            lock_perm.view().state() is WriteLock ==> self.spec_index(key).write_lock_perm_match(lock_perm.view()),
+            lock_perm.view().state() is ReadLock ==> self.spec_index(key).read_lock_perm_match(lock_perm.view()),
         ensures
-            ret == self[key]@,
+            ret == self.spec_index(key).view(),
     {
         let tracked perm = self.map.tracked_borrow(key);
         let ret = borrow(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), lock_perm);
@@ -127,12 +127,12 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             old(self).perms_wf(),
             old(self).dom().contains(key),
 
-            old(self)[key].wlocked_by(lctx),
-            old(self)[key].is_init(),
+            old(self).spec_index(key).wlocked_by(lctx),
+            old(self).spec_index(key).is_init(),
 
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == lctx.thread_id(),
-            lock_perm@.lock_id() == old(self)[key].locking_thread()->Write_lock_id,
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -142,19 +142,19 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
                 #![auto]
                 old(self).dom().contains(k) && k != key
                 ==>
-                final(self)[k] == old(self)[k],
+                final(self).spec_index(k) == old(self).spec_index(k),
 
             // Lock state of `key`'s rwlock is preserved.
-            final(self)[key].is_init(),
-            final(self)[key].view_rodata() == old(self)[key].view_rodata(),
-            final(self)[key].view_kernel_ghost() == old(self)[key].view_kernel_ghost(),
-            final(self)[key].view_user_ghost() == old(self)[key].view_user_ghost(),
-            final(self)[key].locking_thread() == old(self)[key].locking_thread(),
-            final(self)[key].being_killed() == old(self)[key].being_killed(),
+            final(self).spec_index(key).is_init(),
+            final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata(),
+            final(self).spec_index(key).view_kernel_ghost() == old(self).spec_index(key).view_kernel_ghost(),
+            final(self).spec_index(key).view_user_ghost() == old(self).spec_index(key).view_user_ghost(),
+            final(self).spec_index(key).locking_thread() == old(self).spec_index(key).locking_thread(),
+            final(self).spec_index(key).being_killed() == old(self).spec_index(key).being_killed(),
 
             // The `&mut T` linkage.
-            *ret == old(self)[key]@,
-            final(self)[key]@ == *final(ret),
+            *ret == old(self).spec_index(key).view(),
+            final(self).spec_index(key).view() == *final(ret),
     {
         let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
         let ret = borrow_mut(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(perm), Tracked(lctx), lock_perm);
@@ -166,7 +166,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             self.perms_wf(),
             self.dom().contains(key),
         ensures
-            ret == self[key].view_rodata(),
+            ret == self.spec_index(key).view_rodata(),
     {
         let tracked perm = self.map.tracked_borrow(key);
         let ret = borrow_rodata(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&perm));
@@ -181,7 +181,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
-            update_kernel_ghost_ensures(old(self)[key], final(self)[key], new_kernel_ghost),
+            update_kernel_ghost_ensures(old(self).spec_index(key), final(self).spec_index(key), new_kernel_ghost),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         update_kernel_ghost(&mut perm, new_kernel_ghost);
@@ -196,7 +196,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
-            update_user_ghost_ensures(old(self)[key], final(self)[key], new_user_ghost),
+            update_user_ghost_ensures(old(self).spec_index(key), final(self).spec_index(key), new_user_ghost),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         update_user_ghost(&mut perm, new_user_ghost);
@@ -250,7 +250,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 major: value.current_lock_major(),
                 minor: key,
             }),
-            old(lctx).obj_id_fresh(obj_id@),
+            old(lctx).obj_id_fresh(obj_id.view()),
         ensures
             final(self).perms_wf(),
             // ---- domain grows by exactly `key`; every prior entry unchanged ----
@@ -259,18 +259,18 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 #![auto]
                 old(self).dom().contains(k)
                 ==>
-                final(self)[k] == old(self)[k],
+                final(self).spec_index(k) == old(self).spec_index(k),
             // ---- the new entry: initialized, write-locked, holds the given payload ----
             final(self).dom().contains(key),
-            final(self)[key].is_init(),
-            final(self)[key]@ == value,
-            final(self)[key].view_rodata() == rodata,
-            final(self)[key].view_kernel_ghost() == kernel_ghost,
-            final(self)[key].view_user_ghost() == user_ghost,
-            final(self)[key].being_killed() == false,
-            final(self)[key].locking_thread() == (RwLockState::Write {
+            final(self).spec_index(key).is_init(),
+            final(self).spec_index(key).view() == value,
+            final(self).spec_index(key).view_rodata() == rodata,
+            final(self).spec_index(key).view_kernel_ghost() == kernel_ghost,
+            final(self).spec_index(key).view_user_ghost() == user_ghost,
+            final(self).spec_index(key).being_killed() == false,
+            final(self).spec_index(key).locking_thread() == (RwLockState::Write {
                 thread_id: final(lctx).thread_id(),
-                lock_id: ret@.lock_id(),
+                lock_id: ret.view().lock_id(),
             }),
             final(self).lock_id_by_key(key) == (LockId{
                 container: rodata.container_depth(),
@@ -279,10 +279,10 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 minor: key,
             }),
             // ---- the returned write perm ----
-            ret@.state() is WriteLock,
-            ret@.thread_id() == final(lctx).thread_id(),
+            ret.view().state() is WriteLock,
+            ret.view().thread_id() == final(lctx).thread_id(),
             // ---- lctx: the new lock id is registered under obj_id ----
-            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(key), obj_id@),
+            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(key), obj_id.view()),
     {
         unimplemented!()
     }
@@ -318,15 +318,15 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 #![auto]
                 old(self).dom().contains(k)
                 ==>
-                final(self)[k] == old(self)[k],
+                final(self).spec_index(k) == old(self).spec_index(k),
             final(self).dom().contains(key),
-            final(self)[key].is_init(),
-            final(self)[key]@ == perm.value().view(),
-            final(self)[key].view_rodata() == rodata,
-            final(self)[key].view_kernel_ghost() == kernel_ghost,
-            final(self)[key].view_user_ghost() == user_ghost,
-            final(self)[key].being_killed() == false,
-            final(self)[key].locking_thread() == perm.value().locking_thread(),
+            final(self).spec_index(key).is_init(),
+            final(self).spec_index(key).view() == perm.value().view(),
+            final(self).spec_index(key).view_rodata() == rodata,
+            final(self).spec_index(key).view_kernel_ghost() == kernel_ghost,
+            final(self).spec_index(key).view_user_ghost() == user_ghost,
+            final(self).spec_index(key).being_killed() == false,
+            final(self).spec_index(key).locking_thread() == perm.value().locking_thread(),
             final(self).lock_id_by_key(key) == (LockId{
                 container: rodata.container_depth(),
                 process: rodata.process_depth(),
@@ -351,30 +351,30 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self).perms_wf(),
             old(self).dom().contains(key),
 
-            wlock_requires(old(self)[key], old(lctx)),
+            wlock_requires(old(self).spec_index(key), old(lctx)),
             old(lctx).lock_id_acyclic(LockId{
                 container: old(self).spec_index(key).container_depth(),
                 process: old(self).spec_index(key).process_depth(),
                 major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }),
-            old(lctx).obj_id_fresh(obj_id@),
+            old(lctx).obj_id_fresh(obj_id.view()),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
-            wlock_ensures(old(self)[key], final(self)[key], LockId{
+            wlock_ensures(old(self).spec_index(key), final(self).spec_index(key), LockId{
                 container: old(self).spec_index(key).container_depth(),
                 process: old(self).spec_index(key).process_depth(),
                 major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
-            }, final(lctx).thread_id(), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self)[key]@, LockId{
+            }, final(lctx).thread_id(), ret.view()),
+            lock_ensures(old(lctx), final(lctx), final(self).spec_index(key).view(), LockId{
                 container: old(self).spec_index(key).container_depth(),
                 process: old(self).spec_index(key).process_depth(),
                 major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
-            }, obj_id@),
+            }, obj_id.view()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         let ret = wlock(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);
@@ -390,31 +390,31 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(old(lctx)),
-            old(self)[key].inv(),
+            old(self).spec_index(key).wlocked_by(old(lctx)),
+            old(self).spec_index(key).inv(),
 
             unlock_requires::<T>(old(lctx)),
 
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == old(lctx).thread_id(),
-            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == old(lctx).thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_map_contains(obj_id@),
-            old(lctx).lock_id_for_obj(obj_id@) == old(self).lock_id_by_key(key),
+            old(lctx).lock_map_contains(obj_id.view()),
+            old(lctx).lock_id_for_obj(obj_id.view()) == old(self).lock_id_by_key(key),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
-            final(self).spec_index(key) == final(self)[key],
+            final(self).spec_index(key) == final(self).spec_index(key),
 
-            final(self)[key].locking_thread() is None,
+            final(self).spec_index(key).locking_thread() is None,
 
-            wunlock_ensures(old(self)[key], final(self)[key]),
+            wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self)[key]@,
-                lock_perm@.lock_id(),
-                obj_id@,
+                final(self).spec_index(key).view(),
+                lock_perm.view().lock_id(),
+                obj_id.view(),
                 old(self).lock_id_by_key(key),
             ),
     {
@@ -434,12 +434,12 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self).dom().contains(key),
 
             // wlock_requires(old(self)[key], old(lctx)),
-            old(self)[key].locked_by(old(lctx)) == false,
+            old(self).spec_index(key).locked_by(old(lctx)) == false,
             old(lctx).kernel_view_locking_state() is Acquire,
             T::is_user_visible() ==> old(lctx).user_view_locking_state() is Acquire,
 
             old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
-            old(lctx).obj_id_fresh(obj_id@),
+            old(lctx).obj_id_fresh(obj_id.view()),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -453,9 +453,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             ret.0 == false ==> 
             {
                 &&&
-                old(self)[key].being_killed() == true
+                old(self).spec_index(key).being_killed() == true
                 &&&
-                old(self)[key] == final(self)[key]
+                old(self).spec_index(key) == final(self).spec_index(key)
                 &&&
                 ret.1 is None
                 &&&
@@ -463,13 +463,13 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             },
             ret.0 == true ==>{
                 &&&                
-                old(self)[key].being_killed() == false
+                old(self).spec_index(key).being_killed() == false
                 &&&
                 ret.1 is Some
                 &&&
-                wlock_ensures(old(self)[key], final(self)[key], old(self).lock_id_by_key(key), final(lctx).thread_id(), ret.1.unwrap()@)
+                wlock_ensures(old(self).spec_index(key), final(self).spec_index(key), old(self).lock_id_by_key(key), final(lctx).thread_id(), ret.1.unwrap().view())
                 &&&
-                lock_ensures(old(lctx), final(lctx), old(self)[key].view(), old(self).lock_id_by_key(key), obj_id@)
+                lock_ensures(old(lctx), final(lctx), old(self).spec_index(key).view(), old(self).lock_id_by_key(key), obj_id.view())
             },
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
@@ -509,31 +509,31 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self).perms_wf(),
             old(self).dom().contains(key),
             
-            old(self)[key].wlocked_by(old(lctx)),
-            old(self)[key].inv(),
+            old(self).spec_index(key).wlocked_by(old(lctx)),
+            old(self).spec_index(key).inv(),
 
             unlock_requires::<T>(old(lctx)),
 
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == old(lctx).thread_id(),
-            lock_perm@.lock_id() == old(self)[key].locking_thread() -> Write_lock_id,
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == old(lctx).thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_map_contains(obj_id@),
-            old(lctx).lock_id_for_obj(obj_id@) == old(self).lock_id_by_key(key),
+            old(lctx).lock_map_contains(obj_id.view()),
+            old(lctx).lock_id_for_obj(obj_id.view()) == old(self).lock_id_by_key(key),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
 
-            final(self)[key].locking_thread() is None,
-            old(self)[key].being_killed() == final(self)[key].being_killed(),
+            final(self).spec_index(key).locking_thread() is None,
+            old(self).spec_index(key).being_killed() == final(self).spec_index(key).being_killed(),
 
-            wunlock_ensures(old(self)[key], final(self)[key]),
+            wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self)[key]@,
-                lock_perm@.lock_id(),
-                obj_id@,
+                final(self).spec_index(key).view(),
+                lock_perm.view().lock_id(),
+                obj_id.view(),
                 old(self).lock_id_by_key(key),
             ),
     {
@@ -551,9 +551,9 @@ impl<T:LockInvTrait + LockRecursivelyLockedTrait, ROT, KGhostT, UGhostT, const H
         &&&
         forall|k:usize|
             #![auto]
-            old.dom().contains(k) && old[k].partial_locked_by(lctx)
+            old.dom().contains(k) && old.spec_index(k).partial_locked_by(lctx)
             ==>
-            self.dom().contains(k) && self[k] =~= old[k]
+            self.dom().contains(k) && self.spec_index(k) =~= old.spec_index(k)
     }
     proof fn random_step(&mut self, lctx: &LocalContext)
     {

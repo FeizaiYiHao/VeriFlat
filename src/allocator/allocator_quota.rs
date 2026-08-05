@@ -51,7 +51,7 @@ impl LockMajorTrait for AllocatorQuota {
 
 impl LockMinorTrait for AllocatorQuota {
     open spec fn lock_minor(&self) -> LockMinorId{
-        self.minor@
+        self.minor.view()
     }
 }
 

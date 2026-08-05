@@ -17,9 +17,9 @@ pub proof fn lemma_cache_len_fold_congruence(
 )
     requires
         s1.len() == s2.len(),
-        forall|i: int| #![trigger s1[i], s2[i]]
+        forall|i: int| #![trigger s1.spec_index(i), s2.spec_index(i)]
             0 <= i < s1.len() ==>
-            s1[i].view().linked_list.len() == s2[i].view().linked_list.len(),
+            s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
         s1.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()})
             == s2.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}),
@@ -31,14 +31,14 @@ pub proof fn lemma_cache_len_fold_congruence(
         assert(s1.fold_left(0int, f) == f(s1.drop_last().fold_left(0int, f), s1.last()));
         assert(s2.fold_left(0int, f) == f(s2.drop_last().fold_left(0int, f), s2.last()));
         assert forall|i: int| 0 <= i < s1.drop_last().len()
-            implies #[trigger] s1.drop_last()[i].view().linked_list.len() == s2.drop_last()[i].view().linked_list.len()
+            implies #[trigger] s1.drop_last().spec_index(i).view().linked_list.len() == s2.drop_last().spec_index(i).view().linked_list.len()
         by {
-            assert(s1.drop_last()[i] == s1[i]);
-            assert(s2.drop_last()[i] == s2[i]);
+            assert(s1.drop_last().spec_index(i) == s1.spec_index(i));
+            assert(s2.drop_last().spec_index(i) == s2.spec_index(i));
         };
         lemma_cache_len_fold_congruence(s1.drop_last(), s2.drop_last());
-        assert(s1.last() == s1[s1.len() - 1]);
-        assert(s2.last() == s2[s2.len() - 1]);
+        assert(s1.last() == s1.spec_index(s1.len() - 1));
+        assert(s2.last() == s2.spec_index(s2.len() - 1));
     }
 }
 
@@ -54,10 +54,10 @@ pub proof fn lemma_cache_len_fold_change_one(
     requires
         s1.len() == s2.len(),
         0 <= j < s1.len(),
-        s1[j].view().linked_list.len() == s2[j].view().linked_list.len() + 1,
-        forall|i: int| #![trigger s1[i]] #![trigger s2[i]]
+        s1.spec_index(j).view().linked_list.len() == s2.spec_index(j).view().linked_list.len() + 1,
+        forall|i: int| #![trigger s1.spec_index(i)] #![trigger s2.spec_index(i)]
             0 <= i < s1.len() && i != j ==>
-            s1[i].view().linked_list.len() == s2[i].view().linked_list.len(),
+            s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
         s1.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()})
             == s2.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
@@ -67,27 +67,27 @@ pub proof fn lemma_cache_len_fold_change_one(
     // s1 nonempty (j is a valid index); peel the last element off each fold.
     assert(s1.fold_left(0int, f) == f(s1.drop_last().fold_left(0int, f), s1.last()));
     assert(s2.fold_left(0int, f) == f(s2.drop_last().fold_left(0int, f), s2.last()));
-    assert(s1.last() == s1[s1.len() - 1]);
-    assert(s2.last() == s2[s2.len() - 1]);
+    assert(s1.last() == s1.spec_index(s1.len() - 1));
+    assert(s2.last() == s2.spec_index(s2.len() - 1));
     if j == s1.len() - 1 {
         // Change is at the last element; prefixes are pointwise-equal length.
         assert forall|i: int| 0 <= i < s1.drop_last().len()
-            implies #[trigger] s1.drop_last()[i].view().linked_list.len() == s2.drop_last()[i].view().linked_list.len()
+            implies #[trigger] s1.drop_last().spec_index(i).view().linked_list.len() == s2.drop_last().spec_index(i).view().linked_list.len()
         by {
-            assert(s1.drop_last()[i] == s1[i]);
-            assert(s2.drop_last()[i] == s2[i]);
+            assert(s1.drop_last().spec_index(i) == s1.spec_index(i));
+            assert(s2.drop_last().spec_index(i) == s2.spec_index(i));
         };
         lemma_cache_len_fold_congruence(s1.drop_last(), s2.drop_last());
     } else {
         // Change is in the prefix; last elements have equal length.
         assert forall|i: int| 0 <= i < s1.drop_last().len() && i != j
-            implies #[trigger] s1.drop_last()[i].view().linked_list.len() == s2.drop_last()[i].view().linked_list.len()
+            implies #[trigger] s1.drop_last().spec_index(i).view().linked_list.len() == s2.drop_last().spec_index(i).view().linked_list.len()
         by {
-            assert(s1.drop_last()[i] == s1[i]);
-            assert(s2.drop_last()[i] == s2[i]);
+            assert(s1.drop_last().spec_index(i) == s1.spec_index(i));
+            assert(s2.drop_last().spec_index(i) == s2.spec_index(i));
         };
-        assert(s1.drop_last()[j] == s1[j]);
-        assert(s2.drop_last()[j] == s2[j]);
+        assert(s1.drop_last().spec_index(j) == s1.spec_index(j));
+        assert(s2.drop_last().spec_index(j) == s2.spec_index(j));
         lemma_cache_len_fold_change_one(s1.drop_last(), s2.drop_last(), j);
     }
 }
@@ -114,11 +114,11 @@ pub proof fn lemma_cache_len_fold_change_one_array(
         old_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()})
             == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
 {
-    assert forall|i: int| #![trigger old_arr.view()[i], new_arr.view()[i]]
+    assert forall|i: int| #![trigger old_arr.view().spec_index(i), new_arr.view().spec_index(i)]
         0 <= i < old_arr.view().len() && i != j
-        implies old_arr.view()[i].view().linked_list.len() == new_arr.view()[i].view().linked_list.len()
+        implies old_arr.view().spec_index(i).view().linked_list.len() == new_arr.view().spec_index(i).view().linked_list.len()
     by {
-        assert(new_arr[i as usize] === old_arr[i as usize]);
+        assert(new_arr.spec_index(i as usize) === old_arr.spec_index(i as usize));
     };
     lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j);
 }
@@ -150,16 +150,16 @@ pub proof fn lemma_cache_len_fold_ge_elem(
     requires
         0 <= j < s.len(),
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= s[j].view().linked_list.len(),
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= s.spec_index(j).view().linked_list.len(),
     decreases s.len(),
 {
     let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
     assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
-    assert(s.last() == s[s.len() - 1]);
+    assert(s.last() == s.spec_index(s.len() - 1));
     if j == s.len() - 1 {
         lemma_cache_len_fold_nonneg(s.drop_last());
     } else {
-        assert(s.drop_last()[j] == s[j]);
+        assert(s.drop_last().spec_index(j) == s.spec_index(j));
         lemma_cache_len_fold_ge_elem(s.drop_last(), j);
     }
 }
@@ -171,7 +171,7 @@ pub proof fn lemma_cache_len_fold_all_zero(
     s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
 )
     requires
-        forall|j: int| #![trigger s[j]] 0 <= j < s.len() ==> s[j].view().linked_list.view().len() == 0,
+        forall|j: int| #![trigger s.spec_index(j)] 0 <= j < s.len() ==> s.spec_index(j).view().linked_list.view().len() == 0,
     ensures
         s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) == 0,
     decreases s.len(),
@@ -180,9 +180,9 @@ pub proof fn lemma_cache_len_fold_all_zero(
     if s.len() == 0 {
     } else {
         assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
-        assert(s.last() == s[s.len() - 1]);
-        assert forall|j: int| #![trigger s.drop_last()[j]] 0 <= j < s.drop_last().len() implies s.drop_last()[j].view().linked_list.view().len() == 0 by {
-            assert(s.drop_last()[j] == s[j]);
+        assert(s.last() == s.spec_index(s.len() - 1));
+        assert forall|j: int| #![trigger s.drop_last().spec_index(j)] 0 <= j < s.drop_last().len() implies s.drop_last().spec_index(j).view().linked_list.view().len() == 0 by {
+            assert(s.drop_last().spec_index(j) == s.spec_index(j));
         };
         lemma_cache_len_fold_all_zero(s.drop_last());
     }

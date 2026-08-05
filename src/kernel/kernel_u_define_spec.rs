@@ -50,7 +50,7 @@ verus! {
                         children: p.children.view(),
                         depth: p_ro.depth,
                         uppertree_seq: p.uppertree_seq.view(),
-                        subtree_set: p.subtree_set@,
+                        subtree_set: p.subtree_set.view(),
                         owned_threads: p.owned_threads.view(),
                         killed: kernel_k.process_map.spec_index(ptr).being_killed(),
                     }

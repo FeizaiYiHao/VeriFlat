@@ -28,43 +28,43 @@ pub open spec fn single_iotlb_subset_of_iommu_table(
     >,
 ) -> bool {
     &&& forall|iova: Iova|
-        #![trigger iommu_table@.mapping_4k().dom().contains(iova)]
-        #![trigger iotlb.entries_4k()[iova]]
+        #![trigger iommu_table.view().mapping_4k().dom().contains(iova)]
+        #![trigger iotlb.entries_4k().spec_index(iova)]
         iotlb.entries_4k().dom().contains(iova)
         ==>
         iova_4k_valid(iova)
-        && iommu_table@.mapping_4k().dom().contains(iova)
+        && iommu_table.view().mapping_4k().dom().contains(iova)
         && (iommu_table.wlocked() == false
-            ==> iommu_table@.mapping_4k()[iova].present)
+            ==> iommu_table.view().mapping_4k().spec_index(iova).present)
         && spec_iotlb_entry_equal_to_map_entry(
-            iotlb.entries_4k()[iova],
-            iommu_table@.mapping_4k()[iova],
+            iotlb.entries_4k().spec_index(iova),
+            iommu_table.view().mapping_4k().spec_index(iova),
         )
     &&& forall|iova: Iova|
-        #![trigger iommu_table@.mapping_2m().dom().contains(iova)]
-        #![trigger iotlb.entries_2m()[iova]]
+        #![trigger iommu_table.view().mapping_2m().dom().contains(iova)]
+        #![trigger iotlb.entries_2m().spec_index(iova)]
         iotlb.entries_2m().dom().contains(iova)
         ==>
         iova_2m_valid(iova)
-        && iommu_table@.mapping_2m().dom().contains(iova)
+        && iommu_table.view().mapping_2m().dom().contains(iova)
         && (iommu_table.wlocked() == false
-            ==> iommu_table@.mapping_2m()[iova].present)
+            ==> iommu_table.view().mapping_2m().spec_index(iova).present)
         && spec_iotlb_entry_equal_to_map_entry(
-            iotlb.entries_2m()[iova],
-            iommu_table@.mapping_2m()[iova],
+            iotlb.entries_2m().spec_index(iova),
+            iommu_table.view().mapping_2m().spec_index(iova),
         )
     &&& forall|iova: Iova|
-        #![trigger iommu_table@.mapping_1g().dom().contains(iova)]
-        #![trigger iotlb.entries_1g()[iova]]
+        #![trigger iommu_table.view().mapping_1g().dom().contains(iova)]
+        #![trigger iotlb.entries_1g().spec_index(iova)]
         iotlb.entries_1g().dom().contains(iova)
         ==>
         iova_1g_valid(iova)
-        && iommu_table@.mapping_1g().dom().contains(iova)
+        && iommu_table.view().mapping_1g().dom().contains(iova)
         && (iommu_table.wlocked() == false
-            ==> iommu_table@.mapping_1g()[iova].present)
+            ==> iommu_table.view().mapping_1g().spec_index(iova).present)
         && spec_iotlb_entry_equal_to_map_entry(
-            iotlb.entries_1g()[iova],
-            iommu_table@.mapping_1g()[iova],
+            iotlb.entries_1g().spec_index(iova),
+            iommu_table.view().mapping_1g().spec_index(iova),
         )
 }
 

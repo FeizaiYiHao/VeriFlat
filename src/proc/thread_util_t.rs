@@ -28,28 +28,28 @@ use vstd::simple_pptr::*;
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             thread_value.inv(),
-            old(lctx).obj_id_fresh(obj_id@),
+            old(lctx).obj_id_fresh(obj_id.view()),
         ensures
             // ---- the ThreadRwLock: initialized, write-locked, holds thread_value ----
-            ret.0@.addr() == page_ptr,
-            ret.0@.is_init(),
-            ret.0@.value().is_init(),
-            ret.0@.value().view() == thread_value,
-            ret.0@.value().being_killed() == false,
-            ret.0@.value().locking_thread() == (RwLockState::Write {
+            ret.0.view().addr() == page_ptr,
+            ret.0.view().is_init(),
+            ret.0.view().value().is_init(),
+            ret.0.view().value().view() == thread_value,
+            ret.0.view().value().being_killed() == false,
+            ret.0.view().value().locking_thread() == (RwLockState::Write {
                 thread_id: final(lctx).thread_id(),
-                lock_id: ret.1@.lock_id(),
+                lock_id: ret.1.view().lock_id(),
             }),
             // ---- the LockPerm ----
-            ret.1@.state() is WriteLock,
-            ret.1@.thread_id() == final(lctx).thread_id(),
+            ret.1.view().state() is WriteLock,
+            ret.1.view().thread_id() == final(lctx).thread_id(),
             // ---- lctx: the thread lock id registered under obj_id ----
             lock_ensures(old(lctx), final(lctx), thread_value, LockId{
                 container: LockOwnerId::NotApp,
                 process: LockOwnerId::NotApp,
                 major: thread_value.current_lock_major(),
                 minor: page_ptr,
-            }, obj_id@),
+            }, obj_id.view()),
     {
         unimplemented!()
     }

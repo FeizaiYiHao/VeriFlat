@@ -29,26 +29,26 @@ impl<A, const N: usize> Array<A, N> {
             0 <= i < N,
             self.wf(),
         ensures
-            *out == self.seq@[i as int],
+            *out == self.seq.view().spec_index(i as int),
     {
         &self.ar[i]
     }
 
     #[verifier(inline)]
     pub open spec fn spec_index(self, i: usize) -> A
-        recommends self@.len() == N,
+        recommends self.view().len() == N,
             0 <= i < N,
     {
-        self@[i as int]
+        self.view().spec_index(i as int)
     }
 
     #[verifier(inline)]
     pub open spec fn view(&self) -> Seq<A>{
-        self.seq@
+        self.seq.view()
     }
 
     pub open spec fn wf(&self) -> bool{
-        self.seq@.len() == N
+        self.seq.view().len() == N
     }
 
 }
@@ -60,7 +60,7 @@ impl<A, const N: usize> Array<A, N> {
             0 <= i < N,
             old(self).wf(),
         ensures
-            final(self).seq@ =~= old(self).seq@.update(i as int, out),
+            final(self).seq.view() =~= old(self).seq.view().update(i as int, out),
             final(self).wf(),
     {
         self.ar[i] = out;
@@ -74,7 +74,7 @@ impl<const N: usize> Array<u8, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] final(self)@[index] == 0,
+            forall|index:int| 0<= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
             final(self).wf(),
     {
         let mut i = 0;
@@ -83,13 +83,13 @@ impl<const N: usize> Array<u8, N> {
                 N <= usize::MAX,
                 0<=i<=N,
                 self.wf(),
-                forall|j:int| #![auto] 0<=j<i ==> self@[j] == 0,
+                forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0,
         {
-            let tmp:Ghost<Seq<u8>> = Ghost(self@);
-            assert(forall|j:int| #![auto] 0<=j<i ==> self@[j] == 0);
+            let tmp:Ghost<Seq<u8>> = Ghost(self.view());
+            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
             self.set(i,0);
-            assert(self@ =~= tmp@.update(i as int,0));
-            assert(forall|j:int| #![auto] 0<=j<i ==> self@[j] == 0);
+            assert(self.view() =~= tmp.view().update(i as int,0));
+            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
         }
     }
 }
@@ -101,7 +101,7 @@ impl<const N: usize> Array<usize, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] final(self)@[index] == 0,
+            forall|index:int| 0<= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
             final(self).wf(),
     {
         let mut i = 0;
@@ -110,13 +110,13 @@ impl<const N: usize> Array<usize, N> {
                 N <= usize::MAX,
                 0<=i<=N,
                 self.wf(),
-                forall|j:int| #![auto] 0<=j<i ==> self@[j] == 0,
+                forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0,
         {
-            let tmp:Ghost<Seq<usize>> = Ghost(self@);
-            assert(forall|j:int| #![auto] 0<=j<i ==> self@[j] == 0);
+            let tmp:Ghost<Seq<usize>> = Ghost(self.view());
+            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
             self.set(i,0);
-            assert(self@ =~= tmp@.update(i as int,0));
-            assert(forall|j:int| #![auto] 0<=j<i ==> self@[j] == 0);
+            assert(self.view() =~= tmp.view().update(i as int,0));
+            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
         }
     }
 }
@@ -128,7 +128,7 @@ impl<T: Copy, const N: usize> Array<Option<T>, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] final(self)@[index] is None,
+            forall|index:int| 0<= index < N ==> #[trigger] final(self).view().spec_index(index) is None,
             final(self).wf(),
     {
         let mut i = 0;
@@ -137,13 +137,13 @@ impl<T: Copy, const N: usize> Array<Option<T>, N> {
                 N <= usize::MAX,
                 0<=i<=N,
                 self.wf(),
-                forall|j:int| #![auto] 0<=j<i ==> self@[j] is None,
+                forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None,
         {
-            let tmp:Ghost<Seq<Option<T>>> = Ghost(self@);
-            assert(forall|j:int| #![auto] 0<=j<i ==> self@[j] is None);
+            let tmp:Ghost<Seq<Option<T>>> = Ghost(self.view());
+            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None);
             self.set(i,None);
-            assert(self@ =~= tmp@.update(i as int,None));
-            assert(forall|j:int| #![auto] 0<=j<i ==> self@[j] is None);
+            assert(self.view() =~= tmp.view().update(i as int,None));
+            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None);
         }
     }
 }
@@ -153,7 +153,7 @@ impl<A:Copy, const N: usize> Array<A, N> {
     pub fn new_with_init_value(v:A) -> (ret: Self)
         ensures
             ret.wf(),
-            ret@ == Seq::new(N as nat, |i:int|{v}),
+            ret.view() == Seq::new(N as nat, |i:int|{v}),
     {
         let ret = Self {
             ar: [v;N],
@@ -165,7 +165,7 @@ impl<A:Copy, const N: usize> Array<A, N> {
 fn test<const N: usize>(ar: &mut Array<u64, N>)
     requires
         old(ar).wf(),
-        old(ar)[1] == 0,
+        old(ar).spec_index(1) == 0,
         N == 2,
 
     {

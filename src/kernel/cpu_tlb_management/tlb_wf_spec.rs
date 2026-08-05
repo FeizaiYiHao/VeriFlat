@@ -18,37 +18,37 @@ verus! {
     {
         &&&
         forall|va: VAddr|
-            #![trigger pagetable@.mapping_4k().dom().contains(va)]
-            #![trigger cpu_tlb.tlb_4k()[va]]
+            #![trigger pagetable.view().mapping_4k().dom().contains(va)]
+            #![trigger cpu_tlb.tlb_4k().spec_index(va)]
             va_4k_valid(va) && cpu_tlb.tlb_4k().dom().contains(va) 
             ==>
-            pagetable@.mapping_4k().dom().contains(va)
+            pagetable.view().mapping_4k().dom().contains(va)
             && 
-            pagetable.wlocked() == false ==> pagetable@.mapping_4k()[va].present
+            pagetable.wlocked() == false ==> pagetable.view().mapping_4k().spec_index(va).present
             &&
-            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_4k()[va], pagetable@.mapping_4k()[va])
+            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_4k().spec_index(va), pagetable.view().mapping_4k().spec_index(va))
         &&&
         forall|va: VAddr|
-            #![trigger pagetable@.mapping_2m().dom().contains(va)]
-            #![trigger cpu_tlb.tlb_2m()[va]]
+            #![trigger pagetable.view().mapping_2m().dom().contains(va)]
+            #![trigger cpu_tlb.tlb_2m().spec_index(va)]
             va_2m_valid(va) && cpu_tlb.tlb_2m().dom().contains(va)
             ==>
-            pagetable@.mapping_2m().dom().contains(va)
+            pagetable.view().mapping_2m().dom().contains(va)
             && 
-            pagetable.wlocked() == false ==> pagetable@.mapping_2m()[va].present
+            pagetable.wlocked() == false ==> pagetable.view().mapping_2m().spec_index(va).present
             &&
-            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_2m()[va], pagetable@.mapping_2m()[va])
+            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_2m().spec_index(va), pagetable.view().mapping_2m().spec_index(va))
         &&&
         forall|va: VAddr|
-            #![trigger pagetable@.mapping_1g().dom().contains(va)]
-            #![trigger cpu_tlb.tlb_1g()[va]]
+            #![trigger pagetable.view().mapping_1g().dom().contains(va)]
+            #![trigger cpu_tlb.tlb_1g().spec_index(va)]
             va_1g_valid(va) && cpu_tlb.tlb_1g().dom().contains(va) 
             ==>
-            pagetable@.mapping_1g().dom().contains(va)
+            pagetable.view().mapping_1g().dom().contains(va)
             && 
-            pagetable.wlocked() == false ==> pagetable@.mapping_1g()[va].present
+            pagetable.wlocked() == false ==> pagetable.view().mapping_1g().spec_index(va).present
             &&
-            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g()[va], pagetable@.mapping_1g()[va])
+            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g().spec_index(va), pagetable.view().mapping_1g().spec_index(va))
     }
 
     /// There is no lock involved. This has to be true all the time.
@@ -65,6 +65,6 @@ verus! {
             &&
             cpu_tlb.spec_index((cpu_id, pcid)).is_empty() == false
             ==>
-            single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_map.spec_index(cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap()[pcid].unwrap().pagetable_ptr))
+            single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_map.spec_index(cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr))
     }
 }

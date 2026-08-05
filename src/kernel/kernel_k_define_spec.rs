@@ -393,18 +393,18 @@ verus! {
                 boundary_allocators_preserved(old(self), final(self), old(lctx)),
                 forall|p: RwLockPageAllocatorPtr, c: CpuId|
                     #![trigger old(self).allocator_4k_map.spec_index(p)
-                        .cpu_caches[c]@.wlocked_by(old(lctx))]
+                        .cpu_caches.spec_index(c).view().wlocked_by(old(lctx))]
                     old(self).allocator_4k_map.dom().contains(p)
                         && cpu_id_valid(c)
                         && old(self).allocator_4k_map.spec_index(p)
-                            .cpu_caches[c]@.wlocked_by(old(lctx))
+                            .cpu_caches.spec_index(c).view().wlocked_by(old(lctx))
                     ==> final(self).allocator_4k_map.dom().contains(p)
                         && final(self).allocator_4k_map.spec_index(p)
-                            .cpu_caches[c]@
+                            .cpu_caches.spec_index(c).view()
                             == old(self).allocator_4k_map.spec_index(p)
-                                .cpu_caches[c]@
+                                .cpu_caches.spec_index(c).view()
                         && final(self).allocator_4k_map.spec_index(p)
-                            .cpu_caches[c]@.wlocked_by(final(lctx)),
+                            .cpu_caches.spec_index(c).view().wlocked_by(final(lctx)),
                 forall|p: RwLockPageAllocatorPtr|
                     #![trigger old(self).allocator_4k_map.spec_index(p)
                         .global_pool.wlocked_by(old(lctx))]
@@ -460,13 +460,13 @@ verus! {
                         && final(self).scheduler_map.spec_index(s)
                             == old(self).scheduler_map.spec_index(s),
                 forall|i: PageIndex|
-                    #![trigger old(self).page_array[i]@.locked_by(old(lctx))]
-                    page_index_wf(i) && old(self).page_array[i]@.locked_by(old(lctx))
-                    ==> final(self).page_array[i]@ == old(self).page_array[i]@,
+                    #![trigger old(self).page_array.spec_index(i).view().locked_by(old(lctx))]
+                    page_index_wf(i) && old(self).page_array.spec_index(i).view().locked_by(old(lctx))
+                    ==> final(self).page_array.spec_index(i).view() == old(self).page_array.spec_index(i).view(),
                 forall|c: CpuId|
-                    #![trigger old(self).cpu_array[c]@.locked_by(old(lctx))]
-                    cpu_id_valid(c) && old(self).cpu_array[c]@.locked_by(old(lctx))
-                    ==> final(self).cpu_array[c]@ == old(self).cpu_array[c]@,
+                    #![trigger old(self).cpu_array.spec_index(c).view().locked_by(old(lctx))]
+                    cpu_id_valid(c) && old(self).cpu_array.spec_index(c).view().locked_by(old(lctx))
+                    ==> final(self).cpu_array.spec_index(c).view() == old(self).cpu_array.spec_index(c).view(),
                 lock_id_aligned(final(self), final(lctx)),
         {
             unimplemented!()
@@ -483,13 +483,13 @@ verus! {
             page_array, lctx.page_lock_map(), lctx.thread_id())
     {
         forall|i: PageIndex|
-            #![trigger lctx.page_lock_map()[i]]
+            #![trigger lctx.page_lock_map().spec_index(i)]
             #![trigger lctx.page_lock_map().dom().contains(i)]
             #![trigger page_array.lock_id_by_index(i)]
             lctx.page_lock_map().dom().contains(i)
             ==>
             page_index_wf(i)
-            && page_array.lock_id_by_index(i) == lctx.page_lock_map()[i]
+            && page_array.lock_id_by_index(i) == lctx.page_lock_map().spec_index(i)
     }
 
     /// Dynamic ordering ids agree with their currently locked objects before
@@ -512,13 +512,13 @@ verus! {
             lock_map.dom().contains(c)
             ==>
             container_map.dom().contains(c)
-            && container_map[c].locked_by_thread(thread_id)
-            && container_map[c].locking_thread() is Write
-            && lock_map[c] == container_map.lock_id_by_key(c))
+            && container_map.spec_index(c).locked_by_thread(thread_id)
+            && container_map.spec_index(c).locking_thread() is Write
+            && lock_map.spec_index(c) == container_map.lock_id_by_key(c))
         // reverse
         &&& (forall|c: RwLockContainerPtr|
             #![trigger container_map.dom().contains(c)]
-            container_map.dom().contains(c) && container_map[c].locked_by_thread(thread_id)
+            container_map.dom().contains(c) && container_map.spec_index(c).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(c))
     }
 
@@ -533,12 +533,12 @@ verus! {
             lock_map.dom().contains(p)
             ==>
             process_map.dom().contains(p)
-            && process_map[p].locked_by_thread(thread_id)
-            && process_map[p].locking_thread() is Write
-            && lock_map[p] == process_map.lock_id_by_key(p))
+            && process_map.spec_index(p).locked_by_thread(thread_id)
+            && process_map.spec_index(p).locking_thread() is Write
+            && lock_map.spec_index(p) == process_map.lock_id_by_key(p))
         &&& (forall|p: RwLockProcessPtr|
             #![trigger process_map.dom().contains(p)]
-            process_map.dom().contains(p) && process_map[p].locked_by_thread(thread_id)
+            process_map.dom().contains(p) && process_map.spec_index(p).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(p))
     }
 
@@ -553,12 +553,12 @@ verus! {
             lock_map.dom().contains(t)
             ==>
             thread_map.dom().contains(t)
-            && thread_map[t].locked_by_thread(thread_id)
-            && thread_map[t].locking_thread() is Write
-            && lock_map[t] == thread_map.lock_id_by_key(t))
+            && thread_map.spec_index(t).locked_by_thread(thread_id)
+            && thread_map.spec_index(t).locking_thread() is Write
+            && lock_map.spec_index(t) == thread_map.lock_id_by_key(t))
         &&& (forall|t: RwLockThreadPtr|
             #![trigger thread_map.dom().contains(t)]
-            thread_map.dom().contains(t) && thread_map[t].locked_by_thread(thread_id)
+            thread_map.dom().contains(t) && thread_map.spec_index(t).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(t))
     }
 
@@ -573,9 +573,9 @@ verus! {
             lock_map.dom().contains(e)
             ==>
             endpoint_map.dom().contains(e)
-            && endpoint_map[e].locked_by_thread(thread_id)
-            && endpoint_map[e].locking_thread() is Write
-            && lock_map[e] == (LockId {
+            && endpoint_map.spec_index(e).locked_by_thread(thread_id)
+            && endpoint_map.spec_index(e).locking_thread() is Write
+            && lock_map.spec_index(e) == (LockId {
                 container: LockOwnerId::none(),
                 process: LockOwnerId::none(),
                 major: ENDPOINT_LOCK_MAJOR,
@@ -583,7 +583,7 @@ verus! {
             }))
         &&& (forall|e: RwLockEndpointPtr|
             #![trigger endpoint_map.dom().contains(e)]
-            endpoint_map.dom().contains(e) && endpoint_map[e].locked_by_thread(thread_id)
+            endpoint_map.dom().contains(e) && endpoint_map.spec_index(e).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(e))
     }
 
@@ -598,12 +598,12 @@ verus! {
             lock_map.dom().contains(s)
             ==>
             scheduler_map.dom().contains(s)
-            && scheduler_map[s].locked_by_thread(thread_id)
-            && scheduler_map[s].locking_thread() is Write
-            && lock_map[s] == scheduler_map.lock_id_by_key(s))
+            && scheduler_map.spec_index(s).locked_by_thread(thread_id)
+            && scheduler_map.spec_index(s).locking_thread() is Write
+            && lock_map.spec_index(s) == scheduler_map.lock_id_by_key(s))
         &&& (forall|s: RwLockSchedulerPtr|
             #![trigger scheduler_map.dom().contains(s)]
-            scheduler_map.dom().contains(s) && scheduler_map[s].locked_by_thread(thread_id)
+            scheduler_map.dom().contains(s) && scheduler_map.spec_index(s).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(s))
     }
 
@@ -618,14 +618,14 @@ verus! {
             lock_map.dom().contains(allocator_ptr)
             ==>
             allocator_map.dom().contains(allocator_ptr)
-            && allocator_map[allocator_ptr].locked_by_thread(thread_id)
-            && allocator_map[allocator_ptr].locking_thread() is Write
-            && lock_map[allocator_ptr]
+            && allocator_map.spec_index(allocator_ptr).locked_by_thread(thread_id)
+            && allocator_map.spec_index(allocator_ptr).locking_thread() is Write
+            && lock_map.spec_index(allocator_ptr)
                 == allocator_map.lock_id_by_key(allocator_ptr))
         &&& (forall|allocator_ptr: RwLockPcidAllocatorPtr|
             #![trigger allocator_map.dom().contains(allocator_ptr)]
             allocator_map.dom().contains(allocator_ptr)
-            && allocator_map[allocator_ptr].locked_by_thread(thread_id)
+            && allocator_map.spec_index(allocator_ptr).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(allocator_ptr))
     }
 
@@ -640,12 +640,12 @@ verus! {
             lock_map.dom().contains(pt)
             ==>
             pagetable_map.dom().contains(pt)
-            && pagetable_map[pt].locked_by_thread(thread_id)
-            && pagetable_map[pt].locking_thread() is Write
-            && lock_map[pt] == pt.to_lock_id())
+            && pagetable_map.spec_index(pt).locked_by_thread(thread_id)
+            && pagetable_map.spec_index(pt).locking_thread() is Write
+            && lock_map.spec_index(pt) == pt.to_lock_id())
         &&& (forall|pt: RwLockPageTableRoot|
             #![trigger pagetable_map.dom().contains(pt)]
-            pagetable_map.dom().contains(pt) && pagetable_map[pt].locked_by_thread(thread_id)
+            pagetable_map.dom().contains(pt) && pagetable_map.spec_index(pt).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(pt))
     }
 
@@ -660,14 +660,14 @@ verus! {
             lock_map.dom().contains(iommu_root)
             ==>
             iommu_table_map.dom().contains(iommu_root)
-            && iommu_table_map[iommu_root].locked_by_thread(thread_id)
-            && iommu_table_map[iommu_root].locking_thread() is Write
-            && lock_map[iommu_root]
+            && iommu_table_map.spec_index(iommu_root).locked_by_thread(thread_id)
+            && iommu_table_map.spec_index(iommu_root).locking_thread() is Write
+            && lock_map.spec_index(iommu_root)
                 == iommu_table_map.lock_id_by_key(iommu_root))
         &&& (forall|iommu_root: RwLockPageTableRoot|
             #![trigger iommu_table_map.dom().contains(iommu_root)]
             iommu_table_map.dom().contains(iommu_root)
-            && iommu_table_map[iommu_root].locked_by_thread(thread_id)
+            && iommu_table_map.spec_index(iommu_root).locked_by_thread(thread_id)
             ==> lock_map.dom().contains(iommu_root))
     }
 
@@ -679,17 +679,17 @@ verus! {
     ) -> bool {
         &&& (forall|i: PageIndex|
             #![trigger lock_map.dom().contains(i)]
-            #![trigger page_array[i]]
+            #![trigger page_array.spec_index(i)]
             lock_map.dom().contains(i)
             ==>
             page_index_wf(i)
-            && page_array[i]@.locked_by_thread(thread_id)
-            && page_array[i]@.locking_thread() is Write
-            && lock_map[i] == page_array.lock_id_by_index(i))
+            && page_array.spec_index(i).view().locked_by_thread(thread_id)
+            && page_array.spec_index(i).view().locking_thread() is Write
+            && lock_map.spec_index(i) == page_array.lock_id_by_index(i))
         &&& (forall|i: PageIndex|
-            #![trigger page_array[i]@.locked_by_thread(thread_id)]
-            #![trigger page_array[i]]
-            page_index_wf(i) && page_array[i]@.locked_by_thread(thread_id)
+            #![trigger page_array.spec_index(i).view().locked_by_thread(thread_id)]
+            #![trigger page_array.spec_index(i)]
+            page_index_wf(i) && page_array.spec_index(i).view().locked_by_thread(thread_id)
             ==> lock_map.dom().contains(i))
     }
 
@@ -701,17 +701,17 @@ verus! {
     ) -> bool {
         &&& (forall|c: CpuId|
             #![trigger lock_map.dom().contains(c)]
-            #![trigger cpu_array[c]]
+            #![trigger cpu_array.spec_index(c)]
             lock_map.dom().contains(c)
             ==>
             cpu_id_valid(c)
-            && cpu_array[c]@.locked_by_thread(thread_id)
-            && cpu_array[c]@.locking_thread() is Write
-            && lock_map[c] == cpu_array.lock_id_by_index(c))
+            && cpu_array.spec_index(c).view().locked_by_thread(thread_id)
+            && cpu_array.spec_index(c).view().locking_thread() is Write
+            && lock_map.spec_index(c) == cpu_array.lock_id_by_index(c))
         &&& (forall|c: CpuId|
-            #![trigger cpu_array[c]@.locked_by_thread(thread_id)]
-            #![trigger cpu_array[c]]
-            cpu_id_valid(c) && cpu_array[c]@.locked_by_thread(thread_id)
+            #![trigger cpu_array.spec_index(c).view().locked_by_thread(thread_id)]
+            #![trigger cpu_array.spec_index(c)]
+            cpu_id_valid(c) && cpu_array.spec_index(c).view().locked_by_thread(thread_id)
             ==> lock_map.dom().contains(c))
     }
 
@@ -727,9 +727,9 @@ verus! {
             lock_map.dom().contains(AllocatorLockObjId::Quota(p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].quota.locked_by_thread(thread_id)
-            && alloc_map[p].quota.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::Quota(p)] == alloc_map[p].quota.lock_id())
+            && alloc_map.spec_index(p).quota.locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).quota.locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::Quota(p)) == alloc_map.spec_index(p).quota.lock_id())
         &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
             #![trigger lock_map.dom().contains(AllocatorLockObjId::Cache(p, c))]
             #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
@@ -737,33 +737,33 @@ verus! {
             ==>
             alloc_map.dom().contains(p)
             && cpu_id_valid(c)
-            && alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)
-            && alloc_map[p].cpu_caches[c]@.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::Cache(p, c)]
-                == alloc_map[p].cpu_caches.lock_id_by_index(c))
+            && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::Cache(p, c))
+                == alloc_map.spec_index(p).cpu_caches.lock_id_by_index(c))
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))]
             #![trigger alloc_map.spec_index(p)]
             lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].global_pool.locked_by_thread(thread_id)
-            && alloc_map[p].global_pool.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::GlobalPool(p)] == alloc_map[p].global_pool.lock_id())
+            && alloc_map.spec_index(p).global_pool.locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).global_pool.locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::GlobalPool(p)) == alloc_map.spec_index(p).global_pool.lock_id())
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger alloc_map.dom().contains(p)]
             #![trigger alloc_map.spec_index(p)]
             alloc_map.dom().contains(p)
             ==>
             {
-                &&& alloc_map[p].quota.locked_by_thread(thread_id)
+                &&& alloc_map.spec_index(p).quota.locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::Quota(p))
-                &&& alloc_map[p].global_pool.locked_by_thread(thread_id)
+                &&& alloc_map.spec_index(p).global_pool.locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))
                 &&& forall|c: CpuId|
-                    #![trigger alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)]
+                    #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)]
                     #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
-                    cpu_id_valid(c) && alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)
+                    cpu_id_valid(c) && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::Cache(p, c))
             })
     }
@@ -780,9 +780,9 @@ verus! {
             lock_map.dom().contains(AllocatorLockObjId::Quota(p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].quota.locked_by_thread(thread_id)
-            && alloc_map[p].quota.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::Quota(p)] == alloc_map[p].quota.lock_id())
+            && alloc_map.spec_index(p).quota.locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).quota.locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::Quota(p)) == alloc_map.spec_index(p).quota.lock_id())
         &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
             #![trigger lock_map.dom().contains(AllocatorLockObjId::Cache(p, c))]
             #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
@@ -790,33 +790,33 @@ verus! {
             ==>
             alloc_map.dom().contains(p)
             && cpu_id_valid(c)
-            && alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)
-            && alloc_map[p].cpu_caches[c]@.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::Cache(p, c)]
-                == alloc_map[p].cpu_caches.lock_id_by_index(c))
+            && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::Cache(p, c))
+                == alloc_map.spec_index(p).cpu_caches.lock_id_by_index(c))
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))]
             #![trigger alloc_map.spec_index(p)]
             lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].global_pool.locked_by_thread(thread_id)
-            && alloc_map[p].global_pool.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::GlobalPool(p)] == alloc_map[p].global_pool.lock_id())
+            && alloc_map.spec_index(p).global_pool.locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).global_pool.locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::GlobalPool(p)) == alloc_map.spec_index(p).global_pool.lock_id())
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger alloc_map.dom().contains(p)]
             #![trigger alloc_map.spec_index(p)]
             alloc_map.dom().contains(p)
             ==>
             {
-                &&& alloc_map[p].quota.locked_by_thread(thread_id)
+                &&& alloc_map.spec_index(p).quota.locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::Quota(p))
-                &&& alloc_map[p].global_pool.locked_by_thread(thread_id)
+                &&& alloc_map.spec_index(p).global_pool.locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))
                 &&& forall|c: CpuId|
-                    #![trigger alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)]
+                    #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)]
                     #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
-                    cpu_id_valid(c) && alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)
+                    cpu_id_valid(c) && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::Cache(p, c))
             })
     }
@@ -833,9 +833,9 @@ verus! {
             lock_map.dom().contains(AllocatorLockObjId::Quota(p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].quota.locked_by_thread(thread_id)
-            && alloc_map[p].quota.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::Quota(p)] == alloc_map[p].quota.lock_id())
+            && alloc_map.spec_index(p).quota.locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).quota.locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::Quota(p)) == alloc_map.spec_index(p).quota.lock_id())
         &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
             #![trigger lock_map.dom().contains(AllocatorLockObjId::Cache(p, c))]
             #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
@@ -843,33 +843,33 @@ verus! {
             ==>
             alloc_map.dom().contains(p)
             && cpu_id_valid(c)
-            && alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)
-            && alloc_map[p].cpu_caches[c]@.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::Cache(p, c)]
-                == alloc_map[p].cpu_caches.lock_id_by_index(c))
+            && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::Cache(p, c))
+                == alloc_map.spec_index(p).cpu_caches.lock_id_by_index(c))
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))]
             #![trigger alloc_map.spec_index(p)]
             lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))
             ==>
             alloc_map.dom().contains(p)
-            && alloc_map[p].global_pool.locked_by_thread(thread_id)
-            && alloc_map[p].global_pool.locking_thread() is Write
-            && lock_map[AllocatorLockObjId::GlobalPool(p)] == alloc_map[p].global_pool.lock_id())
+            && alloc_map.spec_index(p).global_pool.locked_by_thread(thread_id)
+            && alloc_map.spec_index(p).global_pool.locking_thread() is Write
+            && lock_map.spec_index(AllocatorLockObjId::GlobalPool(p)) == alloc_map.spec_index(p).global_pool.lock_id())
         &&& (forall|p: RwLockPageAllocatorPtr|
             #![trigger alloc_map.dom().contains(p)]
             #![trigger alloc_map.spec_index(p)]
             alloc_map.dom().contains(p)
             ==>
             {
-                &&& alloc_map[p].quota.locked_by_thread(thread_id)
+                &&& alloc_map.spec_index(p).quota.locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::Quota(p))
-                &&& alloc_map[p].global_pool.locked_by_thread(thread_id)
+                &&& alloc_map.spec_index(p).global_pool.locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::GlobalPool(p))
                 &&& forall|c: CpuId|
-                    #![trigger alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)]
+                    #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)]
                     #![trigger alloc_map.spec_index(p).cpu_caches.spec_index(c)]
-                    cpu_id_valid(c) && alloc_map[p].cpu_caches[c]@.locked_by_thread(thread_id)
+                    cpu_id_valid(c) && alloc_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by_thread(thread_id)
                     ==> lock_map.dom().contains(AllocatorLockObjId::Cache(p, c))
             })
     }
@@ -902,12 +902,12 @@ verus! {
             ==> pre.dom().contains(p)
                 && pre.spec_index(p).global_pool.locked_by(pre_lctx)
         &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
-            #![trigger post.spec_index(p).cpu_caches[c]@.locked_by(post_lctx)]
+            #![trigger post.spec_index(p).cpu_caches.spec_index(c).view().locked_by(post_lctx)]
             post.dom().contains(p)
                 && cpu_id_valid(c)
-                && post.spec_index(p).cpu_caches[c]@.locked_by(post_lctx)
+                && post.spec_index(p).cpu_caches.spec_index(c).view().locked_by(post_lctx)
             ==> pre.dom().contains(p)
-                && pre.spec_index(p).cpu_caches[c]@.locked_by(pre_lctx)
+                && pre.spec_index(p).cpu_caches.spec_index(c).view().locked_by(pre_lctx)
     }
 
     /// The boundary may let other threads change unlocked objects, but it
@@ -971,15 +971,15 @@ verus! {
             ==> pre.iommu_table_map.dom().contains(iommu_root)
                 && pre.iommu_table_map.spec_index(iommu_root).locked_by(pre_lctx))
         &&& (forall|i: PageIndex|
-            #![trigger post.page_array[i]@.locked_by(post_lctx)]
+            #![trigger post.page_array.spec_index(i).view().locked_by(post_lctx)]
             page_index_wf(i)
-                && post.page_array[i]@.locked_by(post_lctx)
-            ==> pre.page_array[i]@.locked_by(pre_lctx))
+                && post.page_array.spec_index(i).view().locked_by(post_lctx)
+            ==> pre.page_array.spec_index(i).view().locked_by(pre_lctx))
         &&& (forall|c: CpuId|
-            #![trigger post.cpu_array[c]@.locked_by(post_lctx)]
+            #![trigger post.cpu_array.spec_index(c).view().locked_by(post_lctx)]
             cpu_id_valid(c)
-                && post.cpu_array[c]@.locked_by(post_lctx)
-            ==> pre.cpu_array[c]@.locked_by(pre_lctx))
+                && post.cpu_array.spec_index(c).view().locked_by(post_lctx)
+            ==> pre.cpu_array.spec_index(c).view().locked_by(pre_lctx))
         &&& allocator_boundary_no_new_locks(
             pre.allocator_4k_map,
             post.allocator_4k_map,
@@ -1013,7 +1013,7 @@ verus! {
             #![trigger post.container_map.dom().contains(c)]
             (lctx.container_lock_map().dom().contains(c)
                 || (pre.container_map.dom().contains(c) && pre.container_map.spec_index(c).locked_by(lctx)))
-            ==> post.container_map.dom().contains(c) && post.container_map[c] == pre.container_map[c]
+            ==> post.container_map.dom().contains(c) && post.container_map.spec_index(c) == pre.container_map.spec_index(c)
     }
 
     pub open spec fn boundary_processes_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
@@ -1029,7 +1029,7 @@ verus! {
             #![trigger post.process_map.dom().contains(p)]
             (lctx.process_lock_map().dom().contains(p)
                 || (pre.process_map.dom().contains(p) && pre.process_map.spec_index(p).locked_by(lctx)))
-            ==> post.process_map.dom().contains(p) && post.process_map[p] == pre.process_map[p]
+            ==> post.process_map.dom().contains(p) && post.process_map.spec_index(p) == pre.process_map.spec_index(p)
     }
 
     pub open spec fn boundary_threads_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
@@ -1041,7 +1041,7 @@ verus! {
             (lctx.thread_lock_map().dom().contains(t)
                 || (pre.thread_map.dom().contains(t) && pre.thread_map.spec_index(t).locked_by(lctx)))
             ==> post.thread_map.dom().contains(t)
-                && post.thread_map[t] == pre.thread_map[t]
+                && post.thread_map.spec_index(t) == pre.thread_map.spec_index(t)
                 && post.thread_map.lock_id_by_key(t) == pre.thread_map.lock_id_by_key(t)
     }
 
@@ -1053,7 +1053,7 @@ verus! {
             #![trigger post.endpoint_map.dom().contains(e)]
             (lctx.endpoint_lock_map().dom().contains(e)
                 || (pre.endpoint_map.dom().contains(e) && pre.endpoint_map.spec_index(e).locked_by(lctx)))
-            ==> post.endpoint_map.dom().contains(e) && post.endpoint_map[e] == pre.endpoint_map[e]
+            ==> post.endpoint_map.dom().contains(e) && post.endpoint_map.spec_index(e) == pre.endpoint_map.spec_index(e)
     }
 
     pub open spec fn boundary_schedulers_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
@@ -1066,7 +1066,7 @@ verus! {
             (lctx.scheduler_lock_map().dom().contains(s)
                 || (pre.scheduler_map.dom().contains(s) && pre.scheduler_map.spec_index(s).locked_by(lctx)))
             ==> post.scheduler_map.dom().contains(s)
-                && post.scheduler_map[s] == pre.scheduler_map[s]
+                && post.scheduler_map.spec_index(s) == pre.scheduler_map.spec_index(s)
                 && post.scheduler_map.lock_id_by_key(s) == pre.scheduler_map.lock_id_by_key(s)
     }
 
@@ -1084,8 +1084,8 @@ verus! {
                 || (pre.pcid_allocator_map.dom().contains(allocator_ptr)
                     && pre.pcid_allocator_map.spec_index(allocator_ptr).locked_by(lctx)))
             ==> post.pcid_allocator_map.dom().contains(allocator_ptr)
-                && post.pcid_allocator_map[allocator_ptr]
-                    == pre.pcid_allocator_map[allocator_ptr]
+                && post.pcid_allocator_map.spec_index(allocator_ptr)
+                    == pre.pcid_allocator_map.spec_index(allocator_ptr)
     }
 
     pub open spec fn boundary_pagetables_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
@@ -1096,7 +1096,7 @@ verus! {
             #![trigger post.pagetable_map.dom().contains(pt)]
             (lctx.pagetable_lock_map().dom().contains(pt)
                 || (pre.pagetable_map.dom().contains(pt) && pre.pagetable_map.spec_index(pt).locked_by(lctx)))
-            ==> post.pagetable_map.dom().contains(pt) && post.pagetable_map[pt] == pre.pagetable_map[pt]
+            ==> post.pagetable_map.dom().contains(pt) && post.pagetable_map.spec_index(pt) == pre.pagetable_map.spec_index(pt)
     }
 
     pub open spec fn boundary_iommu_tables_preserved(
@@ -1113,27 +1113,27 @@ verus! {
                 || (pre.iommu_table_map.dom().contains(iommu_root)
                     && pre.iommu_table_map.spec_index(iommu_root).locked_by(lctx)))
             ==> post.iommu_table_map.dom().contains(iommu_root)
-                && post.iommu_table_map[iommu_root]
-                    == pre.iommu_table_map[iommu_root]
+                && post.iommu_table_map.spec_index(iommu_root)
+                    == pre.iommu_table_map.spec_index(iommu_root)
     }
 
     pub open spec fn boundary_pages_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
         forall|i: PageIndex|
             #![trigger lctx.page_lock_map().dom().contains(i)]
-            #![trigger pre.page_array[i]@.locked_by(lctx)]
+            #![trigger pre.page_array.spec_index(i).view().locked_by(lctx)]
             (page_index_wf(i) && lctx.page_lock_map().dom().contains(i))
-                || (page_index_wf(i) && pre.page_array[i]@.locked_by(lctx))
-            ==> post.page_array[i]@ == pre.page_array[i]@
+                || (page_index_wf(i) && pre.page_array.spec_index(i).view().locked_by(lctx))
+            ==> post.page_array.spec_index(i).view() == pre.page_array.spec_index(i).view()
     }
 
     pub open spec fn boundary_cpus_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
         forall|c: CpuId|
             #![trigger lctx.cpu_lock_map().dom().contains(c)]
-            #![trigger pre.cpu_array[c]@.locked_by(lctx)]
-            #![trigger post.cpu_array[c]@]
+            #![trigger pre.cpu_array.spec_index(c).view().locked_by(lctx)]
+            #![trigger post.cpu_array.spec_index(c).view()]
             (cpu_id_valid(c) && lctx.cpu_lock_map().dom().contains(c))
-                || (cpu_id_valid(c) && pre.cpu_array[c]@.locked_by(lctx))
-            ==> post.cpu_array[c]@ == pre.cpu_array[c]@
+                || (cpu_id_valid(c) && pre.cpu_array.spec_index(c).view().locked_by(lctx))
+            ==> post.cpu_array.spec_index(c).view() == pre.cpu_array.spec_index(c).view()
     }
 
     pub open spec fn boundary_allocators_preserved(pre: &KernelK, post: &KernelK, lctx: &LocalContext) -> bool {
@@ -1151,7 +1151,7 @@ verus! {
                     PageSize::SZ2m => post.allocator_2m_map,
                     PageSize::SZ1g => post.allocator_1g_map,
                 };
-                new_m.dom().contains(p) && new_m[p].quota == old_m[p].quota
+                new_m.dom().contains(p) && new_m.spec_index(p).quota == old_m.spec_index(p).quota
             }
         &&& forall|sz: PageSize, p: RwLockPageAllocatorPtr|
             #![trigger lctx.allocator_lock_map(sz).dom().contains(AllocatorLockObjId::GlobalPool(p))]
@@ -1167,7 +1167,7 @@ verus! {
                     PageSize::SZ2m => post.allocator_2m_map,
                     PageSize::SZ1g => post.allocator_1g_map,
                 };
-                new_m.dom().contains(p) && new_m[p].global_pool == old_m[p].global_pool
+                new_m.dom().contains(p) && new_m.spec_index(p).global_pool == old_m.spec_index(p).global_pool
             }
         &&& forall|p: RwLockPageAllocatorPtr|
             #![trigger pre.allocator_4k_map.spec_index(p).global_pool.locked_by(lctx)]
@@ -1198,26 +1198,26 @@ verus! {
                     PageSize::SZ2m => post.allocator_2m_map,
                     PageSize::SZ1g => post.allocator_1g_map,
                 };
-                new_m.dom().contains(p) && cpu_id_valid(c) && new_m[p].cpu_caches[c]@ == old_m[p].cpu_caches[c]@
+                new_m.dom().contains(p) && cpu_id_valid(c) && new_m.spec_index(p).cpu_caches.spec_index(c).view() == old_m.spec_index(p).cpu_caches.spec_index(c).view()
             }
         &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
-            #![trigger pre.allocator_4k_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)]
+            #![trigger pre.allocator_4k_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by(lctx)]
             pre.allocator_4k_map.dom().contains(p) && cpu_id_valid(c)
-                && pre.allocator_4k_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)
+                && pre.allocator_4k_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by(lctx)
             ==> post.allocator_4k_map.dom().contains(p)
-                && post.allocator_4k_map.spec_index(p).cpu_caches[c]@ == pre.allocator_4k_map.spec_index(p).cpu_caches[c]@
+                && post.allocator_4k_map.spec_index(p).cpu_caches.spec_index(c).view() == pre.allocator_4k_map.spec_index(p).cpu_caches.spec_index(c).view()
         &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
-            #![trigger pre.allocator_2m_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)]
+            #![trigger pre.allocator_2m_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by(lctx)]
             pre.allocator_2m_map.dom().contains(p) && cpu_id_valid(c)
-                && pre.allocator_2m_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)
+                && pre.allocator_2m_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by(lctx)
             ==> post.allocator_2m_map.dom().contains(p)
-                && post.allocator_2m_map.spec_index(p).cpu_caches[c]@ == pre.allocator_2m_map.spec_index(p).cpu_caches[c]@
+                && post.allocator_2m_map.spec_index(p).cpu_caches.spec_index(c).view() == pre.allocator_2m_map.spec_index(p).cpu_caches.spec_index(c).view()
         &&& forall|p: RwLockPageAllocatorPtr, c: CpuId|
-            #![trigger pre.allocator_1g_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)]
+            #![trigger pre.allocator_1g_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by(lctx)]
             pre.allocator_1g_map.dom().contains(p) && cpu_id_valid(c)
-                && pre.allocator_1g_map.spec_index(p).cpu_caches[c]@.locked_by(lctx)
+                && pre.allocator_1g_map.spec_index(p).cpu_caches.spec_index(c).view().locked_by(lctx)
             ==> post.allocator_1g_map.dom().contains(p)
-                && post.allocator_1g_map.spec_index(p).cpu_caches[c]@ == pre.allocator_1g_map.spec_index(p).cpu_caches[c]@
+                && post.allocator_1g_map.spec_index(p).cpu_caches.spec_index(c).view() == pre.allocator_1g_map.spec_index(p).cpu_caches.spec_index(c).view()
     }
 
 }

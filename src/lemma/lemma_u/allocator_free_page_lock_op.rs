@@ -66,7 +66,7 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
         assert(pre.allocator_4k_map.dom().contains(alloc));
         assert(post.allocator_4k_map.spec_index(alloc).owning_container == pre.allocator_4k_map.spec_index(alloc).owning_container);
         assert(post.allocator_4k_map.spec_index(alloc).global_pool.view() == pre.allocator_4k_map.spec_index(alloc).global_pool.view());
-        assert(pre.page_array.spec_index(page_index)@@.inv());
+        assert(pre.page_array.spec_index(page_index).view().view().inv());
     };
 
     assert forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|

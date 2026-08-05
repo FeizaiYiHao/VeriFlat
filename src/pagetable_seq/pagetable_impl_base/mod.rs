@@ -209,7 +209,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),) =~= ret is Some,
             ret is Some 
                 ==> self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) 
-                && self.mapping_4k()[spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))] == page_entry_to_map_entry(&ret.unwrap()),
+                && self.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == page_entry_to_map_entry(&ret.unwrap()),
     {
         broadcast use PageTable::reveal_page_table_wf;
         broadcast use PageTable::reveal_page_table_levels_wf;
@@ -220,7 +220,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         proof {
             va_lemma();
         }
-        assert(self.l1_tables@.dom().contains(l2_entry.addr));
+        assert(self.l1_tables.view().dom().contains(l2_entry.addr));
         let tracked l1_perm = self.l1_tables.borrow().tracked_borrow(l2_entry.addr);
         let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(l2_entry.addr).borrow(Tracked(l1_perm));
         let l1_entry = l1_tbl.get(target_l1i);
@@ -248,8 +248,8 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_map_perm.is_init(),
             page_map_perm.value().wf(),
             forall|i: usize|
-                #![trigger page_map_perm.value()[i].is_empty()]
-                0 <= i < 512 ==> page_map_perm.value()[i].is_empty(),
+                #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty(),
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -269,14 +269,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(forall|i: usize|
-            #![trigger page_map_perm.value()[i].is_empty()]
-            #![trigger page_map_perm.value()[i].perm.present]
-            #![trigger page_map_perm.value()[i].perm.ps]
-            0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
-                && page_map_perm.value()[i].perm.ps == false
-                && page_map_perm.value()[i].perm.present == false
-                && page_map_perm.value()[i].perm.write == false
-                && page_map_perm.value()[i].perm.execute_disable == false);
+            #![trigger page_map_perm.value().spec_index(i).is_empty()]
+            #![trigger page_map_perm.value().spec_index(i).perm.present]
+            #![trigger page_map_perm.value().spec_index(i).perm.ps]
+            0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty()
+                && page_map_perm.value().spec_index(i).perm.ps == false
+                && page_map_perm.value().spec_index(i).perm.present == false
+                && page_map_perm.value().spec_index(i).perm.write == false
+                && page_map_perm.value().spec_index(i).perm.execute_disable == false);
         let tracked mut l4_perm = self.l4_table.borrow_mut().tracked_remove(self.cr3);
         proof {
             page_ptr_valid_imply_mem_valid(page_map_ptr);
@@ -302,7 +302,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             assert(self.spec_resolve_mapping_l4(target_l4i) is Some
                 && self.spec_resolve_mapping_l4(target_l4i)->0.addr == page_map_ptr);
             self.l3_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
-            self.l3_rev_map@ = self.l3_rev_map@.insert(page_map_ptr, target_l4i);
+            self.l3_rev_map = Ghost(self.l3_rev_map.view().insert(page_map_ptr, target_l4i));
         }
         assert(self.wf_l4());
         assert(self.wf_l3()) by {
@@ -347,7 +347,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(self.table_pages_wf());
         assert(self.va_addr_valid()) by { va_addr_valid_proof::<TABLE_TYPE>();};
         assert(self.kernel_l4_end < 512);
-        assert(self.kernel_entries@.len() =~= self.kernel_l4_end as nat);
+        assert(self.kernel_entries.view().len() =~= self.kernel_l4_end as nat);
     }
 
     pub fn create_entry_l3(
@@ -372,10 +372,10 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_map_perm.is_init(),
             page_map_perm.value().wf(),
             forall|i: usize|
-                #![trigger page_map_perm.value()[i].is_empty()]
+                #![trigger page_map_perm.value().spec_index(i).is_empty()]
                 0 <= i < 512 
                 ==> 
-                page_map_perm.value()[i].is_empty(),
+                page_map_perm.value().spec_index(i).is_empty(),
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -398,16 +398,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(forall|i: usize|
-            #![trigger page_map_perm.value()[i].is_empty()]
-            #![trigger page_map_perm.value()[i].perm.present]
-            #![trigger page_map_perm.value()[i].perm.ps]
+            #![trigger page_map_perm.value().spec_index(i).is_empty()]
+            #![trigger page_map_perm.value().spec_index(i).perm.present]
+            #![trigger page_map_perm.value().spec_index(i).perm.ps]
             0 <= i < 512 
             ==> 
-                page_map_perm.value()[i].is_empty()
-                && page_map_perm.value()[i].perm.present == false
-                && page_map_perm.value()[i].perm.write == false
-                && page_map_perm.value()[i].perm.execute_disable == false
-                && page_map_perm.value()[i].perm.ps == false
+                page_map_perm.value().spec_index(i).is_empty()
+                && page_map_perm.value().spec_index(i).perm.present == false
+                && page_map_perm.value().spec_index(i).perm.write == false
+                && page_map_perm.value().spec_index(i).perm.execute_disable == false
+                && page_map_perm.value().spec_index(i).perm.ps == false
             );
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present 
             && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps 
@@ -443,7 +443,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     && !self.spec_resolve_mapping_l3(target_l4i,target_l3i)->0.perm.execute_disable
                 );
             self.l2_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
-            self.l2_rev_map@ = self.l2_rev_map@.insert(page_map_ptr, (target_l4i, target_l3i));
+            self.l2_rev_map = Ghost(self.l2_rev_map.view().insert(page_map_ptr, (target_l4i, target_l3i)));
         }
         assert(self.wf_l4());
         assert(self.wf_l3());
@@ -516,8 +516,8 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_map_perm.is_init(),
             page_map_perm.value().wf(),
             forall|i: usize|
-                #![trigger page_map_perm.value()[i].is_empty()]
-                0 <= i < 512 ==> page_map_perm.value()[i].is_empty(),
+                #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty(),
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -538,22 +538,22 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         // broadcast use PageTable::reveal_page_table_additional_wf;
 
         assert(forall|i: usize|
-            #![trigger page_map_perm.value()[i].is_empty()]
-            #![trigger page_map_perm.value()[i].perm.present]
-            #![trigger page_map_perm.value()[i].perm.ps]
-            #![trigger page_map_perm.value()[i].perm.kernel_present]
-            0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
-                && page_map_perm.value()[i].perm.present == false
-                && page_map_perm.value()[i].perm.write == false
-                && page_map_perm.value()[i].perm.execute_disable == false
-                && page_map_perm.value()[i].perm.ps == false
-                && page_map_perm.value()[i].perm.kernel_present == false
+            #![trigger page_map_perm.value().spec_index(i).is_empty()]
+            #![trigger page_map_perm.value().spec_index(i).perm.present]
+            #![trigger page_map_perm.value().spec_index(i).perm.ps]
+            #![trigger page_map_perm.value().spec_index(i).perm.kernel_present]
+            0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty()
+                && page_map_perm.value().spec_index(i).perm.present == false
+                && page_map_perm.value().spec_index(i).perm.write == false
+                && page_map_perm.value().spec_index(i).perm.execute_disable == false
+                && page_map_perm.value().spec_index(i).perm.ps == false
+                && page_map_perm.value().spec_index(i).perm.kernel_present == false
             )
         by{
             assert(
                 forall|i: usize|
-                    #![trigger page_map_perm.value()[i]]
-                    0 <= i < 512 ==> page_map_perm.value()[i].is_empty()
+                    #![trigger page_map_perm.value().spec_index(i)]
+                    0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty()
             );
         };
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && 
@@ -593,10 +593,10 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             //         self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.perm.write &&
             //         !self.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.perm.execute_disable);
             self.l1_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
-            self.l1_rev_map@ = self.l1_rev_map@.insert(
+            self.l1_rev_map = Ghost(self.l1_rev_map.view().insert(
                 page_map_ptr,
                 (target_l4i, target_l3i, target_l2i),
-            );
+            ));
         }
         assert(self.wf_l4());
         assert(self.wf_l3()) by { };
@@ -681,7 +681,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).page_closure() =~= old(self).page_closure(),
-            final(self).mapping_4k@ == old(self).mapping_4k@.insert(
+            final(self).mapping_4k.view() == old(self).mapping_4k.view().insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
                 *target_entry,
             ),
@@ -701,7 +701,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         assert(va_4k_valid(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))) by {
             va_lemma();
         };
-        assert(self.mapping_4k@.dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false) by {
+        assert(self.mapping_4k.view().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false) by {
             broadcast use PageTable::reveal_page_table_mappings_wf;
         };
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
@@ -727,7 +727,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         proof {
             self.l1_tables.borrow_mut().tracked_insert(target_l1_p, l1_perm);
             assert(self.spec_resolve_mapping_4k_l1(target_l4i,target_l3i,target_l2i,target_l1i) is Some);
-            self.mapping_4k@ = self.mapping_4k@.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),*target_entry);
+            self.mapping_4k = Ghost(self.mapping_4k.view().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),*target_entry));
         }
         assert(self.wf_l4());
         assert(self.wf_l3());
@@ -741,15 +741,15 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             broadcast use PageTable::reveal_page_table_mappings_wf;
             va_lemma();
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index|
-                #![trigger self.mapping_4k@.dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
-                #![trigger old(self).mapping_4k@.dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
+                #![trigger self.mapping_4k.view().dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
+                #![trigger old(self).mapping_4k.view().dom().contains(spec_index2va((l4i,l3i,l2i,l1i)))]
                 self.kernel_l4_end <= l4i < 512 
                     && 0 <= l3i < 512 
                     && 0 <= l2i < 512 
                     && 0 <= l1i < 512 
                     && !((target_l4i, target_l3i, target_l2i, target_l1i) =~= (l4i,l3i,l2i,l1i,)) 
                     ==> 
-                    self.mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == old(self).mapping_4k@.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))));
+                    self.mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == old(self).mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))));
 
             assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger self.spec_resolve_mapping_l2(l4i,l3i,l2i)]

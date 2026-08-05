@@ -76,7 +76,7 @@ pub struct IommuTLB {
 
 impl IommuTLB {
     pub open spec fn view(&self) -> Map<VtdDomainId, SingleIotlb> {
-        self.domain_tlbs@
+        self.domain_tlbs.view()
     }
 
     pub open spec fn spec_index(&self, did: VtdDomainId) -> SingleIotlb
@@ -84,7 +84,7 @@ impl IommuTLB {
             self.inv(),
             vtd_domain_id_valid(did),
     {
-        self.view()[did]
+        self.view().spec_index(did)
     }
 
     #[verifier::opaque]

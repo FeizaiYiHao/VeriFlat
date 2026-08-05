@@ -24,10 +24,10 @@ impl<T> Node<T>{
 
 impl<T> ExternalNode<T>{
     pub closed spec fn spec_addr(&self) -> usize {
-        self.addr@
+        self.addr.view()
     }
     pub closed spec fn is_init(&self) -> bool {
-        self.is_init@
+        self.is_init.view()
     }
 
     /// Create a fresh (init) ExternalNode with a dummy value.
@@ -58,8 +58,8 @@ impl<T> ExternalNode<T>{
             final(self).is_init() == false,
             final(self).addr() == old(self).addr(),
             final(self).addr() == ret.0,
-            ret.1@.is_init(),
-            ret.1@.addr() == final(self).addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == final(self).addr(),
     {
         (&self.storage as *const Node<T> as usize, Tracked::assume_new())
     }
@@ -67,8 +67,8 @@ impl<T> ExternalNode<T>{
     pub fn put(&mut self, perm: Tracked<PointsTo<Node<T>>>)
         requires
             old(self).is_init() == false,
-            old(self).addr() == perm@.addr(),
-            perm@.is_init(),
+            old(self).addr() == perm.view().addr(),
+            perm.view().is_init(),
         ensures
             final(self).is_init() == true,
             final(self).addr() == old(self).addr(),
@@ -87,10 +87,10 @@ pub broadcast proof fn node_has_size<T>()
 pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
     ensures 
         forall|k:K| 
-            #![trigger others[k].addr()] 
+            #![trigger others.spec_index(k).addr()]
             others.dom().contains(k) 
             ==> 
-            final(this).addr() != others[k].addr(),
+            final(this).addr() != others.spec_index(k).addr(),
         *final(this) == *old(this),
 {
 }
@@ -98,14 +98,14 @@ pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tra
 #[verifier(external_body)]
 pub fn node_update_value<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, value: T)
     requires
-        old(perm)@.addr() == addr,
-        old(perm)@.is_init(),
+        old(perm).view().addr() == addr,
+        old(perm).view().is_init(),
     ensures
-        final(perm)@.is_init(),
-        final(perm)@.addr() == old(perm)@.addr(),
-        final(perm)@.value()@ == value,
-        final(perm)@.value().prev == old(perm)@.value().prev,
-        final(perm)@.value().next == old(perm)@.value().next,
+        final(perm).view().is_init(),
+        final(perm).view().addr() == old(perm).view().addr(),
+        final(perm).view().value().view() == value,
+        final(perm).view().value().prev == old(perm).view().value().prev,
+        final(perm).view().value().next == old(perm).view().value().next,
 {
     unsafe {
         let uptr = addr as *mut MaybeUninit<Node<T>>;
@@ -116,14 +116,14 @@ pub fn node_update_value<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, v
 #[verifier(external_body)]
 pub fn node_update_prev<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, prev: Option<usize>)
     requires
-        old(perm)@.addr() == addr,
-        old(perm)@.is_init(),
+        old(perm).view().addr() == addr,
+        old(perm).view().is_init(),
     ensures
-        final(perm)@.is_init(),
-        final(perm)@.addr() == old(perm)@.addr(),
-        final(perm)@.value()@ == old(perm)@.value()@,
-        final(perm)@.value().prev == prev,
-        final(perm)@.value().next == old(perm)@.value().next,
+        final(perm).view().is_init(),
+        final(perm).view().addr() == old(perm).view().addr(),
+        final(perm).view().value().view() == old(perm).view().value().view(),
+        final(perm).view().value().prev == prev,
+        final(perm).view().value().next == old(perm).view().value().next,
 {
     unsafe {
         let uptr = addr as *mut MaybeUninit<Node<T>>;
@@ -134,14 +134,14 @@ pub fn node_update_prev<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, pr
 #[verifier(external_body)]
 pub fn node_update_next<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, next: Option<usize>)
     requires
-        old(perm)@.addr() == addr,
-        old(perm)@.is_init(),
+        old(perm).view().addr() == addr,
+        old(perm).view().is_init(),
     ensures
-        final(perm)@.is_init(),
-        final(perm)@.addr() == old(perm)@.addr(),
-        final(perm)@.value()@ == old(perm)@.value()@,
-        final(perm)@.value().prev == old(perm)@.value().prev,
-        final(perm)@.value().next == next,
+        final(perm).view().is_init(),
+        final(perm).view().addr() == old(perm).view().addr(),
+        final(perm).view().value().view() == old(perm).view().value().view(),
+        final(perm).view().value().prev == old(perm).view().value().prev,
+        final(perm).view().value().next == next,
 {
     unsafe {
         let uptr = addr as *mut MaybeUninit<Node<T>>;

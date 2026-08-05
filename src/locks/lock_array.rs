@@ -28,24 +28,24 @@ verus! {
         }
 
         pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
-            self.array@
+            self.array.view()
         }
         pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
         {
             LockedArrayElement{
-                value:self@[index as int],
+                value:self.view().spec_index(index as int),
                 lock_minor: index,
            }
         }
         pub open spec fn unchanged_except(&self, old: &Self, index:usize) -> bool{
             &&&
             forall|i:usize|
-                #![trigger self[i]]
+                #![trigger self.spec_index(i)]
                 0 <= i < N && i != index
                 ==>
-                self[i] === old[i]
+                self.spec_index(i) === old.spec_index(i)
         }
 
         #[verifier::opaque]
@@ -62,7 +62,7 @@ verus! {
             requires
                 0 <= index < N,
             ensures
-                self.view()[index as int] == self.spec_index(index).value,
+                self.view().spec_index(index as int) == self.spec_index(index).value,
         {
         }
 
@@ -72,20 +72,20 @@ verus! {
                 old(self).inv(),
                 0 <= index < N,
 
-                old(self)[index]@.wlocked_by(lctx),
-                old(self)[index]@.is_init(),
+                old(self).spec_index(index).view().wlocked_by(lctx),
+                old(self).spec_index(index).view().is_init(),
 
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == lctx.thread_id(),
-                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == lctx.thread_id(),
+                lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
-                take_ensures(old(self)[index]@, final(self)[index]@),
+                take_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
 
-                ret == old(self)[index]@@,
+                ret == old(self).spec_index(index).view().view(),
         {
             self.array.ar[index].take(Tracked(lctx), lock_perm)
         }
@@ -96,17 +96,17 @@ verus! {
                 old(self).inv(),
                 0 <= index < N,
 
-                old(self)[index]@.wlocked_by(lctx),
+                old(self).spec_index(index).view().wlocked_by(lctx),
 
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == lctx.thread_id(),
-                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == lctx.thread_id(),
+                lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
-                put_ensures(old(self)[index]@, final(self)[index]@, v),
+                put_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), v),
         {
             self.array.ar[index].put(Tracked(lctx), lock_perm, v);
         }
@@ -118,10 +118,10 @@ verus! {
                 self.inv(),
                 0 <= index < N,
 
-                lp@.state() is WriteLock ==> self[index]@.write_lock_perm_match(lp@),
-                lp@.state() is ReadLock ==> self[index]@.read_lock_perm_match(lp@), 
+                lp.view().state() is WriteLock ==> self.spec_index(index).view().write_lock_perm_match(lp.view()),
+                lp.view().state() is ReadLock ==> self.spec_index(index).view().read_lock_perm_match(lp.view()),
             ensures
-                ret == self[index]@@,
+                ret == self.spec_index(index).view().view(),
         {
             self.array.ar.index(index).borrow(lp)
         }
@@ -132,28 +132,28 @@ verus! {
                 old(self).inv(),
                 0 <= index < N,
 
-                old(self)[index]@.wlocked_by(lctx),
-                old(self)[index]@.is_init(),
+                old(self).spec_index(index).view().wlocked_by(lctx),
+                old(self).spec_index(index).view().is_init(),
 
-                lp@.state() is WriteLock,
-                lp@.thread_id() == lctx.thread_id(),
-                lp@.lock_id() == old(self)[index]@.locking_thread()->Write_lock_id,
+                lp.view().state() is WriteLock,
+                lp.view().thread_id() == lctx.thread_id(),
+                lp.view().lock_id() == old(self).spec_index(index).view().locking_thread()->Write_lock_id,
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
 
                 // Lock state of the touched entry is preserved.
-                final(self)[index]@.is_init(),
-                final(self)[index]@.view_rodata() == old(self)[index]@.view_rodata(),
-                final(self)[index]@.view_kernel_ghost() == old(self)[index]@.view_kernel_ghost(),
-                final(self)[index]@.view_user_ghost() == old(self)[index]@.view_user_ghost(),
-                final(self)[index]@.locking_thread() == old(self)[index]@.locking_thread(),
-                final(self)[index]@.being_killed() == old(self)[index]@.being_killed(),
+                final(self).spec_index(index).view().is_init(),
+                final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
+                final(self).spec_index(index).view().view_kernel_ghost() == old(self).spec_index(index).view().view_kernel_ghost(),
+                final(self).spec_index(index).view().view_user_ghost() == old(self).spec_index(index).view().view_user_ghost(),
+                final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
+                final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
 
                 // The `&mut T` linkage.
-                *ret == old(self)[index]@@,
-                final(self)[index]@@ == *final(ret),
+                *ret == old(self).spec_index(index).view().view(),
+                final(self).spec_index(index).view().view() == *final(ret),
         {
             self.array.ar[index].borrow_mut(Tracked(lctx), lp)
         } 
@@ -175,9 +175,9 @@ verus! {
                 old(self).inv(),
                 0 <= index < N,
 
-                wlock_requires(old(self)[index]@, old(lctx)),
+                wlock_requires(old(self).spec_index(index).view(), old(lctx)),
                 old(lctx).lock_id_acyclic(old(self).lock_id_by_index(index)),
-                old(lctx).obj_id_fresh(obj_id@),
+                old(lctx).obj_id_fresh(obj_id.view()),
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
@@ -187,8 +187,8 @@ verus! {
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
-                wlock_ensures(old(self)[index]@, final(self)[index]@, old(self).lock_id_by_index(index), final(lctx).thread_id(), ret@),
-                lock_ensures(old(lctx), final(lctx), final(self)[index]@@, old(self).lock_id_by_index(index), obj_id@),
+                wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx).thread_id(), ret.view()),
+                lock_ensures(old(lctx), final(lctx), final(self).spec_index(index).view().view(), old(self).lock_id_by_index(index), obj_id.view()),
         {
             self.array.ar[index].wlock_external(Tracked(lctx))
         }
@@ -199,24 +199,24 @@ verus! {
                 old(self).inv(),
                 0 <= index < N,
 
-                old(self)[index]@.wlocked_by(old(lctx)),
-                old(self)[index]@.being_killed() == false,
+                old(self).spec_index(index).view().wlocked_by(old(lctx)),
+                old(self).spec_index(index).view().being_killed() == false,
 
                 unlock_requires::<T>(old(lctx)),
 
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id() == old(self)[index]@.locking_thread() -> Write_lock_id,
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
 
-                old(lctx).lock_map_contains(obj_id@),
-                old(lctx).lock_id_for_obj(obj_id@) == old(self).lock_id_by_index(index),
+                old(lctx).lock_map_contains(obj_id.view()),
+                old(lctx).lock_id_for_obj(obj_id.view()) == old(self).lock_id_by_index(index),
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
                 final(self).payloads_unchanged(old(self)),
 
-                final(self)[index]@.locking_thread() is None,
+                final(self).spec_index(index).view().locking_thread() is None,
 
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // it contradicts `unlock_ensures` (which transitions Acquire →
@@ -224,13 +224,13 @@ verus! {
                 // section. `unlock_ensures` is the source of truth for the phase
                 // transition (matches `LockedMap::wunlock`). user_view is
                 // separately preserved by unlock_ensures.
-                wunlock_ensures(old(self)[index]@, final(self)[index]@),
+                wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
                 unlock_ensures(
                     old(lctx),
                     final(lctx),
-                    final(self)[index]@@,
-                    lock_perm@.lock_id(),
-                    obj_id@,
+                    final(self).spec_index(index).view().view(),
+                    lock_perm.view().lock_id(),
+                    obj_id.view(),
                     old(self).lock_id_by_index(index),
                 ),
         {

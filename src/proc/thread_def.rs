@@ -98,7 +98,7 @@ impl Thread{
             ret.owning_proc == owning_proc,
             ret.process_depth == process_depth,
             ret.proc_pagetable_ptr == proc_pagetable_ptr,
-            ret.upper_container_seq@ == upper_container_seq@,
+            ret.upper_container_seq.view() == upper_container_seq.view(),
             (ret.state is BLOCKED) == false,
             (ret.state is SCHEDULED) == false,
             ret.proc_linkedlist_node.is_init(),

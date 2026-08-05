@@ -57,11 +57,11 @@ verus! {
 
                 // ---- The lock perm + lock ensures (forwarded from LockedArray::wlock) ----
                 wlock_ensures(
-                    old(self).cpu_array[cpu_id]@,
-                    final(self).cpu_array[cpu_id]@,
+                    old(self).cpu_array.spec_index(cpu_id).view(),
+                    final(self).cpu_array.spec_index(cpu_id).view(),
                     old(self).cpu_array.lock_id_by_index(cpu_id),
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).cpu_array.lock_id_by_index(cpu_id),
@@ -78,7 +78,7 @@ verus! {
                     reveal(LocalContext::obj_id_fresh);
                     reveal(LocalContext::lock_map_contains);
                 };
-                assert(wlock_requires(old(self).cpu_array[cpu_id]@, old(lctx))) by {
+                assert(wlock_requires(old(self).cpu_array.spec_index(cpu_id).view(), old(lctx))) by {
                     reveal(wlock_requires);
                     reveal(KernelK::locked_objects_match_lctx);
                     reveal(cpu_locked_match_lctx);
@@ -170,13 +170,13 @@ verus! {
                 old(self).inv(),
                 old(lctx).wf(),
                 cpu_id_valid(cpu_id),
-                old(self).cpu_array[cpu_id]@.being_killed() == false,
-                old(self).cpu_array[cpu_id]@.wlocked_by(old(lctx)),
+                old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
+                old(self).cpu_array.spec_index(cpu_id).view().wlocked_by(old(lctx)),
                 unlock_requires::<Cpu>(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
-                    == old(self).cpu_array[cpu_id]@.locking_thread()->Write_lock_id,
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
+                    == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
@@ -212,10 +212,10 @@ verus! {
                 // ---- cpu_array: only the targeted slot's lock state changed (now unlocked) ----
                 final(self).cpu_array.unchanged_except(&old(self).cpu_array, cpu_id),
                 final(self).cpu_array.inv(),
-                final(self).cpu_array[cpu_id]@.locking_thread() is None,
+                final(self).cpu_array.spec_index(cpu_id).view().locking_thread() is None,
                 wunlock_ensures(
-                    old(self).cpu_array[cpu_id]@,
-                    final(self).cpu_array[cpu_id]@,
+                    old(self).cpu_array.spec_index(cpu_id).view(),
+                    final(self).cpu_array.spec_index(cpu_id).view(),
                 ),
 
                 // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
@@ -237,7 +237,7 @@ verus! {
                 assert({
                     &&& old(self).cpu_array.inv()
                     &&& old(lctx).cpu_lock_map().dom().contains(cpu_id)
-                    &&& old(lctx).cpu_lock_map()[cpu_id]
+                    &&& old(lctx).cpu_lock_map().spec_index(cpu_id)
                         == old(self).cpu_array.lock_id_by_index(cpu_id)
                 }) by {
                     reveal(cpu_array_wf);
@@ -396,7 +396,7 @@ verus! {
                         final(self).container_map.spec_index(container_ptr),
                         old(self).container_map.lock_id_by_key(container_ptr),
                         final(lctx).thread_id(),
-                        ret.1.unwrap()@,
+                        ret.1.unwrap().view(),
                     )
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                         final(self).container_map.lock_id_by_key(container_ptr),
@@ -664,9 +664,9 @@ verus! {
                 old(self).container_map.dom().contains(container_ptr),
                 old(self).container_map.spec_index(container_ptr).being_killed() == false,
                 unlock_requires::<Container>(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).container_map.spec_index(container_ptr)
                         .locking_thread()->Write_lock_id,
                 old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
@@ -737,7 +737,7 @@ verus! {
                     &&& old(lctx).container_lock_map().dom().contains(
                         container_ptr,
                     )
-                    &&& old(lctx).container_lock_map()[container_ptr]
+                    &&& old(lctx).container_lock_map().spec_index(container_ptr)
                         == old(self).container_map.lock_id_by_key(container_ptr)
                 }) by {
                     reveal(KernelK::locked_objects_match_lctx);
@@ -1025,7 +1025,7 @@ verus! {
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
@@ -1207,9 +1207,9 @@ verus! {
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.inv(),
                 unlock_requires::<crate::allocator::allocator_quota::AllocatorQuota>(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                         .locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
@@ -1282,9 +1282,9 @@ verus! {
                     &&& old(lctx).allocator_4k_lock_map().dom().contains(
                         AllocatorLockObjId::Quota(alloc_ptr_4k),
                     )
-                    &&& old(lctx).allocator_4k_lock_map()[
+                    &&& old(lctx).allocator_4k_lock_map().spec_index(
                         AllocatorLockObjId::Quota(alloc_ptr_4k)
-                    ] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    ) == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .quota.lock_id()
                 }) by {
                     reveal(allocator_perms_wf);
@@ -1506,7 +1506,7 @@ verus! {
                         final(self).process_map.spec_index(process_ptr),
                         old(self).process_map.lock_id_by_key(process_ptr),
                         final(lctx).thread_id(),
-                        ret.1.unwrap()@,
+                        ret.1.unwrap().view(),
                     )
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                         final(self).process_map.lock_id_by_key(process_ptr),
@@ -1795,9 +1795,9 @@ verus! {
                 old(self).process_map.spec_index(process_ptr)
                     .wlocked_by(old(lctx)),
                 unlock_requires::<Process>(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).process_map.spec_index(process_ptr)
                         .locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
@@ -1867,7 +1867,7 @@ verus! {
                     &&& old(lctx).process_lock_map().dom().contains(
                         process_ptr,
                     )
-                    &&& old(lctx).process_lock_map()[process_ptr]
+                    &&& old(lctx).process_lock_map().spec_index(process_ptr)
                         == old(self).process_map.lock_id_by_key(process_ptr)
                 }) by {
                     reveal(KernelK::locked_objects_match_lctx);
@@ -2174,7 +2174,7 @@ verus! {
                         final(self).thread_map.spec_index(thread_ptr),
                         old(self).thread_map.lock_id_by_key(thread_ptr),
                         final(lctx).thread_id(),
-                        ret.1.unwrap()@,
+                        ret.1.unwrap().view(),
                     )
                     &&& final(self).thread_map.spec_index(thread_ptr).view()
                         .free_quota_pending_clean()
@@ -2355,9 +2355,9 @@ verus! {
                 old(self).thread_map.spec_index(thread_ptr)
                     .wlocked_by(old(lctx)),
                 unlock_requires::<Thread>(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).thread_map.spec_index(thread_ptr)
                         .locking_thread()->Write_lock_id,
                 // The pending-clean protocol: pendings must be flushed before
@@ -2434,7 +2434,7 @@ verus! {
                     &&& old(lctx).thread_lock_map().dom().contains(
                         thread_ptr,
                     )
-                    &&& old(lctx).thread_lock_map()[thread_ptr]
+                    &&& old(lctx).thread_lock_map().spec_index(thread_ptr)
                         == old(self).thread_map.lock_id_by_key(thread_ptr)
                 }) by {
                     reveal(KernelK::locked_objects_match_lctx);
@@ -2595,10 +2595,10 @@ verus! {
                 cpu_id_valid(cache_cpu),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{
-                    container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].container_depth(),
-                    process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].process_depth(),
-                    major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@@.current_lock_major(),
-                    minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_minor(),
+                    container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(),
+                    process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(),
+                    major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(),
+                    minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor(),
                 }),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -2612,11 +2612,11 @@ verus! {
                 final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 forall|page_index: PageIndex|
-                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    #![trigger old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))]
                     page_index_wf(page_index)
-                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
-                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
-                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                        && old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))
+                    ==> final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx))
+                        && final(self).page_array.spec_index(page_index).view().locked_by(final(lctx)),
                 forall|process_ptr: RwLockProcessPtr|
                     #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
                     old(self).process_map.dom().contains(process_ptr)
@@ -2663,20 +2663,20 @@ verus! {
 
                 // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_cache) ----
                 wlock_ensures(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@,
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@,
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
                     LockId{
-                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].container_depth(),
-                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].process_depth(),
-                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@@.current_lock_major(),
-                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu].lock_minor(),
+                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(),
+                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(),
+                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(),
+                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor(),
                     },
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches[cache_cpu].lock_id(),
+                        .cpu_caches.spec_index(cache_cpu).lock_id(),
                 ),
                 final(lctx).lock_maps_inserted(
                     old(lctx),
@@ -2684,7 +2684,7 @@ verus! {
                         PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
                     ),
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches[cache_cpu].lock_id(),
+                        .cpu_caches.spec_index(cache_cpu).lock_id(),
                 ),
         {
             proof {
@@ -2706,7 +2706,7 @@ verus! {
                         )
                     &&& wlock_requires(
                         old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                            .cpu_caches[cache_cpu]@,
+                            .cpu_caches.spec_index(cache_cpu).view(),
                         old(lctx),
                     )
                 }) by {
@@ -2864,13 +2864,13 @@ verus! {
                 old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 cpu_id_valid(cache_cpu),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches[cache_cpu]@.locking_thread()->Write_lock_id,
+                        .cpu_caches.spec_index(cache_cpu).view().locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .cpu_caches[cache_cpu]@.wlocked_by(old(lctx)),
+                    .cpu_caches.spec_index(cache_cpu).view().wlocked_by(old(lctx)),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
@@ -2883,11 +2883,11 @@ verus! {
                 final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 forall|page_index: PageIndex|
-                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    #![trigger old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))]
                     page_index_wf(page_index)
-                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
-                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
-                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                        && old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))
+                    ==> final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx))
+                        && final(self).page_array.spec_index(page_index).view().locked_by(final(lctx)),
                 forall|process_ptr: RwLockProcessPtr|
                     #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
                     old(self).process_map.dom().contains(process_ptr)
@@ -2939,12 +2939,12 @@ verus! {
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_cache) ----
                 wunlock_ensures(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@,
-                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cache_cpu]@,
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
+                    final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches[cache_cpu].lock_id(),
+                        .cpu_caches.spec_index(cache_cpu).lock_id(),
                 ),
                 final(lctx).lock_maps_removed(
                     old(lctx),
@@ -2966,9 +2966,9 @@ verus! {
                     &&& old(lctx).allocator_4k_lock_map().dom().contains(
                             AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu),
                         )
-                    &&& old(lctx).allocator_4k_lock_map()[
+                    &&& old(lctx).allocator_4k_lock_map().spec_index(
                         AllocatorLockObjId::Cache(alloc_ptr_4k, cache_cpu)
-                    ] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    ) == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .cpu_caches.lock_id_by_index(cache_cpu)
                 }) by {
                     reveal(KernelK::locked_objects_match_lctx);
@@ -3120,10 +3120,10 @@ verus! {
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{
-                    container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
-                    process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
-                    major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
-                    minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
+                    container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().container_depth(),
+                    process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().process_depth(),
+                    major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().current_lock_major(),
+                    minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().lock_minor(),
                 }),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -3137,11 +3137,11 @@ verus! {
                 final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 forall|page_index: PageIndex|
-                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    #![trigger old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))]
                     page_index_wf(page_index)
-                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
-                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
-                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                        && old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))
+                    ==> final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx))
+                        && final(self).page_array.spec_index(page_index).view().locked_by(final(lctx)),
                 forall|process_ptr: RwLockProcessPtr|
                     #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
                     old(self).process_map.dom().contains(process_ptr)
@@ -3189,13 +3189,13 @@ verus! {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                     LockId{
-                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.container_depth(),
-                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.process_depth(),
-                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.current_lock_major(),
-                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool@.lock_minor(),
+                        container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().container_depth(),
+                        process: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().process_depth(),
+                        major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().current_lock_major(),
+                        minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().lock_minor(),
                     },
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
@@ -3384,9 +3384,9 @@ verus! {
                 old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 unlock_requires::<GlobalPool>(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool
                         .locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
@@ -3402,11 +3402,11 @@ verus! {
                 // ---- Every held lock still matches lctx (global pool now released) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
                 forall|page_index: PageIndex|
-                    #![trigger old(self).page_array[page_index]@.wlocked_by(old(lctx))]
+                    #![trigger old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))]
                     page_index_wf(page_index)
-                        && old(self).page_array[page_index]@.wlocked_by(old(lctx))
-                    ==> final(self).page_array[page_index]@.wlocked_by(final(lctx))
-                        && final(self).page_array[page_index]@.locked_by(final(lctx)),
+                        && old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))
+                    ==> final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx))
+                        && final(self).page_array.spec_index(page_index).view().locked_by(final(lctx)),
                 forall|process_ptr: RwLockProcessPtr|
                     #![trigger old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx))]
                     old(self).process_map.dom().contains(process_ptr)
@@ -3481,9 +3481,9 @@ verus! {
                         &&& old(lctx).allocator_4k_lock_map().dom().contains(
                             AllocatorLockObjId::GlobalPool(alloc_ptr_4k),
                         )
-                        &&& old(lctx).allocator_4k_lock_map()[
+                        &&& old(lctx).allocator_4k_lock_map().spec_index(
                             AllocatorLockObjId::GlobalPool(alloc_ptr_4k)
-                        ] == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        ) == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                             .global_pool.lock_id()
                     }
                 ) by {
@@ -3645,7 +3645,7 @@ verus! {
                 // ---- Every held lock still matches lctx (page slot now locked) ----
                 final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
-                final(self).page_array[page_index]@.wlocked_by(final(lctx)),
+                final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx)),
 
                 // ---- Field framing: only page_array's slot lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -3677,11 +3677,11 @@ verus! {
 
                 // ---- The lock perm + lock ensures (forwarded from LockedArray::wlock) ----
                 wlock_ensures(
-                    old(self).page_array[page_index]@,
-                    final(self).page_array[page_index]@,
+                    old(self).page_array.spec_index(page_index).view(),
+                    final(self).page_array.spec_index(page_index).view(),
                     old(self).page_array.lock_id_by_index(page_index),
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).page_array.lock_id_by_index(page_index),
@@ -3701,7 +3701,7 @@ verus! {
                         KernelObjId::Page(page_index),
                     )
                     &&& wlock_requires(
-                        old(self).page_array[page_index]@,
+                        old(self).page_array.spec_index(page_index).view(),
                         old(lctx),
                     )
                 }) by {
@@ -3879,12 +3879,12 @@ verus! {
                 old(self).inv(),
                 old(lctx).wf(),
                 page_index_wf(page_index),
-                old(self).page_array[page_index]@.being_killed() == false,
-                old(self).page_array[page_index]@.wlocked_by(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
-                    == old(self).page_array[page_index]@.locking_thread()->Write_lock_id,
+                old(self).page_array.spec_index(page_index).view().being_killed() == false,
+                old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx)),
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
+                    == old(self).page_array.spec_index(page_index).view().locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
@@ -3917,7 +3917,7 @@ verus! {
                 // ---- page_array: only the targeted slot's lock state changed (now unlocked) ----
                 final(self).page_array.view().len() == old(self).page_array.view().len(),
                 final(self).page_array.unchanged_except(&old(self).page_array, page_index),
-                final(self).page_array[page_index]@.locking_thread() is None,
+                final(self).page_array.spec_index(page_index).view().locking_thread() is None,
 
                 // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
@@ -3928,7 +3928,7 @@ verus! {
                 final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
-                wunlock_ensures(old(self).page_array[page_index]@, final(self).page_array[page_index]@),
+                wunlock_ensures(old(self).page_array.spec_index(page_index).view(), final(self).page_array.spec_index(page_index).view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     old(self).page_array.lock_id_by_index(page_index),
                 ),
@@ -3939,7 +3939,7 @@ verus! {
             assert({
                 &&& self.page_array.inv()
                 &&& lctx.page_lock_map().dom().contains(page_index)
-                &&& lctx.page_lock_map()[page_index]
+                &&& lctx.page_lock_map().spec_index(page_index)
                     == self.page_array.lock_id_by_index(page_index)
             }) by {
                 reveal(page_array_wf);
@@ -4174,7 +4174,7 @@ verus! {
                         minor: scheduler_ptr,
                     },
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
@@ -4270,9 +4270,9 @@ verus! {
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(self).scheduler_map.spec_index(scheduler_ptr)
                     .wlocked_by(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).scheduler_map.spec_index(scheduler_ptr)
                         .locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
@@ -4340,7 +4340,7 @@ verus! {
                     &&& old(lctx).scheduler_lock_map().dom().contains(
                         scheduler_ptr,
                     )
-                    &&& old(lctx).scheduler_lock_map()[scheduler_ptr]
+                    &&& old(lctx).scheduler_lock_map().spec_index(scheduler_ptr)
                         == old(self).scheduler_map.lock_id_by_key(scheduler_ptr)
                 }) by {
                     reveal(KernelK::locked_objects_match_lctx);
@@ -4447,7 +4447,7 @@ verus! {
                     final(self).endpoint_map.spec_index(endpoint_ptr),
                     old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
                     final(lctx).thread_id(),
-                    ret@,
+                    ret.view(),
                 ),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).endpoint_map.lock_id_by_key(endpoint_ptr),
@@ -4501,9 +4501,9 @@ verus! {
                 unlock_requires::<Endpoint>(old(lctx)),
                 old(self).endpoint_map.dom().contains(endpoint_ptr),
                 old(self).endpoint_map.spec_index(endpoint_ptr).wlocked_by(old(lctx)),
-                lock_perm@.state() is WriteLock,
-                lock_perm@.thread_id() == old(lctx).thread_id(),
-                lock_perm@.lock_id()
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
                     == old(self).endpoint_map.spec_index(endpoint_ptr)
                         .locking_thread()->Write_lock_id,
                 old(self).locked_objects_match_lctx(old(lctx)),
@@ -4551,7 +4551,7 @@ verus! {
                 }) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
                 assert({
                     &&& old(lctx).endpoint_lock_map().dom().contains(endpoint_ptr)
-                    &&& old(lctx).endpoint_lock_map()[endpoint_ptr]
+                    &&& old(lctx).endpoint_lock_map().spec_index(endpoint_ptr)
                         == old(self).endpoint_map.lock_id_by_key(endpoint_ptr)
                 }) by { reveal(KernelK::locked_objects_match_lctx); reveal(endpoint_locked_match_lctx); };
             }

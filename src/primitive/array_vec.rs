@@ -55,18 +55,18 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
 
     pub closed spec fn view(&self) -> Seq<T>
     {
-        self.data@.subrange(0, self.len as int)
+        self.data.view().subrange(0, self.len as int)
     }
 
 
     pub open spec fn wf(&self) -> bool {
-        &&& self.len() == self@.len()
+        &&& self.len() == self.view().len()
         &&& self.len() <= self.capacity()
         &&& self.data.wf()
     }
 
     pub open spec fn spec_index(&self, index: int) -> (ret: T) {
-        self@[index]
+        self.view().spec_index(index)
     }
 
     pub fn get(&self, index: usize) -> (ret: &T)
@@ -74,7 +74,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             self.wf(),
             index < self.len(),
         ensures
-            *ret == self@[index as int],
+            *ret == self.view().spec_index(index as int),
     {
         self.data.get(index)
     }
@@ -85,7 +85,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             old(self).len() < old(self).capacity(),
         ensures
             final(self).wf(),
-            final(self)@ =~= old(self)@.push(value),
+            final(self).view() =~= old(self).view().push(value),
             final(self).len() == old(self).len() + 1,
     {
         let index = self.len;
@@ -98,26 +98,26 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     requires
         old(self).wf(),
         old(self).len() < old(self).capacity(),
-        old(self)@.no_duplicates(),
-        old(self)@.contains(value) == false,
+        old(self).view().no_duplicates(),
+        old(self).view().contains(value) == false,
     ensures
         final(self).wf(),
-        final(self)@ =~= old(self)@.push(value),
+        final(self).view() =~= old(self).view().push(value),
         final(self).len() == old(self).len() + 1,
-        final(self)@.no_duplicates(),
+        final(self).view().no_duplicates(),
     {
         let index = self.len;
         let ret = self.data.set(index, value);
 
         self.len = self.len + 1;
 
-        assert(self@ =~= old(self)@.push(value));
+        assert(self.view() =~= old(self).view().push(value));
 
-        assert(forall|t:T| #![auto] !( t =~= value) ==> self@.contains(t) ==> old(self)@.contains(t));
-        assert(forall|t:T| #![auto] !( t =~= value) ==> old(self)@.contains(t) ==> self@[old(self)@.index_of(t)] =~= t);
-        assert(forall|t:T| #![auto] !( t =~= value) ==> old(self)@.contains(t) ==> self@.contains(t));
-        assert(forall|i:int| #![auto] 0<=i<old(self).len() ==> ! (self@[i] =~= value));
-        assert(self@[self.len - 1] =~= value);
+        assert(forall|t:T| #![auto] !( t =~= value) ==> self.view().contains(t) ==> old(self).view().contains(t));
+        assert(forall|t:T| #![auto] !( t =~= value) ==> old(self).view().contains(t) ==> self.view().spec_index(old(self).view().index_of(t)) =~= t);
+        assert(forall|t:T| #![auto] !( t =~= value) ==> old(self).view().contains(t) ==> self.view().contains(t));
+        assert(forall|i:int| #![auto] 0<=i<old(self).len() ==> ! (self.view().spec_index(i) =~= value));
+        assert(self.view().spec_index(self.len - 1) =~= value);
     }
 
     pub fn pop(&mut self) -> (ret: T)
@@ -127,8 +127,8 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         ensures
             final(self).wf(),
             final(self).len() == old(self).len() - 1,
-            ret == old(self)@[old(self).len() - 1],
-            final(self)@ =~= old(self)@.drop_last(),
+            ret == old(self).view().spec_index(old(self).len() - 1),
+            final(self).view() =~= old(self).view().drop_last(),
     {
         let index = self.len() - 1;
         let ret = *self.data.get(index);
@@ -141,14 +141,14 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     pub fn pop_unique(&mut self) -> (ret: &T)
         requires
             old(self).wf(),
-            old(self)@.len() > 0,
-            old(self)@.no_duplicates(),
+            old(self).view().len() > 0,
+            old(self).view().no_duplicates(),
         ensures
             final(self).wf(),
-            final(self)@.len() == old(self)@.len() - 1,
-            ret == old(self)@[old(self).len() - 1],
-            final(self)@ =~= old(self)@.drop_last(),
-            final(self)@.no_duplicates(),
+            final(self).view().len() == old(self).view().len() - 1,
+            ret == old(self).view().spec_index(old(self).len() - 1),
+            final(self).view() =~= old(self).view().drop_last(),
+            final(self).view().no_duplicates(),
     {
         let index = self.len() - 1;
         let ret = self.data.get(index);
@@ -164,7 +164,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             index < old(self).len(),
         ensures
             final(self).wf(),
-            final(self)@ =~= old(self)@.update(index as int, value),
+            final(self).view() =~= old(self).view().update(index as int, value),
     {
         self.data.set(index, value);
     }
@@ -175,12 +175,12 @@ fn test<const N: usize>(ar: &mut ArrayVec<u64, N>)
 requires
     old(ar).wf(),
     old(ar).len() == 1,
-    old(ar)@[0] == 0,
+    old(ar).view().spec_index(0) == 0,
     N == 2,
 
 {
     let v_0 = ar.pop();
-    assert(ar@ == Seq::<u64>::empty());
+    assert(ar.view() == Seq::<u64>::empty());
     assert(v_0 == 0);
 }
 

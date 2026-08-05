@@ -29,7 +29,7 @@ impl<V> ReadOnlyNode<V>{
     pub fn new(v: V, owner_addr: Ghost<usize>) -> (ret :Self)
         ensures 
             ret.view() == v,
-            ret.owner_addr() == owner_addr@
+            ret.owner_addr() == owner_addr.view()
     {
         Self{
             value: v,
@@ -47,10 +47,10 @@ impl<V> ReadOnlyNode<V>{
 
 impl<T> ExternalReadOnlyNode<T>{
     pub closed spec fn spec_addr(&self) -> usize {
-        self.addr@
+        self.addr.view()
     }
     pub closed spec fn is_init(&self) -> bool {
-        self.is_init@
+        self.is_init.view()
     }
 
     #[verifier(when_used_as_spec(spec_addr))]
@@ -70,8 +70,8 @@ impl<T> ExternalReadOnlyNode<T>{
             final(self).is_init() == false,
             final(self).addr() == old(self).addr(),
             final(self).addr() == ret.0,
-            ret.1@.is_init(),
-            ret.1@.addr() == final(self).addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == final(self).addr(),
     {
         (&self.storage as *const ReadOnlyNode<T> as usize, Tracked::assume_new())
     }
@@ -79,8 +79,8 @@ impl<T> ExternalReadOnlyNode<T>{
     pub fn put(&mut self, perm: Tracked<PointsTo<ReadOnlyNode<T>>>)
         requires
             old(self).is_init() == false,
-            old(self).addr() == perm@.addr(),
-            perm@.is_init(),
+            old(self).addr() == perm.view().addr(),
+            perm.view().is_init(),
         ensures
             final(self).is_init() == true,
             final(self).addr() == old(self).addr(),

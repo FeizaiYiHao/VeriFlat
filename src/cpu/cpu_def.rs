@@ -60,7 +60,7 @@ impl Cpu{
     }
 
     pub open spec fn tlb_dirty_bitmap(&self) -> Map<Pcid, Option<ProcessPageTablePair>>{
-        self.tlb_dirty_bitmap@
+        self.tlb_dirty_bitmap.view()
     }
 
 
