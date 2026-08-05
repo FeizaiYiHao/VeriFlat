@@ -15,15 +15,15 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             old(self).head.unwrap() != addr,
             old(self).tail.unwrap() != addr,
         ensures
-            ret.1@.is_init(),
-            ret.1@.addr() == ret.0,
-            ret.1@.value()@ == old(self).map()[addr],
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == old(self).map().spec_index(addr),
 
             final(self).wf(),
             final(self).dom() == old(self).dom().remove(addr),
             final(self).map() == old(self).map().remove(addr),
             final(self).length == old(self).length - 1,
-            old(self)@.no_duplicates() ==> final(self)@ == old(self)@.remove_value(old(self).map()[addr]),
+            old(self).view().no_duplicates() ==> final(self).view() == old(self).view().remove_value(old(self).map().spec_index(addr)),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
     {
@@ -45,15 +45,15 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 seq_remove_lemma_2::<usize>();
                 seq_remove_lemma_2::<T>();
             }
-            let ghost_index = Ghost(self.addr_list@.index_of(addr));
+            let ghost_index = Ghost(self.addr_list.view().index_of(addr));
 
             let tracked old_perm = self.perms.borrow_mut().tracked_remove(addr);
             let old_node: &Node<T> = PPtr::<Node<T>>::from_usize(addr).borrow(Tracked(&old_perm));
             let prev = old_node.prev.unwrap();
             let next = old_node.next.unwrap();
 
-            assert(self.addr_list@[ghost_index@ - 1] == prev);
-            assert(self.addr_list@[ghost_index@ + 1] == next);
+            assert(self.addr_list.view().spec_index(ghost_index.view() - 1) == prev);
+            assert(self.addr_list.view().spec_index(ghost_index.view() + 1) == next);
 
             let mut prev_perm = Tracked(self.perms.borrow_mut().tracked_remove(prev));
             let mut next_perm = Tracked(self.perms.borrow_mut().tracked_remove(next));
@@ -64,10 +64,10 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 self.perms.borrow_mut().tracked_insert(prev, prev_perm.get());
                 self.perms.borrow_mut().tracked_insert(next, next_perm.get());
             }
-            self.addr_list = Ghost(self.addr_list@.subrange(0, ghost_index@).add(self.addr_list@.subrange(ghost_index@ + 1, self.length as int)));
-            self.value_list = Ghost(self.value_list@.subrange(0, ghost_index@).add(self.value_list@.subrange(ghost_index@ + 1, self.length as int)));
-            self.reverse_map = Ghost(self.reverse_map@.remove(self.map@[addr]));
-            self.map = Ghost(self.map@.remove(addr));
+            self.addr_list = Ghost(self.addr_list.view().subrange(0, ghost_index.view()).add(self.addr_list.view().subrange(ghost_index.view() + 1, self.length as int)));
+            self.value_list = Ghost(self.value_list.view().subrange(0, ghost_index.view()).add(self.value_list.view().subrange(ghost_index.view() + 1, self.length as int)));
+            self.reverse_map = Ghost(self.reverse_map.view().remove(self.map.view().spec_index(addr)));
+            self.map = Ghost(self.map.view().remove(addr));
             self.length = self.length - 1;
 
             assert(self.wf_perms());
@@ -75,89 +75,89 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_value_list());
             assert(self.wf_head());
             assert(self.wf_tail());
-            assert(self.addr_list@ == old(self).addr_list@.subrange(0, ghost_index@).add(old(self).addr_list@.subrange(ghost_index@ + 1, old(self).length as int)));
+            assert(self.addr_list.view() == old(self).addr_list.view().subrange(0, ghost_index.view()).add(old(self).addr_list.view().subrange(ghost_index.view() + 1, old(self).length as int)));
             assert(
                 forall|i:int|
-                    #![trigger self.addr_list@[i]]
-                    ghost_index@ <= i < self.length
+                    #![trigger self.addr_list.view().spec_index(i)]
+                    ghost_index.view() <= i < self.length
                     ==>
-                    self.addr_list@[i] == old(self).addr_list@[i + 1] 
+                    self.addr_list.view().spec_index(i) == old(self).addr_list.view().spec_index(i + 1)
             );
             assert(self.wf_prev()) by {
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        1<=i<ghost_index@ + 1
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        1<=i<ghost_index.view() + 1
                         ==>
-                        self.perms@[self.addr_list@[i]].value().prev == old(self).perms@[old(self).addr_list@[i]].value().prev
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev == old(self).perms.view().spec_index(old(self).addr_list.view().spec_index(i)).value().prev
                     );
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        1<=i<ghost_index@ + 1
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        1<=i<ghost_index.view() + 1
                         ==>
-                        self.perms@[self.addr_list@[i]].value().prev is Some 
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev is Some
                         &&
-                        self.perms@[self.addr_list@[i]].value().prev.unwrap() == self.addr_list@[i - 1]
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev.unwrap() == self.addr_list.view().spec_index(i - 1)
                     );
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        ghost_index@ + 1 <=i< self.length
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        ghost_index.view() + 1 <=i< self.length
                         ==>
-                        self.perms@[self.addr_list@[i]].value().prev == old(self).perms@[old(self).addr_list@[i + 1]].value().prev
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev == old(self).perms.view().spec_index(old(self).addr_list.view().spec_index(i + 1)).value().prev
                     );
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        ghost_index@ + 1 <=i < self.length
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        ghost_index.view() + 1 <=i < self.length
                         ==>
-                        self.perms@[self.addr_list@[i]].value().prev is Some 
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev is Some
                         &&
-                        self.perms@[self.addr_list@[i]].value().prev.unwrap() == self.addr_list@[i - 1]
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev.unwrap() == self.addr_list.view().spec_index(i - 1)
                     );
             };
             assert(self.wf_next()) by {
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        0<=i<ghost_index@ - 1
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        0<=i<ghost_index.view() - 1
                         ==>
-                        self.perms@[self.addr_list@[i]].value().next == old(self).perms@[old(self).addr_list@[i]].value().next
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next == old(self).perms.view().spec_index(old(self).addr_list.view().spec_index(i)).value().next
                     );
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        0<=i<ghost_index@ - 1
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        0<=i<ghost_index.view() - 1
                         ==>
-                        self.perms@[self.addr_list@[i]].value().next is Some 
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next is Some
                         &&
-                        self.perms@[self.addr_list@[i]].value().next.unwrap() == self.addr_list@[i + 1]
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next.unwrap() == self.addr_list.view().spec_index(i + 1)
                     );
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        ghost_index@<=i< self.length - 1
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        ghost_index.view()<=i< self.length - 1
                         ==>
-                        self.perms@[self.addr_list@[i]].value().next == old(self).perms@[old(self).addr_list@[i + 1]].value().next
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next == old(self).perms.view().spec_index(old(self).addr_list.view().spec_index(i + 1)).value().next
                     );
                 assert(        
                     forall|i:int|
-                        #![trigger self.addr_list@[i]]
-                        ghost_index@ <=i< self.length - 1
+                        #![trigger self.addr_list.view().spec_index(i)]
+                        ghost_index.view() <=i< self.length - 1
                         ==>
-                        self.perms@[self.addr_list@[i]].value().next is Some 
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next is Some
                         &&
-                        self.perms@[self.addr_list@[i]].value().next.unwrap() == self.addr_list@[i + 1]
+                        self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next.unwrap() == self.addr_list.view().spec_index(i + 1)
                     );
             };
-            assert(self.map().dom() == self.perms@.dom());
+            assert(self.map().dom() == self.perms.view().dom());
             assert(
                 forall|addr:usize|
-                    #![trigger self.map()[addr]]
+                    #![trigger self.map().spec_index(addr)]
                     self.map().dom().contains(addr) 
                     ==>
-                    self.map()[addr] == self.perms@[addr].value()@
+                    self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
             );
             assert(self.value_list_unique());
             assert(self.wf_reverse_map());
@@ -171,15 +171,15 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             old(self).dom().contains(addr),
 
         ensures 
-            ret.1@.is_init(),
-            ret.1@.addr() == ret.0,
-            ret.1@.value()@ == old(self).map()[addr],
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == old(self).map().spec_index(addr),
 
             final(self).wf(),
             final(self).dom() == old(self).dom().remove(addr),
             final(self).map() == old(self).map().remove(addr),
             final(self).length == old(self).length - 1,
-            old(self)@.no_duplicates() ==> final(self)@ == old(self)@.remove_value(old(self).map()[addr]),
+            old(self).view().no_duplicates() ==> final(self).view() == old(self).view().remove_value(old(self).map().spec_index(addr)),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
     {
@@ -222,10 +222,10 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             proof{
                 self.perms.borrow_mut().tracked_insert(new_head_addr, new_head_perm.get());
             }
-            self.addr_list = Ghost(self.addr_list@.skip(1));
-            self.value_list = Ghost(self.value_list@.skip(1));
-            self.reverse_map = Ghost(self.reverse_map@.remove(self.map@[old_head_addr]));
-            self.map = Ghost(self.map@.remove(old_head_addr));
+            self.addr_list = Ghost(self.addr_list.view().skip(1));
+            self.value_list = Ghost(self.value_list.view().skip(1));
+            self.reverse_map = Ghost(self.reverse_map.view().remove(self.map.view().spec_index(old_head_addr)));
+            self.map = Ghost(self.map.view().remove(old_head_addr));
 
             assert(self.wf_perms());
             assert(self.wf_addr_list());
@@ -256,10 +256,10 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             proof{
                 self.perms.borrow_mut().tracked_insert(new_tail_addr, new_tail_perm.get());
             }
-            self.addr_list = Ghost(self.addr_list@.subrange(0,self.length as int - 1).add(self.addr_list@.subrange(self.length as int ,self.length as int)));
-            self.value_list = Ghost(self.value_list@.subrange(0,self.length as int - 1).add(self.value_list@.subrange(self.length as int ,self.length as int)));
-            self.reverse_map = Ghost(self.reverse_map@.remove(self.map@[old_tail_addr]));
-            self.map = Ghost(self.map@.remove(old_tail_addr));
+            self.addr_list = Ghost(self.addr_list.view().subrange(0,self.length as int - 1).add(self.addr_list.view().subrange(self.length as int ,self.length as int)));
+            self.value_list = Ghost(self.value_list.view().subrange(0,self.length as int - 1).add(self.value_list.view().subrange(self.length as int ,self.length as int)));
+            self.reverse_map = Ghost(self.reverse_map.view().remove(self.map.view().spec_index(old_tail_addr)));
+            self.map = Ghost(self.map.view().remove(old_tail_addr));
             self.length = self.length - 1;
 
             assert(self.wf_perms());

@@ -13,7 +13,7 @@ pub struct BitMap<T, const N: usize>{
 impl<T:Copy, const N: usize> BitMap<T, N>{
 
     pub open spec fn view(&self) -> Map<usize, T>{
-        self.map@
+        self.map.view()
     }
 
     pub open spec fn inv(&self) -> bool{
@@ -21,31 +21,31 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
         self.bit_map.wf()
         &&&
         forall|i:usize|
-        #![trigger self@.dom().contains(i)]
+        #![trigger self.view().dom().contains(i)]
         #![trigger usize_in_range::<N>(i)]
-            usize_in_range::<N>(i) == self@.dom().contains(i)
+            usize_in_range::<N>(i) == self.view().dom().contains(i)
         &&&
         forall|i:usize|
         #![trigger usize_in_range::<N>(i)]
-        #![trigger self@[i]]
-        #![trigger self.bit_map[i]]
+        #![trigger self.view().spec_index(i)]
+        #![trigger self.bit_map.spec_index(i)]
         usize_in_range::<N>(i)
         ==>
-        self@[i] == self.bit_map[i]
+        self.view().spec_index(i) == self.bit_map.spec_index(i)
     }
 
     pub fn new_with_init_value(value:T) -> (ret:Self)
         ensures 
             ret.inv(),
-            ret@ == Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}),
+            ret.view() == Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}),
     {
         proof {
             let s = Seq::new(N as nat, |i: int| i as usize);
             assert forall|i: usize| usize_in_range::<N>(i) implies s.to_set().contains(i) by {
-                assert(s[i as int] == i);
+                assert(s.spec_index(i as int) == i);
             }
             assert forall|i: usize| s.to_set().contains(i) implies usize_in_range::<N>(i) by {
-                let j = choose|j: int| 0 <= j < s.len() && s[j] == i;
+                let j = choose|j: int| 0 <= j < s.len() && s.spec_index(j) == i;
             }
         }
         let ghost_map = Ghost(Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}));
@@ -56,7 +56,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
     }
 
     pub open spec fn spec_index(&self, index: usize) -> T {
-        self@[index]
+        self.view().spec_index(index)
     }
 
     pub fn index(&self, index: usize) -> (ret: T)
@@ -64,7 +64,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
             self.inv(),
             usize_in_range::<N>(index),
         ensures
-            ret == self[index],
+            ret == self.spec_index(index),
     {
         *self.bit_map.get(index)
     }
@@ -75,7 +75,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
             usize_in_range::<N>(index),
         ensures
             final(self).inv(),
-            final(self)@ == old(self)@.insert(index, value),
+            final(self).view() == old(self).view().insert(index, value),
     {
         proof{
             seq_update_lemma::<T>();
@@ -84,7 +84,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
 
         self.bit_map.set(index, value);
         proof {
-            self.map@ = self.map@.insert(index, value);
+            self.map = Ghost(self.map.view().insert(index, value));
         }
 
 

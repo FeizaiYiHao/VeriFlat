@@ -26,7 +26,7 @@ verus! {
             &&
             pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
             &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr == page_index2page_ptr(p_i)
+            pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i)
             
         &&&
         forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
@@ -35,9 +35,9 @@ verus! {
             &&
             pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
             ==>
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr)).view().view().state == PageState::Mapped4k
+            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().state == PageState::Mapped4k
             &&
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k()[va].addr)).view().view().mappings().contains((pt_ptr, va))
+            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
     }
 
     #[verifier::opaque]
@@ -56,7 +56,7 @@ verus! {
             &&
             pagetable_map.spec_index(pt_ptr).view().mapping_2m().contains_key(va)
             &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_2m()[va].addr == page_index2page_ptr(p_i)
+            pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).addr == page_index2page_ptr(p_i)
             
         &&&
         forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
@@ -65,9 +65,9 @@ verus! {
             &&
             pagetable_map.spec_index(pt_ptr).view().mapping_2m().contains_key(va)
             ==>
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m()[va].addr)).view().view().state == PageState::Mapped2m
+            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).addr)).view().view().state == PageState::Mapped2m
             &&
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m()[va].addr)).view().view().mappings().contains((pt_ptr, va))
+            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
     }
 
     #[verifier::opaque]
@@ -86,7 +86,7 @@ verus! {
             &&
             pagetable_map.spec_index(pt_ptr).view().mapping_1g().contains_key(va)
             &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_1g()[va].addr == page_index2page_ptr(p_i)
+            pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr == page_index2page_ptr(p_i)
             
         &&&
         forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
@@ -95,9 +95,9 @@ verus! {
             &&
             pagetable_map.spec_index(pt_ptr).view().mapping_1g().contains_key(va)
             ==>
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g()[va].addr)).view().view().state == PageState::Mapped1g
+            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr)).view().view().state == PageState::Mapped1g
             &&
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g()[va].addr)).view().view().mappings().contains((pt_ptr, va))
+            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
     }
 
     #[verifier::opaque]

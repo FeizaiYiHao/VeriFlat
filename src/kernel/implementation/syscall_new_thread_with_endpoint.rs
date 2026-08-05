@@ -21,18 +21,18 @@ impl KernelK {
             edp_idx_valid(endpoint_index),
             old(self).inv(),
             old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
-            old(self).cpu_array[cpu_id]@@.current_process is Some,
-            old(self).cpu_array[cpu_id]@@.current_thread is Some,
+            old(self).cpu_array.spec_index(cpu_id).view().view().current_process is Some,
+            old(self).cpu_array.spec_index(cpu_id).view().view().current_thread is Some,
             old(self).process_map.dom().contains(
-                old(self).cpu_array[cpu_id]@@.current_process->Some_0,
+                old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0,
             ),
             old(self).container_map.dom().contains(
                 old(self).process_map.spec_index(
-                    old(self).cpu_array[cpu_id]@@.current_process->Some_0,
+                    old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0,
                 ).view_rodata().view().owning_container,
             ),
             {
-                let process_ptr = old(self).cpu_array[cpu_id]@@.current_process->Some_0;
+                let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
                 let container_ptr = old(self).process_map.spec_index(process_ptr)
                     .view_rodata().view().owning_container;
                 old(self).scheduler_map.dom().contains(
@@ -43,15 +43,15 @@ impl KernelK {
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).user_view_locking_state() is Acquire,
             old(lctx).lock_id_set() =~= Set::<LockId>::empty(),
-            old(self).cpu_array[cpu_id]@.locked_by(old(lctx)) == false,
+            old(self).cpu_array.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
             {
-                let process_ptr = old(self).cpu_array[cpu_id]@@.current_process->Some_0;
+                let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
                 let container_ptr = old(self).process_map.spec_index(process_ptr)
                     .view_rodata().view().owning_container;
                 let scheduler_ptr = old(self).container_map.spec_index(container_ptr)
                     .view_rodata().view().scheduler;
-                &&& old(self).cpu_array[cpu_id]@@.current_process is Some
-                &&& old(self).cpu_array[cpu_id]@@.current_thread is Some
+                &&& old(self).cpu_array.spec_index(cpu_id).view().view().current_process is Some
+                &&& old(self).cpu_array.spec_index(cpu_id).view().view().current_thread is Some
                 &&& old(self).process_map.dom().contains(process_ptr)
                 &&& old(self).container_map.dom().contains(container_ptr)
                 &&& old(self).scheduler_map.dom().contains(scheduler_ptr)
@@ -282,34 +282,34 @@ impl KernelK {
                 old(self).thread_map.lock_id_by_key(current_thread_ptr),
             ],
             old(lctx).wf(),
-            cpu_lock_perm@.state() is WriteLock,
-            cpu_lock_perm@.thread_id() == old(lctx).thread_id(),
-            cpu_lock_perm@.lock_id()
+            cpu_lock_perm.view().state() is WriteLock,
+            cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
+            cpu_lock_perm.view().lock_id()
                 == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             old(self).cpu_array.spec_index(cpu_id).view().wlocked_by(old(lctx)),
             old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
             old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
-            scheduler_lock_perm@.state() is WriteLock,
-            scheduler_lock_perm@.thread_id() == old(lctx).thread_id(),
-            scheduler_lock_perm@.lock_id()
+            scheduler_lock_perm.view().state() is WriteLock,
+            scheduler_lock_perm.view().thread_id() == old(lctx).thread_id(),
+            scheduler_lock_perm.view().lock_id()
                 == old(self).scheduler_map.spec_index(scheduler_ptr)
                     .locking_thread()->Write_lock_id,
             old(self).scheduler_map.spec_index(scheduler_ptr).wlocked_by(old(lctx)),
             old(self).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
             old(self).container_map.spec_index(container_ptr).view_rodata().view().scheduler
                 == scheduler_ptr,
-            process_lock_perm@.state() is WriteLock,
-            process_lock_perm@.thread_id() == old(lctx).thread_id(),
-            process_lock_perm@.lock_id()
+            process_lock_perm.view().state() is WriteLock,
+            process_lock_perm.view().thread_id() == old(lctx).thread_id(),
+            process_lock_perm.view().lock_id()
                 == old(self).process_map.spec_index(process_ptr)
                     .locking_thread()->Write_lock_id,
             old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(self).process_map.spec_index(process_ptr).being_killed() == false,
             old(self).process_map.spec_index(process_ptr).view_rodata().view().owning_container
                 == container_ptr,
-            current_thread_lock_perm@.state() is WriteLock,
-            current_thread_lock_perm@.thread_id() == old(lctx).thread_id(),
-            current_thread_lock_perm@.lock_id()
+            current_thread_lock_perm.view().state() is WriteLock,
+            current_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
+            current_thread_lock_perm.view().lock_id()
                 == old(self).thread_map.spec_index(current_thread_ptr)
                     .locking_thread()->Write_lock_id,
             old(self).thread_map.spec_index(current_thread_ptr).wlocked_by(old(lctx)),
@@ -634,7 +634,7 @@ impl KernelK {
             }
             endpoint_mut.rf_counter = endpoint_mut.rf_counter + 1;
             endpoint_mut.owning_threads = Ghost(
-                endpoint_mut.owning_threads@.insert((thread_ptr, 0)),
+                endpoint_mut.owning_threads.view().insert((thread_ptr, 0)),
             );
         }
 

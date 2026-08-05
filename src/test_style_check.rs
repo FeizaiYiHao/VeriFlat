@@ -26,12 +26,12 @@ proof fn test_proof_with_issues(
 
 // 另一个测试 - 使用了all_triggers
 pub open spec fn test_spec_with_all_triggers(s: Seq<int>) -> bool {
-    forall|i: int| #![all_triggers] 0 <= i < s.len() ==> s[i] >= 0
+    forall|i: int| #![all_triggers] 0 <= i < s.len() ==> s.spec_index(i) >= 0
 }
 
 // 正确的写法示例
 pub open spec fn test_spec_correct(s: Seq<int>) -> bool {
-    forall|i: int| #![auto] 0 <= i < s.len() ==> s[i] >= 0
+    forall|i: int| #![auto] 0 <= i < s.len() ==> s.spec_index(i) >= 0
 }
 
 } // verus!

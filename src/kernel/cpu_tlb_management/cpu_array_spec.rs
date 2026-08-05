@@ -11,7 +11,7 @@ verus! {
             cpu_id_valid(cpu_i)
             ==>{
                 &&&
-                cpu_array[cpu_i]@.inv()
+                cpu_array.spec_index(cpu_i).view().inv()
                 &&&
                 cpu_array.spec_index(cpu_i).view().view().current_process is None ==> cpu_array.spec_index(cpu_i).view().view().current_cr3 == kernel_pagetable.cr3
                 &&&

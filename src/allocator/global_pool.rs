@@ -76,8 +76,8 @@ impl GlobalPool {
         requires self.linked_list.wf(), self.linked_list.len() != 0,
         ensures self.linked_list.dom().contains(ret.0),
             self.linked_list.map().dom().contains(ret.0),
-            ret.1 == self.linked_list@[0],
-            ret.1 == self.linked_list.map()[ret.0],
+            ret.1 == self.linked_list.view().spec_index(0),
+            ret.1 == self.linked_list.map().spec_index(ret.0),
     { self.linked_list.peek_head() }
 
     pub proof fn lemma_len_view(&self)
@@ -88,28 +88,28 @@ impl GlobalPool {
     /// Same invariant as AllocatorCache::perm_wf — see there for details.
     pub open spec fn perm_wf(&self) -> bool {
         let pages = self.linked_list.view().to_set();
-        &&& self.page_perms_4k@.dom().subset_of(pages)
-        &&& self.page_perms_2m@.dom().subset_of(pages)
-        &&& self.page_perms_1g@.dom().subset_of(pages)
-        &&& self.page_perms_4k@.dom().disjoint(self.page_perms_2m@.dom())
-        &&& self.page_perms_4k@.dom().disjoint(self.page_perms_1g@.dom())
-        &&& self.page_perms_2m@.dom().disjoint(self.page_perms_1g@.dom())
-        &&& self.page_perms_4k@.dom() + self.page_perms_2m@.dom() + self.page_perms_1g@.dom() =~= pages
+        &&& self.page_perms_4k.view().dom().subset_of(pages)
+        &&& self.page_perms_2m.view().dom().subset_of(pages)
+        &&& self.page_perms_1g.view().dom().subset_of(pages)
+        &&& self.page_perms_4k.view().dom().disjoint(self.page_perms_2m.view().dom())
+        &&& self.page_perms_4k.view().dom().disjoint(self.page_perms_1g.view().dom())
+        &&& self.page_perms_2m.view().dom().disjoint(self.page_perms_1g.view().dom())
+        &&& self.page_perms_4k.view().dom() + self.page_perms_2m.view().dom() + self.page_perms_1g.view().dom() =~= pages
         &&& forall|p: PagePtr|
-            #![trigger self.page_perms_4k@[p].is_init()]
-            #![trigger self.page_perms_4k@[p].addr()]
-            self.page_perms_4k@.dom().contains(p)
-            ==> self.page_perms_4k@[p].is_init() && self.page_perms_4k@[p].addr() == p
+            #![trigger self.page_perms_4k.view().spec_index(p).is_init()]
+            #![trigger self.page_perms_4k.view().spec_index(p).addr()]
+            self.page_perms_4k.view().dom().contains(p)
+            ==> self.page_perms_4k.view().spec_index(p).is_init() && self.page_perms_4k.view().spec_index(p).addr() == p
         &&& forall|p: PagePtr|
-            #![trigger self.page_perms_2m@[p].is_init()]
-            #![trigger self.page_perms_2m@[p].addr()]
-            self.page_perms_2m@.dom().contains(p)
-            ==> self.page_perms_2m@[p].is_init() && self.page_perms_2m@[p].addr() == p
+            #![trigger self.page_perms_2m.view().spec_index(p).is_init()]
+            #![trigger self.page_perms_2m.view().spec_index(p).addr()]
+            self.page_perms_2m.view().dom().contains(p)
+            ==> self.page_perms_2m.view().spec_index(p).is_init() && self.page_perms_2m.view().spec_index(p).addr() == p
         &&& forall|p: PagePtr|
-            #![trigger self.page_perms_1g@[p].is_init()]
-            #![trigger self.page_perms_1g@[p].addr()]
-            self.page_perms_1g@.dom().contains(p)
-            ==> self.page_perms_1g@[p].is_init() && self.page_perms_1g@[p].addr() == p
+            #![trigger self.page_perms_1g.view().spec_index(p).is_init()]
+            #![trigger self.page_perms_1g.view().spec_index(p).addr()]
+            self.page_perms_1g.view().dom().contains(p)
+            ==> self.page_perms_1g.view().spec_index(p).is_init() && self.page_perms_1g.view().spec_index(p).addr() == p
     }
 }
 

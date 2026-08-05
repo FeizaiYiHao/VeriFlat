@@ -10,7 +10,7 @@ pub open spec fn no_change_except<T>(new: Seq<T>, old: Seq<T>, index:usize) -> b
             #![auto]
             0 <= i <  new.len() && i != index
             ==>
-            new[i] === old[i]
+            new.spec_index(i) === old.spec_index(i)
     }
     
 } 

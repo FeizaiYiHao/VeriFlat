@@ -211,28 +211,28 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).user_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
-                cpu_lock_perm@.state() is WriteLock,
-                cpu_lock_perm@.thread_id() == old(lctx).thread_id(),
-                cpu_lock_perm@.lock_id() == old(self).cpu_array[cpu_id]@.locking_thread()->Write_lock_id,
-                old(self).cpu_array[cpu_id]@.wlocked_by(old(lctx)),
-                old(self).cpu_array[cpu_id]@.being_killed() == false,
+                cpu_lock_perm.view().state() is WriteLock,
+                cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
+                cpu_lock_perm.view().lock_id() == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+                old(self).cpu_array.spec_index(cpu_id).view().wlocked_by(old(lctx)),
+                old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 old(self).container_map.dom().contains(container_ptr),
-                container_lock_perm@.state() is WriteLock,
-                container_lock_perm@.thread_id() == old(lctx).thread_id(),
-                container_lock_perm@.lock_id() == old(self).container_map.spec_index(container_ptr).locking_thread()->Write_lock_id,
+                container_lock_perm.view().state() is WriteLock,
+                container_lock_perm.view().thread_id() == old(lctx).thread_id(),
+                container_lock_perm.view().lock_id() == old(self).container_map.spec_index(container_ptr).locking_thread()->Write_lock_id,
                 old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(self).container_map.spec_index(container_ptr).being_killed() == false,
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.is_init(),
-                quota_lock_perm@.state() is WriteLock,
-                quota_lock_perm@.thread_id() == old(lctx).thread_id(),
-                quota_lock_perm@.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locking_thread()->Write_lock_id,
+                quota_lock_perm.view().state() is WriteLock,
+                quota_lock_perm.view().thread_id() == old(lctx).thread_id(),
+                quota_lock_perm.view().lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     .wlocked_by(old(lctx)),
                 old(self).process_map.dom().contains(process_ptr),
-                process_lock_perm@.state() is WriteLock,
-                process_lock_perm@.thread_id() == old(lctx).thread_id(),
-                process_lock_perm@.lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
+                process_lock_perm.view().state() is WriteLock,
+                process_lock_perm.view().thread_id() == old(lctx).thread_id(),
+                process_lock_perm.view().lock_id() == old(self).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
                 old(self).process_map.spec_index(process_ptr).being_killed() == false,
                 old(self).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
@@ -260,7 +260,7 @@ verus! {
                 final(self).allocator_1g_map  == old(self).allocator_1g_map,
                 final(self).default_pagetable == old(self).default_pagetable,
                 final(self).cpu_array.unchanged_except(&old(self).cpu_array, cpu_id),
-                final(self).cpu_array[cpu_id]@.locking_thread() is None,
+                final(self).cpu_array.spec_index(cpu_id).view().locking_thread() is None,
                 final(self).container_map.unchanged_except(&old(self).container_map, container_ptr),
                 final(self).container_map.spec_index(container_ptr).locking_thread() is None,
                 final(self).process_map.unchanged_except(&old(self).process_map, process_ptr),
@@ -395,23 +395,23 @@ verus! {
         &&& new_u.cpu_array == old_u.cpu_array
         &&& new_u.process_map.dom() == old_u.process_map.dom()
         &&& old_u.process_map.dom().contains(process_ptr)
-        &&& new_u.process_map[process_ptr].quota_4k as int
-                == old_u.process_map[process_ptr].quota_4k as int + delta
-        &&& new_u.process_map[process_ptr].pagetable      == old_u.process_map[process_ptr].pagetable
-        &&& new_u.process_map[process_ptr].iommu_table    == old_u.process_map[process_ptr].iommu_table
-        &&& new_u.process_map[process_ptr].quota_2m       == old_u.process_map[process_ptr].quota_2m
-        &&& new_u.process_map[process_ptr].quota_1g       == old_u.process_map[process_ptr].quota_1g
-        &&& new_u.process_map[process_ptr].parent         == old_u.process_map[process_ptr].parent
-        &&& new_u.process_map[process_ptr].children       == old_u.process_map[process_ptr].children
-        &&& new_u.process_map[process_ptr].depth          == old_u.process_map[process_ptr].depth
-        &&& new_u.process_map[process_ptr].uppertree_seq  == old_u.process_map[process_ptr].uppertree_seq
-        &&& new_u.process_map[process_ptr].subtree_set    == old_u.process_map[process_ptr].subtree_set
-        &&& new_u.process_map[process_ptr].owned_threads  == old_u.process_map[process_ptr].owned_threads
-        &&& new_u.process_map[process_ptr].killed         == old_u.process_map[process_ptr].killed
+        &&& new_u.process_map.spec_index(process_ptr).quota_4k as int
+                == old_u.process_map.spec_index(process_ptr).quota_4k as int + delta
+        &&& new_u.process_map.spec_index(process_ptr).pagetable      == old_u.process_map.spec_index(process_ptr).pagetable
+        &&& new_u.process_map.spec_index(process_ptr).iommu_table    == old_u.process_map.spec_index(process_ptr).iommu_table
+        &&& new_u.process_map.spec_index(process_ptr).quota_2m       == old_u.process_map.spec_index(process_ptr).quota_2m
+        &&& new_u.process_map.spec_index(process_ptr).quota_1g       == old_u.process_map.spec_index(process_ptr).quota_1g
+        &&& new_u.process_map.spec_index(process_ptr).parent         == old_u.process_map.spec_index(process_ptr).parent
+        &&& new_u.process_map.spec_index(process_ptr).children       == old_u.process_map.spec_index(process_ptr).children
+        &&& new_u.process_map.spec_index(process_ptr).depth          == old_u.process_map.spec_index(process_ptr).depth
+        &&& new_u.process_map.spec_index(process_ptr).uppertree_seq  == old_u.process_map.spec_index(process_ptr).uppertree_seq
+        &&& new_u.process_map.spec_index(process_ptr).subtree_set    == old_u.process_map.spec_index(process_ptr).subtree_set
+        &&& new_u.process_map.spec_index(process_ptr).owned_threads  == old_u.process_map.spec_index(process_ptr).owned_threads
+        &&& new_u.process_map.spec_index(process_ptr).killed         == old_u.process_map.spec_index(process_ptr).killed
         &&& forall|p: RwLockProcessPtr|
-            #![trigger new_u.process_map[p]]
+            #![trigger new_u.process_map.spec_index(p)]
             old_u.process_map.dom().contains(p) && p != process_ptr ==>
-                new_u.process_map[p] == old_u.process_map[p]
+                new_u.process_map.spec_index(p) == old_u.process_map.spec_index(p)
     }
 
     pub proof fn kernel_process_quota_4k_changed_imply_kernel_u_changed(

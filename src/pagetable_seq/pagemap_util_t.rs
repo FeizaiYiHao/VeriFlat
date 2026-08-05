@@ -21,37 +21,37 @@ pub fn page_map_set_kernel_entry_range(
         old(page_map_perm).is_init(),
         old(page_map_perm).value().wf(),
         kernel_entries.wf(),
-        kernel_entries@.len() == KERNEL_MEM_END_L4INDEX,
+        kernel_entries.view().len() == KERNEL_MEM_END_L4INDEX,
     ensures
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
         forall|i: usize|
-            #![trigger final(page_map_perm).value()[i]]
-            KERNEL_MEM_END_L4INDEX <= i < 512 ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
+            #![trigger final(page_map_perm).value().spec_index(i)]
+            KERNEL_MEM_END_L4INDEX <= i < 512 ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         forall|i: usize|
-            #![trigger final(page_map_perm).value()[i]]
-            0 <= i < KERNEL_MEM_END_L4INDEX ==> final(page_map_perm).value()[i] =~= usize2page_entry(
-                kernel_entries@[i as int],
+            #![trigger final(page_map_perm).value().spec_index(i)]
+            0 <= i < KERNEL_MEM_END_L4INDEX ==> final(page_map_perm).value().spec_index(i) =~= usize2page_entry(
+                kernel_entries.view().spec_index(i as int),
             ),
 {
     for index in 0..KERNEL_MEM_END_L4INDEX
         invariant
             0 <= index <= KERNEL_MEM_END_L4INDEX,
             kernel_entries.wf(),
-            kernel_entries@.len() == KERNEL_MEM_END_L4INDEX,
+            kernel_entries.view().len() == KERNEL_MEM_END_L4INDEX,
             page_map_perm.addr() == page_map_ptr,
             page_map_perm.is_init(),
             page_map_perm.value().wf(),
             forall|i: usize|
-                #![trigger page_map_perm.value()[i]]
-                KERNEL_MEM_END_L4INDEX <= i < 512 ==> page_map_perm.value()[i] =~= old(
+                #![trigger page_map_perm.value().spec_index(i)]
+                KERNEL_MEM_END_L4INDEX <= i < 512 ==> page_map_perm.value().spec_index(i) =~= old(
                     page_map_perm,
-                ).value()[i],
+                ).value().spec_index(i),
             forall|i: usize|
-                #![trigger page_map_perm.value()[i]]
-                0 <= i < index ==> page_map_perm.value()[i] =~= usize2page_entry(
-                    kernel_entries@[i as int],
+                #![trigger page_map_perm.value().spec_index(i)]
+                0 <= i < index ==> page_map_perm.value().spec_index(i) =~= usize2page_entry(
+                    kernel_entries.view().spec_index(i as int),
                 ),
     {
         let v = *kernel_entries.get(index);
@@ -92,9 +92,9 @@ pub fn page_map_set(
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
         forall|i: usize|
-            #![trigger final(page_map_perm).value()[i]]
-            0 <= i < 512 && i != index ==> final(page_map_perm).value()[i] =~= old(page_map_perm).value()[i],
-        final(page_map_perm).value()[index] =~= value,
+            #![trigger final(page_map_perm).value().spec_index(i)]
+            0 <= i < 512 && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
+        final(page_map_perm).value().spec_index(index) =~= value,
 {
     let pptr: PPtr<PageMap> = PPtr::from_addr(page_map_ptr);
     let pm: &mut PageMap = pptr.borrow_mut(Tracked(page_map_perm));
@@ -111,12 +111,12 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
         page_perm.addr() == page_ptr,
     ensures
         ret.0 == page_ptr,
-        ret.1@.addr() == ret.0,
-        ret.1@.is_init(),
-        ret.1@.value().wf(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().is_init(),
+        ret.1.view().value().wf(),
         forall|i: usize|
-            #![trigger ret.1@.value()[i].is_empty()]
-            0 <= i < 512 ==> ret.1@.value()[i].is_empty(),
+            #![trigger ret.1.view().value().spec_index(i).is_empty()]
+            0 <= i < 512 ==> ret.1.view().value().spec_index(i).is_empty(),
 {
     unsafe {
         let uptr = page_ptr as *mut MaybeUninit<PageMap>;
@@ -134,16 +134,16 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
     Ghost<Seq<Map<VAddr, MapEntry>>>)
     requires
         NUM_CPUS > 0,
-        tlbmap_4k@.len() == NUM_CPUS,
+        tlbmap_4k.view().len() == NUM_CPUS,
     ensures
-        ret@.len() == NUM_CPUS,
+        ret.view().len() == NUM_CPUS,
         forall|cpu_id: CpuId|
-            #![trigger ret@[cpu_id as int]]
-            0 <= cpu_id < NUM_CPUS ==> !(ret@[cpu_id as int].contains_key(va@)),
+            #![trigger ret.view().spec_index(cpu_id as int)]
+            0 <= cpu_id < NUM_CPUS ==> !(ret.view().spec_index(cpu_id as int).contains_key(va.view())),
         forall|cpu_id: CpuId|
-            #![trigger ret@[cpu_id as int]]
-            #![trigger tlbmap_4k@[cpu_id as int]]
-            0 <= cpu_id < NUM_CPUS ==> ret@[cpu_id as int].submap_of(tlbmap_4k@[cpu_id as int]),
+            #![trigger ret.view().spec_index(cpu_id as int)]
+            #![trigger tlbmap_4k.view().spec_index(cpu_id as int)]
+            0 <= cpu_id < NUM_CPUS ==> ret.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)),
 {
     let mut cpu_id = 0;
     let mut ret_map = tlbmap_4k;
@@ -152,44 +152,44 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
 
     assert(forall|cpu_id: CpuId|
         #![auto]
-        0 <= cpu_id < NUM_CPUS ==> ret_map@[cpu_id as int] =~= tlbmap_4k@[cpu_id as int]);
+        0 <= cpu_id < NUM_CPUS ==> ret_map.view().spec_index(cpu_id as int) =~= tlbmap_4k.view().spec_index(cpu_id as int));
     assert(forall|cpu_id: CpuId|
         #![auto]
-        0 <= cpu_id < NUM_CPUS ==> ret_map@[cpu_id as int].submap_of(tlbmap_4k@[cpu_id as int]));
+        0 <= cpu_id < NUM_CPUS ==> ret_map.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
 
     // #[verifier::loop_isolation(false)]
     for cpu_id in 0..NUM_CPUS
         invariant
             0 <= cpu_id <= NUM_CPUS,
-            tlbmap_4k@.len() == NUM_CPUS,
-            ret_map@.len() == NUM_CPUS,
+            tlbmap_4k.view().len() == NUM_CPUS,
+            ret_map.view().len() == NUM_CPUS,
             forall|cpu_i: CpuId|
                 #![auto]
-                0 <= cpu_i < cpu_id ==> ret_map@[cpu_i as int].contains_key(va@) == false,
+                0 <= cpu_i < cpu_id ==> ret_map.view().spec_index(cpu_i as int).contains_key(va.view()) == false,
             forall|cpu_i: CpuId|
                 #![auto]
-                0 <= cpu_i < NUM_CPUS ==> ret_map@[cpu_i as int].submap_of(tlbmap_4k@[cpu_i as int]),
+                0 <= cpu_i < NUM_CPUS ==> ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)),
     {
         proof {
-            assert(cpu_id < ret_map@.len());
-            let old_at_i = ret_map@[cpu_id as int];
-            let tlbmap = old_at_i.remove(va@);
-            assert(!tlbmap.contains_key(va@));
+            assert(cpu_id < ret_map.view().len());
+            let old_at_i = ret_map.view().spec_index(cpu_id as int);
+            let tlbmap = old_at_i.remove(va.view());
+            assert(!tlbmap.contains_key(va.view()));
             // tlbmap is a submap of old_at_i, which (by loop invariant) is a submap of tlbmap_4k[cpu_id]
             assert(tlbmap.submap_of(old_at_i));
-            assert(old_at_i.submap_of(tlbmap_4k@[cpu_id as int]));
-            assert(tlbmap.submap_of(tlbmap_4k@[cpu_id as int])) by {
+            assert(old_at_i.submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
+            assert(tlbmap.submap_of(tlbmap_4k.view().spec_index(cpu_id as int))) by {
                 broadcast use crate::lemma::lemma_u::submap_by_transitivity;
             }
-            let tlbseq = ret_map@.update(cpu_id as int, tlbmap);
+            let tlbseq = ret_map.view().update(cpu_id as int, tlbmap);
             assert(tlbseq.index(cpu_id as int) =~= tlbmap);
-            ret_map@ = tlbseq;
+            *ret_map.borrow_mut() = tlbseq;
             // After update, ret_map@[cpu_id] = tlbmap, all others unchanged.
-            assert(!ret_map@[cpu_id as int].contains_key(va@));
+            assert(!ret_map.view().spec_index(cpu_id as int).contains_key(va.view()));
             assert forall|cpu_i: CpuId| 0 <= cpu_i < NUM_CPUS implies
-                #[trigger] ret_map@[cpu_i as int].submap_of(tlbmap_4k@[cpu_i as int]) by {
+                #[trigger] ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)) by {
                 if cpu_i as int == cpu_id as int {
-                    assert(ret_map@[cpu_i as int] == tlbmap);
+                    assert(ret_map.view().spec_index(cpu_i as int) == tlbmap);
                 } else {
                     // unchanged
                 }

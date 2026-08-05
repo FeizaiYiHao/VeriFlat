@@ -29,41 +29,41 @@ verus! {
 
     impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockInvTrait for LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
         open spec fn inv(&self) -> bool {
-            self@.inv()
+            self.view().inv()
         }
     }
 
     impl<T:LockMajorTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockMajorTrait for LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
         open spec fn lock_major_1(&self) -> LockMajorId {
-            self@@.lock_major_1()
+            self.view().view().lock_major_1()
         }
     
         open spec fn lock_major_2(&self) -> LockMajorId {
-            self@@.lock_major_2()
+            self.view().view().lock_major_2()
         }
     
         open spec fn lock_major_3(&self) -> LockMajorId {
-            self@@.lock_major_3()
+            self.view().view().lock_major_3()
         }
     
         open spec fn lock_major_default(&self) -> LockMajorId {
-            self@@.lock_major_default()
+            self.view().view().lock_major_default()
         }
     
         open spec fn lock_major_1_predicate(&self) -> bool {
-            self@@.lock_major_1_predicate()
+            self.view().view().lock_major_1_predicate()
         }
     
         open spec fn lock_major_2_predicate(&self) -> bool {
-            self@@.lock_major_2_predicate()
+            self.view().view().lock_major_2_predicate()
         }
     
         open spec fn lock_major_3_predicate(&self) -> bool {
-            self@@.lock_major_3_predicate()
+            self.view().view().lock_major_3_predicate()
         }
     
         open spec fn lock_major_default_predicate(&self) -> bool {
-            self@@.lock_major_default_predicate()
+            self.view().view().lock_major_default_predicate()
         }
     }
     

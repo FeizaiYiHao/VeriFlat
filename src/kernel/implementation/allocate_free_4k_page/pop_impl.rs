@@ -33,11 +33,11 @@ impl KernelK {
             old(self).thread_map.spec_index(thread_ptr).view().owning_container == container_ptr,
             cache_lock_perm.state() is WriteLock,
             cache_lock_perm.thread_id() == old(lctx).thread_id(),
-            cache_lock_perm.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
+            cache_lock_perm.lock_id() == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                .cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
-            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id]@@.view().len() > 0,
+                .cpu_caches.spec_index(cpu_id).view().wlocked_by(old(lctx)),
+            old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
             old(self).thread_map.spec_index(thread_ptr).being_killed() == false,
             thread_effective_quota_4k(old(self).thread_map.spec_index(thread_ptr)) >= 1,
             thread_lock_perm.state() is WriteLock,
@@ -63,17 +63,17 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
-            cache_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].view().locking_thread()->Write_lock_id,
-            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].lock_id()
-                == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches[cpu_id].lock_id(),
+            cache_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).lock_id()
+                == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).lock_id(),
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.unchanged_except(
                 &old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches, cpu_id),
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                .cpu_caches[cpu_id]@@.view()
+                .cpu_caches.spec_index(cpu_id).view().view().view()
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .cpu_caches[cpu_id]@@.view().skip(1),
+                    .cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                .cpu_caches[cpu_id]@.wlocked_by(final(lctx)),
+                .cpu_caches.spec_index(cpu_id).view().wlocked_by(final(lctx)),
             final(self).thread_map.spec_index(thread_ptr).being_killed() == false,
             final(self).thread_map.spec_index(thread_ptr).view().owning_proc
                 == old(self).thread_map.spec_index(thread_ptr).view().owning_proc,
@@ -86,11 +86,11 @@ impl KernelK {
                 == old(self).thread_map.lock_id_by_key(thread_ptr),
             // ---- page slot left write-locked, perm handed back ----
             page_index_wf(page_ptr2page_index(ret.0)),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().wlocked_by(final(lctx)),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().being_killed() == false,
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().wlocked_by(final(lctx)),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
-            ret.1.view().lock_id() == final(self).page_array[page_ptr2page_index(ret.0)].view().locking_thread()->Write_lock_id,
+            ret.1.view().lock_id() == final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().locking_thread()->Write_lock_id,
             // ---- lock_map: gained exactly the page slot; everything else preserved ----
             final(lctx).wf(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
@@ -100,7 +100,7 @@ impl KernelK {
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                 =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.0),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().view().state == (PageState::Owned4k{ thread_ptr }),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k{ thread_ptr }),
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
@@ -156,9 +156,9 @@ impl KernelK {
         // the wrapper), retype Free4k→Owned4k, stage.
         assert(
             self.allocator_4k_map.spec_index(alloc_ptr_4k)
-                .cpu_caches[cpu_id]@@.linked_list.wf()
+                .cpu_caches.spec_index(cpu_id).view().view().linked_list.wf()
             && self.allocator_4k_map.spec_index(alloc_ptr_4k)
-                .cpu_caches[cpu_id]@@.linked_list.view().no_duplicates()
+                .cpu_caches.spec_index(cpu_id).view().view().linked_list.view().no_duplicates()
         ) by {
             reveal(allocator_perms_wf);
         };
@@ -199,7 +199,7 @@ impl KernelK {
             let thread_mut = self.thread_map.borrow_mut(
                 thread_ptr, Tracked(&*lctx), Tracked(thread_lock_perm),
             );
-            thread_mut.temp_alloc_cache_4k = Ghost(thread_mut.temp_alloc_cache_4k@.insert(page_ptr));
+            thread_mut.temp_alloc_cache_4k = Ghost(thread_mut.temp_alloc_cache_4k.view().insert(page_ptr));
         }
         proof {
             lctx.enter_kernel_view_release();
@@ -419,7 +419,7 @@ impl KernelK {
             old(lctx).lock_id_acyclic(
                 old(self).page_array.lock_id_by_index(page_ptr2page_index(
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .global_pool.view().view()[0],
+                        .global_pool.view().view().spec_index(0),
                 )),
             ),
         ensures
@@ -453,11 +453,11 @@ impl KernelK {
                 == old(self).thread_map.lock_id_by_key(thread_ptr),
             // ---- page slot left write-locked, perm handed back ----
             page_index_wf(page_ptr2page_index(ret.0)),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().wlocked_by(final(lctx)),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().being_killed() == false,
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().wlocked_by(final(lctx)),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
-            ret.1.view().lock_id() == final(self).page_array[page_ptr2page_index(ret.0)].view().locking_thread()->Write_lock_id,
+            ret.1.view().lock_id() == final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().locking_thread()->Write_lock_id,
             // ---- lock_map: gained exactly the page slot; everything else preserved ----
             final(lctx).wf(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
@@ -467,7 +467,7 @@ impl KernelK {
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                 =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.0),
-            final(self).page_array[page_ptr2page_index(ret.0)].view().view().state == (PageState::Owned4k{ thread_ptr }),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k{ thread_ptr }),
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g

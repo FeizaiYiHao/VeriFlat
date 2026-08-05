@@ -17,7 +17,7 @@ impl <const N: usize> ArraySet<N> {
     pub fn new() -> (ret:Self)
         ensures
             ret.wf(),
-            ret@ == Set::<usize>::empty(),
+            ret.view() == Set::<usize>::empty(),
     {
         let mut ret = Self{
             data: Array::new(),
@@ -29,9 +29,9 @@ impl <const N: usize> ArraySet<N> {
                 0<=i<=N,
                 ret.data.wf(),
                 ret.len == 0,
-                ret.set@ == Set::<usize>::empty(),
+                ret.set.view() == Set::<usize>::empty(),
                 forall|j:int|
-                    0<=j<i ==> ret.data@[j] == false,
+                    0<=j<i ==> ret.data.view().spec_index(j) == false,
         {
             ret.data.set(i,false);
         }
@@ -43,7 +43,7 @@ impl <const N: usize> ArraySet<N> {
             old(self).wf(),
         ensures
             final(self).wf(),
-            final(self)@ == Set::<usize>::empty(),
+            final(self).view() == Set::<usize>::empty(),
     {
             self.len = 0;
             self.set = Ghost(Set::<usize>::empty());
@@ -52,16 +52,16 @@ impl <const N: usize> ArraySet<N> {
                 0<=i<=N,
                 self.data.wf(),
                 self.len == 0,
-                self.set@ == Set::<usize>::empty(),
+                self.set.view() == Set::<usize>::empty(),
                 forall|j:int|
-                    0<=j<i ==> self.data@[j] == false,
+                    0<=j<i ==> self.data.view().spec_index(j) == false,
         {
             self.data.set(i,false);
         }
     }
 
     pub closed spec fn view(&self) -> Set<usize>{
-        self.set@
+        self.set.view()
     }
 
     #[verifier(when_used_as_spec(spec_len))]
@@ -69,13 +69,13 @@ impl <const N: usize> ArraySet<N> {
         requires
             self.wf(),
         ensures
-            ret == self.set@.len(),
+            ret == self.set.view().len(),
     {
         self.len
     }
 
     pub closed spec fn spec_len(&self) -> usize{
-        self.set@.len() as usize
+        self.set.view().len() as usize
     }
 
     pub open spec fn wf(&self) -> bool{
@@ -88,8 +88,8 @@ impl <const N: usize> ArraySet<N> {
     pub open spec fn elements_in_range(&self) -> bool{
         &&&
         forall|i:usize| 
-            #![trigger self@.contains(i)]
-            self@.contains(i) ==> 0 <= i < N
+            #![trigger self.view().contains(i)]
+            self.view().contains(i) ==> 0 <= i < N
     }
 
     pub closed spec fn internal_wf(&self) -> bool{
@@ -99,48 +99,48 @@ impl <const N: usize> ArraySet<N> {
         0 <= self.len <= N
         &&&
         forall|i:usize| 
-            #![trigger self.data@[i as int]]
-            #![trigger self.set@.contains(i)]
-            0 <= i < N && self.data@[i as int] ==> self.set@.contains(i)
+            #![trigger self.data.view().spec_index(i as int)]
+            #![trigger self.set.view().contains(i)]
+            0 <= i < N && self.data.view().spec_index(i as int) ==> self.set.view().contains(i)
         &&&
         forall|i:usize| 
-            #![trigger self.data@[i as int]]
-            #![trigger self.set@.contains(i)]
-            self.set@.contains(i) ==> 0 <= i < N && self.data@[i as int]     
+            #![trigger self.data.view().spec_index(i as int)]
+            #![trigger self.set.view().contains(i)]
+            self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
         &&&
-        self.len == self.set@.len() 
+        self.len == self.set.view().len()
     }
 
     pub fn insert(&mut self, v:usize)
         requires
             old(self).wf(),
-            old(self)@.contains(v) == false,
+            old(self).view().contains(v) == false,
             0 <= v < N,
         ensures
             final(self).wf(),
-            final(self)@ == old(self)@.insert(v),
+            final(self).view() == old(self).view().insert(v),
     {
         proof {
             // Prove that self.len < N using our helper lemma
-            Self::lemma_set_missing_element_size(self.set@, v, N);
+            Self::lemma_set_missing_element_size(self.set.view(), v, N);
         }
 
         self.data.set(v, true);
-        self.set = Ghost(self.set@.insert(v));
+        self.set = Ghost(self.set.view().insert(v));
         self.len = self.len + 1;
     }
 
     pub fn remove(&mut self, v:usize)
         requires
             old(self).wf(),
-            old(self)@.contains(v) == true,
+            old(self).view().contains(v) == true,
         ensures
             final(self).wf(),
-            final(self)@ == old(self)@.remove(v),
+            final(self).view() == old(self).view().remove(v),
     {
         self.data.set(v, false);
         self.len = self.len - 1;
-        self.set = Ghost(self.set@.remove(v));
+        self.set = Ghost(self.set.view().remove(v));
     }
 
 

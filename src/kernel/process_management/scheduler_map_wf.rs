@@ -15,6 +15,6 @@ verus! {
             #![auto]
             scheduler_map.dom().contains(scheduler_p)
             ==>
-            scheduler_map[scheduler_p].inv()
+            scheduler_map.spec_index(scheduler_p).inv()
     }
 }

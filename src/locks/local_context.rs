@@ -164,56 +164,56 @@ impl LocalContext{
         &&& forall|cpu_id: CpuId|
             #![trigger self.cpu_lock_map().dom().contains(cpu_id)]
             self.cpu_lock_map().dom().contains(cpu_id)
-            ==> self.lock_id_set().contains(self.cpu_lock_map()[cpu_id])
+            ==> self.lock_id_set().contains(self.cpu_lock_map().spec_index(cpu_id))
         &&& forall|page_index: PageIndex|
             #![trigger self.page_lock_map().dom().contains(page_index)]
             self.page_lock_map().dom().contains(page_index)
-            ==> self.lock_id_set().contains(self.page_lock_map()[page_index])
+            ==> self.lock_id_set().contains(self.page_lock_map().spec_index(page_index))
         &&& forall|container_ptr: RwLockContainerPtr|
             #![trigger self.container_lock_map().dom().contains(container_ptr)]
             self.container_lock_map().dom().contains(container_ptr)
-            ==> self.lock_id_set().contains(self.container_lock_map()[container_ptr])
+            ==> self.lock_id_set().contains(self.container_lock_map().spec_index(container_ptr))
         &&& forall|process_ptr: RwLockProcessPtr|
             #![trigger self.process_lock_map().dom().contains(process_ptr)]
             self.process_lock_map().dom().contains(process_ptr)
-            ==> self.lock_id_set().contains(self.process_lock_map()[process_ptr])
+            ==> self.lock_id_set().contains(self.process_lock_map().spec_index(process_ptr))
         &&& forall|thread_ptr: RwLockThreadPtr|
             #![trigger self.thread_lock_map().dom().contains(thread_ptr)]
             self.thread_lock_map().dom().contains(thread_ptr)
-            ==> self.lock_id_set().contains(self.thread_lock_map()[thread_ptr])
+            ==> self.lock_id_set().contains(self.thread_lock_map().spec_index(thread_ptr))
         &&& forall|endpoint_ptr: RwLockEndpointPtr|
             #![trigger self.endpoint_lock_map().dom().contains(endpoint_ptr)]
             self.endpoint_lock_map().dom().contains(endpoint_ptr)
-            ==> self.lock_id_set().contains(self.endpoint_lock_map()[endpoint_ptr])
+            ==> self.lock_id_set().contains(self.endpoint_lock_map().spec_index(endpoint_ptr))
         &&& forall|scheduler_ptr: RwLockSchedulerPtr|
             #![trigger self.scheduler_lock_map().dom().contains(scheduler_ptr)]
             self.scheduler_lock_map().dom().contains(scheduler_ptr)
-            ==> self.lock_id_set().contains(self.scheduler_lock_map()[scheduler_ptr])
+            ==> self.lock_id_set().contains(self.scheduler_lock_map().spec_index(scheduler_ptr))
         &&& forall|allocator_ptr: RwLockPcidAllocatorPtr|
             #![trigger self.pcid_allocator_lock_map().dom().contains(allocator_ptr)]
             self.pcid_allocator_lock_map().dom().contains(allocator_ptr)
             ==> self.lock_id_set().contains(
-                self.pcid_allocator_lock_map()[allocator_ptr])
+                self.pcid_allocator_lock_map().spec_index(allocator_ptr))
         &&& forall|pagetable_ptr: RwLockPageTableRoot|
             #![trigger self.pagetable_lock_map().dom().contains(pagetable_ptr)]
             self.pagetable_lock_map().dom().contains(pagetable_ptr)
-            ==> self.lock_id_set().contains(self.pagetable_lock_map()[pagetable_ptr])
+            ==> self.lock_id_set().contains(self.pagetable_lock_map().spec_index(pagetable_ptr))
         &&& forall|iommu_root: RwLockPageTableRoot|
             #![trigger self.iommu_table_lock_map().dom().contains(iommu_root)]
             self.iommu_table_lock_map().dom().contains(iommu_root)
-            ==> self.lock_id_set().contains(self.iommu_table_lock_map()[iommu_root])
+            ==> self.lock_id_set().contains(self.iommu_table_lock_map().spec_index(iommu_root))
         &&& forall|obj_id: AllocatorLockObjId|
             #![trigger self.allocator_4k_lock_map().dom().contains(obj_id)]
             self.allocator_4k_lock_map().dom().contains(obj_id)
-            ==> self.lock_id_set().contains(self.allocator_4k_lock_map()[obj_id])
+            ==> self.lock_id_set().contains(self.allocator_4k_lock_map().spec_index(obj_id))
         &&& forall|obj_id: AllocatorLockObjId|
             #![trigger self.allocator_2m_lock_map().dom().contains(obj_id)]
             self.allocator_2m_lock_map().dom().contains(obj_id)
-            ==> self.lock_id_set().contains(self.allocator_2m_lock_map()[obj_id])
+            ==> self.lock_id_set().contains(self.allocator_2m_lock_map().spec_index(obj_id))
         &&& forall|obj_id: AllocatorLockObjId|
             #![trigger self.allocator_1g_lock_map().dom().contains(obj_id)]
             self.allocator_1g_lock_map().dom().contains(obj_id)
-            ==> self.lock_id_set().contains(self.allocator_1g_lock_map()[obj_id])
+            ==> self.lock_id_set().contains(self.allocator_1g_lock_map().spec_index(obj_id))
     }
 
     /// Test whether one logical object is registered in its corresponding
@@ -258,36 +258,36 @@ impl LocalContext{
         recommends self.lock_map_contains(obj_id)
     {
         match obj_id {
-            KernelObjId::Container(c) => self.container_lock_map()[c],
-            KernelObjId::Process(p) => self.process_lock_map()[p],
-            KernelObjId::Thread(t) => self.thread_lock_map()[t],
-            KernelObjId::Endpoint(e) => self.endpoint_lock_map()[e],
-            KernelObjId::Scheduler(s) => self.scheduler_lock_map()[s],
+            KernelObjId::Container(c) => self.container_lock_map().spec_index(c),
+            KernelObjId::Process(p) => self.process_lock_map().spec_index(p),
+            KernelObjId::Thread(t) => self.thread_lock_map().spec_index(t),
+            KernelObjId::Endpoint(e) => self.endpoint_lock_map().spec_index(e),
+            KernelObjId::Scheduler(s) => self.scheduler_lock_map().spec_index(s),
             KernelObjId::PcidAllocator(allocator_ptr) =>
-                self.pcid_allocator_lock_map()[allocator_ptr],
-            KernelObjId::PageTable(pt) => self.pagetable_lock_map()[pt],
+                self.pcid_allocator_lock_map().spec_index(allocator_ptr),
+            KernelObjId::PageTable(pt) => self.pagetable_lock_map().spec_index(pt),
             KernelObjId::IommuTable(iommu_root) =>
-                self.iommu_table_lock_map()[iommu_root],
-            KernelObjId::Page(i) => self.page_lock_map()[i],
-            KernelObjId::Cpu(c) => self.cpu_lock_map()[c],
+                self.iommu_table_lock_map().spec_index(iommu_root),
+            KernelObjId::Page(i) => self.page_lock_map().spec_index(i),
+            KernelObjId::Cpu(c) => self.cpu_lock_map().spec_index(c),
             KernelObjId::AllocatorQuota(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map()[AllocatorLockObjId::Quota(p)],
+                self.allocator_4k_lock_map().spec_index(AllocatorLockObjId::Quota(p)),
             KernelObjId::AllocatorQuota(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map()[AllocatorLockObjId::Quota(p)],
+                self.allocator_2m_lock_map().spec_index(AllocatorLockObjId::Quota(p)),
             KernelObjId::AllocatorQuota(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map()[AllocatorLockObjId::Quota(p)],
+                self.allocator_1g_lock_map().spec_index(AllocatorLockObjId::Quota(p)),
             KernelObjId::AllocatorCache(PageSize::SZ4k, p, c) =>
-                self.allocator_4k_lock_map()[AllocatorLockObjId::Cache(p, c)],
+                self.allocator_4k_lock_map().spec_index(AllocatorLockObjId::Cache(p, c)),
             KernelObjId::AllocatorCache(PageSize::SZ2m, p, c) =>
-                self.allocator_2m_lock_map()[AllocatorLockObjId::Cache(p, c)],
+                self.allocator_2m_lock_map().spec_index(AllocatorLockObjId::Cache(p, c)),
             KernelObjId::AllocatorCache(PageSize::SZ1g, p, c) =>
-                self.allocator_1g_lock_map()[AllocatorLockObjId::Cache(p, c)],
+                self.allocator_1g_lock_map().spec_index(AllocatorLockObjId::Cache(p, c)),
             KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map()[AllocatorLockObjId::GlobalPool(p)],
+                self.allocator_4k_lock_map().spec_index(AllocatorLockObjId::GlobalPool(p)),
             KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map()[AllocatorLockObjId::GlobalPool(p)],
+                self.allocator_2m_lock_map().spec_index(AllocatorLockObjId::GlobalPool(p)),
             KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map()[AllocatorLockObjId::GlobalPool(p)],
+                self.allocator_1g_lock_map().spec_index(AllocatorLockObjId::GlobalPool(p)),
         }
     }
 

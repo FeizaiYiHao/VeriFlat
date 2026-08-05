@@ -37,22 +37,22 @@ pub struct CpuTLB{
 
 impl CpuTLB{
     pub closed spec fn view(&self) -> Map<(CpuId, Pcid), SingleTLB>{
-        self.cpu_tlbs@
+        self.cpu_tlbs.view()
     }
     pub open spec fn spec_index(&self, index: (CpuId, Pcid) ) -> SingleTLB
         recommends 
             cpu_id_valid(index.0),
             usize_in_range::<PCID_MAX>(index.1)
     {
-        self@[(index.0, index.1)]
+        self.view().spec_index((index.0, index.1))
     }
     pub closed spec fn inv(&self) -> bool{
         &&&
-        self@.len() == NUM_CPUS  
+        self.view().len() == NUM_CPUS  
         &&&
         forall|cpu_id: CpuId, pcid: Pcid|
             #![auto]
-            self@.dom().contains((cpu_id, pcid)) 
+            self.view().dom().contains((cpu_id, pcid))
             <==>
             cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid)
     }

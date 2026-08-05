@@ -15,7 +15,7 @@ verus! {
             #![auto]
             pagetable_perms.dom().contains(pagetable_p)
             ==>
-            pagetable_perms[pagetable_p].inv()
+            pagetable_perms.spec_index(pagetable_p).inv()
     }
 
 }

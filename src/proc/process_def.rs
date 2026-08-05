@@ -67,6 +67,8 @@ impl LockInvTrait for Process {
 impl Process{
     pub open spec fn wf(&self) -> bool {
         &&&
+        self.pcid != KERNEL_DEFAULT_PCID
+        &&&
         self.children.inv()
         &&&
         self.owned_threads.wf()

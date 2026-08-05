@@ -151,7 +151,7 @@ impl IommuRootTable {
     closed spec fn context_table_address(&self, bus: usize) -> PAddr
         recommends bus < PCI_BUS_COUNT,
     {
-        (self.table_base@ + VTD_TABLE_SIZE * (bus + 1)) as usize
+        (self.table_base.view() + VTD_TABLE_SIZE * (bus + 1)) as usize
     }
 
     closed spec fn context_entry(
@@ -215,7 +215,7 @@ impl IommuRootTable {
             self.wf(),
             pci_bdf_valid(bus, device, function),
     {
-        self.iommu_roots()[bus as int][device as int][function as int]
+        self.iommu_roots().spec_index(bus as int).spec_index(device as int).spec_index(function as int)
     }
 
     /// Indexes the total process owner of one PCI function.
@@ -229,7 +229,7 @@ impl IommuRootTable {
             self.wf(),
             pci_bdf_valid(bus, device, function),
     {
-        self.owners()[bus as int][device as int][function as int]
+        self.owners().spec_index(bus as int).spec_index(device as int).spec_index(function as int)
     }
 
     #[verifier::opaque]
@@ -239,8 +239,8 @@ impl IommuRootTable {
         &&& self.metadata.wf()
         &&& self.iommu_roots().len() == PCI_BUS_COUNT
         &&& self.owners().len() == PCI_BUS_COUNT
-        &&& self.table_base@ % VTD_TABLE_SIZE == 0
-        &&& self.table_base@ <= usize::MAX - IOMMU_ROOT_TABLE_STATIC_SIZE
+        &&& self.table_base.view() % VTD_TABLE_SIZE == 0
+        &&& self.table_base.view() <= usize::MAX - IOMMU_ROOT_TABLE_STATIC_SIZE
         &&& forall|bus: usize|
             #![trigger self.root_entries.spec_index(bus)]
             bus < PCI_BUS_COUNT
@@ -260,31 +260,31 @@ impl IommuRootTable {
             bus < PCI_BUS_COUNT
             ==> self.metadata.spec_index(bus).wf()
         &&& forall|bus: usize|
-            #![trigger self.iommu_roots()[bus as int]]
-            #![trigger self.owners()[bus as int]]
+            #![trigger self.iommu_roots().spec_index(bus as int)]
+            #![trigger self.owners().spec_index(bus as int)]
             bus < PCI_BUS_COUNT
             ==> {
-                &&& self.iommu_roots()[bus as int].len() == PCI_DEVICE_COUNT
-                &&& self.owners()[bus as int].len() == PCI_DEVICE_COUNT
+                &&& self.iommu_roots().spec_index(bus as int).len() == PCI_DEVICE_COUNT
+                &&& self.owners().spec_index(bus as int).len() == PCI_DEVICE_COUNT
             }
         &&& forall|bus: usize, device: usize|
-            #![trigger self.iommu_roots()[bus as int][device as int]]
-            #![trigger self.owners()[bus as int][device as int]]
+            #![trigger self.iommu_roots().spec_index(bus as int).spec_index(device as int)]
+            #![trigger self.owners().spec_index(bus as int).spec_index(device as int)]
             bus < PCI_BUS_COUNT && device < PCI_DEVICE_COUNT
             ==> {
-                &&& self.iommu_roots()[bus as int][device as int].len()
+                &&& self.iommu_roots().spec_index(bus as int).spec_index(device as int).len()
                     == PCI_FUNCTION_COUNT
-                &&& self.owners()[bus as int][device as int].len()
+                &&& self.owners().spec_index(bus as int).spec_index(device as int).len()
                     == PCI_FUNCTION_COUNT
             }
         &&& forall|bus: usize, device: usize, function: usize|
-            #![trigger self.iommu_roots()[bus as int][device as int][function as int]]
+            #![trigger self.iommu_roots().spec_index(bus as int).spec_index(device as int).spec_index(function as int)]
             pci_bdf_valid(bus, device, function)
             ==> {
                 let context = self.context_entry(bus, device, function);
                 let iommu_root =
-                    self.iommu_roots()[bus as int][device as int][function as int];
-                &&& self.owners()[bus as int][device as int][function as int]
+                    self.iommu_roots().spec_index(bus as int).spec_index(device as int).spec_index(function as int);
+                &&& self.owners().spec_index(bus as int).spec_index(device as int).spec_index(function as int)
                     == self.metadata.spec_index(bus).devices.spec_index(device)
                         .functions.spec_index(function)
                 &&& iommu_root is None ==> {
