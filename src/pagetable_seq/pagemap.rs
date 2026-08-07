@@ -4,6 +4,14 @@ use crate::primitive::array::*;
 use crate::util::page_ptr_util_u::*;
 use super::entry::*;
 
+/// Concrete page-table page.
+///
+/// Verus requires these representation fields to remain public because public
+/// open specs mention them; making even one field private makes the whole type
+/// opaque in public contracts. Public field visibility is therefore proof-model
+/// visibility, not mutation authorization. Executable code must treat
+/// `page_map_set_published` as the only writer after publication. Enforcing that
+/// rule as Rust privacy/typestate requires a future opaque-view refactor.
 pub struct PageMap {
     pub ar: Array<usize, 512>,
     pub spec_seq: Ghost<Seq<PageEntry>>,  // pub level: Ghost<usize>,
@@ -11,7 +19,7 @@ pub struct PageMap {
 }
 
 impl PageMap {
-    pub fn init(&mut self)
+    pub(super) fn init_unpublished(&mut self)
         requires
             old(self).ar.wf(),
             old(self).spec_seq.view().len() == 512,
@@ -82,7 +90,7 @@ impl PageMap {
         forall|x: u16| #![auto] 0 <= x < 512 ==> self.spec_seq.view().spec_index(x as int).perm.present == false
     }
 
-    pub fn set(&mut self, index: usize, value: PageEntry)
+    pub(super) fn set_unpublished(&mut self, index: usize, value: PageEntry)
         requires
             old(self).wf(),
             0 <= index < 512,
@@ -119,11 +127,11 @@ impl PageMap {
         }
     }
 
-    /// Same as `set` but with weaker preconditions: only requires that `value.addr` is a
-    /// valid physical address (so the bit-encoding round-trips). Always stores `value`
-    /// exactly, including when `value.perm.kernel_present == false` and the entry has
-    /// non-zero data — useful for callers that pass user-only mappings or partial entries.
-    pub fn set_unsanitized(&mut self, index: usize, value: PageEntry)
+    /// Internal exact writer used by the PointsTo-level offline/published gates.
+    /// For an already-published page, callers must go through
+    /// `page_map_set_published`, which carries the LocalContext phase contract;
+    /// offline construction instead goes through `set_unpublished`.
+    pub(super) fn set_internal(&mut self, index: usize, value: PageEntry)
         requires
             old(self).wf(),
             0 <= index < 512,

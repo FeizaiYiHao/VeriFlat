@@ -66,6 +66,11 @@ verus! {
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).cpu_array.lock_id_by_index(cpu_id),
                 ),
+                final(lctx).lock_maps_inserted(
+                    old(lctx),
+                    KernelObjId::Cpu(cpu_id),
+                    final(self).cpu_array.lock_id_by_index(cpu_id),
+                ),
         {
             proof {
                 assert(old(self).cpu_array.inv()) by {
@@ -384,6 +389,7 @@ verus! {
                     &&& final(self).container_map.spec_index(container_ptr) == old(self).container_map.spec_index(container_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
+                    &&& final(lctx).lock_maps_equal(old(lctx))
                 },
 
                 // ---- Success: container locked by us, perm returned ----
@@ -399,6 +405,11 @@ verus! {
                         ret.1.unwrap().view(),
                     )
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
+                        final(self).container_map.lock_id_by_key(container_ptr),
+                    )
+                    &&& final(lctx).lock_maps_inserted(
+                        old(lctx),
+                        KernelObjId::Container(container_ptr),
                         final(self).container_map.lock_id_by_key(container_ptr),
                     )
                 },
@@ -1494,6 +1505,7 @@ verus! {
                     &&& final(self).process_map.spec_index(process_ptr) == old(self).process_map.spec_index(process_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
+                    &&& final(lctx).lock_maps_equal(old(lctx))
                 },
 
                 // ---- Success: process locked by us, perm returned ----
@@ -1509,6 +1521,11 @@ verus! {
                         ret.1.unwrap().view(),
                     )
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
+                        final(self).process_map.lock_id_by_key(process_ptr),
+                    )
+                    &&& final(lctx).lock_maps_inserted(
+                        old(lctx),
+                        KernelObjId::Process(process_ptr),
                         final(self).process_map.lock_id_by_key(process_ptr),
                     )
                 },
@@ -2165,6 +2182,7 @@ verus! {
                         == old(self).thread_map.spec_index(thread_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
+                    &&& final(lctx).lock_maps_equal(old(lctx))
                 },
                 ret.0 == true ==> {
                     &&& old(self).thread_map.spec_index(thread_ptr).being_killed() == false
@@ -2181,6 +2199,11 @@ verus! {
                     &&& final(self).thread_map.spec_index(thread_ptr).view()
                         .temp_alloc_clean()
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
+                        final(self).thread_map.lock_id_by_key(thread_ptr),
+                    )
+                    &&& final(lctx).lock_maps_inserted(
+                        old(lctx),
+                        KernelObjId::Thread(thread_ptr),
                         final(self).thread_map.lock_id_by_key(thread_ptr),
                     )
                 },
@@ -4578,6 +4601,313 @@ verus! {
                 };
                 assert(self.locked_objects_match_lctx(&*lctx)) by { reveal(endpoint_locked_match_lctx); };
                 assert(lock_id_aligned(self, &*lctx)) by { reveal(lock_id_aligned); reveal(page_lock_id_aligned); reveal(LocalContext::lock_maps_removed); };
+            }
+        }
+
+        pub fn wlock_pagetable(
+            &mut self,
+            pagetable_ptr: RwLockPageTableRoot,
+            Tracked(lctx): Tracked<&mut LocalContext>,
+        ) -> (ret: Tracked<LockPerm>)
+            requires
+                old(self).inv(),
+                old(lctx).wf(),
+                old(self).pagetable_map.dom().contains(pagetable_ptr),
+                old(lctx).kernel_view_locking_state() is Acquire,
+                old(lctx).user_view_locking_state() is Acquire,
+                old(lctx).lock_id_acyclic(
+                    old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                ),
+                old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
+            ensures
+                final(self).inv(),
+                final(lctx).wf(),
+                final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
+
+                final(self).iommu_table_map == old(self).iommu_table_map,
+                final(self).iommu_root_table == old(self).iommu_root_table,
+                final(self).page_array == old(self).page_array,
+                final(self).cpu_array == old(self).cpu_array,
+                final(self).cpu_tlb == old(self).cpu_tlb,
+                final(self).iommu_tlb == old(self).iommu_tlb,
+                final(self).root_container == old(self).root_container,
+                final(self).container_map == old(self).container_map,
+                final(self).scheduler_map == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
+                final(self).process_map == old(self).process_map,
+                final(self).thread_map == old(self).thread_map,
+                final(self).endpoint_map == old(self).endpoint_map,
+                final(self).allocator_4k_map == old(self).allocator_4k_map,
+                final(self).allocator_2m_map == old(self).allocator_2m_map,
+                final(self).allocator_1g_map == old(self).allocator_1g_map,
+                final(self).default_pagetable == old(self).default_pagetable,
+
+                final(self).pagetable_map.dom() == old(self).pagetable_map.dom(),
+                final(self).pagetable_map.unchanged_except(
+                    &old(self).pagetable_map,
+                    pagetable_ptr,
+                ),
+                final(self).pagetable_map.spec_index(pagetable_ptr).view()
+                    == old(self).pagetable_map.spec_index(pagetable_ptr).view(),
+
+                final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state()
+                    == old(lctx).kernel_view_locking_state(),
+                final(lctx).user_view_locking_state()
+                    == old(lctx).user_view_locking_state(),
+                wlock_ensures(
+                    old(self).pagetable_map.spec_index(pagetable_ptr),
+                    final(self).pagetable_map.spec_index(pagetable_ptr),
+                    old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                    final(lctx).thread_id(),
+                    ret.view(),
+                ),
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
+                    final(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                ),
+                final(lctx).lock_maps_inserted(
+                    old(lctx),
+                    KernelObjId::PageTable(pagetable_ptr),
+                    final(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                ),
+        {
+            proof {
+                assert(old(self).pagetable_map.perms_wf()) by { reveal(pagetable_perms_wf); };
+                assert({
+                    &&& old(lctx).obj_id_fresh(
+                        KernelObjId::PageTable(pagetable_ptr),
+                    )
+                    &&& wlock_requires(
+                        old(self).pagetable_map.spec_index(pagetable_ptr),
+                        old(lctx),
+                    )
+                }) by {
+                    reveal(LocalContext::wf);
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(pagetable_locked_match_lctx);
+                    reveal(LocalContext::obj_id_fresh);
+                    reveal(LocalContext::lock_map_contains);
+                    reveal(wlock_requires);
+                };
+            }
+            let ret = self.pagetable_map.wlock(
+                pagetable_ptr,
+                Tracked(&mut *lctx),
+                Ghost(KernelObjId::PageTable(pagetable_ptr)),
+            );
+            proof {
+                assert(self.pagetable_map.spec_index(pagetable_ptr).view()
+                    == old(self).pagetable_map.spec_index(pagetable_ptr).view()) by { reveal(wlock_ensures); };
+                assert(self.subsystems_inv()) by {
+                    assert(pagetable_perms_wf(self.pagetable_map)) by {
+                        reveal(pagetable_perms_wf);
+                        reveal(pagetables_inv);
+                    };
+                    reveal(KernelK::default_pagetable_wf);
+                };
+                assert(self.memory_management_inv()) by {
+                    assert(process_pagetable_match(
+                        self.process_map,
+                        self.pagetable_map,
+                    )) by { reveal(process_pagetable_match); };
+                    assert(page_pagetable_wf(
+                        self.pagetable_map,
+                        self.page_array,
+                    )) by {
+                        reveal(mapped_4k_page_pagetable_wf);
+                        reveal(mapped_2m_page_pagetable_wf);
+                        reveal(mapped_1g_page_pagetable_wf);
+                    };
+                    assert(container_process_page_pagetable_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.pagetable_map,
+                        self.page_array,
+                    )) by {
+                        reveal(pagetable_pages_wf);
+                        container_process_page_pagetable_wf_preserved_for_page_table_page_insert(self.container_map, self.process_map, old(self).pagetable_map, self.pagetable_map, self.page_array, self.page_array, pagetable_ptr, pagetable_ptr);
+                    };
+                    assert(pagetable_pages_wf(
+                        self.pagetable_map,
+                        self.page_array,
+                    )) by { reveal(pagetable_pages_wf); };
+                };
+                assert(cpu_dirty_map_wf(
+                    self.container_map,
+                    self.process_map,
+                    self.cpu_array,
+                    self.cpu_tlb,
+                    self.pagetable_map,
+                )) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+                assert(tlb_wf_spec(
+                    self.cpu_tlb,
+                    self.pagetable_map,
+                    self.cpu_array,
+                )) by { tlb_wf_spec_preserved_for_pagetable_mappings_unchanged(self.cpu_tlb, self.cpu_array, old(self).pagetable_map, self.pagetable_map, pagetable_ptr); };
+                assert(self.inv()) by { reveal(KernelK::inv); };
+                assert(self.locked_objects_match_lctx(&*lctx)) by { reveal(pagetable_locked_match_lctx); };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(LocalContext::lock_maps_inserted);
+                };
+            }
+            ret
+        }
+
+        pub fn wunlock_pagetable(
+            &mut self,
+            pagetable_ptr: RwLockPageTableRoot,
+            Tracked(lctx): Tracked<&mut LocalContext>,
+            lock_perm: Tracked<LockPerm>,
+        )
+            requires
+                old(self).inv(),
+                old(lctx).wf(),
+                unlock_requires::<PageTable<PT_TYPE>>(old(lctx)),
+                old(self).pagetable_map.dom().contains(pagetable_ptr),
+                old(self).pagetable_map.spec_index(pagetable_ptr)
+                    .wlocked_by(old(lctx)),
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id()
+                    == old(self).pagetable_map.spec_index(pagetable_ptr)
+                        .locking_thread()->Write_lock_id,
+                old(self).locked_objects_match_lctx(old(lctx)),
+                lock_id_aligned(old(self), old(lctx)),
+            ensures
+                final(self).inv(),
+                final(lctx).wf(),
+                final(self).locked_objects_match_lctx(final(lctx)),
+                lock_id_aligned(final(self), final(lctx)),
+
+                final(self).iommu_table_map == old(self).iommu_table_map,
+                final(self).iommu_root_table == old(self).iommu_root_table,
+                final(self).page_array == old(self).page_array,
+                final(self).cpu_array == old(self).cpu_array,
+                final(self).cpu_tlb == old(self).cpu_tlb,
+                final(self).iommu_tlb == old(self).iommu_tlb,
+                final(self).root_container == old(self).root_container,
+                final(self).container_map == old(self).container_map,
+                final(self).scheduler_map == old(self).scheduler_map,
+                final(self).pcid_allocator_map == old(self).pcid_allocator_map,
+                final(self).process_map == old(self).process_map,
+                final(self).thread_map == old(self).thread_map,
+                final(self).endpoint_map == old(self).endpoint_map,
+                final(self).allocator_4k_map == old(self).allocator_4k_map,
+                final(self).allocator_2m_map == old(self).allocator_2m_map,
+                final(self).allocator_1g_map == old(self).allocator_1g_map,
+                final(self).default_pagetable == old(self).default_pagetable,
+
+                final(self).pagetable_map.dom() == old(self).pagetable_map.dom(),
+                final(self).pagetable_map.unchanged_except(
+                    &old(self).pagetable_map,
+                    pagetable_ptr,
+                ),
+                final(self).pagetable_map.spec_index(pagetable_ptr).view()
+                    == old(self).pagetable_map.spec_index(pagetable_ptr).view(),
+                final(self).pagetable_map.spec_index(pagetable_ptr)
+                    .locking_thread() is None,
+
+                final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).kernel_view_locking_state() is Release,
+                final(lctx).user_view_locking_state()
+                    == old(lctx).user_view_locking_state(),
+                wunlock_ensures(
+                    old(self).pagetable_map.spec_index(pagetable_ptr),
+                    final(self).pagetable_map.spec_index(pagetable_ptr),
+                ),
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
+                    old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                ),
+                final(lctx).lock_maps_removed(
+                    old(lctx),
+                    KernelObjId::PageTable(pagetable_ptr),
+                ),
+        {
+            proof {
+                assert({
+                    &&& old(self).pagetable_map.perms_wf()
+                    &&& old(self).pagetable_map.spec_index(pagetable_ptr).inv()
+                }) by {
+                    reveal(pagetable_perms_wf);
+                    reveal(pagetables_inv);
+                };
+                assert({
+                    &&& old(lctx).pagetable_lock_map().dom().contains(
+                        pagetable_ptr,
+                    )
+                    &&& old(lctx).pagetable_lock_map().spec_index(pagetable_ptr)
+                        == old(self).pagetable_map.lock_id_by_key(pagetable_ptr)
+                }) by {
+                    reveal(KernelK::locked_objects_match_lctx);
+                    reveal(pagetable_locked_match_lctx);
+                };
+            }
+            self.pagetable_map.wunlock(
+                pagetable_ptr,
+                Tracked(&mut *lctx),
+                lock_perm,
+                Ghost(KernelObjId::PageTable(pagetable_ptr)),
+            );
+            proof {
+                assert(self.pagetable_map.spec_index(pagetable_ptr).view()
+                    == old(self).pagetable_map.spec_index(pagetable_ptr).view()) by { reveal(wunlock_ensures); };
+                assert(self.subsystems_inv()) by {
+                    assert(pagetable_perms_wf(self.pagetable_map)) by {
+                        reveal(pagetable_perms_wf);
+                        reveal(pagetables_inv);
+                    };
+                    reveal(KernelK::default_pagetable_wf);
+                };
+                assert(self.memory_management_inv()) by {
+                    assert(process_pagetable_match(
+                        self.process_map,
+                        self.pagetable_map,
+                    )) by { reveal(process_pagetable_match); };
+                    assert(page_pagetable_wf(
+                        self.pagetable_map,
+                        self.page_array,
+                    )) by {
+                        reveal(mapped_4k_page_pagetable_wf);
+                        reveal(mapped_2m_page_pagetable_wf);
+                        reveal(mapped_1g_page_pagetable_wf);
+                    };
+                    assert(container_process_page_pagetable_wf(
+                        self.container_map,
+                        self.process_map,
+                        self.pagetable_map,
+                        self.page_array,
+                    )) by {
+                        reveal(pagetable_pages_wf);
+                        container_process_page_pagetable_wf_preserved_for_page_table_page_insert(self.container_map, self.process_map, old(self).pagetable_map, self.pagetable_map, self.page_array, self.page_array, pagetable_ptr, pagetable_ptr);
+                    };
+                    assert(pagetable_pages_wf(
+                        self.pagetable_map,
+                        self.page_array,
+                    )) by { reveal(pagetable_pages_wf); };
+                };
+                assert(cpu_dirty_map_wf(
+                    self.container_map,
+                    self.process_map,
+                    self.cpu_array,
+                    self.cpu_tlb,
+                    self.pagetable_map,
+                )) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+                assert(tlb_wf_spec(
+                    self.cpu_tlb,
+                    self.pagetable_map,
+                    self.cpu_array,
+                )) by { tlb_wf_spec_preserved_for_pagetable_mappings_unchanged(self.cpu_tlb, self.cpu_array, old(self).pagetable_map, self.pagetable_map, pagetable_ptr); };
+                assert(self.inv()) by { reveal(KernelK::inv); };
+                assert(self.locked_objects_match_lctx(&*lctx)) by { reveal(pagetable_locked_match_lctx); };
+                assert(lock_id_aligned(self, &*lctx)) by {
+                    reveal(lock_id_aligned);
+                    reveal(page_lock_id_aligned);
+                    reveal(LocalContext::lock_maps_removed);
+                };
             }
         }
 

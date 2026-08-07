@@ -137,6 +137,9 @@ verus! {
             }
             let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
             if let (false, _) = process_res {
+                proof {
+                    assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                }
                 self.release_cpu_and_finish(
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -175,6 +178,9 @@ verus! {
                 current_thread_ptr, Tracked(&mut *lctx),
             );
             if let (false, _) = thread_res {
+                proof {
+                    assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                }
                 self.release_cpu_and_process_and_finish(
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -193,6 +199,9 @@ verus! {
                 current_thread_ptr, Tracked(&current_thread_lock_perm),
             );
             if thread_ref.quota_4k < 1 {
+                proof {
+                    assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                }
                 self.release_cpu_and_process_and_thread_and_finish(
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -407,6 +416,7 @@ verus! {
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
+                old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 lctx.lock_id_set() =~= set![
                     old(self).cpu_array.lock_id_by_index(cpu_id),
                     old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
@@ -485,6 +495,7 @@ verus! {
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() is Acquire,
+                old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 lctx.lock_id_set() =~= set![
                     old(self).cpu_array.lock_id_by_index(cpu_id),
                     old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
@@ -576,6 +587,7 @@ verus! {
                 old(self).thread_map.dom().contains(thread_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).user_view_locking_state() is Acquire,
+                old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 old(lctx).lock_id_set() =~= set![
                     old(self).cpu_array.lock_id_by_index(cpu_id),
                     old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
@@ -886,6 +898,7 @@ verus! {
                     page_index_wf(page_index)
                     && self.page_array.inv()
                     && self.page_array.spec_index(page_index).view().is_init()
+                    && self.page_array.spec_index(page_index).view().view().inv()
                     && self.page_array.spec_index(page_index).view().wlocked_by(&*lctx)
                     && self.page_array.spec_index(
                         page_index

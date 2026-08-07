@@ -10,8 +10,9 @@ use super::pagemap::*;
 use core::mem::MaybeUninit;
 use crate::primitive::*;
 use crate::lemma::lemma_u::*;
+use crate::locks::*;
 
-pub fn page_map_set_kernel_entry_range(
+fn page_map_set_kernel_entry_range(
     kernel_entries: &Array<usize, KERNEL_MEM_END_L4INDEX>,
     page_map_ptr: PageMapPtr,
     Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
@@ -61,7 +62,7 @@ pub fn page_map_set_kernel_entry_range(
             assert((v & 0x0000_ffff_ffff_f000u64 as usize) & (!0x0000_ffff_ffff_f000u64) as usize == 0)
                 by (bit_vector);
         }
-        page_map_set(
+        page_map_set_raw(
             page_map_ptr,
             Tracked(page_map_perm),
             index,
@@ -70,12 +71,17 @@ pub fn page_map_set_kernel_entry_range(
     }
 }
 
-// SPEC FIX: added `mem_valid(value.addr)` precondition. Without it, the spec is
-// inconsistent for the case `value.perm.kernel_present == true && !mem_valid(value.addr)`:
-// the wf() invariant requires `kernel_present[i] ==> mem_valid(addr[i])`, which together
-// with `final.value()[index] =~= value` forces `mem_valid(value.addr)`. Implementation now
-// goes through PageMap::set_unsanitized via PointsTo::borrow_mut.
-pub fn page_map_set(
+/// Raw PageMap mutation for an unpublished page-table page.
+///
+/// This helper intentionally has no `LocalContext` phase contract: constructors
+/// initialize many entries before the page-table page is reachable by any CPU or
+/// IOMMU page walk. Published page tables must use `page_map_set_published`.
+///
+/// `mem_valid(value.addr)` is required because `PageMap::wf()` requires every
+/// kernel-present entry to contain a valid physical address. The implementation
+/// uses `PageMap::set_internal` so upper-level entries whose software-only
+/// `kernel_present` bit is clear are still stored exactly.
+fn page_map_set_raw(
     page_map_ptr: PageMapPtr,
     Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
     index: usize,
@@ -98,7 +104,51 @@ pub fn page_map_set(
 {
     let pptr: PPtr<PageMap> = PPtr::from_addr(page_map_ptr);
     let pm: &mut PageMap = pptr.borrow_mut(Tracked(page_map_perm));
-    pm.set_unsanitized(index, value);
+    pm.set_internal(index, value);
+}
+
+/// The single PageMap write gate for a page-table page that is already published.
+///
+/// A kernel-level caller first opens a `KernelSteps` user-view step; that operation
+/// changes both `LocalContext` phases from Acquire to Release. This helper checks
+/// and preserves that Release phase. The phase is only the proof model for abstract
+/// kernel/user interleaving and step-ledger discipline. It does *not* establish
+/// machine-level PTE-store atomicity or CPU/MMU memory ordering. The concrete
+/// write ultimately reaches the trusted `Array::set`; this layer only models the
+/// abstract state transition.
+///
+/// Nor does this phase contract permit arbitrary PTE replacement. Each PageTable
+/// operation must retain its transition-specific proof: publish only initialized
+/// children or fresh leaves, clear user `present` before invalidation, and remove
+/// the kernel-view entry only after every stale TLB translation is gone.
+/// Release-to-Release also does not prove that a step performs only one PTE write
+/// or that this store is its final executable mutation; that stronger property
+/// would require a linear, one-shot write permit owned by `KernelSteps`.
+pub(super) fn page_map_set_published(
+    page_map_ptr: PageMapPtr,
+    Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
+    index: usize,
+    value: PageEntry,
+    Tracked(lctx): Tracked<&LocalContext>,
+)
+    requires
+        old(page_map_perm).addr() == page_map_ptr,
+        old(page_map_perm).is_init(),
+        old(page_map_perm).value().wf(),
+        0 <= index < 512,
+        mem_valid(value.addr),
+        lctx.kernel_view_locking_state() is Release,
+        lctx.user_view_locking_state() is Release,
+    ensures
+        final(page_map_perm).addr() == page_map_ptr,
+        final(page_map_perm).is_init(),
+        final(page_map_perm).value().wf(),
+        forall|i: usize|
+            #![trigger final(page_map_perm).value().spec_index(i)]
+            0 <= i < 512 && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
+        final(page_map_perm).value().spec_index(index) =~= value,
+{
+    page_map_set_raw(page_map_ptr, Tracked(page_map_perm), index, value);
 }
 
 #[verifier(external_body)]
@@ -121,7 +171,7 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
     unsafe {
         let uptr = page_ptr as *mut MaybeUninit<PageMap>;
         for i in 0..512 {
-            (*uptr).assume_init_mut().set(i, PageEntry::empty());
+            (*uptr).assume_init_mut().set_unpublished(i, PageEntry::empty());
         }
     }
     (page_ptr, Tracked::assume_new())

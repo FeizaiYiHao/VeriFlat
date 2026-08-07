@@ -44,6 +44,7 @@ impl KernelK {
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
             thread_lock_perm.lock_id() == old(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).user_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
             thread_effective_quota_4k(old(self).thread_map.spec_index(thread_ptr)) >= 1,
             old(self).thread_map.spec_index(thread_ptr).wlocked_by(old(lctx)),
@@ -111,6 +112,8 @@ impl KernelK {
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                 =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.0),
             final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k{ thread_ptr }),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().owning_container
+                == container_ptr,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
@@ -365,6 +368,7 @@ impl KernelK {
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
+            old(lctx).user_view_locking_state() is Acquire,
             old(self).thread_map.dom().contains(thread_ptr),
             old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
@@ -444,6 +448,8 @@ impl KernelK {
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                 =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.0),
             final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k{ thread_ptr }),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().owning_container
+                == container_ptr,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
@@ -597,6 +603,7 @@ impl KernelK {
                 .global_pool.view().view().spec_index(0)),
             old(lctx).wf(),
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).user_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
             old(lctx).lock_id_acyclic(old(self).page_array.lock_id_by_index(
@@ -1035,6 +1042,7 @@ impl KernelK {
                 .locking_thread()->Write_lock_id,
             old(lctx).wf(),
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).user_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
@@ -1142,7 +1150,7 @@ impl KernelK {
                 lctx.wf(),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
+                lctx.user_view_locking_state() is Acquire,
                 lctx.lock_maps_equal(old(lctx)),
                 self.locked_objects_match_lctx(&*lctx),
                 lock_id_aligned(self, &*lctx),
@@ -1340,11 +1348,13 @@ impl KernelK {
         )
     }
 
-    spec fn allocator_cache_lock_id_prefix(upper: CpuId) -> Set<LockId> {
+    pub(crate) closed spec fn allocator_cache_lock_id_prefix(
+        upper: CpuId,
+    ) -> Set<LockId> {
         Self::allocator_cache_lock_id_prefix_seq(upper).to_set()
     }
 
-    fn wlock_all_caches_and_global_pool(
+    pub(crate) fn wlock_all_caches_and_global_pool(
         &mut self,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -1385,6 +1395,7 @@ impl KernelK {
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(lctx).wf(),
+            final(lctx).page_lock_map() =~= old(lctx).page_lock_map(),
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
                 + Self::allocator_cache_lock_id_prefix(NUM_CPUS).insert(
                     final(self).allocator_4k_map
@@ -1435,6 +1446,7 @@ impl KernelK {
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
+                lctx.page_lock_map() =~= old(lctx).page_lock_map(),
                 0 <= cpu <= NUM_CPUS,
                 lctx.lock_id_set() =~= old(lctx).lock_id_set()
                     + Self::allocator_cache_lock_id_prefix(cpu),
@@ -1531,7 +1543,7 @@ impl KernelK {
     // internally. After this every cache of the allocator is unlocked and its
     // lock_map entry removed.
     // ================================================================
-    fn wunlock_all_caches(
+    pub(crate) fn wunlock_all_caches(
         &mut self,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -1713,9 +1725,10 @@ impl KernelK {
 
     // ================================================================
     // scan_caches_and_alloc: every cpu cache of `alloc_ptr_4k` is already
-    // write-locked (perm for cpu `c` at `cache_perms[c]`), the process is
-    // write-locked, and no lock above ALLOCATOR_CACHE_MAJOR is held (so the
-    // global pool is NOT yet held). Iterate cpu 0..NUM_CPUS; on the first
+    // write-locked (perm for cpu `c` at `cache_perms[c]`) and the thread is
+    // write-locked. Every held lock remains below the Free4k page-slot major;
+    // this permits mmap to retain the global-pool and PageTable locks. Iterate
+    // cpu 0..NUM_CPUS; on the first
     // non-empty cache, pop + stage a page via `pop_stage_4k_page` and return
     // `(true, Some((cpu, page_ptr, page_perm)))` with that cache + the page slot
     // still write-locked. If every cache is empty, return `(false, None)` — a
@@ -1746,7 +1759,7 @@ impl KernelK {
     }
 
     #[verifier::opaque]
-    spec fn cache_perms_match_lctx(
+    pub(crate) open spec fn cache_perms_match_lctx(
         alloc_map: PageAllocatorUnLockedMap,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         lctx: &LocalContext,
@@ -1797,10 +1810,11 @@ impl KernelK {
             forall|held_lock_id: LockId|
                 #![trigger old(lctx).lock_id_set().contains(held_lock_id)]
                 old(lctx).lock_id_set().contains(held_lock_id)
-                ==> held_lock_id.major <= ALLOCATOR_GLOBAL_POLL_MAJOR,
+                ==> held_lock_id.major < FREE_PAGE_LOCK_MAJOR,
         ensures
             final(self).inv(),
             final(self).process_map == old(self).process_map,
+            final(self).pagetable_map == old(self).pagetable_map,
             final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
@@ -1817,6 +1831,7 @@ impl KernelK {
                 &&& final(lctx).kernel_view_locking_state() is Acquire
                 &&& final(lctx).wf()
                 &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
+                &&& final(lctx).lock_maps_equal(old(lctx))
                 &&& lock_id_aligned(final(self), final(lctx))
                 &&& forall|c: CpuId|
                     #![trigger final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c)]
@@ -1829,6 +1844,11 @@ impl KernelK {
                 &&& final(lctx).kernel_view_locking_state() is Release
                 &&& cpu_id_valid(ret.1.unwrap().0)
                 &&& page_ptr_valid(ret.1.unwrap().1)
+                &&& old(self).page_array.spec_index(
+                    page_ptr2page_index(ret.1.unwrap().1),
+                ).view().view().state is Free4k
+                &&& !old(self).thread_map.spec_index(thread_ptr).view()
+                    .temp_alloc_cache_4k.view().contains(ret.1.unwrap().1)
                 &&& page_index_wf(page_ptr2page_index(ret.1.unwrap().1))
                 &&& final(self).page_array.unchanged_except(
                     &old(self).page_array, page_ptr2page_index(ret.1.unwrap().1))
@@ -1844,6 +1864,12 @@ impl KernelK {
                 &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     final(self).page_array.lock_id_by_index(
                         page_ptr2page_index(ret.1.unwrap().1)))
+                &&& final(lctx).lock_maps_inserted(
+                    old(lctx),
+                    KernelObjId::Page(page_ptr2page_index(ret.1.unwrap().1)),
+                    final(self).page_array.lock_id_by_index(
+                        page_ptr2page_index(ret.1.unwrap().1)),
+                )
                 &&& Self::cache_perms_match_lctx(
                     final(self).allocator_4k_map, alloc_ptr_4k, final(lctx), cache_perms)
                 &&& final(self).thread_map.dom().contains(thread_ptr)
@@ -1854,14 +1880,22 @@ impl KernelK {
                     == old(self).thread_map.spec_index(thread_ptr).view().owning_proc
                 &&& final(self).thread_map.spec_index(thread_ptr).view().owning_container
                     == old(self).thread_map.spec_index(thread_ptr).view().owning_container
+                &&& final(self).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr
+                    == old(self).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr
                 &&& thread_lock_perm.lock_id() == final(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id
                 &&& final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                     =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.1.unwrap().1)
                 &&& final(self).page_array.spec_index(page_ptr2page_index(ret.1.unwrap().1)).view().view().state == (PageState::Owned4k{ thread_ptr })
+                &&& final(self).page_array.spec_index(page_ptr2page_index(ret.1.unwrap().1)).view().view().owning_container
+                    == container_ptr
                 &&& final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                     == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 &&& final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
                     == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
+                &&& final(self).thread_map.spec_index(thread_ptr).view()
+                    .free_quota_pending_fields_equal(
+                        &old(self).thread_map.spec_index(thread_ptr).view(),
+                    )
                 &&& final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                     == old(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 &&& final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
@@ -1883,6 +1917,7 @@ impl KernelK {
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
                 lctx.lock_id_set() =~= old(lctx).lock_id_set(),
+                lctx.lock_maps_equal(old(lctx)),
                 0 <= cpu <= NUM_CPUS,
                 self.container_map.dom().contains(container_ptr),
                 self.allocator_4k_map.dom().contains(alloc_ptr_4k),
@@ -1900,7 +1935,7 @@ impl KernelK {
                 forall|held_lock_id: LockId|
                     #![trigger lctx.lock_id_set().contains(held_lock_id)]
                     lctx.lock_id_set().contains(held_lock_id)
-                    ==> held_lock_id.major <= ALLOCATOR_GLOBAL_POLL_MAJOR,
+                    ==> held_lock_id.major < FREE_PAGE_LOCK_MAJOR,
                 // Caches [0, cpu) were all found empty.
                 forall|c: CpuId|
                     #![trigger self.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c)]
@@ -1971,6 +2006,7 @@ impl KernelK {
 } // verus!
 
 mod pop_impl;
+mod mmap_locked;
 
 
 verus! {

@@ -24,6 +24,8 @@ verus! {
                 &&&
                 cpu_array.spec_index(cpu_i).view().view().owning_container == process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()).view_rodata().view().owning_container
                 &&&
+                cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(cpu_array.spec_index(cpu_i).view().view().current_pcid) is Some
+                &&&
                 cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(cpu_array.spec_index(cpu_i).view().view().current_pcid).unwrap().process_ptr == cpu_array.spec_index(cpu_i).view().view().current_process.unwrap()
                 &&&
                 cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(cpu_array.spec_index(cpu_i).view().view().current_pcid).unwrap().pagetable_ptr == cpu_array.spec_index(cpu_i).view().view().current_pagetable

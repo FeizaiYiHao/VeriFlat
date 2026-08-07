@@ -59,10 +59,10 @@ verus! {
         forall|cpu_id:CpuId, pcid: Pcid|
             #![auto]
             cpu_id_valid(cpu_id) && pcid_valid(pcid)
-            ==>{
-                &&&
-                (cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some) == (tlb.spec_index((cpu_id, pcid)).is_empty() == false)
-            }
+            && pcid != KERNEL_DEFAULT_PCID
+            && tlb.spec_index((cpu_id, pcid)).is_empty() == false
+            ==>
+            cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
     }
 
     #[verifier::opaque]

@@ -13,58 +13,43 @@ pub open spec fn spec_iotlb_entry_equal_to_map_entry(
     &&& iotlb_entry.write == map_entry.write
 }
 
-/// Every cached translation for one DID remains backed by the same IOMMU
-/// page-table mapping.  While the table is write-locked, software may have
-/// cleared the hardware present bit in preparation for invalidation, but it
-/// must retain the mapping and physical address until the IOTLB entry is gone.
+/// Every cached translation for one DID remains backed by the same kernel IOMMU
+/// page-table mapping. The hardware present bit may already be clear while an
+/// old IOTLB entry awaits invalidation; this invariant does not encode that
+/// state through the page-table lock.
 pub open spec fn single_iotlb_subset_of_iommu_table(
     iotlb: SingleIotlb,
-    iommu_table: RwLock<
-        PageTable<IOMMU_TYPE>,
-        (),
-        (),
-        (),
-        PAGE_TABLE_HAS_KILL_STATE,
-    >,
+    iommu_table: PageTable<IOMMU_TYPE>,
 ) -> bool {
     &&& forall|iova: Iova|
-        #![trigger iommu_table.view().mapping_4k().dom().contains(iova)]
+        #![trigger iommu_table.mapping_4k().dom().contains(iova)]
         #![trigger iotlb.entries_4k().spec_index(iova)]
         iotlb.entries_4k().dom().contains(iova)
         ==>
-        iova_4k_valid(iova)
-        && iommu_table.view().mapping_4k().dom().contains(iova)
-        && (iommu_table.wlocked() == false
-            ==> iommu_table.view().mapping_4k().spec_index(iova).present)
+        iommu_table.mapping_4k().dom().contains(iova)
         && spec_iotlb_entry_equal_to_map_entry(
             iotlb.entries_4k().spec_index(iova),
-            iommu_table.view().mapping_4k().spec_index(iova),
+            iommu_table.mapping_4k().spec_index(iova),
         )
     &&& forall|iova: Iova|
-        #![trigger iommu_table.view().mapping_2m().dom().contains(iova)]
+        #![trigger iommu_table.mapping_2m().dom().contains(iova)]
         #![trigger iotlb.entries_2m().spec_index(iova)]
         iotlb.entries_2m().dom().contains(iova)
         ==>
-        iova_2m_valid(iova)
-        && iommu_table.view().mapping_2m().dom().contains(iova)
-        && (iommu_table.wlocked() == false
-            ==> iommu_table.view().mapping_2m().spec_index(iova).present)
+        iommu_table.mapping_2m().dom().contains(iova)
         && spec_iotlb_entry_equal_to_map_entry(
             iotlb.entries_2m().spec_index(iova),
-            iommu_table.view().mapping_2m().spec_index(iova),
+            iommu_table.mapping_2m().spec_index(iova),
         )
     &&& forall|iova: Iova|
-        #![trigger iommu_table.view().mapping_1g().dom().contains(iova)]
+        #![trigger iommu_table.mapping_1g().dom().contains(iova)]
         #![trigger iotlb.entries_1g().spec_index(iova)]
         iotlb.entries_1g().dom().contains(iova)
         ==>
-        iova_1g_valid(iova)
-        && iommu_table.view().mapping_1g().dom().contains(iova)
-        && (iommu_table.wlocked() == false
-            ==> iommu_table.view().mapping_1g().spec_index(iova).present)
+        iommu_table.mapping_1g().dom().contains(iova)
         && spec_iotlb_entry_equal_to_map_entry(
             iotlb.entries_1g().spec_index(iova),
-            iommu_table.view().mapping_1g().spec_index(iova),
+            iommu_table.mapping_1g().spec_index(iova),
         )
 }
 
@@ -105,7 +90,7 @@ pub open spec fn iommu_tlb_wf_spec(
                         == iommu_table_map.spec_index(iommu_table).view().cr3
                     &&& single_iotlb_subset_of_iommu_table(
                         domain_tlb,
-                        iommu_table_map.spec_index(iommu_table),
+                        iommu_table_map.spec_index(iommu_table).view(),
                     )
                 }
             }

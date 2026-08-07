@@ -7,15 +7,36 @@ use crate::define::*;
 use crate::locks::*;
 use vstd::simple_pptr::*;
 use crate::util::page_ptr_util_u::*;
+use crate::iommu::{iova_1g_valid, iova_2m_valid, iova_4k_valid};
 use super::pagemap_util_t::*;
 use super::entry::*;
 use super::pagemap::*;
 use crate::lemma::lemma_u::*;
 
+/// Mapping keys are CPU virtual addresses for ordinary page tables and IOVAs
+/// for VT-d second-level tables.  In particular, an IOMMU mapping may use L4
+/// index zero; only its page-size alignment is constrained by the IOVA model.
+pub open spec fn page_table_key_4k_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool {
+    if TABLE_TYPE == PT_TYPE { va_4k_valid(addr) } else { iova_4k_valid(addr) }
+}
+
+pub open spec fn page_table_key_2m_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool {
+    if TABLE_TYPE == PT_TYPE { va_2m_valid(addr) } else { iova_2m_valid(addr) }
+}
+
+pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) -> bool {
+    if TABLE_TYPE == PT_TYPE { va_1g_valid(addr) } else { iova_1g_valid(addr) }
+}
+
 /// mapping_xx is the abstract mappings of each page size.
 /// if an entry exists in mapping_xx.dom(), is entry is visible to the kernel at least. 
 /// if the entry has present flag set, it's visible to the page table walk. 
 /// our TLB spec will be that the TLB is `always` a subset of kernel view. Regardless the locking state of the page table.
+///
+/// The concrete PointsTo maps are public only because Verus public open specs
+/// need representation visibility. They are not an executable mutation API;
+/// published writes must use the phase-checked PageTable operations. A future
+/// opaque-view/typestate split is needed before Rust privacy can enforce this.
 pub struct PageTable<const TABLE_TYPE:PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
@@ -533,7 +554,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]
             self.mapping_4k.view().dom().contains(va)
                 ==> 
-                va_4k_valid(va)
+                page_table_key_4k_valid::<TABLE_TYPE>(va)
                 &&
                 page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)
         &&& forall|va: VAddr|
@@ -542,7 +563,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.mapping_2m.view().dom().contains(va)]
             self.mapping_2m.view().dom().contains(va)
                 ==> 
-                va_2m_valid(va)
+                page_table_key_2m_valid::<TABLE_TYPE>(va)
                 && 
                 page_ptr_2m_valid(self.mapping_2m.view().spec_index(va).addr)
         &&& forall|va: VAddr|
@@ -551,7 +572,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.mapping_1g.view().dom().contains(va)]
             self.mapping_1g.view().dom().contains(va)
                 ==> 
-                va_1g_valid(va)
+                page_table_key_1g_valid::<TABLE_TYPE>(va)
                 &&
                 page_ptr_1g_valid(self.mapping_1g.view().spec_index(va).addr)
     }
@@ -842,15 +863,15 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         }
         
         open spec fn lock_major_1_predicate(&self) -> bool {
-            arbitrary()
+            false
         }
         
         open spec fn lock_major_2_predicate(&self) -> bool {
-            arbitrary()
+            false
         }
         
         open spec fn lock_major_3_predicate(&self) -> bool {
-            arbitrary()
+            false
         }
         
         open spec fn lock_major_default_predicate(&self) -> bool {

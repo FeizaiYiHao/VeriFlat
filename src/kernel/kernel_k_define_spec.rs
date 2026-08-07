@@ -334,6 +334,8 @@ verus! {
         ///   - `inv()` holds (we entered the boundary in a wf state),
         ///   - `kernel_view_locking_state is Release` (the current section
         ///     is done),
+        ///   - `user_view_locking_state is Acquire` (no user-visible step may
+        ///     remain open across arbitrary concurrent interleaving),
         ///   - `locked_objects_match_lctx(lctx)` (no stealth locks, every
         ///     LocalContext entry corresponds to a real held lock),
         ///   - `kernel_k_to_kernel_u(*self) == steps.snap_shot` (no
@@ -347,6 +349,7 @@ verus! {
             requires
                 old(self).inv(),
                 old(lctx).kernel_view_locking_state() is Release,
+                old(lctx).user_view_locking_state() is Acquire,
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
                 kernel_k_to_kernel_u(*old(self)) == old(steps).snap_shot,

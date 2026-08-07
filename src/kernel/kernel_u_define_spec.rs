@@ -73,11 +73,19 @@ verus! {
     /// it. Mirror of `container_no_change_to_tree_fields_imply_wf`.
     pub proof fn kernel_no_change_to_user_view_fields_imply_kernel_u_eq(pre: &KernelK, post: &KernelK)
         requires
+            // This connects each process's projected pagetable pointer to the
+            // domain on which the per-entry framing premise below applies.
+            // Domain equality alone does not constrain `Map::spec_index` at a
+            // process-referenced key unless that key is known to be present.
+            process_pagetable_match(pre.process_map, pre.pagetable_map),
             // pagetable_map: only the per-entry `view()` is read (via
             // `get_process_pagetable`), not lock state.
+            post.pagetable_map.dom() =~= pre.pagetable_map.dom(),
             forall|pt: RwLockPageTableRoot|
                 #![trigger post.pagetable_map.spec_index(pt).view()]
-                post.pagetable_map.spec_index(pt).view() == pre.pagetable_map.spec_index(pt).view(),
+                pre.pagetable_map.dom().contains(pt) ==>
+                    post.pagetable_map.spec_index(pt).view()
+                        == pre.pagetable_map.spec_index(pt).view(),
             // No implemented operation moves an IOMMU-table lock yet, so the
             // current framing surface preserves the whole map. This can be
             // weakened to per-entry views when those operations are added.
@@ -114,7 +122,9 @@ verus! {
         let pre_u = kernel_k_to_kernel_u(*pre);
         let post_u = kernel_k_to_kernel_u(*post);
         assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
-        assert_maps_equal!(post_u.process_map, pre_u.process_map);
+        assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => {
+            reveal(process_pagetable_match);
+        });
     }
 
 }

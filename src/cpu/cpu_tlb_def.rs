@@ -48,8 +48,6 @@ impl CpuTLB{
     }
     pub closed spec fn inv(&self) -> bool{
         &&&
-        self.view().len() == NUM_CPUS  
-        &&&
         forall|cpu_id: CpuId, pcid: Pcid|
             #![auto]
             self.view().dom().contains((cpu_id, pcid))

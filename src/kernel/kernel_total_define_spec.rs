@@ -58,12 +58,15 @@ impl KernelSteps{
     /// Preconditions:
     ///   - `kernel_k.inv()` (well-formed at the linearization point, so the
     ///     projection `kernel_k_to_kernel_u` is meaningful);
+    ///   - `snap_shot == kernel_k_to_kernel_u(*kernel_k)` (no user-visible
+    ///     mutation has escaped the preceding recorded step/boundary);
     ///   - kernel-view `Acquire` (inside an atomic section);
     ///   - user-view `Acquire` (no step currently open in this syscall).
     #[verifier::external_body]
     pub proof fn begin_user_view_step(tracked &mut self, kernel_k: &KernelK, tracked lctx: &mut LocalContext)
         requires
             kernel_k.inv(),
+            old(self).snap_shot == kernel_k_to_kernel_u(*kernel_k),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).user_view_locking_state() is Acquire,
         ensures
@@ -90,6 +93,7 @@ impl KernelSteps{
             // kernel state nor the LocalContext maps/`thread_id` (only the locking-state
             // phases, which `locked_objects_match_lctx` does not read), so the
             // held-lock ⇄ lctx agreement is carried across unchanged.
+            final(lctx).lock_maps_equal(old(lctx)),
             kernel_k.locked_objects_match_lctx(old(lctx))
                 ==> kernel_k.locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(kernel_k, old(lctx)) ==>
@@ -114,12 +118,15 @@ impl KernelSteps{
     /// Preconditions:
     ///   - `kernel_k.inv()` (the section restored well-formedness before
     ///     closing);
-    ///   - a step is open (`steps` non-empty, user-view `Release`).
+    ///   - a step is open (`steps` non-empty, user-view `Release`);
+    ///   - kernel-view `Release`, so the step cannot be closed before its
+    ///     kernel-visible mutation has completed.
     #[verifier::external_body]
     pub proof fn end_user_view_step(tracked &mut self, kernel_k: &KernelK, tracked lctx: &mut LocalContext)
         requires
             kernel_k.inv(),
             old(self).steps.len() > 0,
+            old(lctx).kernel_view_locking_state() is Release,
             old(lctx).user_view_locking_state() is Release,
         ensures
             // Step count unchanged; earlier steps preserved.
@@ -142,6 +149,7 @@ impl KernelSteps{
             // Closing a user-view step touches neither the kernel state nor
             // LocalContext maps/`thread_id` (only the user-view phase), so the held-lock
             // ⇄ lctx agreement is carried across unchanged.
+            final(lctx).lock_maps_equal(old(lctx)),
             kernel_k.locked_objects_match_lctx(old(lctx))
                 ==> kernel_k.locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(kernel_k, old(lctx)) ==>

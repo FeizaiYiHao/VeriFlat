@@ -29,6 +29,7 @@ impl KernelK {
             old(self).inv(),
             cpu_id_valid(cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(self).container_map.dom().contains(container_ptr),
             old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             old(self).thread_map.spec_index(thread_ptr).view().owning_container == container_ptr,
             cache_lock_perm.state() is WriteLock,
@@ -50,10 +51,14 @@ impl KernelK {
             forall|held_lock_id: LockId|
                 #![trigger old(lctx).lock_id_set().contains(held_lock_id)]
                 old(lctx).lock_id_set().contains(held_lock_id)
-                ==> held_lock_id.major <= ALLOCATOR_GLOBAL_POLL_MAJOR,
+                ==> held_lock_id.major < FREE_PAGE_LOCK_MAJOR,
         ensures
             final(self).inv(),
             page_ptr_valid(ret.0),
+            old(self).page_array.spec_index(page_ptr2page_index(ret.0))
+                .view().view().state is Free4k,
+            !old(self).thread_map.spec_index(thread_ptr).view()
+                .temp_alloc_cache_4k.view().contains(ret.0),
             final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             final(self).page_array.unchanged_except(
                 &old(self).page_array, page_ptr2page_index(ret.0)),
@@ -79,6 +84,8 @@ impl KernelK {
                 == old(self).thread_map.spec_index(thread_ptr).view().owning_proc,
             final(self).thread_map.spec_index(thread_ptr).view().owning_container
                 == old(self).thread_map.spec_index(thread_ptr).view().owning_container,
+            final(self).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr
+                == old(self).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr,
             final(self).thread_map.dom().contains(thread_ptr),
             final(self).thread_map.spec_index(thread_ptr).wlocked_by(final(lctx)),
             thread_lock_perm.lock_id() == final(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id,
@@ -95,16 +102,27 @@ impl KernelK {
             final(lctx).wf(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                 final(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0))),
+            final(lctx).lock_maps_inserted(
+                old(lctx),
+                KernelObjId::Page(page_ptr2page_index(ret.0)),
+                final(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0)),
+            ),
             final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                 =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.0),
             final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k{ thread_ptr }),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().owning_container
+                == container_ptr,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g,
+            final(self).thread_map.spec_index(thread_ptr).view()
+                .free_quota_pending_fields_equal(
+                    &old(self).thread_map.spec_index(thread_ptr).view(),
+                ),
             final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 == old(self).thread_map.spec_index(thread_ptr).view().quota_4k,
             final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
@@ -112,6 +130,7 @@ impl KernelK {
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).process_map == old(self).process_map,
+            final(self).pagetable_map == old(self).pagetable_map,
             final(self).scheduler_map == old(self).scheduler_map,
             final(self).pcid_allocator_map == old(self).pcid_allocator_map,
             final(self).cpu_array == old(self).cpu_array,
@@ -181,18 +200,14 @@ impl KernelK {
             let mut page = self.page_array.borrow_mut(
                 page_index, Tracked(&*lctx), Tracked(&page_lock_perm),
             );
-            assert(page.state is Free4k) by {
+            assert(page.state is Free4k && page.owning_container == container_ptr) by {
                 reveal(container_allocator_free_4k_page_wf);
+                reveal(container_allocator_wf);
             };
             page.state = PageState::Owned4k { thread_ptr };
             assert(node_addr == page.free_list_node_storage.addr()) by {
                 reveal(container_allocator_free_4k_page_wf);
                 reveal(LinkedList::wf_map);
-                assert(
-                    old(self).container_map.spec_index(old(self).page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                ) by {
-                    reveal(container_allocator_wf);
-                };
             };
             page.free_list_node_storage.put(Tracked(node_perm));
 
@@ -397,6 +412,7 @@ impl KernelK {
         requires
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(self).container_map.dom().contains(container_ptr),
             old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             old(self).thread_map.spec_index(thread_ptr).view().owning_container == container_ptr,
             global_pool_lock_perm.state() is WriteLock,
@@ -425,6 +441,10 @@ impl KernelK {
         ensures
             final(self).inv(),
             page_ptr_valid(ret.0),
+            old(self).page_array.spec_index(page_ptr2page_index(ret.0))
+                .view().view().state is Free4k,
+            !old(self).thread_map.spec_index(thread_ptr).view()
+                .temp_alloc_cache_4k.view().contains(ret.0),
             final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             final(self).page_array.unchanged_except(
                 &old(self).page_array, page_ptr2page_index(ret.0)),
@@ -446,6 +466,8 @@ impl KernelK {
                 == old(self).thread_map.spec_index(thread_ptr).view().owning_proc,
             final(self).thread_map.spec_index(thread_ptr).view().owning_container
                 == old(self).thread_map.spec_index(thread_ptr).view().owning_container,
+            final(self).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr
+                == old(self).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr,
             final(self).thread_map.dom().contains(thread_ptr),
             final(self).thread_map.spec_index(thread_ptr).wlocked_by(final(lctx)),
             thread_lock_perm.lock_id() == final(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id,
@@ -462,16 +484,27 @@ impl KernelK {
             final(lctx).wf(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                 final(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0))),
+            final(lctx).lock_maps_inserted(
+                old(lctx),
+                KernelObjId::Page(page_ptr2page_index(ret.0)),
+                final(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0)),
+            ),
             final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
                 =~= old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().insert(ret.0),
             final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k{ thread_ptr }),
+            final(self).page_array.spec_index(page_ptr2page_index(ret.0)).view().view().owning_container
+                == container_ptr,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
                 == old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g,
+            final(self).thread_map.spec_index(thread_ptr).view()
+                .free_quota_pending_fields_equal(
+                    &old(self).thread_map.spec_index(thread_ptr).view(),
+                ),
             final(self).thread_map.spec_index(thread_ptr).view().quota_4k
                 == old(self).thread_map.spec_index(thread_ptr).view().quota_4k,
             final(self).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
@@ -479,6 +512,7 @@ impl KernelK {
             // ---- container_map + scheduler_map untouched (staging never writes them) ----
             final(self).container_map == old(self).container_map,
             final(self).process_map == old(self).process_map,
+            final(self).pagetable_map == old(self).pagetable_map,
             final(self).scheduler_map == old(self).scheduler_map,
             final(self).pcid_allocator_map == old(self).pcid_allocator_map,
             final(self).cpu_array == old(self).cpu_array,
@@ -535,18 +569,14 @@ impl KernelK {
 
         {
             let mut page = self.page_array.borrow_mut(page_index, Tracked(&*lctx), Tracked(&page_lock_perm));
-            assert(page.state is Free4k) by {
+            assert(page.state is Free4k && page.owning_container == container_ptr) by {
                 reveal(container_allocator_free_4k_page_wf);
+                reveal(container_allocator_wf);
             };
             page.state = PageState::Owned4k { thread_ptr };
             assert(node_addr == page.free_list_node_storage.addr()) by {
                 reveal(container_allocator_free_4k_page_wf);
                 reveal(LinkedList::wf_map);
-                assert(
-                    old(self).container_map.spec_index(old(self).page_array.spec_index(page_index).view().view().owning_container).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                ) by {
-                    reveal(container_allocator_wf);
-                };
             };
             page.free_list_node_storage.put(Tracked(node_perm));
 

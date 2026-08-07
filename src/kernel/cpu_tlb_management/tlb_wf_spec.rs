@@ -11,44 +11,48 @@ verus! {
         tlb_entry.write == map_entry.write
     }
 
-    /// For each va in the tlb
-    /// The pagetable must have that va regardless if the pagetable is Acquired, and the pagetable must resolve to the same va. This is to prevent the physical page being used by other meanings.
-    /// If the pagetable is Acquired, the va can have present bit unset, so that the tlb will not load this entry
-    pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb: SingleTLB, pagetable: RwLock<PageTable<PT_TYPE>, (), (), (), PAGE_TABLE_HAS_KILL_STATE>) -> bool
+    /// Every cached translation remains backed by the same kernel page-table
+    /// mapping. The hardware present bit may already be clear while an old TLB
+    /// entry awaits invalidation; this invariant does not encode that state
+    /// through the page-table lock.
+    pub open spec fn single_cpu_single_pcid_tlb_subset_of_pagetable(
+        cpu_tlb: SingleTLB,
+        pagetable: PageTable<PT_TYPE>,
+    ) -> bool
     {
         &&&
         forall|va: VAddr|
-            #![trigger pagetable.view().mapping_4k().dom().contains(va)]
+            #![trigger pagetable.mapping_4k().dom().contains(va)]
             #![trigger cpu_tlb.tlb_4k().spec_index(va)]
-            va_4k_valid(va) && cpu_tlb.tlb_4k().dom().contains(va) 
+            cpu_tlb.tlb_4k().dom().contains(va)
             ==>
-            pagetable.view().mapping_4k().dom().contains(va)
-            && 
-            pagetable.wlocked() == false ==> pagetable.view().mapping_4k().spec_index(va).present
-            &&
-            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_4k().spec_index(va), pagetable.view().mapping_4k().spec_index(va))
+            pagetable.mapping_4k().dom().contains(va)
+            && spec_tlb_entry_equal_to_map_entry(
+                cpu_tlb.tlb_4k().spec_index(va),
+                pagetable.mapping_4k().spec_index(va),
+            )
         &&&
         forall|va: VAddr|
-            #![trigger pagetable.view().mapping_2m().dom().contains(va)]
+            #![trigger pagetable.mapping_2m().dom().contains(va)]
             #![trigger cpu_tlb.tlb_2m().spec_index(va)]
-            va_2m_valid(va) && cpu_tlb.tlb_2m().dom().contains(va)
+            cpu_tlb.tlb_2m().dom().contains(va)
             ==>
-            pagetable.view().mapping_2m().dom().contains(va)
-            && 
-            pagetable.wlocked() == false ==> pagetable.view().mapping_2m().spec_index(va).present
-            &&
-            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_2m().spec_index(va), pagetable.view().mapping_2m().spec_index(va))
+            pagetable.mapping_2m().dom().contains(va)
+            && spec_tlb_entry_equal_to_map_entry(
+                cpu_tlb.tlb_2m().spec_index(va),
+                pagetable.mapping_2m().spec_index(va),
+            )
         &&&
         forall|va: VAddr|
-            #![trigger pagetable.view().mapping_1g().dom().contains(va)]
+            #![trigger pagetable.mapping_1g().dom().contains(va)]
             #![trigger cpu_tlb.tlb_1g().spec_index(va)]
-            va_1g_valid(va) && cpu_tlb.tlb_1g().dom().contains(va) 
+            cpu_tlb.tlb_1g().dom().contains(va)
             ==>
-            pagetable.view().mapping_1g().dom().contains(va)
-            && 
-            pagetable.wlocked() == false ==> pagetable.view().mapping_1g().spec_index(va).present
-            &&
-            spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g().spec_index(va), pagetable.view().mapping_1g().spec_index(va))
+            pagetable.mapping_1g().dom().contains(va)
+            && spec_tlb_entry_equal_to_map_entry(
+                cpu_tlb.tlb_1g().spec_index(va),
+                pagetable.mapping_1g().spec_index(va),
+            )
     }
 
     /// There is no lock involved. This has to be true all the time.
@@ -65,6 +69,15 @@ verus! {
             &&
             cpu_tlb.spec_index((cpu_id, pcid)).is_empty() == false
             ==>
-            single_cpu_single_pcid_tlb_subset_of_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_map.spec_index(cpu_array.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr))
+            {
+                let dirty_entry = cpu_array.spec_index(cpu_id).view().view()
+                    .tlb_dirty_bitmap().spec_index(pcid);
+                &&& dirty_entry is Some
+                &&& pagetable_map.dom().contains(dirty_entry.unwrap().pagetable_ptr)
+                &&& single_cpu_single_pcid_tlb_subset_of_pagetable(
+                    cpu_tlb.spec_index((cpu_id, pcid)),
+                    pagetable_map.spec_index(dirty_entry.unwrap().pagetable_ptr).view(),
+                )
+            }
     }
 }

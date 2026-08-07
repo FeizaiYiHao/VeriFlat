@@ -18,6 +18,8 @@ impl PcidAllocator {
     pub open spec fn wf(&self) -> bool {
         &&& self.ref_counters.wf()
         &&& self.id_to_proc.view().len() == PCID_MAX
+        &&& self.ref_counters.spec_index(KERNEL_DEFAULT_PCID) == 0
+        &&& self.id_to_proc.view().spec_index(KERNEL_DEFAULT_PCID as int).is_empty()
         &&& forall|id: usize|
             #![trigger self.ref_counters.spec_index(id)]
             #![trigger self.id_to_proc.view().spec_index(id as int)]
@@ -42,6 +44,7 @@ impl PcidAllocator {
         id: usize,
     ) -> bool {
         &&& usize_in_range::<PCID_MAX>(id)
+        &&& id != KERNEL_DEFAULT_PCID
         &&& old.process_is_unallocated(process_ptr)
         &&& old.ref_counters.spec_index(id) < usize::MAX
         &&& self.owning_container.view() == old.owning_container.view()
@@ -62,6 +65,7 @@ impl PcidAllocator {
         requires
             old(self).wf(),
             usize_in_range::<PCID_MAX>(id),
+            id != KERNEL_DEFAULT_PCID,
             old(self).process_is_unallocated(process_ptr),
             old(self).ref_counters.spec_index(id) < usize::MAX,
         ensures
