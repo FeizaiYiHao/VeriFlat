@@ -149,7 +149,7 @@ pub open spec fn spec_va_2m_valid(va: usize) -> bool {
         >= KERNEL_MEM_END_L4INDEX as u64
 }
 
-#[verifier(when_used_as_spec(spec_va_2m_valid))]
+#[verifier(when_used_as_spec(spec_va_1g_valid))]
 pub fn va_1g_valid(va: usize) -> (ret: bool)
     ensures
         ret == spec_va_1g_valid(va),
@@ -305,21 +305,24 @@ pub open spec fn spec_va_add_range(va: usize, i: usize) -> usize {
 pub fn va_add_range(va: usize, i: usize) -> (ret: usize)
     ensures
         ret == spec_va_add_range(va, i),
-        i != 0 ==> ret != va,
 {
     (va + (i * 4096)) as usize
 }
 
-// SPEC FIX: 2nd `0 <= i < len` was a typo for `0 <= j < len`. Without it, the lemma is
-// false (a large j can wrap around to alias va).
-// Note: even with the typo fixed, provability requires non-overflow reasoning about
-// va + i*4096 that va_4k_valid doesn't directly give. Keeping trusted with note.
+// Arithmetic injectivity is only valid for a range whose byte span and end
+// address do not wrap.  Keep those hypotheses on the quantified theorem so it
+// cannot be used to manufacture distinct addresses from an overflowing range.
 #[verifier(external_body)]
 pub proof fn va_range_lemma()
     ensures
         forall|va: VAddr, len: usize, i: usize, j: usize|
             #![trigger spec_va_4k_range_valid(va,len), spec_va_add_range(va, i), spec_va_add_range(va, j)]
-            va_4k_valid(va) && spec_va_4k_range_valid(va, len) && 0 <= i < len && 0 <= j < len ==> (
+            va_4k_valid(va)
+            && spec_va_4k_range_valid(va, len)
+            && len <= usize::MAX / 4096
+            && va < usize::MAX - len * 4096
+            && 0 <= i < len
+            && 0 <= j < len ==> (
             (i == j) == (spec_va_add_range(va, i) == spec_va_add_range(va, j))),
 {
 }
@@ -531,7 +534,8 @@ pub proof fn va_lemma()
                 != spec_index2va((l4j, l3j, l2j, l1j)),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
             #![trigger va_4k_valid(spec_index2va((l4i,l3i,l2i,l1i)))]
-            0 <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 && 0 <= l1i < 512 ==> va_4k_valid(
+            KERNEL_MEM_END_L4INDEX <= l4i < 512 && 0 <= l3i < 512
+                && 0 <= l2i < 512 && 0 <= l1i < 512 ==> va_4k_valid(
                 spec_index2va((l4i, l3i, l2i, l1i)),
             ),
         forall|va: VAddr, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
@@ -542,7 +546,8 @@ pub proof fn va_lemma()
             ) == va,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger va_2m_valid(spec_index2va((l4i,l3i,l2i,0)))]
-            0 <= l4i < 512 && 0 <= l3i < 512 && 0 <= l2i < 512 ==> va_2m_valid(
+            KERNEL_MEM_END_L4INDEX <= l4i < 512 && 0 <= l3i < 512
+                && 0 <= l2i < 512 ==> va_2m_valid(
                 spec_index2va((l4i, l3i, l2i, 0)),
             ),
 {

@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_seqs_equal, assert_sets_equal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_sets_equal};
 use crate::*;
 use crate::implementation::syscall_new_thread::kernel_u_new_thread_changed;
 
@@ -138,6 +138,9 @@ impl KernelK {
             process_ptr, Tracked(&mut *lctx),
         );
         if let (false, _) = process_res {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+            }
             self.release_cpu_and_finish(
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr,
                 Tracked(cpu_lock_perm), Tracked(scheduler_lock_perm),
@@ -165,6 +168,9 @@ impl KernelK {
             current_thread_ptr, Tracked(&mut *lctx),
         );
         if let (false, _) = thread_res {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+            }
             self.release_cpu_and_process_and_finish(
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr,
                 process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm),
@@ -173,6 +179,10 @@ impl KernelK {
             return RetValueType::ErrorThreadKilled;
         }
         let Tracked(current_thread_lock_perm) = thread_res.1.unwrap();
+
+        proof {
+            assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+        }
 
         let thread_ref = self.thread_map.borrow(
             current_thread_ptr, Tracked(&current_thread_lock_perm),
@@ -381,6 +391,16 @@ impl KernelK {
         );
 
         proof {
+            assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by {
+                reveal(kernel_k_to_kernel_u);
+                assert_seqs_equal!(
+                    steps.snap_shot.cpu_array == kernel_k_to_kernel_u(*self).cpu_array
+                );
+                assert_maps_equal!(
+                    steps.snap_shot.process_map,
+                    kernel_k_to_kernel_u(*self).process_map
+                );
+            };
             steps.begin_user_view_step(&*self, &mut *lctx);
             assert(self.container_map.dom().contains(
                 self.endpoint_map.spec_index(endpoint_ptr).view().owning_container,

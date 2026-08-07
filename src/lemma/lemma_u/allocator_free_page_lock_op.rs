@@ -3,6 +3,117 @@ use crate::*;
 use crate::kernel::*;
 verus! {
 
+pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(
+    container_map: ContainerLockedMap,
+    allocator_map: PageAllocatorUnLockedMap,
+    pre: PageLockedArray,
+    post: PageLockedArray,
+    changed: PageIndex,
+)
+    requires
+        container_page_owner_wf(container_map, pre),
+        container_page_owner_wf(container_map, post),
+        page_array_wf(pre),
+        page_array_wf(post),
+        allocator_free_page_ptrs_wf(allocator_map),
+        container_allocator_free_4k_page_wf(container_map, allocator_map, pre),
+        page_index_wf(changed),
+        post.unchanged_except(&pre, changed),
+        !(pre.spec_index(changed).view().view().state is Free4k),
+        !(post.spec_index(changed).view().view().state is Free4k),
+    ensures
+        container_allocator_free_4k_page_wf(container_map, allocator_map, post),
+{
+    assert forall|i: PageIndex|
+        #![trigger post.spec_index(i).view().view().state]
+        page_index_wf(i)
+        && ((pre.spec_index(i).view().view().state is Free4k)
+            || (post.spec_index(i).view().view().state is Free4k))
+        implies post.spec_index(i) === pre.spec_index(i) by {
+        if i == changed {
+        }
+    };
+    assert(container_allocator_free_4k_page_wf(container_map, allocator_map, post)) by {
+        reveal(container_allocator_free_4k_page_wf);
+        reveal(allocator_free_page_ptrs_wf);
+        page_ptr_lemma1();
+    };
+}
+
+pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(
+    container_map: ContainerLockedMap,
+    allocator_map: PageAllocatorUnLockedMap,
+    pre: PageLockedArray,
+    post: PageLockedArray,
+    changed: PageIndex,
+)
+    requires
+        container_page_owner_wf(container_map, pre),
+        container_page_owner_wf(container_map, post),
+        page_array_wf(pre),
+        page_array_wf(post),
+        allocator_free_page_ptrs_wf(allocator_map),
+        container_allocator_free_2m_page_wf(container_map, allocator_map, pre),
+        page_index_wf(changed),
+        post.unchanged_except(&pre, changed),
+        !(pre.spec_index(changed).view().view().state is Free2m),
+        !(post.spec_index(changed).view().view().state is Free2m),
+    ensures
+        container_allocator_free_2m_page_wf(container_map, allocator_map, post),
+{
+    assert forall|i: PageIndex|
+        #![trigger post.spec_index(i).view().view().state]
+        page_index_wf(i)
+        && ((pre.spec_index(i).view().view().state is Free2m)
+            || (post.spec_index(i).view().view().state is Free2m))
+        implies post.spec_index(i) === pre.spec_index(i) by {
+        if i == changed {
+        }
+    };
+    assert(container_allocator_free_2m_page_wf(container_map, allocator_map, post)) by {
+        reveal(container_allocator_free_2m_page_wf);
+        reveal(allocator_free_page_ptrs_wf);
+        page_ptr_lemma1();
+    };
+}
+
+pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(
+    container_map: ContainerLockedMap,
+    allocator_map: PageAllocatorUnLockedMap,
+    pre: PageLockedArray,
+    post: PageLockedArray,
+    changed: PageIndex,
+)
+    requires
+        container_page_owner_wf(container_map, pre),
+        container_page_owner_wf(container_map, post),
+        page_array_wf(pre),
+        page_array_wf(post),
+        allocator_free_page_ptrs_wf(allocator_map),
+        container_allocator_free_1g_page_wf(container_map, allocator_map, pre),
+        page_index_wf(changed),
+        post.unchanged_except(&pre, changed),
+        !(pre.spec_index(changed).view().view().state is Free1g),
+        !(post.spec_index(changed).view().view().state is Free1g),
+    ensures
+        container_allocator_free_1g_page_wf(container_map, allocator_map, post),
+{
+    assert forall|i: PageIndex|
+        #![trigger post.spec_index(i).view().view().state]
+        page_index_wf(i)
+        && ((pre.spec_index(i).view().view().state is Free1g)
+            || (post.spec_index(i).view().view().state is Free1g))
+        implies post.spec_index(i) === pre.spec_index(i) by {
+        if i == changed {
+        }
+    };
+    assert(container_allocator_free_1g_page_wf(container_map, allocator_map, post)) by {
+        reveal(container_allocator_free_1g_page_wf);
+        reveal(allocator_free_page_ptrs_wf);
+        page_ptr_lemma1();
+    };
+}
+
 pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
     pre: KernelK,
     post: KernelK,

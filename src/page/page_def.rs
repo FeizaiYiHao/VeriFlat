@@ -17,9 +17,12 @@ verus! {
         pub free_list: RwLockContainerPtr,
 
         /// Tracked ownership of the physical memory backing this page.
-        /// `Some` when the page is Free or Owned (the allocator/process holds
-        /// the perm); `None` when Allocated/Mapped/Merged (the perm has been
-        /// consumed by a retype or handed to a page table).
+        /// `Some` while a Free or Owned page is exclusively kernel-owned.
+        /// Publishing a writable user mapping forgets this contents permission:
+        /// user writes may immediately invalidate its `value()`. A future unmap
+        /// path must therefore reclaim a fresh permission describing the current
+        /// bytes after the mapping is inaccessible and every stale TLB entry has
+        /// been flushed; it must never resurrect the pre-publication token.
         pub perm_4k: Tracked<Option<PagePerm4k>>,
         pub perm_2m: Tracked<Option<PagePerm2m>>,
         pub perm_1g: Tracked<Option<PagePerm1g>>,
@@ -65,10 +68,8 @@ verus! {
             }
         }
 
-        /// The tracked perm for a page size is `Some` iff the page is Free or
-        /// Owned for that size (the allocator/process still holds the physical
-        /// memory ownership).  Once Allocated/Mapped/Merged the perm has been
-        /// consumed by a retype or handed to a page table.
+        /// Contents ownership exists exactly while an ordinary page is Free or
+        /// Owned. Mapped pages intentionally retain no stable `PointsTo` value.
         pub open spec fn perm_inv(&self) -> bool {
             &&& match self.state {
                 PageState::Free4k{..} | PageState::Owned4k{..} => self.perm_4k.view().is_some(),
@@ -83,6 +84,9 @@ verus! {
                 _ => self.perm_1g.view().is_none(),
             }
             // The perm's address matches this page's address.
+            &&& self.perm_4k.view().is_some() ==> self.perm_4k.view().unwrap().is_init()
+            &&& self.perm_2m.view().is_some() ==> self.perm_2m.view().unwrap().is_init()
+            &&& self.perm_1g.view().is_some() ==> self.perm_1g.view().unwrap().is_init()
             &&& self.perm_4k.view().is_some() ==> self.perm_4k.view().unwrap().addr() == self.addr
             &&& self.perm_2m.view().is_some() ==> self.perm_2m.view().unwrap().addr() == self.addr
             &&& self.perm_1g.view().is_some() ==> self.perm_1g.view().unwrap().addr() == self.addr
@@ -241,10 +245,11 @@ verus! {
 
     /// Extract the 4k page perm from a page that is Free4k or Owned4k.
     /// Sets perm_4k to None. The caller must ensure perm_4k is Some.
-    #[verifier::external_body]
     pub fn take_perm_4k(page: &mut Page) -> (ret: Tracked<PagePerm4k>)
         requires
             old(page).perm_4k.view().is_some(),
+            old(page).perm_inv(),
+            old(page).state is Free4k || old(page).state is Owned4k,
         ensures
             final(page).perm_4k.view().is_none(),
             ret.view() == old(page).perm_4k.view().unwrap(),
@@ -257,9 +262,12 @@ verus! {
             final(page).ref_count == old(page).ref_count,
             final(page).owning_container == old(page).owning_container,
             final(page).mappings.view() == old(page).mappings.view(),
+            final(page).free_list_node_storage == old(page).free_list_node_storage,
+            final(page).free_list == old(page).free_list,
             final(page).perm_2m.view() == old(page).perm_2m.view(),
             final(page).perm_1g.view() == old(page).perm_1g.view(),
     {
-        unimplemented!()
+        let tracked ret = page.perm_4k.borrow_mut().tracked_take();
+        Tracked(ret)
     }
 }

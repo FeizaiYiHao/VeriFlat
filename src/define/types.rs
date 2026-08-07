@@ -332,21 +332,16 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
 }
 
 impl VaRange4K {
-    // SPEC ISSUE: This lemma asserts view@[i] == spec_va_add_range(start, i), but the wf()
-    // invariant doesn't establish that relationship — view is an arbitrary ghost field.
-    // Properly fixing requires strengthening wf() to constrain view@. Out of scope here.
-    #[verifier(external_body)]
     pub proof fn va_range_lemma(&self)
         requires
             self.wf(),
         ensures
             forall|i: usize|
                 0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range(self.start, i),
-            forall|i: usize|
-                0 <= i < self.len ==> self.view().spec_index(i as int) == self.start + i
-                    * 4096  //@Xiangdong Prove this
-            ,
     {
+        assert(forall|i: usize|
+            0 <= i < self.len ==>
+                self.view().spec_index(i as int) == spec_va_add_range(self.start, i)) by { reveal(VaRange4K::view_match_spec); };
     }
 
     pub closed spec fn view(&self) -> Seq<VAddr> {
@@ -354,7 +349,8 @@ impl VaRange4K {
     }
 
     pub open spec fn wf(&self) -> bool {
-        &&& self.start + self.len * 4096 < usize::MAX
+        &&& self.len <= usize::MAX / 4096
+        &&& self.start < usize::MAX - self.len * 4096
         &&& spec_va_4k_valid(self.start)
         &&& self.view().len() == self.len
         &&& self.view().no_duplicates()
@@ -372,6 +368,7 @@ impl VaRange4K {
         requires
             spec_va_4k_valid(va),
             va_4k_range_valid(va, len),
+            len <= usize::MAX / 4096,
             va < usize::MAX - len * 4096,
         ensures
             ret.wf(),

@@ -54,6 +54,21 @@ pub struct Thread {
 pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
+    pub open spec fn free_quota_pending_fields_equal(&self, other: &Self) -> bool {
+        &&& self.direct_free_quota_pending_4k
+            == other.direct_free_quota_pending_4k
+        &&& self.direct_free_quota_pending_2m
+            == other.direct_free_quota_pending_2m
+        &&& self.direct_free_quota_pending_1g
+            == other.direct_free_quota_pending_1g
+        &&& self.indirect_free_quota_pending_4k
+            == other.indirect_free_quota_pending_4k
+        &&& self.indirect_free_quota_pending_2m
+            == other.indirect_free_quota_pending_2m
+        &&& self.indirect_free_quota_pending_1g
+            == other.indirect_free_quota_pending_1g
+    }
+
     pub open spec fn free_quota_pending_clean(&self) -> bool{
         &&& self.direct_free_quota_pending_4k.view() == 0
         &&& self.direct_free_quota_pending_2m.view() == 0
