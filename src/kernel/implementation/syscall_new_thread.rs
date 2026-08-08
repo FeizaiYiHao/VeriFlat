@@ -19,7 +19,6 @@ verus! {
                 old(self).inv(),
                 old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_set() =~= Set::<LockId>::empty(),
                 old(self).cpu_array.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
                 {
@@ -42,17 +41,17 @@ verus! {
                 old(lctx).wf(),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
-                final(steps).steps.len() == 1,
-                final(steps).steps.last().new_k == *final(self),
-                final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
+                final(steps).steps.len() <= 1,
+                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
                 final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(lctx).wf(),
                 final(lctx).lock_id_set() =~= Set::<LockId>::empty(),
-                // Error paths are user-view no-ops.
-                !(ret is Success) ==> final(steps).steps.last().old_u == final(steps).steps.last().new_u,
+                !(ret is Success) ==> final(steps).steps.len() == 0,
                 ret is Success ==> {
                     let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
+                    &&& final(steps).steps.len() == 1
+                    &&& final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self))
                     &&& kernel_u_new_thread_changed(
                             final(steps).steps.last().old_u,
                             final(steps).steps.last().new_u,
@@ -263,7 +262,6 @@ verus! {
                 cpu_id_valid(cpu_id),
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(self).process_map.dom().contains(process_ptr),
@@ -316,8 +314,8 @@ verus! {
                 final(lctx).wf(),
                 final(lctx).lock_id_set() =~= Set::<LockId>::empty(),
                 final(steps).steps.len() == old(steps).steps.len() + 1,
-                final(steps).steps.last().new_k == *final(self),
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
+                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
                 // Full U-change.
                 kernel_u_new_thread_changed(
                     final(steps).steps.last().old_u,
@@ -356,9 +354,9 @@ verus! {
             let page_index = page_ptr2page_index(page_ptr);
 
             proof {
-                steps.begin_user_view_step(&*self, &mut *lctx);
+                lctx.enter_kernel_view_release();
+                assert(lock_id_aligned(&*self, &*lctx)) by { reveal(page_lock_id_aligned); };
             }
-
             let (new_thread_ptr, Tracked(new_thread_lock_perm)) = self.create_thread_from_staged_page_merged(
                 page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr,
                 Tracked(&mut *lctx), Tracked(&page_lock_perm),
@@ -381,13 +379,12 @@ verus! {
                     lctx.lock_id_set() == Set::<LockId>::empty(),
                     lock_id => {}
                 );
-                steps.end_user_view_step(&*self, &mut *lctx);
+                steps.end_kernel_step(&*self, &*lctx);
                 assert(kernel_u_new_thread_changed(
                     steps.steps.last().old_u,
                     steps.steps.last().new_u,
                     process_ptr,
                 )) by {
-                    reveal(kernel_u_new_thread_changed);
                     reveal(kernel_k_to_kernel_u);
                     assert_seqs_equal!(
                         steps.steps.last().new_u.cpu_array
@@ -415,7 +412,6 @@ verus! {
                 cpu_id_valid(cpu_id),
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 lctx.lock_id_set() =~= set![
                     old(self).cpu_array.lock_id_by_index(cpu_id),
@@ -442,16 +438,13 @@ verus! {
                     old(lctx).lock_id_set()
                         .remove(old(self).cpu_array.lock_id_by_index(cpu_id))
                         .remove(old(self).scheduler_map.lock_id_by_key(scheduler_ptr)),
-                final(steps).steps.len() == old(steps).steps.len() + 1,
-                final(steps).steps.last().new_k == *final(self),
-                final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
-                final(steps).steps.last().old_u == final(steps).steps.last().new_u,
+                final(steps).steps == old(steps).steps,
+                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
         {
             let tracked cpu_lock_perm = cpu_lock_perm.get();
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
 
             proof {
-                steps.begin_user_view_step(&*self, &mut *lctx);
                 assert(lock_id_aligned(&*self, &*lctx)) by {
                     reveal(KernelK::locked_objects_match_lctx);
                     reveal(page_locked_match_lctx);
@@ -467,7 +460,7 @@ verus! {
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
-                steps.end_user_view_step(&*self, &mut *lctx);
+                steps.end_kernel_step(&*self, &*lctx);
                 assert(lock_id_aligned(&*self, &*lctx)) by {
                     reveal(KernelK::locked_objects_match_lctx);
                     reveal(page_locked_match_lctx);
@@ -494,7 +487,6 @@ verus! {
                 cpu_id_valid(cpu_id),
                 old(self).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 lctx.lock_id_set() =~= set![
                     old(self).cpu_array.lock_id_by_index(cpu_id),
@@ -529,16 +521,13 @@ verus! {
                         .remove(old(self).cpu_array.lock_id_by_index(cpu_id))
                         .remove(old(self).scheduler_map.lock_id_by_key(scheduler_ptr))
                         .remove(old(self).process_map.lock_id_by_key(process_ptr)),
-                final(steps).steps.len() == old(steps).steps.len() + 1,
-                final(steps).steps.last().new_k == *final(self),
-                final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
-                final(steps).steps.last().old_u == final(steps).steps.last().new_u,
+                final(steps).steps == old(steps).steps,
+                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
         {
             let tracked process_lock_perm = process_lock_perm.get();
             let tracked cpu_lock_perm = cpu_lock_perm.get();
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
             proof {
-                steps.begin_user_view_step(&*self, &mut *lctx);
                 assert(lock_id_aligned(&*self, &*lctx)) by {
                     reveal(KernelK::locked_objects_match_lctx);
                     reveal(page_locked_match_lctx);
@@ -555,7 +544,7 @@ verus! {
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
-                steps.end_user_view_step(&*self, &mut *lctx);
+                steps.end_kernel_step(&*self, &*lctx);
                 assert(lock_id_aligned(&*self, &*lctx)) by {
                     reveal(KernelK::locked_objects_match_lctx);
                     reveal(page_locked_match_lctx);
@@ -586,7 +575,6 @@ verus! {
                 old(self).process_map.dom().contains(process_ptr),
                 old(self).thread_map.dom().contains(thread_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 old(lctx).lock_id_set() =~= set![
                     old(self).cpu_array.lock_id_by_index(cpu_id),
@@ -631,18 +619,13 @@ verus! {
                 lock_id_aligned(final(self), final(lctx)),
                 final(lctx).wf(),
                 final(lctx).lock_id_set() =~= Set::<LockId>::empty(),
-                final(steps).steps.len() == old(steps).steps.len() + 1,
-                final(steps).steps.last().new_k == *final(self),
-                final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
-                final(steps).steps.last().old_u == final(steps).steps.last().new_u,
+                final(steps).steps == old(steps).steps,
+                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
         {
             let tracked thread_lock_perm = thread_lock_perm.get();
             let tracked process_lock_perm = process_lock_perm.get();
             let tracked cpu_lock_perm = cpu_lock_perm.get();
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
-            proof {
-                steps.begin_user_view_step(&*self, &mut *lctx);
-            }
             self.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
             self.wunlock_scheduler(
                 scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm),
@@ -655,7 +638,7 @@ verus! {
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
-                steps.end_user_view_step(&*self, &mut *lctx);
+                steps.end_kernel_step(&*self, &*lctx);
             }
         }
 
@@ -771,7 +754,6 @@ verus! {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state()
                     == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 final(self).pagetable_map == old(self).pagetable_map,
                 final(self).iommu_table_map == old(self).iommu_table_map,
                 final(self).iommu_root_table == old(self).iommu_root_table,

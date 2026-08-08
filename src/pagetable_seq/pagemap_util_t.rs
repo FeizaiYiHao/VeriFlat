@@ -138,7 +138,6 @@ pub(super) fn page_map_set_published(
         0 <= index < 512,
         mem_valid(value.addr),
         lctx.kernel_view_locking_state() is Release,
-        lctx.user_view_locking_state() is Release,
     ensures
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
