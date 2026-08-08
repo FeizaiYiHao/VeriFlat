@@ -205,7 +205,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
 }
 
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     pub open spec fn lock_id_by_key(&self, key: usize) -> LockId
         recommends
             self.dom().contains(key)
@@ -338,7 +338,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
     pub open spec fn lock_id_by_key(&self, key: usize) -> LockId
         recommends
             self.dom().contains(key)
@@ -393,8 +393,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self).spec_index(key).wlocked_by(old(lctx)),
             old(self).spec_index(key).inv(),
 
-            unlock_requires::<T>(old(lctx)),
-
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
@@ -427,7 +425,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT,> LockedMap<usize, T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     pub fn wlock_unless_killed(&mut self, key:usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: (bool, Option<Tracked<LockPerm>>))
         requires
             old(self).perms_wf(),
@@ -436,7 +434,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             // wlock_requires(old(self)[key], old(lctx)),
             old(self).spec_index(key).locked_by(old(lctx)) == false,
             old(lctx).kernel_view_locking_state() is Acquire,
-            T::is_user_visible() ==> old(lctx).user_view_locking_state() is Acquire,
 
             old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
             old(lctx).obj_id_fresh(obj_id.view()),
@@ -448,7 +445,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             // thread's identity (see free `wlock_unless_killed`).
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
             ret.0 == false ==> 
             {
@@ -511,8 +507,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             
             old(self).spec_index(key).wlocked_by(old(lctx)),
             old(self).spec_index(key).inv(),
-
-            unlock_requires::<T>(old(lctx)),
 
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),

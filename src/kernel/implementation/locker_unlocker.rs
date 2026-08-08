@@ -12,7 +12,6 @@ verus! {
                 old(lctx).wf(),
                 cpu_id_valid(cpu_id),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).cpu_array.lock_id_by_index(cpu_id)),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -53,7 +52,6 @@ verus! {
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from LockedArray::wlock) ----
                 wlock_ensures(
@@ -172,7 +170,6 @@ verus! {
                 cpu_id_valid(cpu_id),
                 old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 old(self).cpu_array.spec_index(cpu_id).view().wlocked_by(old(lctx)),
-                unlock_requires::<Cpu>(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -218,7 +215,7 @@ verus! {
                     final(self).cpu_array.spec_index(cpu_id).view(),
                 ),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
                 // `== old` would contradict it and make the postcondition `false`
@@ -227,7 +224,6 @@ verus! {
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     old(self).cpu_array.lock_id_by_index(cpu_id),
@@ -333,7 +329,6 @@ verus! {
                 old(lctx).wf(),
                 old(self).container_map.dom().contains(container_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).container_map.lock_id_by_key(container_ptr)),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -375,7 +370,6 @@ verus! {
                 // ---- LocalContext phase preservation ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- Failure: container is being killed; complete no-op ----
                 ret.0 == false ==>
@@ -648,9 +642,6 @@ verus! {
         ///  * Every other `KernelK` field is byte-equal pre/post.
         ///  * `lctx.lock_map` loses the `KernelObjId::Container(container_ptr)`
         ///    entry (encapsulated by `unlock_ensures`).
-        ///  * The caller must ALREADY have flipped `user_view_locking_state`
-        ///    to Release (the standard linearization-point precondition for
-        ///    unlocking a user-visible object), enforced via `unlock_requires`.
         #[verifier::spinoff_prover]
         pub fn wunlock_container(
             &mut self,
@@ -663,7 +654,6 @@ verus! {
                 old(lctx).wf(),
                 old(self).container_map.dom().contains(container_ptr),
                 old(self).container_map.spec_index(container_ptr).being_killed() == false,
-                unlock_requires::<Container>(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -711,7 +701,7 @@ verus! {
                     final(self).container_map.spec_index(container_ptr),
                 ),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
                 // `== old` would contradict it and make the postcondition `false`
@@ -720,7 +710,6 @@ verus! {
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     old(self).container_map.lock_id_by_key(container_ptr),
@@ -969,7 +958,6 @@ verus! {
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id()),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -1017,7 +1005,6 @@ verus! {
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_quota) ----
                 wlock_ensures(
@@ -1206,7 +1193,6 @@ verus! {
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.inv(),
-                unlock_requires::<crate::allocator::allocator_quota::AllocatorQuota>(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -1256,7 +1242,7 @@ verus! {
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
                 // `== old` would contradict it and make the postcondition `false`
@@ -1265,7 +1251,6 @@ verus! {
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_quota) ----
                 wunlock_ensures(
@@ -1443,7 +1428,6 @@ verus! {
                 old(lctx).wf(),
                 old(self).process_map.dom().contains(process_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).process_map.lock_id_by_key(process_ptr)),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -1485,7 +1469,6 @@ verus! {
                 // ---- LocalContext phase preservation ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- Failure: process is being killed; complete no-op ----
                 ret.0 == false ==>
@@ -1794,7 +1777,6 @@ verus! {
                 old(self).process_map.spec_index(process_ptr).being_killed() == false,
                 old(self).process_map.spec_index(process_ptr)
                     .wlocked_by(old(lctx)),
-                unlock_requires::<Process>(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -1841,7 +1823,7 @@ verus! {
                     final(self).process_map.spec_index(process_ptr),
                 ),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
                 // `== old` would contradict it and make the postcondition `false`
@@ -1850,7 +1832,6 @@ verus! {
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     old(self).process_map.lock_id_by_key(process_ptr),
@@ -2128,7 +2109,6 @@ verus! {
                 old(lctx).wf(),
                 old(self).thread_map.dom().contains(thread_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).user_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).thread_map.lock_id_by_key(thread_ptr)),
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
@@ -2158,7 +2138,6 @@ verus! {
                 final(self).thread_map.perms_wf(),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 ret.0 == false ==> {
                     &&& old(self).thread_map.spec_index(thread_ptr).being_killed()
                     &&& final(self).thread_map.spec_index(thread_ptr)
@@ -2354,7 +2333,6 @@ verus! {
                 old(self).thread_map.spec_index(thread_ptr).being_killed() == false,
                 old(self).thread_map.spec_index(thread_ptr)
                     .wlocked_by(old(lctx)),
-                unlock_requires::<Thread>(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -2411,13 +2389,12 @@ verus! {
                         && final(self).thread_map.lock_id_by_key(held_thread)
                             == old(self).thread_map.lock_id_by_key(held_thread),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release (same trap as
                 // the NOTE on wunlock_process / LockedArray::wunlock).
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     old(self).thread_map.lock_id_by_key(thread_ptr),
@@ -2659,7 +2636,6 @@ verus! {
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_cache) ----
                 wlock_ensures(
@@ -2927,7 +2903,7 @@ verus! {
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
                 // `== old` would contradict it and make the postcondition `false`
@@ -2935,7 +2911,6 @@ verus! {
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_cache) ----
                 wunlock_ensures(
@@ -3182,7 +3157,6 @@ verus! {
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_global_pool) ----
                 wlock_ensures(
@@ -3383,7 +3357,6 @@ verus! {
                 old(self).inv(),
                 old(lctx).wf(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-                unlock_requires::<GlobalPool>(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -3447,7 +3420,7 @@ verus! {
                 forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
                 // `== old` would contradict it and make the postcondition `false`
@@ -3455,7 +3428,6 @@ verus! {
                 // `LockedArray::wunlock`). user_view is separately preserved.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_global_pool) ----
                 wunlock_ensures(
@@ -3673,7 +3645,6 @@ verus! {
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from LockedArray::wlock) ----
                 wlock_ensures(
@@ -3919,13 +3890,12 @@ verus! {
                 final(self).page_array.unchanged_except(&old(self).page_array, page_index),
                 final(self).page_array.spec_index(page_index).view().locking_thread() is None,
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` flips it Acquire → Release (same trap as the
                 // `LockedArray::wunlock` NOTE).
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
                 wunlock_ensures(old(self).page_array.spec_index(page_index).view(), final(self).page_array.spec_index(page_index).view()),
@@ -4161,7 +4131,6 @@ verus! {
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from LockedMap::wlock) ----
                 wlock_ensures(
@@ -4266,7 +4235,6 @@ verus! {
             requires
                 old(self).inv(),
                 old(lctx).wf(),
-                unlock_requires::<Scheduler>(old(lctx)),
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(self).scheduler_map.spec_index(scheduler_ptr)
                     .wlocked_by(old(lctx)),
@@ -4312,13 +4280,12 @@ verus! {
                 final(self).scheduler_map.unchanged_except(&old(self).scheduler_map, scheduler_ptr),
                 final(self).scheduler_map.spec_index(scheduler_ptr).locking_thread() is None,
 
-                // ---- LocalContext: lock dropped; thread + user-view phase preserved ----
+                // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` flips it Acquire → Release (same trap as the
                 // `LockedArray::wunlock` NOTE).
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
                 wunlock_ensures(
@@ -4441,7 +4408,6 @@ verus! {
                 final(self).endpoint_map.unchanged_except(&old(self).endpoint_map, endpoint_ptr),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 wlock_ensures(
                     old(self).endpoint_map.spec_index(endpoint_ptr),
                     final(self).endpoint_map.spec_index(endpoint_ptr),
@@ -4498,7 +4464,6 @@ verus! {
             requires
                 old(self).inv(),
                 old(lctx).wf(),
-                unlock_requires::<Endpoint>(old(lctx)),
                 old(self).endpoint_map.dom().contains(endpoint_ptr),
                 old(self).endpoint_map.spec_index(endpoint_ptr).wlocked_by(old(lctx)),
                 lock_perm.view().state() is WriteLock,
@@ -4535,7 +4500,6 @@ verus! {
                 final(self).endpoint_map.spec_index(endpoint_ptr).locking_thread() is None,
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
                 wunlock_ensures(
                     old(self).endpoint_map.spec_index(endpoint_ptr),
                     final(self).endpoint_map.spec_index(endpoint_ptr),
