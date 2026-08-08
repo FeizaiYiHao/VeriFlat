@@ -17,10 +17,9 @@ verus! {
     }
 
     /// Project a `KernelK` into its user-visible `KernelU`. This is the
-    /// spec-level mapping that defines the user-view linearization point:
-    /// at the moment the syscall declares it has reached its user-view
-    /// linearization point, the user-visible state is exactly
-    /// `kernel_k_to_kernel_u(kernel_k)`.
+    /// spec-level mapping used at every kernel boundary.  The boundary
+    /// compares this projection with the preceding snapshot; only a changed
+    /// projection is recorded as a user-visible step.
     pub open spec fn kernel_k_to_kernel_u(kernel_k: KernelK) -> KernelU {
         KernelU {
             cpu_array: Seq::new(

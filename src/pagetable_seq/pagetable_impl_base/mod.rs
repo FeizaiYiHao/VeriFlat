@@ -256,7 +256,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 #![trigger page_map_perm.value().spec_index(i).is_empty()]
                 0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty(),
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -392,7 +391,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==> 
                 page_map_perm.value().spec_index(i).is_empty(),
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -543,7 +541,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 #![trigger page_map_perm.value().spec_index(i).is_empty()]
                 0 <= i < 512 ==> page_map_perm.value().spec_index(i).is_empty(),
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -719,7 +716,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_ptr_valid(target_entry.addr),
             target_entry.present,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,

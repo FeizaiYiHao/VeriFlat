@@ -44,7 +44,6 @@ impl KernelK {
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
             thread_lock_perm.lock_id() == old(self).thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).user_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
             thread_effective_quota_4k(old(self).thread_map.spec_index(thread_ptr)) >= 1,
             old(self).thread_map.spec_index(thread_ptr).wlocked_by(old(lctx)),
@@ -80,7 +79,6 @@ impl KernelK {
                 == old(self).container_map.spec_index(container_ptr).view_rodata(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             final(steps).steps == old(steps).steps,
@@ -368,7 +366,6 @@ impl KernelK {
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
-            old(lctx).user_view_locking_state() is Acquire,
             old(self).thread_map.dom().contains(thread_ptr),
             old(self).process_map.dom().contains(process_ptr),
             old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
@@ -409,7 +406,6 @@ impl KernelK {
             final(self).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             final(self).container_map.dom().contains(container_ptr),
@@ -603,7 +599,6 @@ impl KernelK {
                 .global_pool.view().view().spec_index(0)),
             old(lctx).wf(),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).user_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
             old(lctx).lock_id_acyclic(old(self).page_array.lock_id_by_index(
@@ -615,7 +610,6 @@ impl KernelK {
             final(lctx).wf(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(lctx).lock_maps_equal(old(lctx)),
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
             final(self).locked_objects_match_lctx(final(lctx)),
@@ -1042,7 +1036,6 @@ impl KernelK {
                 .locking_thread()->Write_lock_id,
             old(lctx).wf(),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).user_view_locking_state() is Acquire,
             old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
@@ -1055,7 +1048,6 @@ impl KernelK {
             final(lctx).wf(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(lctx).lock_maps_equal(old(lctx)),
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
             final(self).locked_objects_match_lctx(final(lctx)),
@@ -1150,7 +1142,6 @@ impl KernelK {
                 lctx.wf(),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() is Acquire,
                 lctx.lock_maps_equal(old(lctx)),
                 self.locked_objects_match_lctx(&*lctx),
                 lock_id_aligned(self, &*lctx),
@@ -1393,7 +1384,6 @@ impl KernelK {
             final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(lctx).wf(),
             final(lctx).page_lock_map() =~= old(lctx).page_lock_map(),
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
@@ -1445,7 +1435,6 @@ impl KernelK {
                 self.allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
                 lctx.page_lock_map() =~= old(lctx).page_lock_map(),
                 0 <= cpu <= NUM_CPUS,
                 lctx.lock_id_set() =~= old(lctx).lock_id_set()
@@ -1562,7 +1551,6 @@ impl KernelK {
             final(self).inv(),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(lctx).wf(),
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
                 - Self::allocator_cache_lock_id_prefix(NUM_CPUS),
@@ -1636,7 +1624,6 @@ impl KernelK {
                 self.allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 lctx.thread_id() == old(lctx).thread_id(),
-                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
                 0 <= cpu <= NUM_CPUS,
                 lctx.lock_id_set() =~= old(lctx).lock_id_set()
                     - Self::allocator_cache_lock_id_prefix(cpu),
@@ -1817,7 +1804,6 @@ impl KernelK {
             final(self).pagetable_map == old(self).pagetable_map,
             final(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(self).thread_map.lock_id_by_key(thread_ptr)
                 == old(self).thread_map.lock_id_by_key(thread_ptr),
             final(self).locked_objects_match_lctx(final(lctx)),
@@ -1915,7 +1901,6 @@ impl KernelK {
                 lock_id_aligned(self, &*lctx),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
-                lctx.user_view_locking_state() == old(lctx).user_view_locking_state(),
                 lctx.lock_id_set() =~= old(lctx).lock_id_set(),
                 lctx.lock_maps_equal(old(lctx)),
                 0 <= cpu <= NUM_CPUS,
@@ -2006,7 +1991,6 @@ impl KernelK {
 } // verus!
 
 mod pop_impl;
-mod mmap_locked;
 
 
 verus! {

@@ -146,19 +146,9 @@ pub enum RwLockState{
 
 /// `RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>`
 ///
-/// Whether each field is observable in the user view depends on
-/// `T::is_user_visible()`:
-///
-/// - `T`        — the lock-protected payload. Always kernel-visible; also
-///                user-visible iff `T::is_user_visible()`.
-/// - `ROT`      — read-only data alongside the value. Always kernel-visible;
-///                also user-visible iff `T::is_user_visible()`.
-/// - `KGhostT`  — ghost data restricted to the kernel view. Never visible to
-///                the user view, even when `T::is_user_visible()`. Updating
-///                it is a kernel-view Release.
-/// - `UGhostT`  — ghost data following the same visibility rule as `T`.
-///                Updating it is a kernel-view Release; if
-///                `T::is_user_visible()`, also requires user-view Release.
+/// The refinement projection decides which payload and ghost fields are
+/// user-visible.  The lock primitive itself only enforces the kernel atomic
+/// section's Acquire/Release phase.
 #[repr(C)]
 pub struct RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>{
     lock: RwLockInner,
@@ -439,39 +429,32 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).lock_maps_equal(old(lctx)),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
     {
         unimplemented!()
     }
 }
 
-impl<T:LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     /// Trusted proof primitive: replace the user-view-visible ghost field.
     ///
     /// This is a kernel-view Release in the same sense as `update_kernel_ghost`.
-    /// In addition, if `T::is_user_visible()`, the change is observable in the
-    /// user view, so the syscall must have already manually linearized
-    /// (user_view_locking_state is Release).
-    ///
     /// Forbidden on tombstoned objects: once `being_killed`, the only legal
     /// op is retype.
     #[verifier::external_body]
     pub proof fn update_user_ghost(tracked &mut self, tracked lctx: &mut LocalContext, new_user_ghost: UGhostT)
         requires
             !old(self).being_killed(),
-            T::is_user_visible() ==> old(lctx).user_view_locking_state() is Release,
         ensures
             update_user_ghost_ensures(*old(self), *final(self), new_user_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).lock_maps_equal(old(lctx)),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
     {
         unimplemented!()
     }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
         requires
@@ -497,8 +480,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
 
-            unlock_requires::<T>(old(lctx)),
-
             lp.view().state() is WriteLock,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
@@ -520,7 +501,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait + LockU
 
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
     pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
         requires
@@ -568,8 +549,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
 
-            unlock_requires::<T>(old(lctx)),
-
             lp.view().state() is WriteLock,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
@@ -598,9 +577,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
     ///
     /// Marking is a kernel-view Release: every other thread's next `try_*`
     /// will fail with `Err`, which is externally observable. Therefore the
-    /// section's `kernel_view_locking_state` flips to `Release`. If the
-    /// object is user-visible, the precondition `user_view_locking_state is
-    /// Release` enforces that the syscall has already linearized.
+    /// section's `kernel_view_locking_state` flips to `Release`.
     ///
     /// On success, the killer holds a write lock and `being_killed == true`.
     /// Cleanup must be doable with the locks already held — no further locks
@@ -620,8 +597,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
             old(lctx).lock_id_acyclic(lock_id.view()),
             old(lctx).obj_id_fresh(obj_id.view()),
 
-            // Mark is a Release for the user-view too if T is user-visible.
-            T::is_user_visible() ==> old(lctx).user_view_locking_state() is Release,
         ensures
             ret.0 == false ==>
             {
@@ -673,8 +648,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
                 final(lctx).lock_maps_inserted(old(lctx), obj_id.view(), lock_id.view())
                 &&&
                 final(lctx).kernel_view_locking_state() is Release
-                &&&
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state()
             }
     {
         if self.lock.try_wlock_and_mark_kill(killer_info).is_err(){
@@ -686,16 +659,14 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrai
 
 }
 
-pub open spec fn wlock_requires<T: LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
+pub open spec fn wlock_requires<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
     &&&
     old.locked_by(lctx) == false
     &&&
     lctx.kernel_view_locking_state() is Acquire
-    &&&
-    T::is_user_visible() ==> lctx.user_view_locking_state() is Acquire
 }
 
-pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
     &&&
     new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_perm.lock_id() }
     &&&
@@ -721,7 +692,7 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait + LockUserVisibil
     lock_perm.thread_id() == thread_id
 }
 
-pub open spec fn wunlock_ensures<T:LockInvTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{
+pub open spec fn wunlock_ensures<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{
     &&&
     new.locking_thread() == RwLockState::None
     &&&

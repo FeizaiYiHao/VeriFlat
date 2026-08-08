@@ -67,7 +67,6 @@ impl KernelK {
             // ---- cache + thread lock state preserved, phase still Acquire ----
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             cache_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).lock_id()
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).lock_id(),
@@ -453,7 +452,6 @@ impl KernelK {
             // ---- global_pool + process lock state preserved, phase still Acquire ----
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             global_pool_lock_perm.lock_id() == final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id()
                 == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),

@@ -159,7 +159,7 @@ verus! {
         } 
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
         pub open spec fn lock_id_by_index(&self, index:usize) -> LockId
             recommends
                 0 <= index < N,
@@ -168,7 +168,7 @@ verus! {
         }
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait + LockUserVisibilityTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const N: usize> LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
             requires
@@ -185,7 +185,6 @@ verus! {
                 final(self).payloads_unchanged(old(self)),
 
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
 
                 wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx).thread_id(), ret.view()),
                 lock_ensures(old(lctx), final(lctx), final(self).spec_index(index).view().view(), old(self).lock_id_by_index(index), obj_id.view()),
@@ -201,8 +200,6 @@ verus! {
 
                 old(self).spec_index(index).view().wlocked_by(old(lctx)),
                 old(self).spec_index(index).view().being_killed() == false,
-
-                unlock_requires::<T>(old(lctx)),
 
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),

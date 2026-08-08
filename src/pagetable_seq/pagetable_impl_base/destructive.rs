@@ -42,7 +42,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             ) == true,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -242,7 +241,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             ).present == false,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -413,7 +411,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             ))),
             target_entry.present,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -595,7 +592,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 i
             ) is None,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -798,7 +794,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 i
             ) is None,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
@@ -1005,7 +1000,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 i
             ) is None,
             lctx.kernel_view_locking_state() is Release,
-            lctx.user_view_locking_state() is Release,
         ensures
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,

@@ -41,7 +41,6 @@ impl KernelK {
                 )
             },
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).user_view_locking_state() is Acquire,
             old(lctx).lock_id_set() =~= Set::<LockId>::empty(),
             old(self).cpu_array.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
             {
@@ -64,19 +63,19 @@ impl KernelK {
             old(lctx).wf(),
             lock_id_aligned(old(self), old(lctx)),
         ensures
-            final(steps).steps.len() == 1,
-            final(steps).steps.last().new_k == *final(self),
-            final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
+            final(steps).steps.len() <= 1,
+            final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
             final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             final(lctx).wf(),
             final(lctx).lock_id_set() =~= Set::<LockId>::empty(),
-            !(ret is Success) ==>
-                final(steps).steps.last().old_u == final(steps).steps.last().new_u,
+            !(ret is Success) ==> final(steps).steps.len() == 0,
             ret is Success ==> {
                 let process_ptr = old(self).cpu_array.spec_index(cpu_id)
                     .view().view().current_process->Some_0;
-                kernel_u_new_thread_changed(
+                &&& final(steps).steps.len() == 1
+                &&& final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self))
+                &&& kernel_u_new_thread_changed(
                     final(steps).steps.last().old_u,
                     final(steps).steps.last().new_u,
                     process_ptr,
@@ -189,6 +188,9 @@ impl KernelK {
         );
         let endpoint_option = *thread_ref.endpoint_descriptors.get(endpoint_index);
         if let None = endpoint_option {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+            }
             self.release_cpu_and_process_and_thread_and_finish(
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr,
                 process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm),
@@ -200,6 +202,9 @@ impl KernelK {
         let endpoint_ptr = endpoint_option.unwrap();
 
         if thread_ref.quota_4k < 1 {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+            }
             self.release_cpu_and_process_and_thread_and_finish(
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr,
                 process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm),
@@ -264,7 +269,6 @@ impl KernelK {
             edp_idx_valid(endpoint_index),
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).user_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
             old(self).scheduler_map.dom().contains(scheduler_ptr),
             old(self).process_map.dom().contains(process_ptr),
@@ -340,8 +344,8 @@ impl KernelK {
             final(lctx).wf(),
             final(lctx).lock_id_set() =~= Set::<LockId>::empty(),
             final(steps).steps.len() == old(steps).steps.len() + 1,
-            final(steps).steps.last().new_k == *final(self),
             final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self)),
+            final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
             kernel_u_new_thread_changed(
                 final(steps).steps.last().old_u,
                 final(steps).steps.last().new_u,
@@ -391,17 +395,8 @@ impl KernelK {
         );
 
         proof {
-            assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by {
-                reveal(kernel_k_to_kernel_u);
-                assert_seqs_equal!(
-                    steps.snap_shot.cpu_array == kernel_k_to_kernel_u(*self).cpu_array
-                );
-                assert_maps_equal!(
-                    steps.snap_shot.process_map,
-                    kernel_k_to_kernel_u(*self).process_map
-                );
-            };
-            steps.begin_user_view_step(&*self, &mut *lctx);
+            lctx.enter_kernel_view_release();
+            assert(lock_id_aligned(&*self, &*lctx)) by { reveal(page_lock_id_aligned); };
             assert(self.container_map.dom().contains(
                 self.endpoint_map.spec_index(endpoint_ptr).view().owning_container,
             )) by { reveal(container_endpoint_wf); };
@@ -460,20 +455,20 @@ impl KernelK {
                 lctx.lock_id_set() == Set::<LockId>::empty(),
                 lock_id => {}
             );
-            steps.end_user_view_step(&*self, &mut *lctx);
             assert(kernel_u_new_thread_changed(
-                steps.steps.last().old_u,
-                steps.steps.last().new_u,
+                steps.snap_shot,
+                kernel_k_to_kernel_u(*self),
                 process_ptr,
-            )) by { reveal(kernel_u_new_thread_changed); reveal(kernel_k_to_kernel_u);
+            )) by { reveal(kernel_k_to_kernel_u);
                 assert_seqs_equal!(
-                    steps.steps.last().new_u.cpu_array
-                        == steps.steps.last().old_u.cpu_array,
+                    kernel_k_to_kernel_u(*self).cpu_array
+                        == steps.snap_shot.cpu_array,
                     i => {
                         reveal(kernel_k_to_kernel_u);
                     }
                 );
             };
+            steps.end_kernel_step(&*self, &*lctx);
         }
     }
 
@@ -613,7 +608,6 @@ impl KernelK {
             final(lctx).wf(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set()
                 .remove(old(self).thread_map.lock_id_by_key(thread_ptr))
                 .remove(old(self).endpoint_map.lock_id_by_key(endpoint_ptr)),
