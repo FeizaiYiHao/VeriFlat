@@ -976,4 +976,3 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 } // verus!
 
 mod remove_impl;
-

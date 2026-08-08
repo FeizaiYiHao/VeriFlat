@@ -321,14 +321,11 @@ verus! {
         ///   - kernel-view phase flips back to `Acquire`, ready for the
         ///     next atomic section.
         ///
-        /// Snapshot discipline: the boundary requires
-        /// `kernel_k_to_kernel_u(*old(self)) == old(steps).snap_shot`,
-        /// i.e. since the last refresh point (syscall entry, end of last
-        /// user-step, or end of last boundary) this thread hasn't changed
-        /// the user-view projection. Any U-mutation outside a
-        /// begin/end_user_view_step pair leaves the snapshot stale and is
-        /// caught here. After interleaving, the boundary refreshes
-        /// `snap_shot` to the new projection.
+        /// Before interleaving, the boundary compares the completed kernel
+        /// section's user projection with `steps.snap_shot`.  A changed
+        /// projection is appended as one user step; an unchanged projection is
+        /// an internal stuttering step and is omitted.  Only then may other
+        /// threads interleave, after which the snapshot is refreshed.
         ///
         /// Preconditions:
         ///   - `inv()` holds (we entered the boundary in a wf state),
@@ -336,8 +333,6 @@ verus! {
         ///     is done),
         ///   - `locked_objects_match_lctx(lctx)` (no stealth locks, every
         ///     LocalContext entry corresponds to a real held lock),
-        ///   - `kernel_k_to_kernel_u(*self) == steps.snap_shot` (no
-        ///     unrecorded U-mutation since the last refresh point).
         #[verifier::external_body]
         pub proof fn kernel_step_boundary(
             tracked &mut self,
@@ -349,7 +344,6 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Release,
                 old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
-                kernel_k_to_kernel_u(*old(self)) == old(steps).snap_shot,
             ensures
                 final(self).inv(),
                 // LocalContext: phase flips to Acquire; everything else preserved.
@@ -358,10 +352,13 @@ verus! {
                 final(lctx).lock_maps_equal(old(lctx)),
                 final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
                 final(lctx).kernel_view_locking_state() is Acquire,
-                final(lctx).user_view_locking_state() == old(lctx).user_view_locking_state(),
-                // KernelSteps: ledger of recorded steps unchanged; snapshot
-                // refreshed to the new (post-interleaving) projection.
-                final(steps).steps == old(steps).steps,
+                // Record this thread's completed section before refreshing the
+                // snapshot to the post-interleaving projection.
+                final(steps).steps == record_user_view_change(
+                    old(steps).steps,
+                    old(steps).snap_shot,
+                    kernel_k_to_kernel_u(*old(self)),
+                ),
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
                 // Kernel still in agreement with lctx.
                 final(self).locked_objects_match_lctx(final(lctx)),

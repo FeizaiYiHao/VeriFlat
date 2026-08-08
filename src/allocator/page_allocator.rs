@@ -156,7 +156,6 @@ impl PageAllocator{
             old(self).quota.wlocked_by(old(lctx)),
             old(self).quota.inv(),
 
-            unlock_requires::<AllocatorQuota>(old(lctx)),
 
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -337,7 +336,6 @@ impl PageAllocator{
             old(self).wf(),
             old(self).global_pool.wlocked_by(old(lctx)),
             old(self).global_pool.inv(),
-            unlock_requires::<GlobalPool>(old(lctx)),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
@@ -657,8 +655,6 @@ impl PageAllocator{
             old(self).wf(),
             old(self).global_pool.wlocked_by(old(lctx)),
             old(self).global_pool.inv(),
-
-            unlock_requires::<LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>>(old(lctx)),
 
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),

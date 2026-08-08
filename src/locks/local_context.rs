@@ -21,7 +21,6 @@ pub ghost enum AllocatorLockObjId {
 
 pub tracked struct LCtxtState{
     pub kernel_view_locking_state: LCtxtLockState,
-    pub user_view_locking_state: LCtxtLockState,
 }
 
 /// Per-thread ledger of held dynamic lock ids.
@@ -121,10 +120,6 @@ impl LocalContext{
 
     pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState {
         self.state.kernel_view_locking_state
-    }
-
-    pub closed spec fn user_view_locking_state(&self) -> LCtxtLockState {
-        self.state.user_view_locking_state
     }
 
     #[verifier::opaque]
@@ -674,7 +669,6 @@ impl LocalContext{
         ensures
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() is Release,
-            final(self).user_view_locking_state() == old(self).user_view_locking_state(),
             final(self).lock_maps_equal(old(self)),
             final(self).wf(),
     {
@@ -696,28 +690,21 @@ impl LocalContext{
             final(self).lock_maps_inserted(old(self), obj_id, new_lock_id),
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
-            final(self).user_view_locking_state() == old(self).user_view_locking_state(),
             final(self).wf(),
     {
         unimplemented!()
     }
 }
 
-pub open spec fn lock_ensures<T:LockUserVisibilityTrait>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool {
+pub open spec fn lock_ensures<T>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool {
     &&& new.thread_id() == old.thread_id()
     &&& new.kernel_view_locking_state() is Acquire
-    &&& new.user_view_locking_state() == old.user_view_locking_state()
     &&& new.lock_maps_inserted(old, obj_id, lock_id)
     &&& new.lock_id_set() == old.lock_id_set().insert(lock_id)
     &&& new.wf()
 }
 
-/// Precondition for releasing any lock guarded by `T`.
-pub open spec fn unlock_requires<T:LockUserVisibilityTrait>(old:&LocalContext) -> bool {
-    T::is_user_visible() ==> old.user_view_locking_state() is Release
-}
-
-pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(
+pub open spec fn unlock_ensures<T>(
     old: &LocalContext,
     new: &LocalContext,
     value: T,
@@ -728,7 +715,6 @@ pub open spec fn unlock_ensures<T:LockUserVisibilityTrait>(
     &&& new.thread_id() == old.thread_id()
     &&& old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
     &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
-    &&& new.user_view_locking_state() == old.user_view_locking_state()
     &&& new.lock_maps_removed(old, obj_id)
     &&& new.lock_id_set() == old.lock_id_set().remove(lock_id)
     &&& new.wf()
