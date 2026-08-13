@@ -1,5 +1,9 @@
 # VeriFlat — Cline custom instructions
 
+`AGENTS.md` is the current cross-agent source of truth. Read it first. If this
+file or `.kiro/steering/` disagrees with `AGENTS.md` or live code, follow
+`AGENTS.md` and live code.
+
 A microkernel verified with Verus (everything under `src/` is Verus Rust).
 Build/verify with `./verify.sh` from the project root.
 
@@ -23,7 +27,7 @@ These files contain the working knowledge. Read them when you need context:
 - **Spell out `.view()` — do NOT use the `@` sugar (tooling constraint):** write `x.view()` / `x.view().view()` (and `x.view()->Write_lock_id`, `foo.view().linked_list`), never `x@` / `x@@`.
 - **Framing:** list EVERY field `final(self).X == old(self).X` even when one moves; frame the touched one with `unchanged_except`; `=~=` for collections, `==` for scalars/the single changed field.
 - **Naming:** `wf()` well-formedness, `view()`/`@` abstraction, `inv()` = thin `&&& self.wf()` shell. Spec twin = `spec_X` + `#[verifier(when_used_as_spec(spec_X))]`. Conversions `<from>2<to>` with literal digit (`page_index2page_ptr`). Relations `<a>_<b>_wf` in lock-hierarchy order. Page sizes always `_4k`/`_2m`/`_1g` triples + non-suffixed combiner.
-- **Canonical style references — mirror these:** `kernel/implementation/syscall_alloc_quota.rs` (the `syscall_alloc_quota_4k` syscall + `commit_alloc_quota_4k` helper) and the `kernel/implementation/locker_unlocker.rs` wrappers (`wlock_cpu`, `wunlock_quota_4k`, `wunlock_process`, …). When in doubt about layout, comment density, banner form, `requires`/`ensures` shape, or trigger idiom, open the nearest LIVE function in these two files and copy its shape.
+- **Canonical style references — mirror these:** `kernel/implementation/syscall_alloc_quota.rs` (the `syscall_alloc_quota_4k` syscall + `commit_alloc_quota_4k` helper) and the wrappers under `kernel/implementation/locker_unlocker/`. When in doubt about layout, comment density, banner form, `requires`/`ensures` shape, or trigger idiom, open the nearest LIVE function and copy its shape.
 - **`#[verifier::spinoff_prover]` is Xiangdong's call — do NOT add it unprompted.** If a new wrapper/helper/lemma is slow enough to want spinoff, flag it and ask — don't add it.
 - **Spec files hold ONLY specs.** `*_spec.rs` files get `spec fn`s only; a `proof fn` belongs in the relevant impl file (the syscall file, a `lemma_*` file).
 - **Map-level lock-id:** use `map.lock_id_by_key(key)` / `array.lock_id_by_index(i)` in wrapper specs — NOT a hand-built `LockId{container, process, major, minor}`.
@@ -47,7 +51,7 @@ After any substantial edit to `src/` that has verified clean, run a style check 
 
 1. Get the diff: `git diff HEAD -- src/**/*.rs` (or the specific files you edited)
 2. Re-read `.kiro/steering/verus-style.md` for the full rubric
-3. Open the nearest LIVE sibling in `syscall_alloc_quota.rs` or `locker_unlocker.rs` and compare shape
+3. Open the nearest LIVE sibling in `syscall_alloc_quota.rs` or `locker_unlocker/` and compare shape
 4. Check each changed function against the tells listed above
 5. Report violations; fix them and re-verify
 
@@ -91,16 +95,16 @@ RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>
 Tracked ghost type minted by the TCB at syscall entry, threaded through every kernel call by ownership.
 
 - `kernel_view_locking_state`: per atomic section (`Acquire → Release`). Acquire = locks may be taken. Release = no more acquires; releases only.
-- `user_view_locking_state`: per user-step (`Acquire → Release`). Same shape. Flipped both directions by `begin/end_user_view_step`.
-- `lock_seq: Seq<LockId>` — strictly ascending under `LockId::spec_gt`, enforcing global lock ordering for deadlock-freedom.
+- `lock_id_set: Set<(LockId, KernelObjId)>` — exact object-sensitive held-write-lock ledger. Acquisition inserts one pair; unlock removes it; dynamic-id changes replace the pair during Release.
+- `lock_id_aligned(kernel, lctx)` is the bidirectional mirror between this pair set and real objects write-locked by `lctx.thread_id()` with their current dynamic IDs.
 
 ## KernelSteps + snap_shot discipline
 
 `KernelSteps` is a tracked ledger threaded through a syscall, recording user-visible atomic transitions. The `snap_shot` field is the discipline mechanism that catches unrecorded U-mutations:
 
 - **Syscall entry** (precondition): `old(steps).snap_shot == kernel_k_to_kernel_u(*old(self))`.
-- **`begin_user_view_step`**: snap_shot preserved.
-- **`end_user_view_step`**: snap_shot refreshed to current projection.
-- **`kernel_step_boundary`**: requires `kernel_k_to_kernel_u(*self) == steps.snap_shot` (no unrecorded U-mutation); ensures snap_shot refreshed to post-interleaving projection.
+- **`kernel_step_boundary`**: records a user step exactly when the user projection changed, then refreshes the snapshot after interleaving.
+- **`end_kernel_step`**: closes the final non-interleaving syscall section and refreshes the ledger/snapshot.
 
-If a syscall mutates U outside of a `begin/end_user_view_step` pair, the snap_shot stays stale, and the next `kernel_step_boundary` will fail to verify.
+The boundary compares the old snapshot with the completed kernel section's user
+projection; an unchanged projection is an internal stuttering step.

@@ -14,6 +14,15 @@ pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;
 pub const PROCESS_LOCK_MAJOR:LockMajorId = 105;
 pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
 
+// A process address space is pinned before allocating the physical pages that
+// will populate it.  Allocator cache/pool locks therefore sit above both page
+// table kinds, allowing allocation on demand while the target table remains
+// write-locked.
+pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = THREAD_LOCK_MAJOR + 1;
+pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
+pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
+
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
 pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
@@ -26,10 +35,7 @@ pub const PAGETABLE_PAGE_MAJOR:LockMajorId = 1001;
 pub const THREAD_RUNNING_LOCK_MAJOR:LockMajorId = 10000;
 pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
 pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
-
-pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = 10003;
-pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
-pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
 
 // The scheduler sits in the container tier (below the process, major 105) so a
 // syscall can hold it across a page allocation: it must top the container/quota
@@ -43,8 +49,6 @@ pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
 pub const QUOTA_MAJOR: LockMajorId = 102;
-pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = THREAD_LOCK_MAJOR + 1;
-pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 // -------------------- End of const --------------------------
 
 
@@ -223,17 +227,15 @@ impl ToLockId for RwLockPageTableRoot{
 // -------------------- Begin of kernel obj id ----------------
 //
 // Ghost identifier of a lockable kernel object. Each variant carries enough
-// information to uniquely locate the object in the kernel. Used as a key in
-// `LocalContext::lock_map` to associate held lock ids with the objects they
-// were taken on, replacing the older `Seq<LockId>` design.
+// information to uniquely locate the object in the kernel. It is paired with
+// the dynamic `LockId` in `LocalContext::lock_id_set`.
 //
 // The user passes a `Ghost<KernelObjId>` to every wlock-style call alongside
 // the `Ghost<LockId>`. The lock primitive does NOT verify the user-supplied
 // `obj_id` matches the physical object — soundness is preserved by the
-// `lock_id`'s trait-based pinning to the object, while `obj_id` only acts as
-// a fresh map key. The user must prove `obj_id` is not already in the map at
-// each acquire (collision check), which prevents a re-used key from silently
-// dropping a held lock id from the acyclic check.
+// `lock_id`'s trait-based pinning to the object. The user must prove `obj_id`
+// is not already represented in the held-lock set at each acquire; the kernel
+// boundary later checks the exact pair against the physical kernel object.
 pub ghost enum KernelObjId {
     Container(RwLockContainerPtr),
     Process(RwLockProcessPtr),
@@ -249,6 +251,12 @@ pub ghost enum KernelObjId {
     AllocatorCache(PageSize, RwLockPageAllocatorPtr, CpuId),
     AllocatorGlobalPoll(PageSize, RwLockPageAllocatorPtr),
 }
+
+/// One lock currently held by a thread, paired with the unique logical kernel
+/// object on which it was acquired.  Keeping the object identity alongside the
+/// dynamic ordering id prevents the LocalContext ledger from losing object
+/// identity when lock ids are copied or change during a Release section.
+pub type HeldLock = (LockId, KernelObjId);
 // -------------------- End of kernel obj id ------------------
 
 

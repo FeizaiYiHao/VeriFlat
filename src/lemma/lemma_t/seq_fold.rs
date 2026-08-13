@@ -12,8 +12,8 @@ verus! {
 /// The lambda body matches `total_free_pages_wf` verbatim so it unifies at the
 /// call sites.
 pub proof fn lemma_cache_len_fold_congruence(
-    s1: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
-    s2: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+    s1: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
+    s2: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
 )
     requires
         s1.len() == s2.len(),
@@ -21,11 +21,11 @@ pub proof fn lemma_cache_len_fold_congruence(
             0 <= i < s1.len() ==>
             s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
-        s1.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()})
-            == s2.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}),
+        s1.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()})
+            == s2.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}),
     decreases s1.len(),
 {
-    let f = |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()};
+    let f = |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()};
     if s1.len() == 0 {
     } else {
         assert(s1.fold_left(0int, f) == f(s1.drop_last().fold_left(0int, f), s1.last()));
@@ -47,8 +47,8 @@ pub proof fn lemma_cache_len_fold_congruence(
 /// 1. Used to re-balance `total_free_pages_wf` after popping one page from
 /// `cpu_caches[j]` (cache length −1, matched by ghost total_free_pages −1).
 pub proof fn lemma_cache_len_fold_change_one(
-    s1: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
-    s2: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+    s1: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
+    s2: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
     j: int,
 )
     requires
@@ -59,11 +59,11 @@ pub proof fn lemma_cache_len_fold_change_one(
             0 <= i < s1.len() && i != j ==>
             s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
-        s1.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()})
-            == s2.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
+        s1.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()})
+            == s2.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
     decreases s1.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()};
     // s1 nonempty (j is a valid index); peel the last element off each fold.
     assert(s1.fold_left(0int, f) == f(s1.drop_last().fold_left(0int, f), s1.last()));
     assert(s2.fold_left(0int, f) == f(s2.drop_last().fold_left(0int, f), s2.last()));
@@ -99,8 +99,8 @@ pub proof fn lemma_cache_len_fold_change_one(
 /// bridge. The `spec_index → view()` congruence lives here, once.
 #[verifier::spinoff_prover]
 pub proof fn lemma_cache_len_fold_change_one_array(
-    old_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
-    new_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
+    old_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, STABLE_LOCK_ID, NO_KILL_STATE>,
+    new_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, STABLE_LOCK_ID, NO_KILL_STATE>,
     j: int,
 )
     requires
@@ -111,8 +111,8 @@ pub proof fn lemma_cache_len_fold_change_one_array(
         old_arr.spec_index(j as usize).view().view().linked_list.len()
             == new_arr.spec_index(j as usize).view().view().linked_list.len() + 1,
     ensures
-        old_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()})
-            == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
+        old_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()})
+            == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
 {
     assert forall|i: int| #![trigger old_arr.view().spec_index(i), new_arr.view().spec_index(i)]
         0 <= i < old_arr.view().len() && i != j
@@ -126,13 +126,13 @@ pub proof fn lemma_cache_len_fold_change_one_array(
 /// The `total_free_pages_wf` fold is nonnegative — every summand is a
 /// `usize` length. Peeled-last induction; used to bound the fold from below.
 pub proof fn lemma_cache_len_fold_nonneg(
-    s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+    s: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
 )
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= 0,
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= 0,
     decreases s.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()};
     if s.len() == 0 {
     } else {
         assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
@@ -144,16 +144,16 @@ pub proof fn lemma_cache_len_fold_nonneg(
 /// length. Used to prove `total_free_pages >= 1` before decrementing on a pop
 /// (the popped cache is nonempty, so the fold — and thus the total — is >= 1).
 pub proof fn lemma_cache_len_fold_ge_elem(
-    s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+    s: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
     j: int,
 )
     requires
         0 <= j < s.len(),
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= s.spec_index(j).view().linked_list.len(),
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= s.spec_index(j).view().linked_list.len(),
     decreases s.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()};
     assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
     assert(s.last() == s.spec_index(s.len() - 1));
     if j == s.len() - 1 {
@@ -168,15 +168,15 @@ pub proof fn lemma_cache_len_fold_ge_elem(
 /// Peeled-last induction; used to show that after a failed cache scan (all
 /// caches empty) the whole free-page total sits in the global pool.
 pub proof fn lemma_cache_len_fold_all_zero(
-    s: Seq<RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>>,
+    s: Seq<RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>>,
 )
     requires
         forall|j: int| #![trigger s.spec_index(j)] 0 <= j < s.len() ==> s.spec_index(j).view().linked_list.view().len() == 0,
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) == 0,
+        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()}) == 0,
     decreases s.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
+    let f = |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()};
     if s.len() == 0 {
     } else {
         assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));

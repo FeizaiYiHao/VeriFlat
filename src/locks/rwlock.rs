@@ -144,13 +144,13 @@ pub enum RwLockState{
     None,
 }
 
-/// `RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>`
+/// `RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>`
 ///
 /// The refinement projection decides which payload and ghost fields are
 /// user-visible.  The lock primitive itself only enforces the kernel atomic
 /// section's Acquire/Release phase.
 #[repr(C)]
-pub struct RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>{
+pub struct RwLock<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>{
     lock: RwLockInner,
     value: T,
     read_only_value: ROT,
@@ -161,7 +161,7 @@ pub struct RwLock<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>{
     locking_thread: Ghost<RwLockState>,
 }
 
-impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread.view()
@@ -282,7 +282,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
 
 }
 
-impl<T: LockRecursivelyLockedTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T: LockRecursivelyLockedTrait, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     pub open spec fn partial_locked_by(&self, lctx:&LocalContext) -> bool{
         self.view().partial_locked_by(lctx)
     }    
@@ -291,7 +291,7 @@ impl<T: LockRecursivelyLockedTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE:
     }
 }
 
-impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     pub open spec fn inv(&self) -> bool{
         &&&
         self.view().inv()
@@ -300,7 +300,8 @@ impl<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T
     }
 }
 
-impl<T, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool>
+    RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, NO_KILL_STATE>{
     #[verifier::external_body]
         pub fn wlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret:Tracked<LockPerm>)
         requires
@@ -318,7 +319,7 @@ impl<T, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
         self.lock.wunlock();
     }
 }
-impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     #[verifier::external_body]
     pub fn take(&mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>) -> (ret:T)
         requires
@@ -330,6 +331,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
         ensures
             take_ensures(*old(self), *final(self)),
+            final(self).wlocked_by(lctx),
             ret == old(self).view(),
     {
         unsafe { core::ptr::read(&self.value as *const T) }
@@ -346,6 +348,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
         ensures
             put_ensures(*old(self), *final(self), v),
+            final(self).wlocked_by(lctx),
     {
         unsafe { core::ptr::write(&mut self.value as *mut T, v) }
     }
@@ -380,6 +383,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
         ensures
             final(self).is_init(),
+            final(self).wlocked_by(lctx),
             // Invariants of the lock are preserved by the structure of the rwlock.
             final(self).view_rodata() == old(self).view_rodata(),
             final(self).view_kernel_ghost() == old(self).view_kernel_ghost(),
@@ -427,14 +431,15 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         ensures
             update_kernel_ghost_ensures(*old(self), *final(self), new_kernel_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_maps_equal(old(lctx)),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
             final(lctx).kernel_view_locking_state() is Release,
     {
         unimplemented!()
     }
 }
 
-impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     /// Trusted proof primitive: replace the user-view-visible ghost field.
     ///
     /// This is a kernel-view Release in the same sense as `update_kernel_ghost`.
@@ -447,14 +452,17 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         ensures
             update_user_ghost_ensures(*old(self), *final(self), new_user_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_maps_equal(old(lctx)),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
             final(lctx).kernel_view_locking_state() is Release,
     {
         unimplemented!()
     }
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, NO_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
+    ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool>
+    RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, NO_KILL_STATE>{
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
         requires
@@ -465,10 +473,12 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, K
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
-            old(lctx).obj_id_fresh(obj_id.view()),
+            old(lctx).lock_entry_fresh(
+                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
         ensures
-            wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx).thread_id(), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).view(), lock_id.view(), obj_id.view()),
+            wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), final(self).view(),
+                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
     {
         self.lock.wlock();
         Tracked::assume_new()
@@ -484,7 +494,13 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, K
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_map_contains(obj_id.view()),
+            old(lctx).lock_entry_contains_for(lock_id_for_unlock(LockId {
+                container: old(self).view().container_depth(),
+                process: old(self).view().process_depth(),
+                major: old(self).view().current_lock_major(),
+                minor: old(self).view().lock_minor(),
+            }, lp.view().ordering_lock_id(), LOCK_ID_MUTABLE),
+                obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             wunlock_ensures(*old(self), *final(self)),
             unlock_ensures(
@@ -493,7 +509,13 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, K
                 final(self).view(),
                 lp.view().lock_id(),
                 obj_id.view(),
-                old(lctx).lock_id_for_obj(obj_id.view()),
+                lock_id_for_unlock(LockId {
+                    container: old(self).view().container_depth(),
+                    process: old(self).view().process_depth(),
+                    major: old(self).view().current_lock_major(),
+                    minor: old(self).view().lock_minor(),
+                }, lp.view().ordering_lock_id(), LOCK_ID_MUTABLE),
+                LOCK_ID_MUTABLE,
             ),
     {
         self.lock.wunlock();
@@ -501,7 +523,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, K
 
 }
 
-impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,> RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool>
+    RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     #[verifier::external_body]
     pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
         requires
@@ -511,7 +535,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
-            old(lctx).obj_id_fresh(obj_id.view()),
+            old(lctx).lock_entry_fresh(
+                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             ret.0 == false ==> 
             {
@@ -522,7 +547,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
                 &&&
                 ret.1 is None
                 &&&
-                final(lctx).lock_maps_equal(old(lctx))
+                *final(lctx) == *old(lctx)
             },
             ret.0 == true ==>{
                 &&&                
@@ -530,9 +555,10 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
                 &&&
                 ret.1 is Some
                 &&&
-                wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx).thread_id(), ret.1.unwrap().view())
+                wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.1.unwrap().view())
                 &&&
-                lock_ensures(old(lctx), final(lctx), final(self).view(), lock_id.view(), obj_id.view())
+                lock_ensures(old(lctx), final(lctx), final(self).view(),
+                    lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE)
             } 
     {
         if self.lock.wlock_unless_killed().is_err(){
@@ -544,7 +570,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
     }
 
     #[verifier::external_body]
-    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+    pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
         requires
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
@@ -553,7 +579,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_map_contains(obj_id.view()),
+            old(lctx).lock_entry_contains_for(
+                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
@@ -563,7 +590,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
                 final(self).view(),
                 lp.view().lock_id(),
                 obj_id.view(),
-                old(lctx).lock_id_for_obj(obj_id.view()),
+                lock_id.view(),
+                LOCK_ID_MUTABLE,
             ),
     {
         self.lock.wunlock();
@@ -595,7 +623,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
-            old(lctx).obj_id_fresh(obj_id.view()),
+            old(lctx).lock_entry_fresh(
+                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
 
         ensures
             ret.0 == false ==>
@@ -639,13 +668,26 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
                 &&&
                 ret.1.unwrap().view().lock_id() == final(self).locking_thread()->Write_lock_id
                 &&&
+                ret.1.unwrap().view().ordering_lock_id() == lock_id.view()
+                &&&
                 ret.1.unwrap().view().thread_id() == final(lctx).thread_id()
 
                 // LocalContext: lock acquired, kernel-view Release (the mark).
                 &&&
                 final(lctx).thread_id() == old(lctx).thread_id()
                 &&&
-                final(lctx).lock_maps_inserted(old(lctx), obj_id.view(), lock_id.view())
+                if LOCK_ID_MUTABLE {
+                    &&& final(lctx).lock_id_set()
+                        == old(lctx).lock_id_set()
+                            .insert((lock_id.view(), obj_id.view()))
+                    &&& final(lctx).stable_lock_id_set()
+                        == old(lctx).stable_lock_id_set()
+                } else {
+                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set()
+                    &&& final(lctx).stable_lock_id_set()
+                        == old(lctx).stable_lock_id_set()
+                            .insert((lock_id.view(), obj_id.view()))
+                }
                 &&&
                 final(lctx).kernel_view_locking_state() is Release
             }
@@ -659,16 +701,20 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,>
 
 }
 
-pub open spec fn wlock_requires<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
+pub open spec fn wlock_requires<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
     &&&
-    old.locked_by(lctx) == false
+    // LocalContext records write ownership only.  Reader contention is handled
+    // by the physical lock; there is no verified rlock acquisition path.
+    old.wlocked_by(lctx) == false
     &&&
     lctx.kernel_view_locking_state() is Acquire
 }
 
-pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, lock_id: LockId, thread_id: LockThreadId, lock_perm:LockPerm) -> bool{
+pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, lock_id: LockId, lctx: &LocalContext, lock_perm:LockPerm) -> bool{
     &&&
-    new.locking_thread() == RwLockState::Write { thread_id: thread_id, lock_id: lock_perm.lock_id() }
+    new.wlocked_by(lctx)
+    &&&
+    new.locking_thread() == RwLockState::Write { thread_id: lctx.thread_id(), lock_id: lock_perm.lock_id() }
     &&&
     new.inv()
     &&&
@@ -689,10 +735,12 @@ pub open spec fn wlock_ensures<T:LockInvTrait + LockMajorTrait, ROT, KGhostT, UG
     &&&
     new.locking_thread()->Write_lock_id == lock_perm.lock_id()
     &&&
-    lock_perm.thread_id() == thread_id
+    lock_perm.ordering_lock_id() == lock_id
+    &&&
+    lock_perm.thread_id() == lctx.thread_id()
 }
 
-pub open spec fn wunlock_ensures<T:LockInvTrait, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{
+pub open spec fn wunlock_ensures<T:LockInvTrait, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>) -> bool{
     &&&
     new.locking_thread() == RwLockState::None
     &&&
@@ -709,7 +757,7 @@ pub open spec fn wunlock_ensures<T:LockInvTrait, ROT, KGhostT, UGhostT, const HA
     new.being_killed() == old.being_killed()
 }
 
-pub open spec fn take_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>) -> bool{
+pub open spec fn take_ensures<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
@@ -726,7 +774,7 @@ pub open spec fn take_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bo
     new.killer_info_inner() == old.killer_info_inner()
 }
 
-pub open spec fn put_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, v:T) -> bool{
+pub open spec fn put_ensures<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, v:T) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
@@ -741,9 +789,11 @@ pub open spec fn put_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: boo
     new.view_user_ghost() == old.view_user_ghost()
     &&&
     new.killer_info_inner() == old.killer_info_inner()
+    &&&
+    new.being_killed() == old.being_killed()
 }
 
-pub open spec fn update_kernel_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new_kernel_ghost: KGhostT) -> bool{
+pub open spec fn update_kernel_ghost_ensures<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new_kernel_ghost: KGhostT) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
@@ -760,7 +810,7 @@ pub open spec fn update_kernel_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS
     new.killer_info_inner() == old.killer_info_inner()
 }
 
-pub open spec fn update_user_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, new_user_ghost: UGhostT) -> bool{
+pub open spec fn update_user_ghost_ensures<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new:RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, new_user_ghost: UGhostT) -> bool{
     &&&
     new.locking_thread() == old.locking_thread()
     &&&
@@ -777,7 +827,7 @@ pub open spec fn update_user_ghost_ensures<T, ROT, KGhostT, UGhostT, const HAS_K
     new.killer_info_inner() == old.killer_info_inner()
 }
 
-impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockOwnerIdTrait for RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>{
+impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool> LockOwnerIdTrait for RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     open spec fn container_depth(&self) -> LockOwnerId{
         if self.view_rodata().container_depth() != LockOwnerId::NotApp{
             self.view_rodata().container_depth()
@@ -794,7 +844,8 @@ impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, KGhostT, UGhostT, const HAS_KILL
     }
 }  
 
-impl<T:LockIdTrait, const HAS_KILL_STATE: bool> LockIdTrait for RwLock<T, (), (), (), HAS_KILL_STATE>{
+impl<T:LockIdTrait, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>
+    LockIdTrait for RwLock<T, (), (), (), LOCK_ID_MUTABLE, HAS_KILL_STATE>{
     open spec fn lock_id(&self) -> LockId {
         self.view().lock_id()
     }

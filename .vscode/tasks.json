@@ -2,19 +2,6 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Auto Style Check",
-            "type": "shell",
-            "command": "${workspaceFolder}/.qoder/hooks/style-check.sh",
-            "problemMatcher": [],
-            "presentation": {
-                "reveal": "always",
-                "panel": "dedicated"
-            },
-            "runOptions": {
-                "runOn": "folderOpen"
-            }
-        },
-        {
             "label": "Verify Project",
             "type": "shell",
             "command": "${workspaceFolder}/verify.sh",

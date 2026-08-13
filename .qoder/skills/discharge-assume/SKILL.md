@@ -122,12 +122,11 @@ Pick the recipe by WHAT the mutation did to the maps/arrays the conjunct reads:
    supporting-wf. Keep only fail-on-delete steps. Audit every `let ghost` for a
    live reader.
 
-5. **Full-crate verify + gate.** Any precondition-add or spec conjunct has a
+5. **Full-crate verify.** Any precondition-add or spec conjunct has a
    crate-wide blast radius — run the WHOLE `./verify.sh` (not just the module),
-   confirm verified / 0 errors and nothing else slowed to an rlimit. Then run
-   `/style-check` on the touched files and land a clean pass. Report: which
-   assumes are now proven (+recipe used), which remain (+the exact lemma/axiom
-   each still needs).
+   confirm verified / 0 errors and nothing else slowed to an rlimit. Report:
+   which assumes are now proven (+recipe used), which remain (+the exact
+   lemma/axiom each still needs).
 
 ## Guardrails
 
@@ -147,5 +146,4 @@ Pick the recipe by WHAT the mutation did to the maps/arrays the conjunct reads:
   transplanting a sibling's reveal recipe.
 - `/shrink-proof` — SHRINKS a green (over-grind) proof back to its genuine content.
 - `/profile-proof` — LOCATES the costly obligation before shrinking.
-- `/style-check` — FLAGS the tells (bare reveals, `== old` crutches, orphan ghosts).
-Typical chain: discharge each assume -> shrink the transplant inline -> style-check -> gate.
+Typical chain: discharge each assume -> shrink the transplant inline -> verify.

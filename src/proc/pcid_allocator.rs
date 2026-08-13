@@ -155,6 +155,7 @@ const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [();
         (),
         (),
         (),
+        STABLE_LOCK_ID,
         PCID_ALLOCATOR_HAS_KILL_STATE,
     >>() <= PAGE_SZ_2M) as usize
 ];

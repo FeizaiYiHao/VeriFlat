@@ -28,7 +28,7 @@ VERIFY="$CURRENT_DIR/verify.sh"
 # Only print functions whose SMT time exceeds this many milliseconds.
 THRESHOLD_MS=100
 
-THREADS=4
+THREADS=32
 MODULE=""
 while [ $# -gt 0 ]; do
   case "$1" in

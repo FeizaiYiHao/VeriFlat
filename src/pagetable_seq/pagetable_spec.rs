@@ -55,7 +55,27 @@ pub struct PageTable<const TABLE_TYPE:PTType> {
     pub proc_ptr: RwLockProcessPtr
 }
 
+/// The part of a page table observable through a process address space.
+///
+/// Directory topology, backing page-map pages, CR3/PCID bookkeeping, and the
+/// owning process pointer are kernel implementation state.  Publishing or
+/// removing an abstract mapping changes this view; preparing an empty walk
+/// does not.
+pub ghost struct PageTableU {
+    pub mapping_4k: Map<VAddr, MapEntry>,
+    pub mapping_2m: Map<VAddr, MapEntry>,
+    pub mapping_1g: Map<VAddr, MapEntry>,
+}
+
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
+    pub open spec fn user_view(&self) -> PageTableU {
+        PageTableU {
+            mapping_4k: self.mapping_4k(),
+            mapping_2m: self.mapping_2m(),
+            mapping_1g: self.mapping_1g(),
+        }
+    }
+
     pub fn new(
         pcid: Option<Pcid>,
         kernel_entries_ghost: Ghost<Seq<PageEntry>>,

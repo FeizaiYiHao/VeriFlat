@@ -162,6 +162,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).spec_index(alloc_ptr).quota.is_init(),
+            final(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
+            final(self).spec_index(alloc_ptr).quota.write_lock_perm_match(lp.view()),
             // Quota's lock perm and rodata/ghost are unchanged.
             final(self).spec_index(alloc_ptr).quota.view_rodata() == old(self).spec_index(alloc_ptr).quota.view_rodata(),
             final(self).spec_index(alloc_ptr).quota.view_kernel_ghost() == old(self).spec_index(alloc_ptr).quota.view_kernel_ghost(),
@@ -221,6 +223,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).spec_index(alloc_ptr).global_pool.is_init(),
+            final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
+            final(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lp.view()),
             // global_pool's lock perm and rodata/ghost are unchanged.
             final(self).spec_index(alloc_ptr).global_pool.view_rodata() == old(self).spec_index(alloc_ptr).global_pool.view_rodata(),
             final(self).spec_index(alloc_ptr).global_pool.view_kernel_ghost() == old(self).spec_index(alloc_ptr).global_pool.view_kernel_ghost(),
@@ -281,6 +285,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).cpu_caches.inv(),
             // Touched cache's lock state is preserved.
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lp.view()),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_rodata() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_rodata(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_kernel_ghost() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_kernel_ghost(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_user_ghost() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_user_ghost(),
@@ -311,8 +317,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
 // Each routes `borrow_mut(alloc_ptr)` into the corresponding
 // `PageAllocator` field lock helper and frames the rest of the map
 // (domain, other entries) plus this allocator's untouched fields.
-// The `lctx.lock_map` obligations (acyclic / fresh on acquire; matching
-// key on release) flow straight through from the `PageAllocator`
+// The LocalContext lock-entry obligations (acyclic / fresh on acquire;
+// matching pair on release) flow straight through from the `PageAllocator`
 // helpers.
 // ====================================================================
 impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
@@ -329,7 +335,13 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
             }),
-            old(lctx).obj_id_fresh(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
+            old(lctx).lock_entry_fresh(LockId{
+                container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
+                process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
+                major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
+                minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
+            }, KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -339,13 +351,14 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
-            }, final(lctx).thread_id(), ret.view()),
+            }, final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), final(self).spec_index(alloc_ptr).quota.view(), LockId{
                 container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
                 process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
-            }, KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
+            }, KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
+                STABLE_LOCK_ID),
             // This allocator's other fields untouched.
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
@@ -371,12 +384,16 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
-            old(lctx).lock_map_contains(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
-            old(lctx).lock_id_for_obj(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)) == old(self).spec_index(alloc_ptr).quota.lock_id(),
+            old(lctx).lock_entry_contains_for(
+                lock_perm.view().ordering_lock_id(),
+                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).spec_index(alloc_ptr).wf(),
+            final(self).spec_index(alloc_ptr).quota.lock_id()
+                == old(self).spec_index(alloc_ptr).quota.lock_id(),
             wunlock_ensures(old(self).spec_index(alloc_ptr).quota, final(self).spec_index(alloc_ptr).quota),
             unlock_ensures(
                 old(lctx),
@@ -384,7 +401,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 final(self).spec_index(alloc_ptr).quota.view(),
                 lock_perm.view().lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
-                old(self).spec_index(alloc_ptr).quota.lock_id(),
+                lock_perm.view().ordering_lock_id(),
+                STABLE_LOCK_ID,
             ),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
@@ -412,7 +430,17 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
             }),
-            old(lctx).obj_id_fresh(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
+            old(lctx).lock_entry_fresh(LockId{
+                container: old(self).spec_index(alloc_ptr).cpu_caches
+                    .spec_index(cpu_id).container_depth(),
+                process: old(self).spec_index(alloc_ptr).cpu_caches
+                    .spec_index(cpu_id).process_depth(),
+                major: old(self).spec_index(alloc_ptr).cpu_caches
+                    .spec_index(cpu_id).view().view().current_lock_major(),
+                minor: old(self).spec_index(alloc_ptr).cpu_caches
+                    .spec_index(cpu_id).lock_minor(),
+            }, KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -422,13 +450,14 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 process: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).process_depth(),
                 major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }, final(lctx).thread_id(), ret.view()),
+            }, final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(), LockId{
                 container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
                 process: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).process_depth(),
                 major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }, KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
+            }, KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
+                STABLE_LOCK_ID),
             final(self).spec_index(alloc_ptr).cpu_caches.unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
@@ -454,12 +483,16 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(lctx).lock_map_contains(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
-            old(lctx).lock_id_for_obj(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)) == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
+            old(lctx).lock_entry_contains_for(
+                lock_perm.view().ordering_lock_id(),
+                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).spec_index(alloc_ptr).wf(),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id()
+                == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
             wunlock_ensures(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view()),
             unlock_ensures(
                 old(lctx),
@@ -467,7 +500,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(),
                 lock_perm.view().lock_id(),
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
-                old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
+                lock_perm.view().ordering_lock_id(),
+                STABLE_LOCK_ID,
             ),
             final(self).spec_index(alloc_ptr).cpu_caches.unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
@@ -493,7 +527,16 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
             }),
-            old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr)),
+            old(lctx).lock_entry_fresh(LockId{
+                container: old(self).spec_index(alloc_ptr).global_pool.view()
+                    .container_depth(),
+                process: old(self).spec_index(alloc_ptr).global_pool.view()
+                    .process_depth(),
+                major: old(self).spec_index(alloc_ptr).global_pool.view()
+                    .current_lock_major(),
+                minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
+            }, KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -503,13 +546,14 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }, final(lctx).thread_id(), ret.view()),
+            }, final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), final(self).spec_index(alloc_ptr).global_pool.view(), LockId{
                 container: old(self).spec_index(alloc_ptr).global_pool.view().container_depth(),
                 process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }, KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr)),
+            }, KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
+                STABLE_LOCK_ID),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
@@ -531,12 +575,16 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
-            old(lctx).lock_map_contains(KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr)),
-            old(lctx).lock_id_for_obj(KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr)) == old(self).spec_index(alloc_ptr).global_pool.lock_id(),
+            old(lctx).lock_entry_contains_for(
+                lock_perm.view().ordering_lock_id(),
+                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).spec_index(alloc_ptr).wf(),
+            final(self).spec_index(alloc_ptr).global_pool.lock_id()
+                == old(self).spec_index(alloc_ptr).global_pool.lock_id(),
             wunlock_ensures(old(self).spec_index(alloc_ptr).global_pool, final(self).spec_index(alloc_ptr).global_pool),
             unlock_ensures(
                 old(lctx),
@@ -544,7 +592,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 final(self).spec_index(alloc_ptr).global_pool.view(),
                 lock_perm.view().lock_id(),
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
-                old(self).spec_index(alloc_ptr).global_pool.lock_id(),
+                lock_perm.view().ordering_lock_id(),
+                STABLE_LOCK_ID,
             ),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
@@ -570,7 +619,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self)[alloc_ptr].global_pool@.current_lock_major(),
                 minor: old(self)[alloc_ptr].global_pool@.lock_minor(),
             }),
-            old(lctx).obj_id_fresh(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr)),
+            !old(lctx).lock_obj_contains(
+                KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr)),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -580,7 +630,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 process: old(self)[alloc_ptr].global_pool@.process_depth(),
                 major: old(self)[alloc_ptr].global_pool@.current_lock_major(),
                 minor: old(self)[alloc_ptr].global_pool@.lock_minor(),
-            }, final(lctx).thread_id(), ret@),
+            }, final(lctx), ret@),
             lock_ensures(old(lctx), final(lctx), final(self)[alloc_ptr].global_pool.view(), LockId{
                 container: old(self)[alloc_ptr].global_pool@.container_depth(),
                 process: old(self)[alloc_ptr].global_pool@.process_depth(),
@@ -608,8 +658,10 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[alloc_ptr].global_pool.locking_thread()->Write_lock_id,
-            old(lctx).lock_map_contains(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr)),
-            old(lctx).lock_id_for_obj(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr)) == old(self)[alloc_ptr].global_pool.lock_id(),
+            old(lctx).lock_entry_contains_for(
+                lock_perm@.ordering_lock_id(),
+                KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -621,7 +673,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 final(self)[alloc_ptr].global_pool.view(),
                 lock_perm@.lock_id(),
                 KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr),
-                old(self)[alloc_ptr].global_pool.lock_id(),
+                lock_perm@.ordering_lock_id(),
             ),
             final(self)[alloc_ptr].cpu_caches == old(self)[alloc_ptr].cpu_caches,
             final(self)[alloc_ptr].quota == old(self)[alloc_ptr].quota,
@@ -647,7 +699,8 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self)[alloc_ptr].cpu_caches[cpu_id]@@.current_lock_major(),
                 minor: old(self)[alloc_ptr].cpu_caches[cpu_id].lock_minor(),
             }),
-            old(lctx).obj_id_fresh(KernelObjId::AllocatorCache(page_size@, alloc_ptr, cpu_id)),
+            !old(lctx).lock_obj_contains(
+                KernelObjId::AllocatorCache(page_size@, alloc_ptr, cpu_id)),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -657,7 +710,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 process: old(self)[alloc_ptr].cpu_caches[cpu_id].process_depth(),
                 major: old(self)[alloc_ptr].cpu_caches[cpu_id]@@.current_lock_major(),
                 minor: old(self)[alloc_ptr].cpu_caches[cpu_id].lock_minor(),
-            }, final(lctx).thread_id(), ret@),
+            }, final(lctx), ret@),
             lock_ensures(old(lctx), final(lctx), final(self)[alloc_ptr].cpu_caches[cpu_id]@@, LockId{
                 container: old(self)[alloc_ptr].cpu_caches[cpu_id].container_depth(),
                 process: old(self)[alloc_ptr].cpu_caches[cpu_id].process_depth(),
@@ -689,8 +742,10 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lock_perm@.state() is WriteLock,
             lock_perm@.thread_id() == old(lctx).thread_id(),
             lock_perm@.lock_id() == old(self)[alloc_ptr].cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
-            old(lctx).lock_map_contains(KernelObjId::AllocatorCache(page_size@, alloc_ptr, cpu_id)),
-            old(lctx).lock_id_for_obj(KernelObjId::AllocatorCache(page_size@, alloc_ptr, cpu_id)) == old(self)[alloc_ptr].cpu_caches[cpu_id].lock_id(),
+            old(lctx).lock_entry_contains_for(
+                lock_perm@.ordering_lock_id(),
+                KernelObjId::AllocatorCache(page_size@, alloc_ptr, cpu_id),
+                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -702,7 +757,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 final(self)[alloc_ptr].cpu_caches[cpu_id]@@,
                 lock_perm@.lock_id(),
                 KernelObjId::AllocatorCache(page_size@, alloc_ptr, cpu_id),
-                old(self)[alloc_ptr].cpu_caches[cpu_id].lock_id(),
+                lock_perm@.ordering_lock_id(),
             ),
             final(self)[alloc_ptr].cpu_caches.unchanged_except(&old(self)[alloc_ptr].cpu_caches, cpu_id),
             final(self)[alloc_ptr].global_pool == old(self)[alloc_ptr].global_pool,

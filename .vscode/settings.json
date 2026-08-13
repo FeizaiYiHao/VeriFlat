@@ -2,22 +2,5 @@
     "chat.editing.autoAccept": true,
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 1000,
-    
-    // Run task on save (requires "Run on Save" extension)
-    "emeraldwalk.runonsave": {
-        "commands": [
-            {
-                "match": "src/.*\\.rs$",
-                "cmd": "${workspaceFolder}/.qoder/hooks/post-save.sh ${file}"
-            }
-        ]
-    },
-    
-    // Or use built-in tasks + keybinding
-    "task.autoDetect": "on",
-    
-    // Recommended extensions
-    "extensions.recommendations": [
-        "emeraldwalk.RunOnSave"
-    ]
+    "task.autoDetect": "on"
 }

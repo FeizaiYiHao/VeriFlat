@@ -1,646 +1,145 @@
 use vstd::prelude::*;
 use crate::*;
-use core::sync::atomic::*;
-use vstd::std_specs::cmp::*;
 
 verus! {
 
-pub ghost enum LCtxtLockState{
+pub ghost enum LCtxtLockState {
     Acquire,
     Release,
 }
 
-/// The lockable pieces nested in one `PageAllocatorUnLockedMap` entry.
-/// `PageSize` is deliberately not part of this key: the three allocator maps
-/// in `LocalContext` mirror the three allocator maps in `KernelK`.
-pub ghost enum AllocatorLockObjId {
-    Quota(RwLockPageAllocatorPtr),
-    Cache(RwLockPageAllocatorPtr, CpuId),
-    GlobalPool(RwLockPageAllocatorPtr),
-}
-
-pub tracked struct LCtxtState{
+pub tracked struct LCtxtState {
     pub kernel_view_locking_state: LCtxtLockState,
 }
 
-/// Per-thread ledger of held dynamic lock ids.
+/// Per-thread ledgers of held locks.
 ///
-/// Each field is aligned with one lock-bearing field of `KernelK`.  Keeping
-/// the maps separate avoids quantifying a single heterogeneous `KernelObjId`
-/// map whenever a lock acquisition checks the global ordering.
-pub tracked struct LocalContext{
+/// `lock_id_set` contains only objects whose id can change with kernel state;
+/// `stable_lock_id_set` contains objects whose id is immutable for the
+/// object's lifetime.  Only the former needs kernel/object alignment at an
+/// interleaving boundary.
+pub tracked struct LocalContext {
     thread_id: LockThreadId,
-    lock_id_set: Set<LockId>,
-    container_lock_map: Map<RwLockContainerPtr, LockId>,
-    process_lock_map: Map<RwLockProcessPtr, LockId>,
-    thread_lock_map: Map<RwLockThreadPtr, LockId>,
-    endpoint_lock_map: Map<RwLockEndpointPtr, LockId>,
-    scheduler_lock_map: Map<RwLockSchedulerPtr, LockId>,
-    pcid_allocator_lock_map: Map<RwLockPcidAllocatorPtr, LockId>,
-    pagetable_lock_map: Map<RwLockPageTableRoot, LockId>,
-    iommu_table_lock_map: Map<RwLockPageTableRoot, LockId>,
-    page_lock_map: Map<PageIndex, LockId>,
-    cpu_lock_map: Map<CpuId, LockId>,
-    allocator_4k_lock_map: Map<AllocatorLockObjId, LockId>,
-    allocator_2m_lock_map: Map<AllocatorLockObjId, LockId>,
-    allocator_1g_lock_map: Map<AllocatorLockObjId, LockId>,
+    lock_id_set: Set<HeldLock>,
+    stable_lock_id_set: Set<HeldLock>,
     state: LCtxtState,
 }
 
-impl LocalContext{
+impl LocalContext {
     pub closed spec fn thread_id(&self) -> LockThreadId {
         self.thread_id
     }
 
-    pub closed spec fn lock_id_set(&self) -> Set<LockId> {
+    pub closed spec fn lock_id_set(&self) -> Set<HeldLock> {
         self.lock_id_set
     }
 
-    pub closed spec fn container_lock_map(&self) -> Map<RwLockContainerPtr, LockId> {
-        self.container_lock_map
+    pub closed spec fn stable_lock_id_set(&self) -> Set<HeldLock> {
+        self.stable_lock_id_set
     }
 
-    pub closed spec fn process_lock_map(&self) -> Map<RwLockProcessPtr, LockId> {
-        self.process_lock_map
-    }
-
-    pub closed spec fn thread_lock_map(&self) -> Map<RwLockThreadPtr, LockId> {
-        self.thread_lock_map
-    }
-
-    pub closed spec fn endpoint_lock_map(&self) -> Map<RwLockEndpointPtr, LockId> {
-        self.endpoint_lock_map
-    }
-
-    pub closed spec fn scheduler_lock_map(&self) -> Map<RwLockSchedulerPtr, LockId> {
-        self.scheduler_lock_map
-    }
-
-    pub closed spec fn pcid_allocator_lock_map(
-        &self,
-    ) -> Map<RwLockPcidAllocatorPtr, LockId> {
-        self.pcid_allocator_lock_map
-    }
-
-    pub closed spec fn pagetable_lock_map(&self) -> Map<RwLockPageTableRoot, LockId> {
-        self.pagetable_lock_map
-    }
-
-    pub closed spec fn iommu_table_lock_map(&self) -> Map<RwLockPageTableRoot, LockId> {
-        self.iommu_table_lock_map
-    }
-
-    pub closed spec fn page_lock_map(&self) -> Map<PageIndex, LockId> {
-        self.page_lock_map
-    }
-
-    pub closed spec fn cpu_lock_map(&self) -> Map<CpuId, LockId> {
-        self.cpu_lock_map
-    }
-
-    pub closed spec fn allocator_4k_lock_map(&self) -> Map<AllocatorLockObjId, LockId> {
-        self.allocator_4k_lock_map
-    }
-
-    pub closed spec fn allocator_2m_lock_map(&self) -> Map<AllocatorLockObjId, LockId> {
-        self.allocator_2m_lock_map
-    }
-
-    pub closed spec fn allocator_1g_lock_map(&self) -> Map<AllocatorLockObjId, LockId> {
-        self.allocator_1g_lock_map
-    }
-
-    pub open spec fn allocator_lock_map(&self, page_size: PageSize) -> Map<AllocatorLockObjId, LockId> {
-        match page_size {
-            PageSize::SZ4k => self.allocator_4k_lock_map(),
-            PageSize::SZ2m => self.allocator_2m_lock_map(),
-            PageSize::SZ1g => self.allocator_1g_lock_map(),
-        }
+    pub open spec fn held_lock_id_set(&self) -> Set<HeldLock> {
+        self.lock_id_set().union(self.stable_lock_id_set())
     }
 
     pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState {
         self.state.kernel_view_locking_state
     }
 
-    #[verifier::opaque]
-    pub open spec fn wf(&self) -> bool {
-        &&& forall|lock_id: LockId|
-            #![trigger self.lock_id_set().contains(lock_id)]
-            self.lock_id_set().contains(lock_id)
-            ==
-            {
-                |||
-                self.cpu_lock_map().values().contains(lock_id)
-                |||
-                self.page_lock_map().values().contains(lock_id)
-                |||
-                self.container_lock_map().values().contains(lock_id)
-                |||
-                self.process_lock_map().values().contains(lock_id)
-                |||
-                self.thread_lock_map().values().contains(lock_id)
-                |||
-                self.endpoint_lock_map().values().contains(lock_id)
-                |||
-                self.scheduler_lock_map().values().contains(lock_id)
-                |||
-                self.pcid_allocator_lock_map().values().contains(lock_id)
-                |||
-                self.pagetable_lock_map().values().contains(lock_id)
-                |||
-                self.iommu_table_lock_map().values().contains(lock_id)
-                |||
-                self.allocator_4k_lock_map().values().contains(lock_id)
-                |||
-                self.allocator_2m_lock_map().values().contains(lock_id)
-                |||
-                self.allocator_1g_lock_map().values().contains(lock_id)
-            }
-        &&& forall|cpu_id: CpuId|
-            #![trigger self.cpu_lock_map().dom().contains(cpu_id)]
-            self.cpu_lock_map().dom().contains(cpu_id)
-            ==> self.lock_id_set().contains(self.cpu_lock_map().spec_index(cpu_id))
-        &&& forall|page_index: PageIndex|
-            #![trigger self.page_lock_map().dom().contains(page_index)]
-            self.page_lock_map().dom().contains(page_index)
-            ==> self.lock_id_set().contains(self.page_lock_map().spec_index(page_index))
-        &&& forall|container_ptr: RwLockContainerPtr|
-            #![trigger self.container_lock_map().dom().contains(container_ptr)]
-            self.container_lock_map().dom().contains(container_ptr)
-            ==> self.lock_id_set().contains(self.container_lock_map().spec_index(container_ptr))
-        &&& forall|process_ptr: RwLockProcessPtr|
-            #![trigger self.process_lock_map().dom().contains(process_ptr)]
-            self.process_lock_map().dom().contains(process_ptr)
-            ==> self.lock_id_set().contains(self.process_lock_map().spec_index(process_ptr))
-        &&& forall|thread_ptr: RwLockThreadPtr|
-            #![trigger self.thread_lock_map().dom().contains(thread_ptr)]
-            self.thread_lock_map().dom().contains(thread_ptr)
-            ==> self.lock_id_set().contains(self.thread_lock_map().spec_index(thread_ptr))
-        &&& forall|endpoint_ptr: RwLockEndpointPtr|
-            #![trigger self.endpoint_lock_map().dom().contains(endpoint_ptr)]
-            self.endpoint_lock_map().dom().contains(endpoint_ptr)
-            ==> self.lock_id_set().contains(self.endpoint_lock_map().spec_index(endpoint_ptr))
-        &&& forall|scheduler_ptr: RwLockSchedulerPtr|
-            #![trigger self.scheduler_lock_map().dom().contains(scheduler_ptr)]
-            self.scheduler_lock_map().dom().contains(scheduler_ptr)
-            ==> self.lock_id_set().contains(self.scheduler_lock_map().spec_index(scheduler_ptr))
-        &&& forall|allocator_ptr: RwLockPcidAllocatorPtr|
-            #![trigger self.pcid_allocator_lock_map().dom().contains(allocator_ptr)]
-            self.pcid_allocator_lock_map().dom().contains(allocator_ptr)
-            ==> self.lock_id_set().contains(
-                self.pcid_allocator_lock_map().spec_index(allocator_ptr))
-        &&& forall|pagetable_ptr: RwLockPageTableRoot|
-            #![trigger self.pagetable_lock_map().dom().contains(pagetable_ptr)]
-            self.pagetable_lock_map().dom().contains(pagetable_ptr)
-            ==> self.lock_id_set().contains(self.pagetable_lock_map().spec_index(pagetable_ptr))
-        &&& forall|iommu_root: RwLockPageTableRoot|
-            #![trigger self.iommu_table_lock_map().dom().contains(iommu_root)]
-            self.iommu_table_lock_map().dom().contains(iommu_root)
-            ==> self.lock_id_set().contains(self.iommu_table_lock_map().spec_index(iommu_root))
-        &&& forall|obj_id: AllocatorLockObjId|
-            #![trigger self.allocator_4k_lock_map().dom().contains(obj_id)]
-            self.allocator_4k_lock_map().dom().contains(obj_id)
-            ==> self.lock_id_set().contains(self.allocator_4k_lock_map().spec_index(obj_id))
-        &&& forall|obj_id: AllocatorLockObjId|
-            #![trigger self.allocator_2m_lock_map().dom().contains(obj_id)]
-            self.allocator_2m_lock_map().dom().contains(obj_id)
-            ==> self.lock_id_set().contains(self.allocator_2m_lock_map().spec_index(obj_id))
-        &&& forall|obj_id: AllocatorLockObjId|
-            #![trigger self.allocator_1g_lock_map().dom().contains(obj_id)]
-            self.allocator_1g_lock_map().dom().contains(obj_id)
-            ==> self.lock_id_set().contains(self.allocator_1g_lock_map().spec_index(obj_id))
-    }
-
-    /// Test whether one logical object is registered in its corresponding
-    /// homogeneous map.  This is the generic lock primitive's bridge from its
-    /// `KernelObjId` argument to the per-KernelK-layout ledgers.
-    pub open spec fn lock_map_contains(&self, obj_id: KernelObjId) -> bool {
-        match obj_id {
-            KernelObjId::Container(c) => self.container_lock_map().dom().contains(c),
-            KernelObjId::Process(p) => self.process_lock_map().dom().contains(p),
-            KernelObjId::Thread(t) => self.thread_lock_map().dom().contains(t),
-            KernelObjId::Endpoint(e) => self.endpoint_lock_map().dom().contains(e),
-            KernelObjId::Scheduler(s) => self.scheduler_lock_map().dom().contains(s),
-            KernelObjId::PcidAllocator(allocator_ptr) =>
-                self.pcid_allocator_lock_map().dom().contains(allocator_ptr),
-            KernelObjId::PageTable(pt) => self.pagetable_lock_map().dom().contains(pt),
-            KernelObjId::IommuTable(iommu_root) =>
-                self.iommu_table_lock_map().dom().contains(iommu_root),
-            KernelObjId::Page(i) => self.page_lock_map().dom().contains(i),
-            KernelObjId::Cpu(c) => self.cpu_lock_map().dom().contains(c),
-            KernelObjId::AllocatorQuota(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Quota(p)),
-            KernelObjId::AllocatorQuota(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map().dom().contains(AllocatorLockObjId::Quota(p)),
-            KernelObjId::AllocatorQuota(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map().dom().contains(AllocatorLockObjId::Quota(p)),
-            KernelObjId::AllocatorCache(PageSize::SZ4k, p, c) =>
-                self.allocator_4k_lock_map().dom().contains(AllocatorLockObjId::Cache(p, c)),
-            KernelObjId::AllocatorCache(PageSize::SZ2m, p, c) =>
-                self.allocator_2m_lock_map().dom().contains(AllocatorLockObjId::Cache(p, c)),
-            KernelObjId::AllocatorCache(PageSize::SZ1g, p, c) =>
-                self.allocator_1g_lock_map().dom().contains(AllocatorLockObjId::Cache(p, c)),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map().dom().contains(AllocatorLockObjId::GlobalPool(p)),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map().dom().contains(AllocatorLockObjId::GlobalPool(p)),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map().dom().contains(AllocatorLockObjId::GlobalPool(p)),
-        }
-    }
-
-    pub open spec fn lock_id_for_obj(&self, obj_id: KernelObjId) -> LockId
-        recommends self.lock_map_contains(obj_id)
-    {
-        match obj_id {
-            KernelObjId::Container(c) => self.container_lock_map().spec_index(c),
-            KernelObjId::Process(p) => self.process_lock_map().spec_index(p),
-            KernelObjId::Thread(t) => self.thread_lock_map().spec_index(t),
-            KernelObjId::Endpoint(e) => self.endpoint_lock_map().spec_index(e),
-            KernelObjId::Scheduler(s) => self.scheduler_lock_map().spec_index(s),
-            KernelObjId::PcidAllocator(allocator_ptr) =>
-                self.pcid_allocator_lock_map().spec_index(allocator_ptr),
-            KernelObjId::PageTable(pt) => self.pagetable_lock_map().spec_index(pt),
-            KernelObjId::IommuTable(iommu_root) =>
-                self.iommu_table_lock_map().spec_index(iommu_root),
-            KernelObjId::Page(i) => self.page_lock_map().spec_index(i),
-            KernelObjId::Cpu(c) => self.cpu_lock_map().spec_index(c),
-            KernelObjId::AllocatorQuota(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map().spec_index(AllocatorLockObjId::Quota(p)),
-            KernelObjId::AllocatorQuota(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map().spec_index(AllocatorLockObjId::Quota(p)),
-            KernelObjId::AllocatorQuota(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map().spec_index(AllocatorLockObjId::Quota(p)),
-            KernelObjId::AllocatorCache(PageSize::SZ4k, p, c) =>
-                self.allocator_4k_lock_map().spec_index(AllocatorLockObjId::Cache(p, c)),
-            KernelObjId::AllocatorCache(PageSize::SZ2m, p, c) =>
-                self.allocator_2m_lock_map().spec_index(AllocatorLockObjId::Cache(p, c)),
-            KernelObjId::AllocatorCache(PageSize::SZ1g, p, c) =>
-                self.allocator_1g_lock_map().spec_index(AllocatorLockObjId::Cache(p, c)),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map().spec_index(AllocatorLockObjId::GlobalPool(p)),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map().spec_index(AllocatorLockObjId::GlobalPool(p)),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map().spec_index(AllocatorLockObjId::GlobalPool(p)),
-        }
-    }
-
-    pub open spec fn lock_maps_equal(&self, other: &Self) -> bool {
-        &&& self.wf() == other.wf()
-        &&& self.lock_id_set() =~= other.lock_id_set()
-        &&& self.container_lock_map() =~= other.container_lock_map()
-        &&& self.process_lock_map() =~= other.process_lock_map()
-        &&& self.thread_lock_map() =~= other.thread_lock_map()
-        &&& self.endpoint_lock_map() =~= other.endpoint_lock_map()
-        &&& self.scheduler_lock_map() =~= other.scheduler_lock_map()
-        &&& self.pcid_allocator_lock_map() =~= other.pcid_allocator_lock_map()
-        &&& self.pagetable_lock_map() =~= other.pagetable_lock_map()
-        &&& self.iommu_table_lock_map() =~= other.iommu_table_lock_map()
-        &&& self.page_lock_map() =~= other.page_lock_map()
-        &&& self.cpu_lock_map() =~= other.cpu_lock_map()
-        &&& self.allocator_4k_lock_map() =~= other.allocator_4k_lock_map()
-        &&& self.allocator_2m_lock_map() =~= other.allocator_2m_lock_map()
-        &&& self.allocator_1g_lock_map() =~= other.allocator_1g_lock_map()
-    }
-
-    pub open spec fn non_pcid_allocator_lock_maps_equal(&self, other: &Self) -> bool {
-        &&& self.container_lock_map() =~= other.container_lock_map()
-        &&& self.process_lock_map() =~= other.process_lock_map()
-        &&& self.thread_lock_map() =~= other.thread_lock_map()
-        &&& self.endpoint_lock_map() =~= other.endpoint_lock_map()
-        &&& self.scheduler_lock_map() =~= other.scheduler_lock_map()
-        &&& self.pagetable_lock_map() =~= other.pagetable_lock_map()
-        &&& self.iommu_table_lock_map() =~= other.iommu_table_lock_map()
-        &&& self.page_lock_map() =~= other.page_lock_map()
-        &&& self.cpu_lock_map() =~= other.cpu_lock_map()
-        &&& self.allocator_4k_lock_map() =~= other.allocator_4k_lock_map()
-        &&& self.allocator_2m_lock_map() =~= other.allocator_2m_lock_map()
-        &&& self.allocator_1g_lock_map() =~= other.allocator_1g_lock_map()
-    }
-
-    pub open spec fn lock_maps_inserted(
+    pub open spec fn lock_entry_contains(
         &self,
-        old: &Self,
-        obj_id: KernelObjId,
         lock_id: LockId,
-    ) -> bool {
-        &&& self.lock_id_set() =~= if old.lock_map_contains(obj_id) {
-            old.lock_id_set().remove(old.lock_id_for_obj(obj_id)).insert(lock_id)
-        } else {
-            old.lock_id_set().insert(lock_id)
-        }
-        &&& match obj_id {
-            KernelObjId::Container(c) =>
-                self.container_lock_map() =~= old.container_lock_map().insert(c, lock_id)
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Process(p) =>
-                self.process_lock_map() =~= old.process_lock_map().insert(p, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Thread(t) =>
-                self.thread_lock_map() =~= old.thread_lock_map().insert(t, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Endpoint(e) =>
-                self.endpoint_lock_map() =~= old.endpoint_lock_map().insert(e, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Scheduler(s) =>
-                self.scheduler_lock_map() =~= old.scheduler_lock_map().insert(s, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::PcidAllocator(_) =>
-                self.non_pcid_allocator_lock_maps_equal(old),
-            KernelObjId::PageTable(pt) =>
-                self.pagetable_lock_map() =~= old.pagetable_lock_map().insert(pt, lock_id)
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::IommuTable(iommu_root) =>
-                self.iommu_table_lock_map() =~=
-                    old.iommu_table_lock_map().insert(iommu_root, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Page(i) =>
-                self.page_lock_map() =~= old.page_lock_map().insert(i, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Cpu(c) =>
-                self.cpu_lock_map() =~= old.cpu_lock_map().insert(c, lock_id)
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::AllocatorQuota(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map().insert(AllocatorLockObjId::Quota(p), lock_id)
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorQuota(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map().insert(AllocatorLockObjId::Quota(p), lock_id)
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorQuota(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map().insert(AllocatorLockObjId::Quota(p), lock_id)
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorCache(PageSize::SZ4k, p, c) =>
-                self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map().insert(AllocatorLockObjId::Cache(p, c), lock_id)
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorCache(PageSize::SZ2m, p, c) =>
-                self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map().insert(AllocatorLockObjId::Cache(p, c), lock_id)
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorCache(PageSize::SZ1g, p, c) =>
-                self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map().insert(AllocatorLockObjId::Cache(p, c), lock_id)
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p) =>
-                self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map().insert(AllocatorLockObjId::GlobalPool(p), lock_id)
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p) =>
-                self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map().insert(AllocatorLockObjId::GlobalPool(p), lock_id)
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p) =>
-                self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map().insert(AllocatorLockObjId::GlobalPool(p), lock_id)
-                && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map()
-                && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map()
-                && self.container_lock_map() =~= old.container_lock_map()
-                && self.process_lock_map() =~= old.process_lock_map()
-                && self.thread_lock_map() =~= old.thread_lock_map()
-                && self.endpoint_lock_map() =~= old.endpoint_lock_map()
-                && self.scheduler_lock_map() =~= old.scheduler_lock_map()
-                && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map()
-                && self.page_lock_map() =~= old.page_lock_map()
-                && self.cpu_lock_map() =~= old.cpu_lock_map(),
-        }
-        &&& match obj_id {
-            KernelObjId::PcidAllocator(allocator_ptr) =>
-                self.pcid_allocator_lock_map() =~=
-                    old.pcid_allocator_lock_map().insert(allocator_ptr, lock_id),
-            _ => self.pcid_allocator_lock_map() =~= old.pcid_allocator_lock_map(),
-        }
-    }
-
-    pub open spec fn lock_maps_removed(
-        &self,
-        old: &Self,
         obj_id: KernelObjId,
     ) -> bool {
-        &&& self.lock_id_set() =~=
-            old.lock_id_set().remove(old.lock_id_for_obj(obj_id))
-        &&& match obj_id {
-            KernelObjId::Container(c) => self.container_lock_map() =~= old.container_lock_map().remove(c) && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Process(p) => self.process_lock_map() =~= old.process_lock_map().remove(p) && self.container_lock_map() =~= old.container_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Thread(t) => self.thread_lock_map() =~= old.thread_lock_map().remove(t) && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Endpoint(e) => self.endpoint_lock_map() =~= old.endpoint_lock_map().remove(e) && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Scheduler(s) => self.scheduler_lock_map() =~= old.scheduler_lock_map().remove(s) && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::PcidAllocator(_) =>
-                self.non_pcid_allocator_lock_maps_equal(old),
-            KernelObjId::PageTable(pt) => self.pagetable_lock_map() =~= old.pagetable_lock_map().remove(pt) && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::IommuTable(iommu_root) => self.iommu_table_lock_map() =~= old.iommu_table_lock_map().remove(iommu_root) && self.pagetable_lock_map() =~= old.pagetable_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Page(i) => self.page_lock_map() =~= old.page_lock_map().remove(i) && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::Cpu(c) => self.cpu_lock_map() =~= old.cpu_lock_map().remove(c) && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map(),
-            KernelObjId::AllocatorQuota(PageSize::SZ4k, p) => self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map().remove(AllocatorLockObjId::Quota(p)) && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorQuota(PageSize::SZ2m, p) => self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map().remove(AllocatorLockObjId::Quota(p)) && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorQuota(PageSize::SZ1g, p) => self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map().remove(AllocatorLockObjId::Quota(p)) && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorCache(PageSize::SZ4k, p, c) => self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map().remove(AllocatorLockObjId::Cache(p, c)) && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorCache(PageSize::SZ2m, p, c) => self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map().remove(AllocatorLockObjId::Cache(p, c)) && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorCache(PageSize::SZ1g, p, c) => self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map().remove(AllocatorLockObjId::Cache(p, c)) && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, p) => self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map().remove(AllocatorLockObjId::GlobalPool(p)) && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, p) => self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map().remove(AllocatorLockObjId::GlobalPool(p)) && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, p) => self.allocator_1g_lock_map() =~= old.allocator_1g_lock_map().remove(AllocatorLockObjId::GlobalPool(p)) && self.allocator_4k_lock_map() =~= old.allocator_4k_lock_map() && self.allocator_2m_lock_map() =~= old.allocator_2m_lock_map() && self.container_lock_map() =~= old.container_lock_map() && self.process_lock_map() =~= old.process_lock_map() && self.thread_lock_map() =~= old.thread_lock_map() && self.endpoint_lock_map() =~= old.endpoint_lock_map() && self.scheduler_lock_map() =~= old.scheduler_lock_map() && self.pagetable_lock_map() =~= old.pagetable_lock_map()
-                && self.iommu_table_lock_map() =~= old.iommu_table_lock_map() && self.page_lock_map() =~= old.page_lock_map() && self.cpu_lock_map() =~= old.cpu_lock_map(),
-        }
-        &&& match obj_id {
-            KernelObjId::PcidAllocator(allocator_ptr) =>
-                self.pcid_allocator_lock_map() =~=
-                    old.pcid_allocator_lock_map().remove(allocator_ptr),
-            _ => self.pcid_allocator_lock_map() =~= old.pcid_allocator_lock_map(),
+        self.held_lock_id_set().contains((lock_id, obj_id))
+    }
+
+    pub open spec fn lock_entry_contains_for(
+        &self,
+        lock_id: LockId,
+        obj_id: KernelObjId,
+        lock_id_mutable: bool,
+    ) -> bool {
+        if lock_id_mutable {
+            self.lock_id_set().contains((lock_id, obj_id))
+        } else {
+            self.stable_lock_id_set().contains((lock_id, obj_id))
         }
     }
 
-    /// Predicate: `lock_id` is strictly greater than every currently held id.
-    /// `wf()` ties this compact set to the per-KernelK-layout typed maps.
+    pub open spec fn lock_obj_contains(&self, obj_id: KernelObjId) -> bool {
+        exists|lock_id: LockId| self.lock_entry_contains(lock_id, obj_id)
+    }
+
+    pub open spec fn stable_lock_obj_contains(&self, obj_id: KernelObjId) -> bool {
+        exists|lock_id: LockId|
+            self.stable_lock_id_set().contains((lock_id, obj_id))
+    }
+
+    /// Immutable-id objects are fresh when their exact pair is absent from the
+    /// stable ledger.  For a dynamic-id object, freshness is object-sensitive
+    /// across all ids in the dynamic ledger.
+    pub open spec fn lock_entry_fresh(
+        &self,
+        lock_id: LockId,
+        obj_id: KernelObjId,
+        lock_id_mutable: bool,
+    ) -> bool {
+        if lock_id_mutable {
+            !exists|held_lock_id: LockId|
+                self.lock_id_set().contains((held_lock_id, obj_id))
+        } else {
+            !self.stable_lock_id_set().contains((lock_id, obj_id))
+        }
+    }
+
+    /// `lock_id` is strictly greater than every dynamic or stable id held.
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
-        forall|held_lock_id: LockId|
-            #![trigger self.lock_id_set().contains(held_lock_id)]
-            self.lock_id_set().contains(held_lock_id)
-            ==> lock_id.spec_gt(held_lock_id)
+        &&& forall|held: HeldLock|
+                #![trigger self.lock_id_set().contains(held)]
+                self.lock_id_set().contains(held)
+                ==> lock_id.spec_gt(held.0)
+        &&& forall|held: HeldLock|
+                #![trigger self.stable_lock_id_set().contains(held)]
+                self.stable_lock_id_set().contains(held)
+                ==> lock_id.spec_gt(held.0)
     }
 
-    pub open spec fn obj_id_fresh(&self, obj_id: KernelObjId) -> bool {
-        !self.lock_map_contains(obj_id)
+    pub open spec fn held_lock_majors_lt(&self, major: LockMajorId) -> bool {
+        &&& forall|held: HeldLock|
+                #![trigger self.lock_id_set().contains(held)]
+                self.lock_id_set().contains(held) ==> held.0.major < major
+        &&& forall|held: HeldLock|
+                #![trigger self.stable_lock_id_set().contains(held)]
+                self.stable_lock_id_set().contains(held) ==> held.0.major < major
+    }
+
+    pub open spec fn held_lock_majors_le(&self, major: LockMajorId) -> bool {
+        &&& forall|held: HeldLock|
+                #![trigger self.lock_id_set().contains(held)]
+                self.lock_id_set().contains(held) ==> held.0.major <= major
+        &&& forall|held: HeldLock|
+                #![trigger self.stable_lock_id_set().contains(held)]
+                self.stable_lock_id_set().contains(held) ==> held.0.major <= major
+    }
+
+    pub open spec fn holds_no_allocator_locks(&self, page_size: PageSize) -> bool {
+        &&& forall|held: HeldLock|
+                #![trigger self.lock_id_set().contains(held)]
+                self.lock_id_set().contains(held) ==> match held.1 {
+                    KernelObjId::AllocatorQuota(size, _) => size != page_size,
+                    KernelObjId::AllocatorCache(size, _, _) => size != page_size,
+                    KernelObjId::AllocatorGlobalPoll(size, _) => size != page_size,
+                    _ => true,
+                }
+        &&& forall|held: HeldLock|
+                #![trigger self.stable_lock_id_set().contains(held)]
+                self.stable_lock_id_set().contains(held) ==> match held.1 {
+                    KernelObjId::AllocatorQuota(size, _) => size != page_size,
+                    KernelObjId::AllocatorCache(size, _, _) => size != page_size,
+                    KernelObjId::AllocatorGlobalPoll(size, _) => size != page_size,
+                    _ => true,
+                }
     }
 
     pub proof fn lemma_lock_id_eq_imply_acyclic_eq(&self)
@@ -658,10 +157,7 @@ impl LocalContext{
     {
     }
 
-    /// TCB: explicitly close the acquire phase without releasing a lock.
-    /// This is used when a payload mutation changes a held object's dynamic
-    /// ordering id: enter Release first, then update that id before the first
-    /// physical unlock.
+    /// TCB: close the Acquire phase without changing either held-lock ledger.
     #[verifier::external_body]
     pub proof fn enter_kernel_view_release(tracked &mut self)
         requires
@@ -669,39 +165,55 @@ impl LocalContext{
         ensures
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() is Release,
-            final(self).lock_maps_equal(old(self)),
-            final(self).wf(),
+            final(self).lock_id_set() == old(self).lock_id_set(),
+            final(self).stable_lock_id_set() == old(self).stable_lock_id_set(),
     {
         unimplemented!()
     }
 
-    /// TCB: update one held dynamic lock id during Release.  The selected map
-    /// is determined by the same `KernelObjId` dispatch as the lock primitive.
+    /// TCB: replace one held object's dynamic id during Release.
     #[verifier::external_body]
     pub proof fn update_lock_id(
         tracked &mut self,
         obj_id: KernelObjId,
+        old_lock_id: LockId,
         new_lock_id: LockId,
     )
         requires
             old(self).kernel_view_locking_state() is Release,
-            old(self).lock_map_contains(obj_id),
+            old(self).lock_id_set().contains((old_lock_id, obj_id)),
         ensures
-            final(self).lock_maps_inserted(old(self), obj_id, new_lock_id),
+            final(self).lock_id_set()
+                == old(self).lock_id_set()
+                    .remove((old_lock_id, obj_id))
+                    .insert((new_lock_id, obj_id)),
+            final(self).stable_lock_id_set() == old(self).stable_lock_id_set(),
             final(self).thread_id() == old(self).thread_id(),
-            final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
-            final(self).wf(),
+            final(self).kernel_view_locking_state()
+                == old(self).kernel_view_locking_state(),
     {
         unimplemented!()
     }
 }
 
-pub open spec fn lock_ensures<T>(old:&LocalContext, new:&LocalContext, value:T, lock_id: LockId, obj_id: KernelObjId) -> bool {
+pub open spec fn lock_ensures<T>(
+    old: &LocalContext,
+    new: &LocalContext,
+    value: T,
+    lock_id: LockId,
+    obj_id: KernelObjId,
+    lock_id_mutable: bool,
+) -> bool {
     &&& new.thread_id() == old.thread_id()
     &&& new.kernel_view_locking_state() is Acquire
-    &&& new.lock_maps_inserted(old, obj_id, lock_id)
-    &&& new.lock_id_set() == old.lock_id_set().insert(lock_id)
-    &&& new.wf()
+    &&& if lock_id_mutable {
+            &&& new.lock_id_set() == old.lock_id_set().insert((lock_id, obj_id))
+            &&& new.stable_lock_id_set() == old.stable_lock_id_set()
+        } else {
+            &&& new.lock_id_set() == old.lock_id_set()
+            &&& new.stable_lock_id_set()
+                == old.stable_lock_id_set().insert((lock_id, obj_id))
+        }
 }
 
 pub open spec fn unlock_ensures<T>(
@@ -711,13 +223,31 @@ pub open spec fn unlock_ensures<T>(
     lock_token: LockToken,
     obj_id: KernelObjId,
     lock_id: LockId,
+    lock_id_mutable: bool,
 ) -> bool {
     &&& new.thread_id() == old.thread_id()
-    &&& old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
-    &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
-    &&& new.lock_maps_removed(old, obj_id)
-    &&& new.lock_id_set() == old.lock_id_set().remove(lock_id)
-    &&& new.wf()
+    &&& old.kernel_view_locking_state() is Acquire
+        ==> new.kernel_view_locking_state() is Release
+    &&& old.kernel_view_locking_state() is Release
+        ==> new.kernel_view_locking_state() is Release
+    &&& if lock_id_mutable {
+            &&& new.lock_id_set() == old.lock_id_set().remove((lock_id, obj_id))
+            &&& new.stable_lock_id_set() == old.stable_lock_id_set()
+        } else {
+            &&& new.lock_id_set() == old.lock_id_set()
+            &&& new.stable_lock_id_set()
+                == old.stable_lock_id_set().remove((lock_id, obj_id))
+        }
+}
+
+/// The dynamic ledger follows the payload's current id.  The stable ledger
+/// uses the immutable ordering id recorded when the lock was acquired.
+pub open spec fn lock_id_for_unlock(
+    current_lock_id: LockId,
+    acquired_lock_id: LockId,
+    lock_id_mutable: bool,
+) -> LockId {
+    if lock_id_mutable { current_lock_id } else { acquired_lock_id }
 }
 
 }
