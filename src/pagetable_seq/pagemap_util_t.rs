@@ -109,10 +109,10 @@ fn page_map_set_raw(
 
 /// The single PageMap write gate for a page-table page that is already published.
 ///
-/// A kernel-level caller first opens a `KernelSteps` user-view step; that operation
-/// changes both `LocalContext` phases from Acquire to Release. This helper checks
-/// and preserves that Release phase. The phase is only the proof model for abstract
-/// kernel/user interleaving and step-ledger discipline. It does *not* establish
+/// Every published PageMap write closes the current kernel atomic section:
+/// the caller supplies kernel `Acquire`, and this helper changes it to `Release`
+/// immediately before the concrete write.  The phase is only the proof model for
+/// abstract kernel/user interleaving and step-ledger discipline. It does *not establish
 /// machine-level PTE-store atomicity or CPU/MMU memory ordering. The concrete
 /// write ultimately reaches the trusted `Array::set`; this layer only models the
 /// abstract state transition.
@@ -121,15 +121,24 @@ fn page_map_set_raw(
 /// operation must retain its transition-specific proof: publish only initialized
 /// children or fresh leaves, clear user `present` before invalidation, and remove
 /// the kernel-view entry only after every stale TLB translation is gone.
-/// Release-to-Release also does not prove that a step performs only one PTE write
-/// or that this store is its final executable mutation; that stronger property
-/// would require a linear, one-shot write permit owned by `KernelSteps`.
+/// The PageTable operation containing this write must reach a kernel boundary
+/// before another PageMap write, because subsequent writes require `Acquire`.
+pub open spec fn page_map_write_lctx_ensures(
+    old_lctx: &LocalContext,
+    new_lctx: &LocalContext,
+) -> bool {
+    &&& new_lctx.thread_id() == old_lctx.thread_id()
+    &&& new_lctx.kernel_view_locking_state() is Release
+    &&& new_lctx.lock_id_set() == old_lctx.lock_id_set()
+    &&& new_lctx.stable_lock_id_set() == old_lctx.stable_lock_id_set()
+}
+
 pub(super) fn page_map_set_published(
     page_map_ptr: PageMapPtr,
     Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
     index: usize,
     value: PageEntry,
-    Tracked(lctx): Tracked<&LocalContext>,
+    Tracked(lctx): Tracked<&mut LocalContext>,
 )
     requires
         old(page_map_perm).addr() == page_map_ptr,
@@ -137,17 +146,70 @@ pub(super) fn page_map_set_published(
         old(page_map_perm).value().wf(),
         0 <= index < 512,
         mem_valid(value.addr),
-        lctx.kernel_view_locking_state() is Release,
+        old(lctx).kernel_view_locking_state() is Acquire,
     ensures
+        page_map_write_lctx_ensures(old(lctx), final(lctx)),
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
         forall|i: usize|
             #![trigger final(page_map_perm).value().spec_index(i)]
-            0 <= i < 512 && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
+            0 <= i < 512 && i != index
+            ==> final(page_map_perm).value().spec_index(i)
+                =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
 {
+    proof {
+        lctx.enter_kernel_view_release();
+    }
     page_map_set_raw(page_map_ptr, Tracked(page_map_perm), index, value);
+}
+
+pub(super) fn page_map_set_published_in_map(
+    page_map_ptr: PageMapPtr,
+    Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<PageMap>>>,
+    index: usize,
+    value: PageEntry,
+    Tracked(lctx): Tracked<&mut LocalContext>,
+)
+    requires
+        old(page_map_perms).dom().contains(page_map_ptr),
+        old(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,
+        old(page_map_perms).spec_index(page_map_ptr).is_init(),
+        old(page_map_perms).spec_index(page_map_ptr).value().wf(),
+        0 <= index < 512,
+        mem_valid(value.addr),
+        old(lctx).kernel_view_locking_state() is Acquire,
+    ensures
+        page_map_write_lctx_ensures(old(lctx), final(lctx)),
+        final(page_map_perms).dom() == old(page_map_perms).dom(),
+        forall|p: PageMapPtr|
+            #![trigger final(page_map_perms).spec_index(p)]
+            old(page_map_perms).dom().contains(p) && p != page_map_ptr
+            ==> final(page_map_perms).spec_index(p)
+                == old(page_map_perms).spec_index(p),
+        final(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,
+        final(page_map_perms).spec_index(page_map_ptr).is_init(),
+        final(page_map_perms).spec_index(page_map_ptr).value().wf(),
+        forall|i: usize|
+            #![trigger final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)]
+            0 <= i < 512 && i != index
+            ==> final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)
+                =~= old(page_map_perms).spec_index(page_map_ptr).value().spec_index(i),
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index)
+            =~= value,
+{
+    let tracked mut page_map_perm = page_map_perms.tracked_remove(page_map_ptr);
+    page_map_set_published(
+        page_map_ptr,
+        Tracked(&mut page_map_perm),
+        index,
+        value,
+        Tracked(&mut *lctx),
+    );
+    proof {
+        page_map_perms.tracked_insert(page_map_ptr, page_map_perm);
+    }
 }
 
 #[verifier(external_body)]

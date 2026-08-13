@@ -137,10 +137,8 @@ every variant SUCCEEDS and reports its true consumption. Restore the original
 - `/shrink-proof` — SHRINKS a located obligation (delete-and-reverify).
 - `/discharge-assume` — BUILDS a proof for an `assume`d conjunct by transplanting
   a sibling's reveal recipe.
-- `/style-check` — FLAGS the tells (bare reveals, `== old` crutches, orphan
-  ghosts) that profiling confirms are costing rlimit.
 Typical chain: profile -> shrink the dominator (or scope its reveals) -> re-profile
-to confirm the win -> style-check -> gate.
+to confirm the win -> verify.
 
 ## Guardrails
 

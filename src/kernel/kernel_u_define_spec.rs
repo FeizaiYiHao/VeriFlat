@@ -4,6 +4,26 @@ use crate::*;
 
 verus! {
 
+    pub open spec fn pagetable_map_user_view(
+        pagetable_map: PageTableLockedMap,
+    ) -> Map<RwLockPageTableRoot, PageTableU> {
+        Map::new(
+            pagetable_map.dom(),
+            |ptr: RwLockPageTableRoot|
+                pagetable_map.spec_index(ptr).view().user_view(),
+        )
+    }
+
+    pub open spec fn iommu_table_map_user_view(
+        iommu_table_map: IommuTableLockedMap,
+    ) -> Map<RwLockPageTableRoot, PageTableU> {
+        Map::new(
+            iommu_table_map.dom(),
+            |ptr: RwLockPageTableRoot|
+                iommu_table_map.spec_index(ptr).view().user_view(),
+        )
+    }
+
     /// User-level projection of the kernel state.
     ///
     /// This is a sound capture of the kernel user-level view because
@@ -40,8 +60,15 @@ verus! {
                     let p = kernel_k.process_map.spec_index(ptr).view();
                     let p_ro = kernel_k.process_map.spec_index(ptr).view_rodata().view();
                     ProcessU {
-                        pagetable: kernel_k.get_process_pagetable(ptr),
-                        iommu_table: kernel_k.get_process_iommu_table(ptr),
+                        pagetable: pagetable_map_user_view(kernel_k.pagetable_map)
+                            .spec_index(p.pagetable),
+                        iommu_table: match p.iommu_table {
+                            Some(iommu_table) => Some(
+                                iommu_table_map_user_view(kernel_k.iommu_table_map)
+                                    .spec_index(iommu_table),
+                            ),
+                            None => None,
+                        },
                         quota_4k: p.quota_4k,
                         quota_2m: p.quota_2m,
                         quota_1g: p.quota_1g,
@@ -64,8 +91,8 @@ verus! {
     ///   - per cpu slot, the payload `value.view()`;
     ///   - per process, `view()` / `view_rodata()` / `being_killed()`, plus the
     ///     process domain;
-    ///   - per pagetable entry, `view()` (the only thing `get_process_pagetable`
-    ///     reads — lock state is irrelevant).
+    ///   - per pagetable entry, `view().user_view()`; directory topology and
+    ///     lock state are irrelevant.
     /// Stated per-element (not as `process_map == ..` / `pagetable_map == ..`)
     /// so a caller that moved lock state on a held pagetable / process — which
     /// leaves the WHOLE map unequal but every `.view()` intact — can still use
@@ -77,14 +104,13 @@ verus! {
             // Domain equality alone does not constrain `Map::spec_index` at a
             // process-referenced key unless that key is known to be present.
             process_pagetable_match(pre.process_map, pre.pagetable_map),
-            // pagetable_map: only the per-entry `view()` is read (via
-            // `get_process_pagetable`), not lock state.
+            // pagetable_map: only the abstract mapping projection is read.
             post.pagetable_map.dom() =~= pre.pagetable_map.dom(),
             forall|pt: RwLockPageTableRoot|
-                #![trigger post.pagetable_map.spec_index(pt).view()]
+                #![trigger post.pagetable_map.spec_index(pt).view().user_view()]
                 pre.pagetable_map.dom().contains(pt) ==>
-                    post.pagetable_map.spec_index(pt).view()
-                        == pre.pagetable_map.spec_index(pt).view(),
+                    post.pagetable_map.spec_index(pt).view().user_view()
+                        == pre.pagetable_map.spec_index(pt).view().user_view(),
             // No implemented operation moves an IOMMU-table lock yet, so the
             // current framing surface preserves the whole map. This can be
             // weakened to per-entry views when those operations are added.

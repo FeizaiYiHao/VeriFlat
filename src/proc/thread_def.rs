@@ -51,7 +51,7 @@ pub struct Thread {
     pub indirect_free_quota_pending_1g: Ghost<Seq<usize>>,
 }
 
-pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
+pub type ThreadRwLock = RwLock<Thread, (), (), (), STABLE_LOCK_ID, THREAD_HAS_KILL_STATE>;
 
 impl Thread{
     pub open spec fn free_quota_pending_fields_equal(&self, other: &Self) -> bool {

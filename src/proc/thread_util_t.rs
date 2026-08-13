@@ -28,7 +28,12 @@ use vstd::simple_pptr::*;
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             thread_value.inv(),
-            old(lctx).obj_id_fresh(obj_id.view()),
+            old(lctx).lock_entry_fresh(LockId{
+                container: LockOwnerId::NotApp,
+                process: LockOwnerId::NotApp,
+                major: thread_value.current_lock_major(),
+                minor: page_ptr,
+            }, obj_id.view(), STABLE_LOCK_ID),
         ensures
             // ---- the ThreadRwLock: initialized, write-locked, holds thread_value ----
             ret.0.view().addr() == page_ptr,
@@ -43,13 +48,19 @@ use vstd::simple_pptr::*;
             // ---- the LockPerm ----
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
+            ret.1.view().ordering_lock_id() == (LockId{
+                container: LockOwnerId::NotApp,
+                process: LockOwnerId::NotApp,
+                major: thread_value.current_lock_major(),
+                minor: page_ptr,
+            }),
             // ---- lctx: the thread lock id registered under obj_id ----
             lock_ensures(old(lctx), final(lctx), thread_value, LockId{
                 container: LockOwnerId::NotApp,
                 process: LockOwnerId::NotApp,
                 major: thread_value.current_lock_major(),
                 minor: page_ptr,
-            }, obj_id.view()),
+            }, obj_id.view(), STABLE_LOCK_ID),
     {
         unimplemented!()
     }

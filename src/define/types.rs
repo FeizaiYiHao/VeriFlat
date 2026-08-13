@@ -175,15 +175,24 @@ pub enum FreePageAllocatorState{
 }
 
 #[allow(inconsistent_fields)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy)]
 pub enum PageState {
     Unavailable,
     IOMMUTable{iommu_table_root:RwLockPageTableRoot},
     Allocated4k{state: Allocated4KPageState},
     Allocated2m{state: Allocated2MPageState},
-    Free4k{state: FreePageAllocatorState},
-    Free2m{state: FreePageAllocatorState},
-    Free1g{state: FreePageAllocatorState},
+    Free4k{
+        allocator_ptr: Ghost<RwLockPageAllocatorPtr>,
+        state: FreePageAllocatorState,
+    },
+    Free2m{
+        allocator_ptr: Ghost<RwLockPageAllocatorPtr>,
+        state: FreePageAllocatorState,
+    },
+    Free1g{
+        allocator_ptr: Ghost<RwLockPageAllocatorPtr>,
+        state: FreePageAllocatorState,
+    },
     /// Freshly allocated from the allocator, staged in `thread_ptr`'s
     /// `temp_alloc_cache` while the thread write-lock is held. Not yet
     /// wired into a page table.

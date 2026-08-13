@@ -107,10 +107,9 @@ restatement is dead weight.
    framing lemma loses its last caller, delete the lemma. Audit EVERY surviving
    `let ghost` for a live reader.
 
-7. **Report + gate.** Summarize: which asserts were scaffolding (removed), which
+7. **Report.** Summarize: which asserts were scaffolding (removed), which
    were genuine (kept, with the one-line reason each fails-on-delete), and any
-   spec-trigger fix proposed/applied. Then run `/style-check` on the touched files
-   and land a clean pass.
+   spec-trigger fix proposed/applied.
 
 ## Guardrails
 

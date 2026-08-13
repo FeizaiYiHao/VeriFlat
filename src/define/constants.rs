@@ -119,6 +119,8 @@ pub const ALLOCATOR_BATCH: usize = 64;
 
 pub const NO_KILL_STATE: bool = false; 
 pub const HAS_KILL_STATE: bool = true; 
+pub const STABLE_LOCK_ID: bool = false;
+pub const MUTABLE_LOCK_ID: bool = true;
 
 pub const PAGE_TABLE_HAS_KILL_STATE: bool = NO_KILL_STATE;
 pub const PAGE_HAS_KILL_STATE: bool = NO_KILL_STATE;

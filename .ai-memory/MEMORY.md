@@ -1,37 +1,32 @@
-- [Proof gaps](feedback_proof_gaps.md) — Always flag proof/spec gaps to the user before adding external_body workarounds
-- [Ask before invariant triggers](feedback_ask_before_invariant_triggers.md) — Don't change #![trigger] on invariant/opaque spec predicates without asking first
-- [No self-added spinoff_prover](feedback_no_self_added_spinoff_prover.md) — Never add #[verifier::spinoff_prover] on your own; it's Xiangdong's call
-- [wunlock_process temp-alloc protocol](project_wunlock_process_temp_alloc_protocol.md) — wunlock_process requires temp_alloc_clean; flush staged pages before unlocking
-- [Lemma scoping](feedback_lemma_scoping.md) — scope lemmas into EXISTING consumer asserts only; a new assert-by for a ground-fact lemma backfires; forall-ensures lemmas are the reveal-like ones worth scoping
-- [No global full-invariant proof wrappers](feedback_no_single_function_global_proof_wrappers.md) — never hide complete kernel/subsystem invariant re-establishment in a global lemma, even for a lock/unlock pair; keep it local and globalize only reusable field or individual-invariant facts
-- [alloc_free_4k rlimit drivers](project_alloc_free_4k_rlimit_drivers.md) — profiler: allocate_free_4k_page is 54% of module rlimit; dominated by Set fold axioms + allocator/cpu-cache inv() deep quantifiers, not ground lemmas
-- [match_lctx wrapper contract](project_match_lctx_wrapper_contract.md) — the 6 4k-path lock wrappers now carry locked_objects_match_lctx in requires/ensures; cut allocate_free_4k_page 83%; Batch 2 (cpu/container/quota/process) done + begin/end_user_view_step frame it
-- [alloc_free_4k postconditions](project_alloc_free_4k_postconditions.md) — full functional postconditions proven; scan_caches_and_alloc spec-gap fix; "cost wall" was a proof-gap mirage (fix the gap, not the budget)
-- [syscall_new_thread historical bootstrap](project_syscall_new_thread.md) — 2026-07-17 lock-skeleton/stub snapshot; superseded by the completed thread-wiring and 2026-07-25 simplification notes
-- [LockedMap::insert TCB](project_lockedmap_insert_tcb.md) — new external_body primitive that GROWS the map domain (mints a write-locked RwLock); first step for thread creation; awaiting Xiangdong review
-- [Thread-create skeleton](project_thread_create_skeleton.md) — scheduler wrappers + retype TCB + container-set proof fn + create wrapper all landed (crate 466); 2 marked assumes + fold-insert-of-zero axiom left to finish; lock traits + scheduler_perms_wf-in-inv gap fixed
-- [Thread wiring milestone](project_thread_wiring_milestone.md) — alloc exact-insert contract + wunlock_thread + create_thread ensures DONE (473 verified); body blocked on staged-page-post-boundary lock state (needs design call: alloc should return page still-locked)
-- [create_thread remaining assumes](project_create_thread_remaining_assumes.md) — inv() rebuild mostly proven; 2 assumes left (fold-insert-of-zero, container_thread_wf lemma); process_thread_wf now PROVEN via push_tail freshness ensures + a dom-membership conjunct added to its fwd clause + seq_push_lemma for the reverse contains
-- [Who Xiangdong is](user_xiangdong.md) — verification architect; one deliverable at a time, blesses narrow escape hatches then expects reuse, honesty over polish, decisions (invariant/trigger/spinoff/lock-hierarchy) are HIS
-- [Ensures over assume](feedback_ensures_over_assume.md) — a fact lost across &mut borrows: strengthen the callee's ensures, never assume() it (took add_new_thread 16 assumes → 0)
-- [Cost wall is usually a bug](feedback_cost_wall_is_usually_a_bug.md) — a postcondition failing at 300M rlimit is usually an un-fired trigger; assert the trigger/membership term, don't raise the budget (272M→5.27M)
-- [Proof simplification methodology](feedback_proof_simplification_methodology.md) — audit contract entailment and consumers before triggers; derive inv/lock/frame consequences locally, remove proof-only plumbing, then delete-and-verify by fact family
-- [2026-07-25 contract/proof simplification](project_contract_proof_simplification_2026_07_25.md) — allocate_free_4k_page + syscall_new_thread + lock wrappers: net -321 lines, exact redundant patterns, retained proof boundaries, 479 verified/0 errors
-- [Lock id frozen at acquire](feedback_lock_id_ordering_frozen_at_acquire.md) — an RwLock's lock_id+major is frozen at lock time from the payload THEN; staged page locks as Free (major 30000) even after retype; drove scheduler major 20000→103
-- [2026-07-26 lock-map alignment refresh](project_lock_id_alignment_refresh_2026_07_26.md) — LockPerm token versus dynamic lock-map id; exact-map composition from the correct snapshot; ground held-page boundary lemma
-- [2026-07-27 follow-up simplification](project_contract_proof_simplification_2026_07_27.md) — removed reintroduced consequence bundles after the token/id split; callee-local invariant recovery; 484 verified/0 errors
-- [2026-07-27 payload-mutation wrappers](project_payload_mutation_wrapper_2026_07_27.md) — wrapper contracts now preserve match/alignment; retype wrapper owns page-id refresh; 497 verified/0 errors, cost comparison recorded
-- [2026-07-27 locker/unlocker alignment](project_locker_unlocker_alignment_2026_07_27.md) — all raw lock wrappers now preserve alignment; explicit enter-Release TCB breaks the retype/refresh/unlock cycle; 498 verified/0 errors
-- [2026-07-28 syscall_alloc_quota cleanup](project_syscall_alloc_quota_2026_07_28.md) — lock-id-set callsite path, scoped reveal-only proofs, retained structural fold/tree boundaries, and final timing snapshot
-- [2026-07-28 syscall object-state/lock-id tracking](project_syscall_new_thread_lock_id_tracking_2026_07_28.md) — syscall callsites track direct object lock state plus lock-id set; typed maps are wrapper-internal; complete verification and profiler snapshot recorded
-- [2026-07-29 typed locked-match framing](project_typed_locked_match_2026_07_29.md) — locked-match predicates now take the typed map plus thread id; allocator split 4k/2m/1g; allocator/new-thread timing and two remaining proof-design decisions recorded
-- [Thread wiring COMPLETE](project_thread_wiring_milestone.md) — add_new_thread LIVE, crate 479 verified (2026-07-23), 0 assumes; scheduler→103, rodata-TCB, Option-B alloc, 4 blessed stub lemmas
-- [Syscall postcondition models KernelU](feedback_syscall_postcondition_models_kernel_u.md) — syscall postcondition describe KernelU (user-visible) via old_u/new_u, never KernelK internals
-- [Kernel invariant opaque reveal](project_kernel_invariant_opaque_reveal.md) — all kernel invariants are #[verifier::opaque], must explicitly reveal() in proof blocks
-- [Memory model core concepts](project_memory_model_core_concepts.md) — Page metadata vs PagePtr physical address vs PagePerm ownership; page_index2page_ptr mapping; perm field Tracked<Option<PagePerm>>
-- [IOMMU identity model](project_iommu_identity_and_static_root_table.md) — BDF-derived DID; opaque 385-page root/owner table with total owner and optional-root Seq3 interfaces; per-process BDF counter+reverse set makes zero-count deletion scan-free; one global per-DID IOTLB without dirty bitmap
-- [upper_container_seq read-only no lock](feedback_upper_container_seq_readonly_no_lock.md) — read-only spec field access needs no lock
-- [Struct literal parens](feedback_verus_struct_literal_parens.md) — ensures/requires struct literals must be wrapped in parentheses
-- [view() sequence bridge assert](feedback_verus_view_sequence_bridge_assert.md) — when view() and underlying sequence don't auto-equate, add explicit forall bridge assert
-- [KernelSteps.inv() bridge](project_syscall_new_thread_kernelsteps_inv.md) — syscall_new_thread postcondition needs KernelSteps.inv() to bridge old_u and old_k
-- Verus code-style signature now lives in-repo at `.kiro/steering/verus-style.md` (auto-loaded via CLAUDE.md @import) — not duplicated here
+# VeriFlat AI memory
+
+This directory contains only durable project context that is not already
+captured by the repository instructions or obvious from one implementation.
+
+## Authority
+
+1. `AGENTS.md` is the source of truth for workflow, proof style, and the
+   current lock model.
+2. Live code and contracts override every note in this directory.
+3. These notes are orientation aids, not specifications. Re-check them against
+   the touched code before making a design decision.
+
+## Current notes
+
+- [Memory model](project_memory_model_core_concepts.md) — page metadata,
+  addresses, indices, and tracked physical-memory permissions.
+- [Runtime protocols](project_runtime_protocols.md) — user-view syscall
+  contracts, `KernelSteps`, staged allocation, and unlock cleanliness.
+- [IOMMU model](project_iommu_identity_and_static_root_table.md) — BDF-derived
+  identity, the static VT-d root table, ownership, and IOTLB state.
+
+## Deliberately omitted
+
+Historical verification counters, timing snapshots, completed migration
+handoffs, old proof scaffolding, and superseded lock-map designs belong in Git
+history. In particular, do not recover typed per-object lock maps,
+`LocalContext::wf()`, or the former scalar/object-parallel ledgers from old
+commits; the pair-set model in `AGENTS.md` is authoritative.
+
+When a durable design changes, update the relevant note in place instead of
+adding another dated milestone file.
