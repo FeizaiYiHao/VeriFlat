@@ -18,10 +18,10 @@ impl PageTable<PT_TYPE> {
     ) -> bool
         recommends
             self.wf(),
-            self.kernel_l4_end <= l4i < 512,
-            0 <= l3i < 512,
-            0 <= l2i < 512,
-            0 <= l1i < 512,
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
+            pei_valid(l1i),
     {
         &&& self.spec_resolve_mapping_1g_l3(l4i, l3i) is None
         &&& self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None
@@ -31,7 +31,7 @@ impl PageTable<PT_TYPE> {
     pub fn resolve_mapping_l4(&self, l4i: L4Index) -> (ret: Option<PageEntry>)
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i < 512,
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
         ensures
             ret =~= self.spec_resolve_mapping_l4(l4i),
     {
@@ -44,8 +44,8 @@ impl PageTable<PT_TYPE> {
     ))
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i < 512,
-            0 <= l3i < 512,
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
         ensures
             ret.0 =~= self.spec_resolve_mapping_l3(l4i, l3i),
             ret.0 is Some <==> ret.1 == PageTableErrorCode::NoError,
@@ -87,9 +87,9 @@ impl PageTable<PT_TYPE> {
     ))
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i < 512,
-            0 <= l3i < 512,
-            0 <= l2i < 512,
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
         ensures
             ret.0 =~= self.spec_resolve_mapping_l2(l4i, l3i, l2i),
             ret.0 is Some <==> ret.1 == PageTableErrorCode::NoError,
@@ -143,10 +143,10 @@ impl PageTable<PT_TYPE> {
     ) -> (ret: (Option<PageEntry>, PageTableErrorCode, Option<MapEntry>))
         requires
             self.wf(),
-            self.kernel_l4_end <= l4i < 512,
-            0 <= l3i < 512,
-            0 <= l2i < 512,
-            0 <= l1i < 512,
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
+            pei_valid(l1i),
         ensures
             ret.0 =~= self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
             ret.0 is Some <==> ret.1 == PageTableErrorCode::NoError,

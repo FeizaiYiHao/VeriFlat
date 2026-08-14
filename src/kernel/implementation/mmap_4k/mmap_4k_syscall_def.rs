@@ -26,10 +26,10 @@ pub open spec fn mmap_4k_range_empty_from(
         first <= i < range.len
         ==> {
             let indices = spec_va2index(range.view().spec_index(i));
-            &&& pagetable.kernel_l4_end <= indices.0 < 512
-            &&& 0 <= indices.1 < 512
-            &&& 0 <= indices.2 < 512
-            &&& 0 <= indices.3 < 512
+            &&& pagetable.kernel_l4_end <= indices.0 && pei_valid(indices.0)
+            &&& pei_valid(indices.1)
+            &&& pei_valid(indices.2)
+            &&& pei_valid(indices.3)
             &&& pagetable.spec_4k_entry_useable(
                 indices.0,
                 indices.1,
@@ -62,9 +62,9 @@ pub open spec fn mmap_4k_range_prepared_prefix(
         0 <= i < upper
         ==> {
             let indices = spec_va2index(range.view().spec_index(i));
-            &&& pagetable.kernel_l4_end <= indices.0 < 512
-            &&& 0 <= indices.1 < 512
-            &&& 0 <= indices.2 < 512
+            &&& pagetable.kernel_l4_end <= indices.0 && pei_valid(indices.0)
+            &&& pei_valid(indices.1)
+            &&& pei_valid(indices.2)
             &&& pagetable.spec_resolve_mapping_l2(
                     indices.0,
                     indices.1,

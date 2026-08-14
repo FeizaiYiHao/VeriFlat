@@ -149,10 +149,9 @@ pub open spec fn staged_4k_page_op_requires(
     &&& kernel.thread_map.dom().contains(thread_ptr)
     &&& kernel.thread_map.spec_index(thread_ptr).being_killed() == false
     &&& kernel.pagetable_map.dom().contains(pagetable_ptr)
-    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-        <= spec_va2index(va).0 < 512
-    &&& spec_va2index(va).1 < 512
-    &&& spec_va2index(va).2 < 512
+    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0 && pei_valid(spec_va2index(va).0)
+    &&& pei_valid(spec_va2index(va).1)
+    &&& pei_valid(spec_va2index(va).2)
     &&& kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
         == (PageState::Owned4k { thread_ptr })
     &&& kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view()

@@ -255,7 +255,6 @@ impl KernelK {
         }
         // ---- staging delta: page_ptr fresh in temp_alloc_cache_4k ⟹ effective_quota_4k −1 ----
         assert(old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) == false) by {
-            page_ptr_lemma1();
             reveal(thread_staged_pages_4k_wf);
             if old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) {
                 assert(old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
@@ -366,7 +365,7 @@ impl KernelK {
                     reveal(container_allocator_free_4k_page_wf);
                     reveal(container_allocator_global_free_4k_page_wf);
                     reveal(allocator_free_page_ptrs_wf);
-                    page_ptr_lemma1();
+                    page_ptr_valid_imply_page_index_valid();
                 };
                 assert(container_allocator_cpu_cache_free_4k_page_wf(
                     self.allocator_4k_map, self.page_array,
@@ -692,7 +691,6 @@ impl KernelK {
         }
         // ---- staging delta: page_ptr fresh in temp_alloc_cache_4k ⟹ effective_quota_4k −1 ----
         assert(old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) == false) by {
-            page_ptr_lemma1();
             reveal(thread_staged_pages_4k_wf);
             if old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) {
                 assert(old(self).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
@@ -793,7 +791,8 @@ impl KernelK {
                 assert(thread_pages_wf(self.thread_map, self.page_array)) by { thread_pages_wf_preserved_for_page_state_eq(old(self).thread_map, self.thread_map, old(self).page_array, self.page_array); };
                 assert(thread_staged_pages_4k_wf(self.thread_map, self.page_array)) by {
                     reveal(thread_staged_pages_4k_wf);
-                    page_ptr_lemma1();
+                    page_ptr_valid_imply_page_index_valid();
+                    page_ptr_roundtrip();
                 };
                 assert(thread_staged_pages_wf(self.thread_map, self.page_array)) by {
                     thread_staged_pages_2m_wf_preserved_for_eq(old(self).thread_map, self.thread_map, old(self).page_array, self.page_array);
@@ -815,7 +814,7 @@ impl KernelK {
                     reveal(container_allocator_free_4k_page_wf);
                     reveal(container_allocator_cpu_cache_free_4k_page_wf);
                     reveal(allocator_free_page_ptrs_wf);
-                    page_ptr_lemma1();
+                    page_ptr_valid_imply_page_index_valid();
                 };
                 assert(container_allocator_free_4k_page_wf(
                     self.allocator_4k_map, self.page_array,

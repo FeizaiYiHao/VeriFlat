@@ -48,11 +48,10 @@ impl KernelK {
                 old(self).thread_map.spec_index(thread_ptr),
             ) >= 1,
             old(self).pagetable_map.spec_index(pagetable_ptr).view().wf(),
-            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                <= spec_va2index(va).0 < 512,
-            spec_va2index(va).1 < 512,
-            spec_va2index(va).2 < 512,
-            spec_va2index(va).3 < 512,
+            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0 && pei_valid(spec_va2index(va).0),
+            pei_valid(spec_va2index(va).1),
+            pei_valid(spec_va2index(va).2),
+            pei_valid(spec_va2index(va).3),
             old(self).pagetable_map.spec_index(pagetable_ptr).view()
                 .spec_4k_entry_useable(
                     spec_va2index(va).0,
@@ -119,9 +118,9 @@ impl KernelK {
                 #![trigger final(self).pagetable_map.spec_index(pagetable_ptr)
                     .view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 final(self).pagetable_map.spec_index(pagetable_ptr).view()
-                    .kernel_l4_end <= l4i < 512
-                    && 0 <= l3i < 512
-                    && 0 <= l2i < 512
+                    .kernel_l4_end <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && pei_valid(l2i)
                 ==> final(self).pagetable_map.spec_index(pagetable_ptr).view()
                         .spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == old(self).pagetable_map.spec_index(pagetable_ptr).view()
@@ -149,9 +148,8 @@ impl KernelK {
         );
         assert(!self.pagetable_map.spec_index(pagetable_ptr).view()
             .mapping_4k().dom().contains(va)) by {
-            broadcast use PageTable::reveal_page_table_wf;
-            broadcast use PageTable::reveal_page_table_mappings_wf;
-            va_lemma();
+            reveal(PageTable::wf_mapping_4k);
+            spec_va_4k_index_roundtrip();
         };
         self.map_owned_4k_page(
             page_ptr, thread_ptr, pagetable_ptr, va, true, true,

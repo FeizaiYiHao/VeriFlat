@@ -1253,7 +1253,7 @@ verus! {
                 };
                 let page_index = page_ptr2page_index(page_ptr);
                 assert(page_index_wf(page_index)) by {
-                    page_ptr_lemma1();
+                    page_ptr_valid_imply_page_index_valid();
                 };
                 assert(
                     self.page_array.inv()
@@ -1609,7 +1609,7 @@ verus! {
             |t: RwLockThreadPtr| page_ptr2page_index(t),
         )) by {
             reveal(thread_pages_wf);
-            page_ptr_lemma1();
+            page_ptr2page_index_injective();
         };
         vstd::set_lib::lemma_map_size(
             thread_dom,
@@ -1622,7 +1622,7 @@ verus! {
             broadcast use Set::lemma_map_contains;
             broadcast use vstd::set_lib::range_set_properties;
             reveal(thread_pages_wf);
-            page_ptr_lemma1();
+            page_ptr_valid_imply_page_index_valid();
             assert forall|i: usize| indices.contains(i)
                 implies page_indices.contains(i) by {
                 let t = choose|t: RwLockThreadPtr|

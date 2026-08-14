@@ -29,7 +29,7 @@ fn page_map_set_kernel_entry_range(
         final(page_map_perm).value().wf(),
         forall|i: usize|
             #![trigger final(page_map_perm).value().spec_index(i)]
-            KERNEL_MEM_END_L4INDEX <= i < 512 ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
+            KERNEL_MEM_END_L4INDEX <= i && pei_valid(i) ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         forall|i: usize|
             #![trigger final(page_map_perm).value().spec_index(i)]
             0 <= i < KERNEL_MEM_END_L4INDEX ==> final(page_map_perm).value().spec_index(i) =~= usize2page_entry(
@@ -46,7 +46,7 @@ fn page_map_set_kernel_entry_range(
             page_map_perm.value().wf(),
             forall|i: usize|
                 #![trigger page_map_perm.value().spec_index(i)]
-                KERNEL_MEM_END_L4INDEX <= i < 512 ==> page_map_perm.value().spec_index(i) =~= old(
+                KERNEL_MEM_END_L4INDEX <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i) =~= old(
                     page_map_perm,
                 ).value().spec_index(i),
             forall|i: usize|
@@ -91,7 +91,7 @@ fn page_map_set_raw(
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
         old(page_map_perm).value().wf(),
-        0 <= index < 512,
+        pei_valid(index),
         mem_valid(value.addr),
     ensures
         final(page_map_perm).addr() == page_map_ptr,
@@ -99,7 +99,7 @@ fn page_map_set_raw(
         final(page_map_perm).value().wf(),
         forall|i: usize|
             #![trigger final(page_map_perm).value().spec_index(i)]
-            0 <= i < 512 && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
+            pei_valid(i) && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
 {
     let pptr: PPtr<PageMap> = PPtr::from_addr(page_map_ptr);
@@ -144,7 +144,7 @@ pub(super) fn page_map_set_published(
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
         old(page_map_perm).value().wf(),
-        0 <= index < 512,
+        pei_valid(index),
         mem_valid(value.addr),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
@@ -153,11 +153,18 @@ pub(super) fn page_map_set_published(
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
         forall|i: usize|
-            #![trigger final(page_map_perm).value().spec_index(i)]
-            0 <= i < 512 && i != index
+            #![trigger
+                final(page_map_perm).value().spec_index(i),
+                old(page_map_perm).value().spec_index(i)
+            ]
+            pei_valid(i) && i != index
             ==> final(page_map_perm).value().spec_index(i)
                 =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
+        final(page_map_perm).value().spec_index(index).addr == value.addr,
+        final(page_map_perm).value().spec_index(index).perm.present == value.perm.present,
+        final(page_map_perm).value().spec_index(index).perm.ps == value.perm.ps,
+        value.is_empty() ==> final(page_map_perm).value().spec_index(index).is_empty(),
 {
     proof {
         lctx.enter_kernel_view_release();
@@ -177,7 +184,7 @@ pub(super) fn page_map_set_published_in_map(
         old(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,
         old(page_map_perms).spec_index(page_map_ptr).is_init(),
         old(page_map_perms).spec_index(page_map_ptr).value().wf(),
-        0 <= index < 512,
+        pei_valid(index),
         mem_valid(value.addr),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
@@ -193,11 +200,27 @@ pub(super) fn page_map_set_published_in_map(
         final(page_map_perms).spec_index(page_map_ptr).value().wf(),
         forall|i: usize|
             #![trigger final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)]
-            0 <= i < 512 && i != index
+            pei_valid(i) && i != index
             ==> final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)
                 =~= old(page_map_perms).spec_index(page_map_ptr).value().spec_index(i),
         final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index)
             =~= value,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).addr
+            == value.addr,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.present
+            == value.perm.present,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.ps
+            == value.perm.ps,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.write
+            == value.perm.write,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.execute_disable
+            == value.perm.execute_disable,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.user
+            == value.perm.user,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.kernel_present
+            == value.perm.kernel_present,
+        value.is_empty() ==>
+            final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).is_empty(),
 {
     let tracked mut page_map_perm = page_map_perms.tracked_remove(page_map_ptr);
     page_map_set_published(
@@ -227,7 +250,7 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
         ret.1.view().value().wf(),
         forall|i: usize|
             #![trigger ret.1.view().value().spec_index(i).is_empty()]
-            0 <= i < 512 ==> ret.1.view().value().spec_index(i).is_empty(),
+            pei_valid(i) ==> ret.1.view().value().spec_index(i).is_empty(),
 {
     unsafe {
         let uptr = page_ptr as *mut MaybeUninit<PageMap>;
@@ -258,8 +281,6 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
 {
     let mut cpu_id = 0;
     let mut ret_map = tlbmap_4k;
-
-    // broadcast use map_equal_implies_submap_each_other;
 
     assert(forall|cpu_id: CpuId|
         #![auto]

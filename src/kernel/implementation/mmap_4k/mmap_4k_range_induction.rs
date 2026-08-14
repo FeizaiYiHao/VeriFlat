@@ -33,9 +33,9 @@ pub(super) proof fn pagetable_leaf_insert_preserves_prepared_range_forall()
             && mmap_4k_range_prepared(pre, &range)
             && (forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger post.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                post.kernel_l4_end <= l4i < 512
-                    && 0 <= l3i < 512
-                    && 0 <= l2i < 512
+                post.kernel_l4_end <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && pei_valid(l2i)
                 ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == pre.spec_resolve_mapping_l2(l4i, l3i, l2i))
             ==> mmap_4k_range_prepared(post, &range),
@@ -56,9 +56,9 @@ pub(super) proof fn pagetable_leaf_insert_preserves_prepared_range_forall()
         && mmap_4k_range_prepared(pre, &range)
         && (forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger post.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-            post.kernel_l4_end <= l4i < 512
-                && 0 <= l3i < 512
-                && 0 <= l2i < 512
+            post.kernel_l4_end <= l4i && pei_valid(l4i)
+                && pei_valid(l3i)
+                && pei_valid(l2i)
             ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i)
                 == pre.spec_resolve_mapping_l2(l4i, l3i, l2i))
         implies mmap_4k_range_prepared(post, &range) by {
@@ -70,15 +70,17 @@ pub(super) proof fn pagetable_leaf_insert_preserves_prepared_range_forall()
             )]
             0 <= i < range.len implies {
                 let indices = spec_va2index(range.view().spec_index(i));
-                &&& post.kernel_l4_end <= indices.0 < 512
-                &&& 0 <= indices.1 < 512
-                &&& 0 <= indices.2 < 512
+                &&& post.kernel_l4_end <= indices.0 && pei_valid(indices.0)
+                &&& pei_valid(indices.1)
+                &&& pei_valid(indices.2)
                 &&& post.spec_resolve_mapping_l2(
                         indices.0,
                         indices.1,
                         indices.2,
                     ) is Some
-            } by { va_lemma(); };
+            } by {
+                spec_va_4k_valid_imply_indices_valid();
+            };
     };
 }
 
@@ -111,9 +113,9 @@ pub(super) proof fn pagetable_prepare_advances_range_prefix_forall()
             ) is Some
             && (forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
                 #![trigger post.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                pre.kernel_l4_end <= l4i < 512
-                    && 0 <= l3i < 512
-                    && 0 <= l2i < 512
+                pre.kernel_l4_end <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && pei_valid(l2i)
                     && pre.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                 ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == pre.spec_resolve_mapping_l2(l4i, l3i, l2i))
@@ -143,9 +145,9 @@ pub(super) proof fn pagetable_prepare_advances_range_prefix_forall()
         ) is Some
         && (forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger post.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-            pre.kernel_l4_end <= l4i < 512
-                && 0 <= l3i < 512
-                && 0 <= l2i < 512
+            pre.kernel_l4_end <= l4i && pei_valid(l4i)
+                && pei_valid(l3i)
+                && pei_valid(l2i)
                 && pre.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
             ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i)
                 == pre.spec_resolve_mapping_l2(l4i, l3i, l2i))
@@ -154,21 +156,16 @@ pub(super) proof fn pagetable_prepare_advances_range_prefix_forall()
             #![trigger range.view().spec_index(j)]
             0 <= j < i + 1 implies {
                 let indices = spec_va2index(range.view().spec_index(j));
-                &&& post.kernel_l4_end <= indices.0 < 512
-                &&& 0 <= indices.1 < 512
-                &&& 0 <= indices.2 < 512
+                &&& post.kernel_l4_end <= indices.0 && pei_valid(indices.0)
+                &&& pei_valid(indices.1)
+                &&& pei_valid(indices.2)
                 &&& post.spec_resolve_mapping_l2(
                         indices.0,
                         indices.1,
                         indices.2,
                     ) is Some
             } by {
-                let indices = spec_va2index(range.view().spec_index(j));
-                if j < i {
-                    va_lemma();
-                } else {
-                    va_lemma();
-                }
+                spec_va_4k_valid_imply_indices_valid();
             };
     };
 }
@@ -439,10 +436,10 @@ pub(super) proof fn pagetable_4k_insert_preserves_range_suffix_forall()
             i + 1 <= j < range.len implies {
                 let va = range.view().spec_index(j);
                 let indices = spec_va2index(va);
-                &&& post.kernel_l4_end <= indices.0 < 512
-                &&& 0 <= indices.1 < 512
-                &&& 0 <= indices.2 < 512
-                &&& 0 <= indices.3 < 512
+                &&& post.kernel_l4_end <= indices.0 && pei_valid(indices.0)
+                &&& pei_valid(indices.1)
+                &&& pei_valid(indices.2)
+                &&& pei_valid(indices.3)
                 &&& post.spec_4k_entry_useable(
                     indices.0,
                     indices.1,
@@ -454,22 +451,19 @@ pub(super) proof fn pagetable_4k_insert_preserves_range_suffix_forall()
                 let indices = spec_va2index(va);
                 assert(va != range.view().spec_index(i)) by { seq_index_lemma::<VAddr>(); };
                 assert(!post.mapping_4k().dom().contains(va)) by {
-                    broadcast use PageTable::reveal_page_table_wf;
-                    broadcast use PageTable::reveal_page_table_mappings_wf;
+                    reveal(PageTable::wf_mapping_4k);
                     broadcast use vstd::map::group_map_lemmas;
-                    va_lemma();
+                    spec_va_4k_index_roundtrip();
                 };
                 assert(!post.mapping_2m().dom().contains(
                     spec_index2va((indices.0, indices.1, indices.2, 0)),
                 )) by {
-                    broadcast use PageTable::reveal_page_table_wf;
-                    broadcast use PageTable::reveal_page_table_mappings_wf;
+                    reveal(PageTable::wf_mapping_2m);
                 };
                 assert(!post.mapping_1g().dom().contains(
                     spec_index2va((indices.0, indices.1, 0, 0)),
                 )) by {
-                    broadcast use PageTable::reveal_page_table_wf;
-                    broadcast use PageTable::reveal_page_table_mappings_wf;
+                    reveal(PageTable::wf_mapping_1g);
                 };
                 assert(post.spec_4k_entry_useable(
                     indices.0,
@@ -477,9 +471,10 @@ pub(super) proof fn pagetable_4k_insert_preserves_range_suffix_forall()
                     indices.2,
                     indices.3,
                 )) by {
-                    broadcast use PageTable::reveal_page_table_wf;
-                    broadcast use PageTable::reveal_page_table_mappings_wf;
-                    va_lemma();
+                    reveal(PageTable::wf_mapping_4k);
+                    reveal(PageTable::wf_mapping_2m);
+                    reveal(PageTable::wf_mapping_1g);
+                    spec_va_4k_index_roundtrip();
                 };
             };
     };

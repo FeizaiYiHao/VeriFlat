@@ -25,7 +25,8 @@ impl PageMap {
             old(self).spec_seq.view().len() == 512,
         ensures
             final(self).wf(),
-            forall|i: int| #![trigger final(self).view().spec_index(i).is_empty()] 0 <= i < 512 ==> final(self).view().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger final(self).view().spec_index(i as int).is_empty()]
+                pei_valid(i) ==> final(self).view().spec_index(i as int).is_empty(),
     {
         for i in 0..512
             invariant
@@ -53,22 +54,24 @@ impl PageMap {
                 self.spec_seq = Ghost(self.spec_seq.view().update(i as int, usize2page_entry(0usize)));
             }
         }
-        assert(forall|j: int| #![trigger self.view().spec_index(j)] 0 <= j < 512 ==> self.spec_seq.view().spec_index(j).perm.kernel_present == false);
+        assert(forall|j: usize| #![trigger self.view().spec_index(j as int)]
+            pei_valid(j) ==> self.spec_seq.view().spec_index(j as int).perm.kernel_present == false);
     }
 
     pub open spec fn wf(&self) -> bool {
         &&& self.ar.wf()
         &&& self.spec_seq.view().len() == 512
-        &&& forall|i: int|
-            #![trigger usize2page_entry(self.ar.view().spec_index(i))]
-            0 <= i < 512 
-            ==> 
-            (usize2page_entry(self.ar.view().spec_index(i)) =~= self.spec_seq.view().spec_index(i))
+        &&& forall|i: usize|
+            #![trigger usize2page_entry(self.ar.view().spec_index(i as int))]
+            pei_valid(i)
+            ==>
+            (usize2page_entry(self.ar.view().spec_index(i as int))
+                =~= self.spec_seq.view().spec_index(i as int))
         &&&
-        forall|i:int|
-            #![trigger self.spec_seq.view().spec_index(i).addr]
-            0<=i<512 && self.spec_seq.view().spec_index(i).perm.kernel_present
-            ==> mem_valid(self.spec_seq.view().spec_index(i).addr)
+        forall|i: usize|
+            #![trigger self.spec_seq.view().spec_index(i as int).perm.kernel_present]
+            pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present
+            ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)
 
     }
 
@@ -78,7 +81,7 @@ impl PageMap {
 
     pub open spec fn spec_index(&self, index: usize) -> PageEntry
         recommends
-            0 <= index < 512,
+            pei_valid(index),
     {
         self.view().spec_index(index as int)
     }
@@ -87,13 +90,13 @@ impl PageMap {
         recommends
             self.wf(),
     {
-        forall|x: u16| #![auto] 0 <= x < 512 ==> self.spec_seq.view().spec_index(x as int).perm.present == false
+        forall|x: u16| #![auto] pei_valid(x as usize) ==> self.spec_seq.view().spec_index(x as int).perm.present == false
     }
 
     pub(super) fn set_unpublished(&mut self, index: usize, value: PageEntry)
         requires
             old(self).wf(),
-            0 <= index < 512,
+            pei_valid(index),
             value.perm.present ==> value.perm.kernel_present,
             value.perm.kernel_present ==> mem_valid(value.addr),
             value.perm.kernel_present == false ==> value.is_empty(),
@@ -134,7 +137,7 @@ impl PageMap {
     pub(super) fn set_internal(&mut self, index: usize, value: PageEntry)
         requires
             old(self).wf(),
-            0 <= index < 512,
+            pei_valid(index),
             mem_valid(value.addr),
         ensures
             final(self).wf(),
@@ -154,7 +157,7 @@ impl PageMap {
     pub fn index(&self, index: usize) -> (ret: PageEntry)
         requires
             self.wf(),
-            0 <= index < 512,
+            pei_valid(index),
         ensures
             ret =~= self.spec_index(index),
     {
@@ -164,7 +167,7 @@ impl PageMap {
     pub fn get(&self, index: usize) -> (ret: PageEntry)
         requires
             self.wf(),
-            0 <= index < 512,
+            pei_valid(index),
         ensures
             ret =~= self.spec_index(index),
     {

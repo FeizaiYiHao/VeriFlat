@@ -111,9 +111,9 @@ impl KernelK {
                 #![trigger final(self).pagetable_map.spec_index(pagetable_ptr)
                     .view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 final(self).pagetable_map.spec_index(pagetable_ptr).view()
-                    .kernel_l4_end <= l4i < 512
-                    && 0 <= l3i < 512
-                    && 0 <= l2i < 512
+                    .kernel_l4_end <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && pei_valid(l2i)
                 ==> final(self).pagetable_map.spec_index(pagetable_ptr).view()
                         .spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == old(self).pagetable_map.spec_index(pagetable_ptr).view()
@@ -182,7 +182,9 @@ impl KernelK {
             execute_disable,
         };
         proof {
-            assert(spec_index2va(indices) == va) by { va_lemma(); };
+            assert(spec_index2va(indices) == va) by {
+                spec_va_4k_index_roundtrip();
+            };
         }
         let pagetable = self.pagetable_map.borrow_mut(
             pagetable_ptr,

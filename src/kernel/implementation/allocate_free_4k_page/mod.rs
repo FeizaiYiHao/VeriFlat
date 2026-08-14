@@ -935,7 +935,6 @@ impl KernelK {
             reveal(container_allocator_cpu_cache_free_4k_page_wf);
             reveal(allocator_free_page_ptrs_wf);
             reveal(LinkedList::wf_value_list);
-            page_ptr_lemma1();
         };
         let (expected_node_addr, expected_page_ptr) = {
             let pool_ref = self.allocator_4k_map.borrow_global_pool(
@@ -1006,7 +1005,9 @@ impl KernelK {
                 reveal(container_allocator_free_4k_page_wf);
                 reveal(container_allocator_global_free_4k_page_wf);
                 reveal(allocator_free_page_ptrs_wf);
-                page_ptr_lemma1();
+                page_ptr_valid_imply_page_index_valid();
+                page_index_roundtrip();
+                page_ptr2page_index_injective();
                 seq_skip_lemma::<PagePtr>();
             };
             assert(container_allocator_cpu_cache_free_4k_page_wf(
@@ -1016,7 +1017,8 @@ impl KernelK {
                 reveal(container_allocator_free_4k_page_wf);
                 reveal(container_allocator_cpu_cache_free_4k_page_wf);
                 reveal(allocator_free_page_ptrs_wf);
-                page_ptr_lemma1();
+                page_ptr_valid_imply_page_index_valid();
+                page_ptr_roundtrip();
                 seq_push_head_lemma::<PagePtr>();
             };
             assert(container_allocator_free_4k_page_wf(
@@ -1507,7 +1509,7 @@ impl KernelK {
             }) by {
                 reveal(allocator_free_page_ptrs_wf);
                 reveal(allocator_perms_wf);
-                page_ptr_lemma1();
+                page_ptr_valid_imply_page_index_valid();
                 reveal(container_allocator_free_4k_page_wf);
                 reveal(container_allocator_global_free_4k_page_wf);
             };

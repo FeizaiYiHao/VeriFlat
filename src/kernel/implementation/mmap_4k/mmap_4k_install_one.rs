@@ -42,10 +42,9 @@ impl KernelK {
             thread_effective_quota_4k(
                 old(self).thread_map.spec_index(thread_ptr),
             ) >= 1,
-            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                <= spec_va2index(va).0 < 512,
-            spec_va2index(va).1 < 512,
-            spec_va2index(va).2 < 512,
+            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0 && pei_valid(spec_va2index(va).0),
+            pei_valid(spec_va2index(va).1),
+            pei_valid(spec_va2index(va).2),
             match level {
                 MissingPageTableLevel::L4 =>
                     old(self).pagetable_map.spec_index(pagetable_ptr).view()
@@ -115,9 +114,9 @@ impl KernelK {
                 #![trigger final(self).pagetable_map.spec_index(pagetable_ptr)
                     .view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 old(self).pagetable_map.spec_index(pagetable_ptr).view()
-                    .kernel_l4_end <= l4i < 512
-                    && 0 <= l3i < 512
-                    && 0 <= l2i < 512
+                    .kernel_l4_end <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && pei_valid(l2i)
                     && old(self).pagetable_map.spec_index(pagetable_ptr).view()
                         .spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                 ==> final(self).pagetable_map.spec_index(pagetable_ptr).view()

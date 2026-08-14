@@ -35,7 +35,7 @@ pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_chan
         reveal(container_allocator_global_free_4k_page_wf);
         reveal(container_allocator_cpu_cache_free_4k_page_wf);
         reveal(allocator_free_page_ptrs_wf);
-        page_ptr_lemma1();
+        page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -71,7 +71,7 @@ pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_chan
         reveal(container_allocator_global_free_2m_page_wf);
         reveal(container_allocator_cpu_cache_free_2m_page_wf);
         reveal(allocator_free_page_ptrs_wf);
-        page_ptr_lemma1();
+        page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -107,7 +107,7 @@ pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_chan
         reveal(container_allocator_global_free_1g_page_wf);
         reveal(container_allocator_cpu_cache_free_1g_page_wf);
         reveal(allocator_free_page_ptrs_wf);
-        page_ptr_lemma1();
+        page_ptr_valid_imply_page_index_valid();
     };
 }
 
