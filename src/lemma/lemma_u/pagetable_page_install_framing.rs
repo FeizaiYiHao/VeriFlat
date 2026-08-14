@@ -39,7 +39,9 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
 {
     assert(pagetable_pages_wf(post_pagetable_map, post_page_array)) by {
         reveal(pagetable_pages_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by { page_ptr_lemma1(); };
+        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
+            page_ptr_roundtrip();
+        };
         assert forall|page_index: PageIndex|
             #![trigger post_pagetable_map.dom().contains(page_index2page_ptr(page_index))]
             page_index_wf(page_index)
@@ -91,7 +93,9 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
                 ->Allocated4k_state is AsPageTableRoot
         } by {
             if page_ptr2page_index(pt_ptr) == page_ptr2page_index(page_ptr) {
-                assert(page_index2page_ptr(page_ptr2page_index(pt_ptr)) == pt_ptr) by { page_ptr_lemma1(); };
+                assert(page_index2page_ptr(page_ptr2page_index(pt_ptr)) == pt_ptr) by {
+                    page_ptr_roundtrip();
+                };
             }
         };
         assert forall|pt_ptr: RwLockPageTableRoot, table_page: PagePtr|
@@ -114,7 +118,9 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
                 }
             }
             if page_ptr2page_index(table_page) == page_ptr2page_index(page_ptr) {
-                assert(page_index2page_ptr(page_ptr2page_index(table_page)) == table_page) by { page_ptr_lemma1(); };
+                assert(page_index2page_ptr(page_ptr2page_index(table_page)) == table_page) by {
+                    page_ptr_roundtrip();
+                };
             }
         };
     };
@@ -156,11 +162,12 @@ pub proof fn page_pagetable_wf_preserved_for_page_table_page_insert(
 {
     assert(page_pagetable_wf(post_pagetable_map, post_page_array)) by {
         reveal(pagetable_perms_wf);
-        broadcast use PageTable::reveal_page_table_wf;
         reveal(mapped_4k_page_pagetable_wf);
         reveal(mapped_2m_page_pagetable_wf);
         reveal(mapped_1g_page_pagetable_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by { page_ptr_lemma1(); };
+        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
+            page_ptr_roundtrip();
+        };
         assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
             #![trigger post_page_array.spec_index(page_index).view().view()
                 .mappings().contains((pt_ptr, va))]
@@ -348,7 +355,9 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_page_table_page_i
         reveal(mapped_1g_page_pagetable_wf);
         reveal(process_pagetable_match);
         reveal(container_page_owner_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by { page_ptr_lemma1(); };
+        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
+            page_ptr_roundtrip();
+        };
         assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
             #![trigger post_page_array.spec_index(page_index).view().view()
                 .mappings().contains((pt_ptr, va))]
@@ -466,7 +475,9 @@ pub proof fn iommu_table_pages_wf_preserved_for_non_iommu_page_change(
 {
     assert(iommu_table_pages_wf(iommu_table_map, post_page_array)) by {
         reveal(iommu_table_pages_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by { page_ptr_lemma1(); };
+        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
+            page_ptr_roundtrip();
+        };
     };
 }
 
@@ -502,7 +513,9 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_single_consume(
 {
     assert(thread_staged_pages_4k_wf(post_thread_map, post_page_array)) by {
         reveal(thread_staged_pages_4k_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by { page_ptr_lemma1(); };
+        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
+            page_ptr_roundtrip();
+        };
         assert forall|page_index: PageIndex|
             #![trigger post_page_array.spec_index(page_index).view().view().state]
             page_index_wf(page_index)
@@ -518,7 +531,9 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_single_consume(
                 ->Owned4k_thread_ptr;
             if page_index == page_ptr2page_index(page_ptr) {
             } else if owner == thread_ptr {
-                assert(page_index2page_ptr(page_index) != page_ptr) by { page_ptr_lemma1(); };
+                assert(page_index2page_ptr(page_index) != page_ptr) by {
+                    page_index_roundtrip();
+                };
             }
         };
         assert forall|owner: RwLockThreadPtr, staged_page: PagePtr|
@@ -536,7 +551,9 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_single_consume(
             }
             if page_ptr2page_index(staged_page) == page_ptr2page_index(page_ptr) {
                 assert(page_index2page_ptr(page_ptr2page_index(staged_page))
-                    == staged_page) by { page_ptr_lemma1(); };
+                    == staged_page) by {
+                    page_ptr_roundtrip();
+                };
             }
         };
     };

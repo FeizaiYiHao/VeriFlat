@@ -80,7 +80,6 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
                 process_map.spec_index(mapping_process).view_rodata().view().owning_container,
             )
         } by {
-        page_ptr_lemma1();
         if p_i == page_ptr2page_index(page_ptr) {
         } else if pt_ptr == pagetable_ptr {
         }
@@ -141,7 +140,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             && post_pagetable_map.spec_index(pt_ptr).view().mapping_4k().dom().contains(mapped_va)
             && post_pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(mapped_va).addr
                 == page_index2page_ptr(p_i) by {
-        page_ptr_lemma1();
+        page_ptr_roundtrip();
         if p_i == page_ptr2page_index(page_ptr) {
         } else if pt_ptr == pagetable_ptr {
         }
@@ -157,7 +156,6 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             &&& post_page_array.spec_index(mapped_page).view().view().state is Mapped4k
             &&& post_page_array.spec_index(mapped_page).view().view().mappings().contains((pt_ptr, mapped_va))
         } by {
-        page_ptr_lemma1();
         if pt_ptr == pagetable_ptr && mapped_va == va {
         } else if page_ptr2page_index(
             post_pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(mapped_va).addr,
@@ -166,7 +164,6 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     };
     assert(mapped_4k_page_pagetable_wf(post_pagetable_map, post_page_array)) by {
         reveal(mapped_4k_page_pagetable_wf);
-        page_ptr_lemma1();
     };
     assert forall|p_i: PageIndex|
         #![trigger post_page_array.spec_index(p_i).view().view().state]
@@ -187,7 +184,6 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     };
     assert(mapped_2m_page_pagetable_wf(post_pagetable_map, post_page_array)) by {
         reveal(mapped_2m_page_pagetable_wf);
-        page_ptr_lemma1();
     };
     assert forall|p_i: PageIndex|
         #![trigger post_page_array.spec_index(p_i).view().view().state]
@@ -208,7 +204,6 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     };
     assert(mapped_1g_page_pagetable_wf(post_pagetable_map, post_page_array)) by {
         reveal(mapped_1g_page_pagetable_wf);
-        page_ptr_lemma1();
     };
 }
 
@@ -233,12 +228,13 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(
     ensures
         page_pagetable_wf(new_pagetable_map, new_page_array),
 {
-    page_ptr_lemma1();
-    reveal(page_pagetable_wf);
-    reveal(mapped_4k_page_pagetable_wf);
-    reveal(mapped_2m_page_pagetable_wf);
-    reveal(mapped_1g_page_pagetable_wf);
-    reveal(pagetable_perms_wf);
+    assert(page_pagetable_wf(new_pagetable_map, new_page_array)) by {
+        reveal(page_pagetable_wf);
+        reveal(mapped_4k_page_pagetable_wf);
+        reveal(mapped_2m_page_pagetable_wf);
+        reveal(mapped_1g_page_pagetable_wf);
+        reveal(pagetable_perms_wf);
+    };
 }
 
 /// Lock-state-only changes preserve the mapping invariant when every page
@@ -257,13 +253,14 @@ pub proof fn page_pagetable_wf_preserved_for_page_payloads_unchanged(
     ensures
         page_pagetable_wf(new_pagetable_map, new_page_array),
 {
-    page_ptr_lemma1();
-    reveal(page_pagetable_wf);
-    reveal(mapped_4k_page_pagetable_wf);
-    reveal(mapped_2m_page_pagetable_wf);
-    reveal(mapped_1g_page_pagetable_wf);
-    reveal(pagetable_perms_wf);
-    reveal(LockedArray::payloads_unchanged);
+    assert(page_pagetable_wf(new_pagetable_map, new_page_array)) by {
+        reveal(page_pagetable_wf);
+        reveal(mapped_4k_page_pagetable_wf);
+        reveal(mapped_2m_page_pagetable_wf);
+        reveal(mapped_1g_page_pagetable_wf);
+        reveal(pagetable_perms_wf);
+        reveal(LockedArray::payloads_unchanged);
+    };
 }
 
 }

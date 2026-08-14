@@ -4,6 +4,7 @@ verus! {
 
 use crate::*;
 
+/// TODO just use va
 pub type Iova = usize;
 pub type VtdDomainId = usize;
 
@@ -15,6 +16,8 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool {
     did < VTD_DOMAIN_COUNT
 }
 
+
+/// TODO just use va_4k_valid
 /// VT-d second-level addresses use the physical-address-width and alignment
 /// constraints of the selected page size.  They are not CPU kernel virtual
 /// addresses and therefore must not use the kernel-L4-range VA predicates.

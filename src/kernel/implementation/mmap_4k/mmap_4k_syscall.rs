@@ -242,10 +242,10 @@ impl KernelK {
                     ==> {
                         let indices = spec_va2index(range.view().spec_index(j));
                         &&& self.pagetable_map.spec_index(pagetable_ptr).view()
-                            .kernel_l4_end <= indices.0 < 512
-                        &&& 0 <= indices.1 < 512
-                        &&& 0 <= indices.2 < 512
-                        &&& 0 <= indices.3 < 512
+                            .kernel_l4_end <= indices.0 && pei_valid(indices.0)
+                        &&& pei_valid(indices.1)
+                        &&& pei_valid(indices.2)
+                        &&& pei_valid(indices.3)
                         &&& self.pagetable_map.spec_index(pagetable_ptr).view()
                             .spec_4k_entry_useable(
                                 indices.0,

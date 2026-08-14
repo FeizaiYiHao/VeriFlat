@@ -917,6 +917,14 @@ impl KernelK {
             }) by {
                 broadcast use vstd::set::group_set_lemmas;
             };
+            assert({
+                &&& self.thread_map.spec_index(current_thread_ptr)
+                    == old(self).thread_map.spec_index(current_thread_ptr)
+                &&& self.thread_map.lock_id_by_key(current_thread_ptr)
+                    == old(self).thread_map.lock_id_by_key(current_thread_ptr)
+            }) by {
+                lock_id_fields_eq_imply_eq();
+            };
             assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
         }
     }

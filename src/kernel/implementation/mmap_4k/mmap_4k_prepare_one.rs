@@ -46,11 +46,10 @@ impl KernelK {
                 old(self).thread_map.spec_index(thread_ptr),
             ) >= 3,
             old(self).pagetable_map.spec_index(pagetable_ptr).view().wf(),
-            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                <= spec_va2index(va).0 < 512,
-            spec_va2index(va).1 < 512,
-            spec_va2index(va).2 < 512,
-            spec_va2index(va).3 < 512,
+            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0 && pei_valid(spec_va2index(va).0),
+            pei_valid(spec_va2index(va).1),
+            pei_valid(spec_va2index(va).2),
+            pei_valid(spec_va2index(va).3),
             old(self).pagetable_map.spec_index(pagetable_ptr).view()
                 .spec_4k_entry_useable(
                     spec_va2index(va).0,
@@ -94,9 +93,9 @@ impl KernelK {
                 #![trigger final(self).pagetable_map.spec_index(pagetable_ptr)
                     .view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 old(self).pagetable_map.spec_index(pagetable_ptr).view()
-                    .kernel_l4_end <= l4i < 512
-                    && 0 <= l3i < 512
-                    && 0 <= l2i < 512
+                    .kernel_l4_end <= l4i && pei_valid(l4i)
+                    && pei_valid(l3i)
+                    && pei_valid(l2i)
                     && old(self).pagetable_map.spec_index(pagetable_ptr).view()
                         .spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                 ==> final(self).pagetable_map.spec_index(pagetable_ptr).view()
@@ -189,23 +188,13 @@ impl KernelK {
 
         proof {
             assert(self.pagetable_map.spec_index(pagetable_ptr).view()
-                .spec_resolve_mapping_l2(
-                    spec_va2index(va).0,
-                    spec_va2index(va).1,
-                    spec_va2index(va).2,
-                ) is Some) by {
-                broadcast use PageTable::reveal_page_table_wf;
-                broadcast use PageTable::reveal_page_table_mappings_wf;
-            };
-            assert(self.pagetable_map.spec_index(pagetable_ptr).view()
                 .spec_4k_entry_useable(
                     spec_va2index(va).0,
                     spec_va2index(va).1,
                     spec_va2index(va).2,
                     spec_va2index(va).3,
                 )) by {
-                broadcast use PageTable::reveal_page_table_wf;
-                broadcast use PageTable::reveal_page_table_mappings_wf;
+                reveal(PageTable::wf_mapping_4k);
             };
         }
     }

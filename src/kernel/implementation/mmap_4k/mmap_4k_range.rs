@@ -188,8 +188,9 @@ impl KernelK {
                 self.pagetable_map.spec_index(pagetable_ptr).view(),
                 range,
             )) by {
-                broadcast use PageTable::reveal_page_table_wf;
-                broadcast use PageTable::reveal_page_table_mappings_wf;
+                reveal(PageTable::wf_mapping_4k);
+                reveal(PageTable::wf_mapping_2m);
+                reveal(PageTable::wf_mapping_1g);
             };
             assert(mmap_4k_range_prepared_prefix(
                 self.pagetable_map.spec_index(pagetable_ptr).view(),

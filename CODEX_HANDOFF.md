@@ -1,6 +1,6 @@
 # VeriFlat Codex handoff
 
-Updated: 2026-08-12 after verification run #3952.
+Updated: 2026-08-13 after verification run #4319.
 
 ## Read first
 
@@ -171,6 +171,131 @@ regression. The final 32-thread hotspot report after #3952 was led by:
 - `create_entry_l3`: 7.540s;
 - `unmap_4k_page_user_view`: 6.995s.
 
+### Opaque PageTable leaf invariants
+
+The old grouped predicates `levels_wf`, `disjoint_wf`, `mappings_wf`, and
+`additional_wf`, together with all `reveal_page_table_*` broadcasts, have been
+deleted. `PageTable::wf()` now directly lists its leaf predicates. The 14 leaf
+predicates are opaque; `pcid_wf` deliberately remains open because it has no
+quantifier trigger.
+
+PageTable implementations now establish and consume leaf facts through scoped
+`assert(...) by { reveal(...) }` blocks. Getter mapping facts are proved only at
+the requested address prefix and immediately before returning. The enabled
+base/destructive implementations contain no loose reveal or newly introduced
+bare assertion. The mmap subtree remains disabled in
+`kernel/implementation/mod.rs`.
+
+Four pointwise resolver-unchanged helpers, four whole-state resolver-unchanged
+helpers for L3/1G/L2/2M, and four narrow existence/uniqueness helpers replace
+the old global `internal_resolve_disjoint` broadcast. Their requires clauses
+contain only the backing state, path, or leaf facts actually used. Explicit
+entry-field framing was added to `page_map_set_published` and
+`page_map_set_published_in_map`, so callers do not reopen unrelated invariants
+to rediscover writer post-state.
+
+The expensive existing triggers were not changed. Profiling identified the
+two-address triggers in `disjoint_l3` and `disjoint_l2` as the main source of
+cross-product instantiation. Isolating them behind pointwise helpers reduced
+`remove_l2_entry` from a 60M-rlimit diagnostic timeout to a passing proof around
+7.15M rlimit; the accepted current proof remains below the default limit.
+
+Current focused/module runs:
+
+- #4311: `create_entry_l4`, 1.078s SMT / 2.358M rlimit;
+- #4310: `create_entry_l3`, 1.123s SMT / 2.369M rlimit;
+- #4298: `create_entry_l2`, 0.865s SMT / 1.806M rlimit;
+- #4293: `map_4k_page`, 1.104s SMT / 2.750M rlimit;
+- #4316: PageTable base module, 10/10, 4.673s SMT / 10.031M rlimit;
+- #4299: `map_2m_page`, 1/1, 2.233s SMT / 5.156M rlimit;
+- #4300: `remove_l2_entry`, 1/1, 1.326s SMT / 2.869M rlimit;
+- #4301: `unmap_4k_page_user_view`, 2/2, 0.598s SMT / 1.344M rlimit;
+- #4315: `unmap_4k_page_kernel`, 1/1, 0.650s SMT / 1.379M rlimit;
+- #4317: destructive module, 7/7, 10.017s SMT / 16.328M rlimit;
+- #4318: PageTable spec, 14/14;
+- #4226: PageMap utility, 8/8.
+
+`map_2m_page` profiling and cleanup used #4251/#4252 as the original focused
+baseline (2.851s SMT / 7.305M rlimit). The accepted proof deletes the final
+quantified bridge that merely repeated `wf_mapping_2m`'s domain/resolver
+conjunct, and proves the L3 resolver framing with `resolve_l3_unchanged`, whose
+single-final-state trigger is scoped to the framing assertion. The resulting
+#4299 proof uses about 29.4% less rlimit and 21.7% less SMT time than #4251.
+Profile #4280 still identifies `disjoint_l2` as the dominant quantifier (480
+instances, cost product 2.093M); the L3 framing is much smaller (44 instances,
+cost product 82k). Paired old/new triggers, broadcasting the pointwise helper,
+and strengthening the common `disjoint_l2` trigger all regressed and were
+restored.
+
+The same whole-state pattern is now used wherever the corresponding backing
+maps are genuinely unchanged: 1G framing in 2M map/L2 create/L2 remove, and
+L2/2M/1G framing in 4K map and both 4K unmap paths. Target entries that really
+change retain their target-excluding pointwise proofs. Compared with the prior
+accepted modules, #4316 reduces base SMT time by about 27.8%, while #4317
+reduces destructive SMT time by about 29.9% and rlimit by about 36.1%.
+
+Full-tree verification initially exposed a solver-context-sensitive existing
+postcondition in `syscall_new_thread_with_endpoint`. A final scoped assertion
+now pairs the already-required `current_thread_ptr` entry equality with its
+lock-id equality, giving `unchanged_except` the exact ground term it needs.
+Deleting that assertion reproduces the failure; no runtime behavior or trigger
+was changed.
+
+### VA and page-pointer trigger isolation (2026-08-13)
+
+The old trusted `va_lemma` has been deleted. Its quantified facts are now
+separate ordinary proof functions, so each consuming assertion imports only
+one quantifier. The old equality and inequality facts were intentionally
+combined into `spec_index2va_injective`, with the paired new/old-address
+trigger requested by the user. `map_2m_page` imports only this lemma inside
+its `wf_mapping_2m` assertion; it has no active `assert forall`, broadcast, or
+resolver-unchanged lemma.
+
+The same isolation was applied where it closed directly:
+
+- `map_4k_page` uses `spec_index2va_injective` only in its mapping-domain
+  assertion and consumes ordinary whole-state 2M/1G unchanged lemmas directly
+  in the two final mapping assertions;
+- both 4K unmap paths use only `spec_index2va_injective` for 4K mapping
+  framing; their redundant final VA-validity proof and 2M/1G unchanged calls
+  were deleted;
+- disabled mmap call sites now select either the 4K index-validity fact or the
+  VA/index round-trip fact instead of importing the old bundle.
+
+The old five-quantifier `page_ptr_lemma1` has likewise been deleted and split
+into validity, pointer round-trip, index round-trip, pointer-to-index
+injectivity, and index-to-pointer injectivity functions. All active call sites
+now import only the required function inside their consuming assertion. The
+unused three-quantifier `page_ptr_2m_lemma` was left alone because it has no
+call sites and therefore does not seed solver context.
+
+Latest focused results on the final source:
+
+- #4468: `map_2m_page`, 1/1, 1.520s SMT / 4.162M rlimit;
+- #4469: `map_4k_page`, 1/1, 3.468s SMT / 7.619M rlimit;
+- #4470: `unmap_4k_page_user_view`, 2/2, 0.958s SMT / 2.430M rlimit;
+- #4471: `unmap_4k_page_kernel`, 1/1, 0.943s SMT / 2.412M rlimit;
+- #4464: `util::page_ptr_util_u`, 33/33;
+- #4462: `page_pagetable_wf_eq`, 4/4;
+- #4463: `pagetable_page_install_framing`, 6/6;
+- #4465: whole-crate compile/typecheck passed.
+
+The `pei_valid` mechanical migration initially made `PageMap::wf` quantify an
+`int` and cast it to `usize`. This compiled but produced cast recommendations
+and failed proof instantiation. Those four bounded quantifiers now quantify a
+`usize` and cast only when indexing the sequence; #4467 verifies `pagemap`
+7/7.
+
+Full run #4466, taken before that PageMap correction, was not green: 582
+functions verified and seven functions failed. The PageMap failure is now
+fixed. The remaining failures are the existing/template-resistant
+`wf_mapping_2m` reconstructions in `create_entry_l4`, `create_entry_l3`,
+`create_entry_l2`, `remove_l2_entry`, and `remove_l3_entry`, plus several exit
+leaf obligations in `remove_l4_entry`. Per the user's instruction, these were
+not forced through the `map_2m_page` template. A post-fix full rerun has not
+been performed. `git diff --check` passes, and `src` has no remaining call to
+`va_lemma` or `page_ptr_lemma1`.
+
 ## Verification
 
 Verification command:
@@ -179,6 +304,8 @@ Verification command:
 ./verify.sh --num-threads 32 --time
 ```
 
+- current run #4319: 585/585; wall 29.285s, total SMT 106.583s, rlimit
+  140,373,122;
 - historical run #3888: 580 verified, 0 errors;
 - wall 32.409s, estimated CPU 213.191s;
 - total SMT 108.052s;
@@ -207,3 +334,50 @@ Important focused runs:
 prints existing low-confidence automatic-trigger notes in `primitive/bitmap.rs`
 and two quantified expressions in `syscall_new_thread.rs`; they are warnings,
 not verification failures.
+
+### Final PageTable proof cleanup and performance (2026-08-14)
+
+The post-trigger-adjustment cleanup is complete. Resolver/mapping reveals are
+now scoped to the assertion that consumes them. In particular, the level
+reveals used to prove create-entry resolver framing run before the mapping
+invariant is revealed, and `remove_l2_entry` proves each of its three resolver
+framing bridges in a separate scoped query. The latter change reduced the
+function from 2.495s / 5.160M rlimit in the first cleanup regression to 1.460s /
+3.878M rlimit.
+
+Deleted proof surface:
+
+- six zero-call resolver helpers: the L4/L3/L2 pointwise unchanged helpers,
+  whole-state L3/1G/2M unchanged helpers;
+- the unused page-index injectivity and bundled 2M page-pointer lemma;
+- four zero-call VA validity/index lemmas;
+- nine empty-map/domain assertions from `PageTable::new`, the redundant target
+  resolver assertion in `map_2m_page`, and the redundant kernel-unmap mapping
+  domain assertion;
+- stale commented trigger alternatives and proof scaffolding.
+
+The active resolver helper set is now only the six helpers with live scoped
+consumers: `resolve_4k_l1_unchanged_at`, L3/L2 address uniqueness, direct L2
+entry address uniqueness, L2 target existence, and whole-state L2 unchanged.
+No invariant trigger was changed during this cleanup. `pcid_wf` remains open.
+
+Final same-machine, single-thread, output-JSON runs:
+
+- #4568 PageTable base: 10/10, 4.618s SMT / 10.262M rlimit;
+- #4575 destructive: 6/6, 6.052s SMT / 15.542M rlimit;
+- #4570 PageTable spec: 7/7, 0.258s SMT / 0.600M rlimit;
+- #4571 PageMap utility: 8/8;
+- #4572 page-pointer utility: 27/27.
+
+The comparable 11 core PageTable functions total 10.594s SMT. The same-source
+Z3 4.12.5 baseline (#3957) totaled 14.542s; the initial Z3 4.16 result (#3956)
+totaled 44.045s. Current is therefore 27.1% faster than the old-solver baseline
+and 75.9% faster than the initial upgraded-solver result. The only core function
+still slower than the old-solver baseline is `map_4k_page` (1.494s versus
+1.008s); every other core function is now faster.
+
+Final full-tree run #4576: 576/576, wall 31.911s, total SMT 152.027s,
+SMT-run rlimit 116,313,391. The lower verified-function count relative to old
+runs is from deleting unused proof functions, not disabled executable modules.
+The run prints only the existing automatic-trigger warnings in
+`syscall_new_thread.rs` and `primitive/bitmap.rs`. `git diff --check` passes.
