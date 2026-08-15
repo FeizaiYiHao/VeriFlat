@@ -1054,5 +1054,3 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 }
 
 } // verus!
-
-mod destructive;

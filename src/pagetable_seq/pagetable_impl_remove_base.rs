@@ -1,11 +1,11 @@
 use vstd::prelude::*;
 verus! {
 
-use super::super::pagemap_util_t::*;
+use super::pagemap_util_t::*;
 use crate::util::page_ptr_util_u::*;
-use super::super::pagetable_spec::*;
-use super::super::pagemap::*;
-use super::super::entry::*;
+use super::pagetable_spec::*;
+use super::pagemap::*;
+use super::entry::*;
 use crate::define::*;
 use crate::locks::*;
 use vstd::simple_pptr::*;
