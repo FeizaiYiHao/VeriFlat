@@ -25,7 +25,7 @@ pub(super) open spec fn mmap_4k_other_objects_unlocked(
 ) -> bool {
     &&& forall|c: CpuId|
         #![trigger kernel.cpu_array.spec_index(c).view()]
-        cpu_id_valid(c) && c != cpu_id
+        index_valid(NUM_CPUS, c) && c != cpu_id
         ==> !kernel.cpu_array.spec_index(c).view().locked_by_thread(thread_id)
     &&& forall|c: RwLockContainerPtr|
         #![trigger kernel.container_map.dom().contains(c)]
@@ -72,7 +72,7 @@ pub(super) open spec fn mmap_4k_held_context(
     &&& kernel.inv()
     &&& lctx.kernel_view_locking_state() is Acquire
     &&& lock_id_aligned(kernel, lctx)
-    &&& cpu_id_valid(cpu_id)
+    &&& index_valid(NUM_CPUS, cpu_id)
     &&& kernel.cpu_array.spec_index(cpu_id).view().wlocked_by(lctx)
     &&& kernel.cpu_array.spec_index(cpu_id).view().locked_by(lctx)
     &&& kernel.container_map.dom().contains(container_ptr)
@@ -286,7 +286,7 @@ pub open spec fn staged_4k_page_op_ensures(
     &&& post.pagetable_map.spec_index(pagetable_ptr).view().proc_ptr
         == pre.pagetable_map.spec_index(pagetable_ptr).view().proc_ptr
     &&& post.pagetable_map.unchanged_except(&pre.pagetable_map, pagetable_ptr)
-    &&& post.page_array.unchanged_except(
+    &&& post.page_array.entries_unchanged_except(
         &pre.page_array, page_ptr2page_index(page_ptr),
     )
     &&& post.thread_map.unchanged_except(&pre.thread_map, thread_ptr)

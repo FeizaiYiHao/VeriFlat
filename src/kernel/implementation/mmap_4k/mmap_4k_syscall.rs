@@ -53,7 +53,7 @@ impl KernelK {
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
             page_ptr_valid(ret.0),
-            page_index_wf(page_ptr2page_index(ret.0)),
+            index_valid(NUM_PAGES, page_ptr2page_index(ret.0)),
             final(self).container_map.spec_index(container_ptr)
                 == old(self).container_map.spec_index(container_ptr),
             final(self).container_map.spec_index(container_ptr).view_rodata()
@@ -66,7 +66,7 @@ impl KernelK {
                 .view().wlocked_by(final(lctx)),
             forall|i: PageIndex|
                 #![trigger final(self).page_array.spec_index(i)]
-                page_index_valid(i) && i != page_ptr2page_index(ret.0)
+                index_valid(NUM_PAGES, i) && i != page_ptr2page_index(ret.0)
                 ==> !final(self).page_array.spec_index(i).view()
                     .locked_by_thread(final(lctx).thread_id()),
             ret.1.view().state() is WriteLock,

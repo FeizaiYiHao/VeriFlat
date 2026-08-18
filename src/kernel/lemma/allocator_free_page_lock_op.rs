@@ -14,7 +14,7 @@ pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_chan
         page_array_wf(post),
         allocator_free_page_ptrs_wf(allocator_map),
         container_allocator_free_4k_page_wf(allocator_map, pre),
-        page_index_wf(changed),
+        index_valid(NUM_PAGES, changed),
         post.unchanged_except(&pre, changed),
         !(pre.spec_index(changed).view().view().state is Free4k),
         !(post.spec_index(changed).view().view().state is Free4k),
@@ -23,7 +23,7 @@ pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_chan
 {
     assert forall|i: PageIndex|
         #![trigger post.spec_index(i).view().view().state]
-        page_index_wf(i)
+        index_valid(NUM_PAGES, i)
         && ((pre.spec_index(i).view().view().state is Free4k)
             || (post.spec_index(i).view().view().state is Free4k))
         implies post.spec_index(i) === pre.spec_index(i) by {
@@ -35,7 +35,6 @@ pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_chan
         reveal(container_allocator_global_free_4k_page_wf);
         reveal(container_allocator_cpu_cache_free_4k_page_wf);
         reveal(allocator_free_page_ptrs_wf);
-        page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -50,7 +49,7 @@ pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_chan
         page_array_wf(post),
         allocator_free_page_ptrs_wf(allocator_map),
         container_allocator_free_2m_page_wf(allocator_map, pre),
-        page_index_wf(changed),
+        index_valid(NUM_PAGES, changed),
         post.unchanged_except(&pre, changed),
         !(pre.spec_index(changed).view().view().state is Free2m),
         !(post.spec_index(changed).view().view().state is Free2m),
@@ -59,7 +58,7 @@ pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_chan
 {
     assert forall|i: PageIndex|
         #![trigger post.spec_index(i).view().view().state]
-        page_index_wf(i)
+        index_valid(NUM_PAGES, i)
         && ((pre.spec_index(i).view().view().state is Free2m)
             || (post.spec_index(i).view().view().state is Free2m))
         implies post.spec_index(i) === pre.spec_index(i) by {
@@ -71,7 +70,6 @@ pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_chan
         reveal(container_allocator_global_free_2m_page_wf);
         reveal(container_allocator_cpu_cache_free_2m_page_wf);
         reveal(allocator_free_page_ptrs_wf);
-        page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -86,7 +84,7 @@ pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_chan
         page_array_wf(post),
         allocator_free_page_ptrs_wf(allocator_map),
         container_allocator_free_1g_page_wf(allocator_map, pre),
-        page_index_wf(changed),
+        index_valid(NUM_PAGES, changed),
         post.unchanged_except(&pre, changed),
         !(pre.spec_index(changed).view().view().state is Free1g),
         !(post.spec_index(changed).view().view().state is Free1g),
@@ -95,7 +93,7 @@ pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_chan
 {
     assert forall|i: PageIndex|
         #![trigger post.spec_index(i).view().view().state]
-        page_index_wf(i)
+        index_valid(NUM_PAGES, i)
         && ((pre.spec_index(i).view().view().state is Free1g)
             || (post.spec_index(i).view().view().state is Free1g))
         implies post.spec_index(i) === pre.spec_index(i) by {
@@ -107,7 +105,6 @@ pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_chan
         reveal(container_allocator_global_free_1g_page_wf);
         reveal(container_allocator_cpu_cache_free_1g_page_wf);
         reveal(allocator_free_page_ptrs_wf);
-        page_ptr_valid_imply_page_index_valid();
     };
 }
 
@@ -127,7 +124,7 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
                 && post.allocator_4k_map.spec_index(a).global_pool.view() == pre.allocator_4k_map.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
             #![trigger post.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
-            post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
+            post.allocator_4k_map.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
                 post.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view()
                     == pre.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view(),
     ensures
@@ -185,7 +182,7 @@ pub proof fn lemma_no_change_imply_container_allocator_free_4k_page_wf_forall()
             && (forall|a: RwLockPageAllocatorPtr, i: CpuId|
                 #![trigger post.allocator_4k_map.spec_index(a)
                     .cpu_caches.spec_index(i).view().view()]
-                post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
+                post.allocator_4k_map.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
                     post.allocator_4k_map.spec_index(a).cpu_caches
                         .spec_index(i).view().view()
                     == pre.allocator_4k_map.spec_index(a).cpu_caches
@@ -211,7 +208,7 @@ pub proof fn lemma_no_change_imply_container_allocator_free_4k_page_wf_forall()
                 && post.allocator_4k_map.spec_index(a).global_pool.view()
                     == pre.allocator_4k_map.spec_index(a).global_pool.view())
         && (forall|a: RwLockPageAllocatorPtr, i: CpuId| #![auto]
-            post.allocator_4k_map.dom().contains(a) && cpu_id_valid(i) ==>
+            post.allocator_4k_map.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
                 post.allocator_4k_map.spec_index(a).cpu_caches
                     .spec_index(i).view().view()
                 == pre.allocator_4k_map.spec_index(a).cpu_caches

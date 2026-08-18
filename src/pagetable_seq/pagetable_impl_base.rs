@@ -20,10 +20,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
         ensures
             self.spec_resolve_mapping_l4(target_l4i) == ret,
-            forall|l3i: L3Index, l2i: L2Index, l1i: L1Index|
+            forall|l3i: L3Index|
+                #![trigger pei_valid(l3i)]
+                pei_valid(l3i)
+                ==> forall|l2i: L2Index|
+                    #![trigger pei_valid(l2i)]
+                    pei_valid(l2i)
+                ==> forall|l1i: L1Index|
                 #![trigger spec_index2va((target_l4i, l3i, l2i, l1i))]
                 #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, l3i, l2i, l1i)]
-                pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && ret is None
+                pei_valid(l1i) && ret is None
                     ==> self.spec_resolve_mapping_4k_l1(target_l4i, l3i, l2i, l1i) is None
                     && self.mapping_4k().dom().contains(spec_index2va((target_l4i, l3i, l2i, l1i)))
                     == false,
@@ -71,10 +77,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
         ensures
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= ret,
-            forall|l2i: L2Index, l1i: L1Index|
+            forall|l2i: L2Index|
+                #![trigger pei_valid(l2i)]
+                pei_valid(l2i)
+                ==> forall|l1i: L1Index|
                 #![trigger spec_index2va((target_l4i, target_l3i, l2i, l1i))]
                 #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, l2i, l1i)]
-                pei_valid(l2i) && pei_valid(l1i) && ret is None
+                pei_valid(l1i) && ret is None
                     ==> self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, l2i, l1i) is None
                     && self.mapping_4k().dom().contains(
                     spec_index2va((target_l4i, target_l3i, l2i, l1i)),
@@ -903,11 +912,15 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 == old(self).spec_resolve_mapping_l3(target_l4i, target_l3i),
             final(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)
                 == old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger final(self).spec_resolve_mapping_l2(l4i, l3i, l2i)]
+            forall|l4i: L4Index|
+                #![trigger pei_valid(l4i)]
                 final(self).kernel_l4_end <= l4i && pei_valid(l4i)
-                    && pei_valid(l3i)
-                    && pei_valid(l2i)
+                ==> forall|l3i: L3Index|
+                    #![trigger pei_valid(l3i)]
+                    pei_valid(l3i)
+                ==> forall|l2i: L2Index|
+                #![trigger final(self).spec_resolve_mapping_l2(l4i, l3i, l2i)]
+                pei_valid(l2i)
                 ==> final(self).spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == old(self).spec_resolve_mapping_l2(l4i, l3i, l2i),
             final(self).kernel_entries =~= old(self).kernel_entries,

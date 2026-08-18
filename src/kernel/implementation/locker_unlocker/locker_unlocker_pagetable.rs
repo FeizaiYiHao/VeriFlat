@@ -17,12 +17,10 @@ impl KernelK {
                 old(lctx).lock_id_acyclic(
                     old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
 
                 final(self).iommu_table_map == old(self).iommu_table_map,
@@ -78,12 +76,10 @@ impl KernelK {
                 Ghost(KernelObjId::PageTable(pagetable_ptr)),
             );
             proof {
-                assert(self.pagetable_map.spec_index(pagetable_ptr).view()
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view()) by { reveal(wlock_ensures); };
                 assert(self.subsystems_inv()) by {
                     assert(pagetable_perms_wf(self.pagetable_map)) by {
                         reveal(pagetable_perms_wf);
-                        reveal(pagetables_inv);
+
                     };
                     reveal(KernelK::default_pagetable_wf);
                 };
@@ -130,10 +126,9 @@ impl KernelK {
                     self.pagetable_map,
                     self.cpu_array,
                 )) by { reveal(tlb_wf_spec); };
-                assert(self.inv()) by { reveal(KernelK::inv); };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
+
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -165,12 +160,10 @@ impl KernelK {
                     KernelObjId::PageTable(pagetable_ptr),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
 
                 final(self).iommu_table_map == old(self).iommu_table_map,
@@ -225,7 +218,7 @@ impl KernelK {
                     &&& old(self).pagetable_map.spec_index(pagetable_ptr).inv()
                 }) by {
                     reveal(pagetable_perms_wf);
-                    reveal(pagetables_inv);
+
                 };
             }
             self.pagetable_map.wunlock(
@@ -235,12 +228,10 @@ impl KernelK {
                 Ghost(KernelObjId::PageTable(pagetable_ptr)),
             );
             proof {
-                assert(self.pagetable_map.spec_index(pagetable_ptr).view()
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view()) by { reveal(wunlock_ensures); };
                 assert(self.subsystems_inv()) by {
                     assert(pagetable_perms_wf(self.pagetable_map)) by {
                         reveal(pagetable_perms_wf);
-                        reveal(pagetables_inv);
+
                     };
                     reveal(KernelK::default_pagetable_wf);
                 };
@@ -287,10 +278,9 @@ impl KernelK {
                     self.pagetable_map,
                     self.cpu_array,
                 )) by { reveal(tlb_wf_spec); };
-                assert(self.inv()) by { reveal(KernelK::inv); };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
+
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

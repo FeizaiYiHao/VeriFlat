@@ -3,13 +3,14 @@ use crate::*;
 use super::*;
 verus! {
 
+/// TODO kill all these
 pub open spec fn cpu_objects_unlocked(
     cpu_array: CpuLockedArray,
     thread_id: LockThreadId,
 ) -> bool {
     forall|cpu_i: CpuId|
-        #![trigger cpu_array.spec_index(cpu_i).view()]
-        cpu_id_valid(cpu_i)
+        #![trigger cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id), index_valid(NUM_CPUS, cpu_i)]
+        index_valid(NUM_CPUS, cpu_i)
         ==>
         cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id) == false
 }
@@ -18,11 +19,11 @@ pub open spec fn cpu_objects_unlocked(
 pub open spec fn cpu_objects_unlocked_except(
     cpu_array: CpuLockedArray,
     thread_id: LockThreadId,
-    exception: CpuId,
+    exceptions: Set<CpuId>,
 ) -> bool {
     forall|cpu_i: CpuId|
-        #![trigger cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id)]
-        cpu_id_valid(cpu_i) && cpu_i != exception
+        #![trigger cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id), index_valid(NUM_CPUS, cpu_i)]
+        index_valid(NUM_CPUS, cpu_i) && !exceptions.contains(cpu_i)
         ==> !cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id)
 }
 
@@ -31,8 +32,8 @@ pub open spec fn page_objects_unlocked(
     thread_id: LockThreadId,
 ) -> bool {
     forall|p_i: PageIndex|
-        #![trigger page_array.spec_index(p_i)]
-        page_index_valid(p_i)
+        #![trigger page_array.spec_index(p_i), index_valid(NUM_PAGES, p_i)]
+        index_valid(NUM_PAGES, p_i)
         ==>
         page_array.spec_index(p_i).view().locked_by_thread(thread_id) == false
 }
@@ -41,11 +42,11 @@ pub open spec fn page_objects_unlocked(
 pub open spec fn page_objects_unlocked_except(
     page_array: PageLockedArray,
     thread_id: LockThreadId,
-    exception: PageIndex,
+    exceptions: Set<PageIndex>,
 ) -> bool {
     forall|p_i: PageIndex|
-        #![trigger page_array.spec_index(p_i).view().locked_by_thread(thread_id)]
-        page_index_valid(p_i) && p_i != exception
+        #![trigger page_array.spec_index(p_i).view().locked_by_thread(thread_id), index_valid(NUM_PAGES, p_i)]
+        index_valid(NUM_PAGES, p_i) && !exceptions.contains(p_i)
         ==> !page_array.spec_index(p_i).view().locked_by_thread(thread_id)
 }
 
@@ -75,11 +76,11 @@ pub open spec fn process_objects_unlocked(
 pub open spec fn process_objects_unlocked_except(
     process_map: ProcessLockedMap,
     thread_id: LockThreadId,
-    exception: RwLockProcessPtr,
+    exceptions: Set<RwLockProcessPtr>,
 ) -> bool {
     forall|p_ptr: RwLockProcessPtr|
         #![trigger process_map.spec_index(p_ptr).locked_by_thread(thread_id)]
-        process_map.dom().contains(p_ptr) && p_ptr != exception
+        process_map.dom().contains(p_ptr) && !exceptions.contains(p_ptr)
         ==> !process_map.spec_index(p_ptr).locked_by_thread(thread_id)
 }
 
@@ -98,26 +99,11 @@ pub open spec fn thread_objects_unlocked(
 pub open spec fn thread_objects_unlocked_except(
     thread_map: ThreadLockedMap,
     thread_id: LockThreadId,
-    exception: RwLockThreadPtr,
+    exceptions: Set<RwLockThreadPtr>,
 ) -> bool {
     forall|t_ptr: RwLockThreadPtr|
         #![trigger thread_map.spec_index(t_ptr).locked_by_thread(thread_id)]
-        thread_map.dom().contains(t_ptr) && t_ptr != exception
-        ==> !thread_map.spec_index(t_ptr).locked_by_thread(thread_id)
-}
-
-#[verifier::opaque]
-pub open spec fn thread_objects_unlocked_except_two(
-    thread_map: ThreadLockedMap,
-    thread_id: LockThreadId,
-    exception1: RwLockThreadPtr,
-    exception2: RwLockThreadPtr,
-) -> bool {
-    forall|t_ptr: RwLockThreadPtr|
-        #![trigger thread_map.spec_index(t_ptr).locked_by_thread(thread_id)]
-        thread_map.dom().contains(t_ptr)
-            && t_ptr != exception1
-            && t_ptr != exception2
+        thread_map.dom().contains(t_ptr) && !exceptions.contains(t_ptr)
         ==> !thread_map.spec_index(t_ptr).locked_by_thread(thread_id)
 }
 
@@ -136,11 +122,11 @@ pub open spec fn endpoint_objects_unlocked(
 pub open spec fn endpoint_objects_unlocked_except(
     endpoint_map: EndpointLockedMap,
     thread_id: LockThreadId,
-    exception: RwLockEndpointPtr,
+    exceptions: Set<RwLockEndpointPtr>,
 ) -> bool {
     forall|e_ptr: RwLockEndpointPtr|
         #![trigger endpoint_map.spec_index(e_ptr).locked_by_thread(thread_id)]
-        endpoint_map.dom().contains(e_ptr) && e_ptr != exception
+        endpoint_map.dom().contains(e_ptr) && !exceptions.contains(e_ptr)
         ==> !endpoint_map.spec_index(e_ptr).locked_by_thread(thread_id)
 }
 
@@ -180,11 +166,11 @@ pub open spec fn scheduler_objects_unlocked(
 pub open spec fn scheduler_objects_unlocked_except(
     scheduler_map: SchedulerLockedMap,
     thread_id: LockThreadId,
-    exception: RwLockSchedulerPtr,
+    exceptions: Set<RwLockSchedulerPtr>,
 ) -> bool {
     forall|s_ptr: RwLockSchedulerPtr|
         #![trigger scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id)]
-        scheduler_map.dom().contains(s_ptr) && s_ptr != exception
+        scheduler_map.dom().contains(s_ptr) && !exceptions.contains(s_ptr)
         ==> !scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id)
 }
 
@@ -216,8 +202,8 @@ pub open spec fn allocator_objects_unlocked(
         alloc_map.spec_index(alloc_ptr).quota.locked_by_thread(thread_id) == false
     &&&
     forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
-        #![trigger alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i)]
-        alloc_map.dom().contains(alloc_ptr) && cpu_id_valid(cpu_i)
+        #![trigger alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
+        alloc_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i)
         ==>
         alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view()
             .locked_by_thread(thread_id) == false

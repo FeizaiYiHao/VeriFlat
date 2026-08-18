@@ -41,7 +41,7 @@ impl CpuTLB{
     }
     pub open spec fn spec_index(&self, index: (CpuId, Pcid) ) -> SingleTLB
         recommends 
-            cpu_id_valid(index.0),
+            index_valid(NUM_CPUS, index.0),
             usize_in_range::<PCID_MAX>(index.1)
     {
         self.view().spec_index((index.0, index.1))
@@ -52,7 +52,7 @@ impl CpuTLB{
             #![auto]
             self.view().dom().contains((cpu_id, pcid))
             <==>
-            cpu_id_valid(cpu_id) && usize_in_range::<PCID_MAX>(pcid)
+            index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)
     }
     // pub open spec fn disjoint_cpu_has_no_tlb_entry(&self) -> bool{
     //     &&&
@@ -84,7 +84,7 @@ impl CpuTLB{
     // pub fn flush_tlb_4k(&mut self, cpu_id: CpuId, pcid:Pcid, va: VAddr)
     //     requires
     //         old(self).inv(),
-    //         cpu_id_valid(cpu_id),
+    //         index_valid(NUM_CPUS, cpu_id),
     //         usize_in_range::<PCID_MAX>(pcid),
     //         va_4k_valid(va),
     //     ensures

@@ -5,7 +5,7 @@ verus! {
 
 // ===== Trusted set/thread-fold + staged-pages axioms (TCB) =====
 // Moved out of kernel/spec_util.rs (which holds only spec fns).
-// Consumed by the kernel-preservation lemmas in lemma_u::kernel_preservation.
+// Consumed by the kernel-preservation lemmas in this module tree.
 
 // ============================================================
 //   Trusted axioms: narrow set-fold facts

@@ -224,7 +224,7 @@ impl KernelK {
             reveal(thread_perms_wf);
         };
         assert(
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && self.page_array.inv()
             && self.page_array.spec_index(page_index).view().is_init()
             && self.page_array.spec_index(page_index).view().inv()

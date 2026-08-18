@@ -27,7 +27,7 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_eq(
                 == old_thread_map.spec_index(t_ptr).view().temp_alloc_cache_4k,
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state is Owned4k)
                 || (new_page_array.spec_index(p_i).view().view().state is Owned4k))
             ==> new_page_array.spec_index(p_i).view().view().state
@@ -54,7 +54,7 @@ pub proof fn thread_staged_pages_2m_wf_preserved_for_eq(
             ==> new_thread_map.spec_index(t_ptr).view().temp_alloc_cache_2m == old_thread_map.spec_index(t_ptr).view().temp_alloc_cache_2m,
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state is Owned2m)
                 || (new_page_array.spec_index(p_i).view().view().state is Owned2m))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -80,7 +80,7 @@ pub proof fn thread_staged_pages_1g_wf_preserved_for_eq(
             ==> new_thread_map.spec_index(t_ptr).view().temp_alloc_cache_1g == old_thread_map.spec_index(t_ptr).view().temp_alloc_cache_1g,
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state is Owned1g)
                 || (new_page_array.spec_index(p_i).view().view().state is Owned1g))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,

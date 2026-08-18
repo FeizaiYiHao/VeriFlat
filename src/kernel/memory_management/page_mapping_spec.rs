@@ -14,30 +14,36 @@ verus! {
     pub open spec fn mapped_4k_page_pagetable_wf(pagetable_map: PageTableLockedMap, page_array: PageLockedArray
         ) -> bool {
         &&&
-        forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
-            #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
-            page_index_valid(p_i)
+        forall|p_i:PageIndex|
+            #![trigger page_array.spec_index(p_i)]
+            index_valid(NUM_PAGES, p_i)
             &&
             page_array.spec_index(p_i).view().view().state == PageState::Mapped4k
-            &&
-            page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
-            ==> 
-            pagetable_map.dom().contains(pt_ptr)
-            &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
-            &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i)
+            ==>
+            forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
+                #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
+                #![trigger pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va)]
+                page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
+                ==>
+                pagetable_map.dom().contains(pt_ptr)
+                &&
+                pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
+                &&
+                pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i)
             
         &&&
-        forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
-            #![trigger pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)]
+        forall|pt_ptr:RwLockPageTableRoot|
+            #![trigger pagetable_map.dom().contains(pt_ptr)]
             pagetable_map.dom().contains(pt_ptr)
-            &&
-            pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
             ==>
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().state == PageState::Mapped4k
-            &&
-            page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+            forall|va: VAddr|
+                #![trigger pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)]
+                #![trigger pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va)]
+                pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va)
+                ==>
+                page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().state == PageState::Mapped4k
+                &&
+                page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
     }
 
     #[verifier::opaque]
@@ -46,7 +52,7 @@ verus! {
         &&&
         forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
             #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
-            page_index_valid(p_i)
+            index_valid(NUM_PAGES, p_i)
             &&
             page_array.spec_index(p_i).view().view().state == PageState::Mapped2m
             &&
@@ -76,7 +82,7 @@ verus! {
         &&&
         forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
             #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
-            page_index_valid(p_i)
+            index_valid(NUM_PAGES, p_i)
             &&
             page_array.spec_index(p_i).view().view().state == PageState::Mapped1g
             &&
@@ -108,7 +114,7 @@ verus! {
         &&&
         forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
             #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
-            page_index_valid(p_i)
+            index_valid(NUM_PAGES, p_i)
             &&
             page_array.spec_index(p_i).view().view().is_mapped()
             &&

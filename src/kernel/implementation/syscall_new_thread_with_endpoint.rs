@@ -20,7 +20,7 @@ impl KernelK {
         endpoint_index: EndpointIdx,
     ) -> (ret: RetValueType)
         requires
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             edp_idx_valid(endpoint_index),
             old(self).inv(),
             old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
@@ -63,13 +63,11 @@ impl KernelK {
             },
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
-            old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
             old(self).all_objects_unlocked(old(lctx)),
         ensures
             final(steps).steps.len() <= 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
-            final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
             final(lctx).stable_lock_id_set() =~= Set::<HeldLock>::empty(),
@@ -305,7 +303,7 @@ impl KernelK {
         scheduler_lock_perm: Tracked<LockPerm>,
     )
         requires
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             edp_idx_valid(endpoint_index),
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -389,10 +387,8 @@ impl KernelK {
                 old(self), old(lctx).thread_id(), Some(cpu_id),
                 Some(scheduler_ptr), Some(process_ptr),
                 Some(current_thread_ptr)),
-            old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
         ensures
-            final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
             final(lctx).stable_lock_id_set() =~= Set::<HeldLock>::empty(),
@@ -436,15 +432,17 @@ impl KernelK {
             assert(self.allocator_4k_map.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
             assert(
                 cpu_objects_unlocked_except(
-                    self.cpu_array, lctx.thread_id(), cpu_id)
+                    self.cpu_array, lctx.thread_id(), set![cpu_id])
                 && scheduler_objects_unlocked_except(
-                    self.scheduler_map, lctx.thread_id(), scheduler_ptr)
+                    self.scheduler_map, lctx.thread_id(), set![scheduler_ptr])
                 && process_objects_unlocked_except(
-                    self.process_map, lctx.thread_id(), process_ptr)
+                    self.process_map, lctx.thread_id(), set![process_ptr])
                 && thread_objects_unlocked_except(
-                    self.thread_map, lctx.thread_id(), current_thread_ptr)
+                    self.thread_map, lctx.thread_id(), set![current_thread_ptr])
                 && endpoint_objects_unlocked(
                     self.endpoint_map, lctx.thread_id())
+                && page_objects_unlocked(
+                    self.page_array, lctx.thread_id())
                 && allocator_objects_unlocked(
                     self.allocator_4k_map, lctx.thread_id())
             ) by {
@@ -460,28 +458,64 @@ impl KernelK {
         let page_index = page_ptr2page_index(page_ptr);
 
         proof {
-            assert(
-                page_objects_unlocked_except(
-                    self.page_array, lctx.thread_id(), page_index)
-                && cpu_objects_unlocked_except(
-                    self.cpu_array, lctx.thread_id(), cpu_id)
-                && scheduler_objects_unlocked_except(
-                    self.scheduler_map, lctx.thread_id(), scheduler_ptr)
-                && process_objects_unlocked_except(
-                    self.process_map, lctx.thread_id(), process_ptr)
-                && thread_objects_unlocked_except(
-                    self.thread_map, lctx.thread_id(), current_thread_ptr)
-                && endpoint_objects_unlocked(
-                    self.endpoint_map, lctx.thread_id())
-                && container_objects_unlocked(
-                    self.container_map, lctx.thread_id())
-            ) by {
+            assert(cpu_objects_unlocked_except(
+                self.cpu_array, lctx.thread_id(), set![cpu_id],
+            )) by {
                 reveal(new_thread_other_objects_unlocked);
-                reveal(page_objects_unlocked_except);
                 reveal(cpu_objects_unlocked_except);
+            };
+            assert(scheduler_objects_unlocked_except(
+                self.scheduler_map, lctx.thread_id(), set![scheduler_ptr],
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
                 reveal(scheduler_objects_unlocked_except);
+            };
+            assert(process_objects_unlocked_except(
+                self.process_map, lctx.thread_id(), set![process_ptr],
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
                 reveal(process_objects_unlocked_except);
+            };
+            assert(thread_objects_unlocked_except(
+                self.thread_map, lctx.thread_id(), set![current_thread_ptr],
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
                 reveal(thread_objects_unlocked_except);
+            };
+            assert(endpoint_objects_unlocked(
+                self.endpoint_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+            assert(container_objects_unlocked(
+                self.container_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+            assert(pagetable_objects_unlocked(
+                self.pagetable_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+            assert(iommu_table_objects_unlocked(
+                self.iommu_table_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+            assert(pcid_allocator_objects_unlocked(
+                self.pcid_allocator_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+            assert(allocator_objects_unlocked(
+                self.allocator_2m_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+            assert(allocator_objects_unlocked(
+                self.allocator_1g_map, lctx.thread_id(),
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
             };
             assert(lctx.lock_entry_contains_for(
                 scheduler_lock_perm.ordering_lock_id(),
@@ -503,14 +537,6 @@ impl KernelK {
             assert(page_ptr != current_thread_ptr) by {
                 reveal(thread_pages_wf);
             };
-            assert(lctx.lock_entry_fresh(LockId{
-                container: LockOwnerId::NotApp,
-                process: LockOwnerId::NotApp,
-                major: THREAD_LOCK_MAJOR,
-                minor: page_ptr,
-            }, KernelObjId::Thread(page_ptr), STABLE_LOCK_ID)) by {
-                broadcast use vstd::set::group_set_lemmas;
-            };
             assert(
                 self.thread_map.spec_index(current_thread_ptr).view()
                     .endpoint_descriptors.spec_index(endpoint_index)
@@ -519,7 +545,7 @@ impl KernelK {
             ) by { reveal(thread_endpoint_ref_counter_wf); };
             assert(lctx.lock_id_acyclic(
                 self.endpoint_map.lock_id_by_key(endpoint_ptr),
-            )) by { reveal(LocalContext::lock_id_acyclic); reveal(endpoint_perms_wf); reveal(page_array_wf); };
+            )) by { reveal(endpoint_perms_wf); reveal(page_array_wf); };
         }
         let Tracked(endpoint_lock_perm) = self.wlock_endpoint(
             endpoint_ptr, Tracked(&mut *lctx),
@@ -616,18 +642,19 @@ impl KernelK {
                 held => {}
             );
             assert(self.all_objects_unlocked(&*lctx)) by {
-                reveal(new_thread_other_objects_unlocked);
+                reveal(cpu_objects_unlocked_except);
+                reveal(process_objects_unlocked_except);
             };
             assert(kernel_u_new_thread_changed(
                 steps.snap_shot,
                 kernel_k_to_kernel_u(*self),
                 process_ptr,
-            )) by { reveal(kernel_k_to_kernel_u);
+            )) by {
                 assert_seqs_equal!(
                     kernel_k_to_kernel_u(*self).cpu_array
                         == steps.snap_shot.cpu_array,
                     i => {
-                        reveal(kernel_k_to_kernel_u);
+
                     }
                 );
             };
@@ -655,8 +682,8 @@ impl KernelK {
     )
         requires
             old(self).inv(),
-            cpu_id_valid(cpu_id),
-            page_index_wf(page_index),
+            index_valid(NUM_CPUS, cpu_id),
+            index_valid(NUM_PAGES, page_index),
             old(self).scheduler_map.dom().contains(scheduler_ptr),
             old(self).process_map.dom().contains(process_ptr),
             old(self).thread_map.dom().contains(current_thread_ptr),
@@ -708,13 +735,12 @@ impl KernelK {
                 (endpoint_lock_perm.ordering_lock_id(), KernelObjId::Endpoint(endpoint_ptr)),
                 (thread_lock_perm.ordering_lock_id(), KernelObjId::Thread(thread_ptr)),
             ],
-            old(self).locked_objects_match_lctx(old(lctx)),
             lock_id_aligned(old(self), old(lctx)),
-            thread_objects_unlocked_except_two(
+            thread_objects_unlocked_except(
                 old(self).thread_map, old(lctx).thread_id(),
-                current_thread_ptr, thread_ptr),
+                set![current_thread_ptr, thread_ptr]),
             endpoint_objects_unlocked_except(
-                old(self).endpoint_map, old(lctx).thread_id(), endpoint_ptr),
+                old(self).endpoint_map, old(lctx).thread_id(), set![endpoint_ptr]),
         ensures
             final(self).inv(),
             final(self).thread_map.spec_index(thread_ptr).view()
@@ -786,11 +812,10 @@ impl KernelK {
                 (process_lock_id.view(), KernelObjId::Process(process_ptr)),
                 (current_thread_lock_id.view(), KernelObjId::Thread(current_thread_ptr)),
             ],
-            final(self).locked_objects_match_lctx(final(lctx)),
             lock_id_aligned(final(self), final(lctx)),
             thread_objects_unlocked_except(
                 final(self).thread_map, final(lctx).thread_id(),
-                current_thread_ptr),
+                set![current_thread_ptr]),
             endpoint_objects_unlocked(
                 final(self).endpoint_map, final(lctx).thread_id()),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
@@ -802,7 +827,11 @@ impl KernelK {
                 &&& self.thread_map.spec_index(thread_ptr).view()
                     .endpoint_descriptors.wf()
                 &&& self.endpoint_map.spec_index(endpoint_ptr).inv()
-            }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+            }) by {
+                reveal(thread_perms_wf);
+                reveal(endpoint_perms_wf);
+                reveal(endpoints_inv);
+            };
             assert(!self.endpoint_map.spec_index(endpoint_ptr).view().owning_threads
                 .view().contains((thread_ptr, 0))) by { reveal(thread_endpoint_ref_counter_wf); };
         }
@@ -827,7 +856,7 @@ impl KernelK {
 
         proof {
             assert(self.subsystems_inv()) by {
-                assert(thread_perms_wf(self.thread_map)) by { reveal(thread_perms_wf); reveal(threads_inv); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
+                assert(thread_perms_wf(self.thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
                 assert(endpoint_perms_wf(self.endpoint_map)) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
                 reveal(KernelK::default_pagetable_wf);
             };
@@ -838,14 +867,55 @@ impl KernelK {
                 assert(container_process_allocator_quota_wf(self.container_map, self.process_map, self.thread_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { reveal(thread_quota_4k_fields_unchanged); reveal(thread_quota_2m_fields_unchanged); reveal(thread_quota_1g_fields_unchanged); container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields_forall(); container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields_forall(); container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields_forall(); };
             };
             assert(self.process_management_inv()) by {
-                assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by { reveal(container_endpoint_wf); };
-                assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { reveal(thread_endpoint_ref_counter_wf); };
+                reveal(KernelK::inv);
+                reveal(KernelK::process_management_inv);
+                assert(container_endpoint_wf(
+                    self.container_map, self.endpoint_map,
+                )) by {
+                    endpoint_reference_added_from_single_update(
+                        old(self).endpoint_map, self.endpoint_map,
+                        thread_ptr, endpoint_ptr);
+                    reveal(endpoint_reference_added);
+                    reveal(container_endpoint_wf);
+                };
+                assert(thread_endpoint_ref_counter_wf(
+                    self.thread_map, self.endpoint_map,
+                )) by {
+                    thread_endpoint_reference_added_from_single_update(
+                        old(self).thread_map, self.thread_map, thread_ptr, endpoint_ptr);
+                    endpoint_reference_added_from_single_update(
+                        old(self).endpoint_map, self.endpoint_map,
+                        thread_ptr, endpoint_ptr);
+                    reveal(thread_endpoint_reference_added);
+                    reveal(endpoint_reference_added);
+                    reveal(thread_endpoint_ref_counter_wf);
+                    broadcast use vstd::set::group_set_lemmas;
+                };
                 assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { reveal(thread_endpoint_queue_fields_unchanged); reveal(endpoint_queue_fields_unchanged); thread_endpoint_queue_wf_preserved_for_queue_fields(old(self).thread_map, self.thread_map, old(self).endpoint_map, self.endpoint_map); };
                 assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { reveal(endpoint_owning_container_fields_unchanged); thread_endpoint_reference_added_from_single_update(old(self).thread_map, self.thread_map, thread_ptr, endpoint_ptr); container_thread_endpoint_wf_preserved_on_reference_add(self.container_map, old(self).thread_map, self.thread_map, old(self).endpoint_map, self.endpoint_map, thread_ptr, endpoint_ptr); };
-                assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by { reveal(container_thread_scheduler_wf); };
+                assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by {
+                    thread_endpoint_reference_added_from_single_update(
+                        old(self).thread_map, self.thread_map, thread_ptr, endpoint_ptr);
+                    reveal(thread_endpoint_reference_added);
+                    reveal(container_thread_scheduler_wf);
+                };
                 assert(container_thread_wf(self.container_map, self.thread_map)) by { reveal(container_thread_wf); };
-                assert(process_thread_wf(self.process_map, self.thread_map)) by { reveal(process_thread_wf); };
-                assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by { reveal(thread_cpu_wf); };
+                assert(process_thread_wf(
+                    self.process_map, self.thread_map,
+                )) by {
+                    thread_endpoint_reference_added_from_single_update(
+                        old(self).thread_map, self.thread_map, thread_ptr, endpoint_ptr);
+                    reveal(thread_endpoint_reference_added);
+                    reveal(process_thread_wf);
+                };
+                assert(thread_cpu_wf(
+                    self.thread_map, self.cpu_array,
+                )) by {
+                    thread_endpoint_reference_added_from_single_update(
+                        old(self).thread_map, self.thread_map, thread_ptr, endpoint_ptr);
+                    reveal(thread_endpoint_reference_added);
+                    reveal(thread_cpu_wf);
+                };
             };
             assert(lock_id_aligned(self, &*lctx)) by {
                 reveal(lock_id_aligned);
@@ -866,21 +936,41 @@ impl KernelK {
                 (endpoint_lock_perm.ordering_lock_id(), KernelObjId::Endpoint(endpoint_ptr)),
                 (thread_lock_perm.ordering_lock_id(), KernelObjId::Thread(thread_ptr)),
             ], held => {});
+            assert(thread_objects_unlocked_except(
+                self.thread_map, lctx.thread_id(),
+                set![current_thread_ptr, thread_ptr],
+            )) by {
+                thread_endpoint_reference_added_from_single_update(
+                    old(self).thread_map, self.thread_map, thread_ptr, endpoint_ptr);
+                reveal(thread_endpoint_reference_added);
+                reveal(thread_objects_unlocked_except);
+                broadcast use vstd::set::group_set_lemmas;
+            };
+            assert(endpoint_objects_unlocked_except(
+                self.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
+            )) by {
+                endpoint_reference_added_from_single_update(
+                    old(self).endpoint_map, self.endpoint_map,
+                    thread_ptr, endpoint_ptr);
+                reveal(endpoint_reference_added);
+                reveal(endpoint_objects_unlocked_except);
+            };
         }
         self.wunlock_thread(
             thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm),
         );
         proof {
             assert(thread_objects_unlocked_except(
-                self.thread_map, lctx.thread_id(), current_thread_ptr,
+                self.thread_map, lctx.thread_id(), set![current_thread_ptr],
             )) by {
                 reveal(thread_objects_unlocked_except);
-                reveal(thread_objects_unlocked_except_two);
+                broadcast use vstd::set::group_set_lemmas;
             };
             assert(endpoint_objects_unlocked_except(
-                self.endpoint_map, lctx.thread_id(), endpoint_ptr,
+                self.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
             )) by {
                 reveal(endpoint_objects_unlocked_except);
+                broadcast use vstd::set::group_set_lemmas;
             };
             broadcast use vstd::set::group_set_lemmas;
             assert_sets_equal!(lctx.lock_id_set() == set![

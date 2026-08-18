@@ -10,7 +10,7 @@ verus! {
             forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index)]
             #![trigger thread_map.dom().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             ==>
             {
                 page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsThread}

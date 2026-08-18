@@ -10,17 +10,17 @@ impl KernelK {
         ) -> (ret: Tracked<LockPerm>)
             requires
                 old(self).inv(),
-                cpu_id_valid(cpu_id),
+                index_valid(NUM_CPUS, cpu_id),
                 old(lctx).kernel_view_locking_state() is Acquire,
+                !old(self).cpu_array.spec_index(cpu_id).view()
+                    .locked_by_thread(old(lctx).thread_id()),
                 old(lctx).lock_id_acyclic(old(self).cpu_array.lock_id_by_index(cpu_id)),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 // ---- Every held lock still matches lctx (cpu now locked) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -49,7 +49,7 @@ impl KernelK {
                 final(self).cpu_array.inv(),
                 cpu_objects_unlocked(old(self).cpu_array, old(lctx).thread_id())
                     ==> cpu_objects_unlocked_except(
-                        final(self).cpu_array, final(lctx).thread_id(), cpu_id),
+                        final(self).cpu_array, final(lctx).thread_id(), set![cpu_id]),
 
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
@@ -75,29 +75,14 @@ impl KernelK {
                 assert(old(self).cpu_array.inv()) by {
                     reveal(cpu_array_wf);
                 };
-                assert({
-                    &&& old(lctx).lock_entry_fresh(
-                        old(self).cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id),
-                        MUTABLE_LOCK_ID,
-                    )
-                    &&& old(lctx).lock_entry_contains_for(
-                        old(self).cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id),
-                        MUTABLE_LOCK_ID,
-                    ) == old(self).cpu_array.spec_index(cpu_id).view()
-                        .wlocked_by_thread(old(lctx).thread_id())
-                }) by {
-                    reveal(lock_id_aligned);
-                };
             }
             let ret = self.cpu_array.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
             proof {
-                assert(self.inv()) by {
                     assert(cpu_array_wf(
                         self.cpu_array,
                         self.default_pagetable.view(),
                     )) by {
+
                         reveal(cpu_array_wf);
                     };
                     assert(self.subsystems_inv()) by {
@@ -108,7 +93,7 @@ impl KernelK {
                             self.container_map,
                             self.cpu_array,
                         )) by {
-                            reveal(LockedArray::payloads_unchanged);
+
                             reveal(container_perms_wf);
                             reveal(container_cpu_wf);
                         };
@@ -116,14 +101,14 @@ impl KernelK {
                             self.process_map,
                             self.cpu_array,
                         )) by {
-                            reveal(LockedArray::payloads_unchanged);
+
                             reveal(process_cpu_wf);
                         };
                         assert(thread_cpu_wf(
                             self.thread_map,
                             self.cpu_array,
                         )) by {
-                            reveal(LockedArray::payloads_unchanged);
+
                             reveal(thread_cpu_wf);
                         };
                     };
@@ -134,7 +119,7 @@ impl KernelK {
                         self.cpu_tlb,
                         self.pagetable_map,
                     )) by {
-                        reveal(LockedArray::payloads_unchanged);
+
                         reveal(cpu_dirty_map_contains_container_processes);
                         reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
                         reveal(cpu_dirty_map_proc_pcid_match);
@@ -146,23 +131,24 @@ impl KernelK {
                         self.pagetable_map,
                         self.cpu_array,
                     )) by {
-                        reveal(LockedArray::payloads_unchanged);
+
                         reveal(tlb_wf_spec);
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
+
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
+
                 };
                 assert(cpu_objects_unlocked(
                     old(self).cpu_array, old(lctx).thread_id(),
                 ) ==> cpu_objects_unlocked_except(
-                    self.cpu_array, lctx.thread_id(), cpu_id,
+                    self.cpu_array, lctx.thread_id(), set![cpu_id],
                 )) by {
+
                     reveal(cpu_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
             }
@@ -177,14 +163,13 @@ impl KernelK {
         )
             requires
                 old(self).inv(),
-                cpu_id_valid(cpu_id),
+                index_valid(NUM_CPUS, cpu_id),
                 old(self).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 old(self).cpu_array.spec_index(cpu_id).view().wlocked_by(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
                     == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -192,7 +177,6 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (cpu now released) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -228,7 +212,7 @@ impl KernelK {
                     final(self).cpu_array.spec_index(cpu_id).view(),
                 ),
                 cpu_objects_unlocked_except(
-                    old(self).cpu_array, old(lctx).thread_id(), cpu_id,
+                    old(self).cpu_array, old(lctx).thread_id(), set![cpu_id],
                 ) ==> cpu_objects_unlocked(
                     final(self).cpu_array, final(lctx).thread_id()),
 
@@ -267,11 +251,11 @@ impl KernelK {
             // (now unlocked); every payload view, every other slot, and every
             // other KernelK field is unchanged. Same template as wlock_cpu.
             proof {
-                assert(self.inv()) by {
                     assert(cpu_array_wf(
                         self.cpu_array,
                         self.default_pagetable.view(),
                     )) by {
+
                         reveal(cpu_array_wf);
                     };
                     assert(self.subsystems_inv()) by {
@@ -282,7 +266,7 @@ impl KernelK {
                             self.container_map,
                             self.cpu_array,
                         )) by {
-                            reveal(LockedArray::payloads_unchanged);
+
                             reveal(container_perms_wf);
                             reveal(container_cpu_wf);
                         };
@@ -290,14 +274,14 @@ impl KernelK {
                             self.process_map,
                             self.cpu_array,
                         )) by {
-                            reveal(LockedArray::payloads_unchanged);
+
                             reveal(process_cpu_wf);
                         };
                         assert(thread_cpu_wf(
                             self.thread_map,
                             self.cpu_array,
                         )) by {
-                            reveal(LockedArray::payloads_unchanged);
+
                             reveal(thread_cpu_wf);
                         };
                     };
@@ -308,7 +292,7 @@ impl KernelK {
                         self.cpu_tlb,
                         self.pagetable_map,
                     )) by {
-                        reveal(LockedArray::payloads_unchanged);
+
                         reveal(cpu_dirty_map_contains_container_processes);
                         reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
                         reveal(cpu_dirty_map_proc_pcid_match);
@@ -320,23 +304,24 @@ impl KernelK {
                         self.pagetable_map,
                         self.cpu_array,
                     )) by {
-                        reveal(LockedArray::payloads_unchanged);
+
                         reveal(tlb_wf_spec);
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
+
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
+
                 };
                 assert(cpu_objects_unlocked_except(
-                    old(self).cpu_array, old(lctx).thread_id(), cpu_id,
+                    old(self).cpu_array, old(lctx).thread_id(), set![cpu_id],
                 ) ==> cpu_objects_unlocked(
                     self.cpu_array, lctx.thread_id(),
                 )) by {
+
                     reveal(cpu_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
             }

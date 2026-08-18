@@ -76,23 +76,6 @@ impl LocalContext {
             self.stable_lock_id_set().contains((lock_id, obj_id))
     }
 
-    /// Immutable-id objects are fresh when their exact pair is absent from the
-    /// stable ledger.  For a dynamic-id object, freshness is object-sensitive
-    /// across all ids in the dynamic ledger.
-    pub open spec fn lock_entry_fresh(
-        &self,
-        lock_id: LockId,
-        obj_id: KernelObjId,
-        lock_id_mutable: bool,
-    ) -> bool {
-        if lock_id_mutable {
-            !exists|held_lock_id: LockId|
-                self.lock_id_set().contains((held_lock_id, obj_id))
-        } else {
-            !self.stable_lock_id_set().contains((lock_id, obj_id))
-        }
-    }
-
     /// `lock_id` is strictly greater than every dynamic or stable id held.
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
         &&& forall|held: HeldLock|

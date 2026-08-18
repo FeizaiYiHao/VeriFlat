@@ -63,10 +63,6 @@ pub const PCID_ENABLE_MASK: usize = 0x8000_0000_0000_0000u64 as usize;
 
 pub const NUM_CPUS: usize = 32;
 
-pub open spec fn cpu_id_valid(cpu_id: CpuId) -> bool{
-    0 <= cpu_id < NUM_CPUS
-}
-
 pub open spec fn edp_idx_valid(edp_idx: EndpointIdx) -> bool{
     0 <= edp_idx < MAX_NUM_ENDPOINT_DESCRIPTORS
 }

@@ -136,11 +136,11 @@ verus! {
                     && post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata()
                     && post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed(),
             // cpu_array: per-slot payload `view()`.
-            forall|i: int|
-                #![trigger post.cpu_array.spec_index(i as usize).value.view()]
-                0 <= i < NUM_CPUS ==>
-                    post.cpu_array.spec_index(i as usize).value.view()
-                        == pre.cpu_array.spec_index(i as usize).value.view(),
+            forall|i: usize|
+                #![trigger post.cpu_array.spec_index(i).value.view()]
+                index_valid(NUM_CPUS, i) ==>
+                    post.cpu_array.spec_index(i).value.view()
+                        == pre.cpu_array.spec_index(i).value.view(),
         ensures
             kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
     {

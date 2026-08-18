@@ -120,7 +120,7 @@ impl KernelK {
             assert(self.pagetable_map.perms_wf()
                 && self.pagetable_map.spec_index(pagetable_ptr).is_init()) by {
                 reveal(pagetable_perms_wf);
-                reveal(pagetables_inv);
+
             };
         }
         let indices = va2index(va);

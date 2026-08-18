@@ -96,7 +96,7 @@ pub proof fn tlb_wf_spec_preserved_for_4k_mapping_insert(
     reveal(tlb_wf_spec);
     assert forall|cpu_id: CpuId, pcid: Pcid|
         #![trigger cpu_tlb.spec_index((cpu_id, pcid))]
-        cpu_id_valid(cpu_id)
+        index_valid(NUM_CPUS, cpu_id)
         && pcid_valid(pcid)
         && pcid != KERNEL_DEFAULT_PCID
         && cpu_tlb.spec_index((cpu_id, pcid)).is_empty() == false

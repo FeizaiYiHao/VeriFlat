@@ -15,6 +15,8 @@ verus! {
             container_perms.spec_index(c_ptr).view().owned_cpus.view().contains(cpu_i)
             ==>
             {
+                index_valid(NUM_CPUS, cpu_i)
+                &&
                 cpu_array.spec_index(cpu_i).view().view().owning_container == c_ptr
                 &&
                 cpu_array.spec_index(cpu_i).view().view().current_process is Some ==>
@@ -26,7 +28,7 @@ verus! {
         &&&
         forall|cpu_i:CpuId|
             #![trigger cpu_array.spec_index(cpu_i).view().view().owning_container]
-            cpu_id_valid(cpu_i)
+            index_valid(NUM_CPUS, cpu_i)
             ==>
             {
                 &&&

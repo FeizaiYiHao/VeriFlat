@@ -27,7 +27,7 @@ verus! {
             #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), page_ptr_valid(page_ptr)]
             #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             allocator_map.dom().contains(alloc_ptr) && 
-            cpu_id_valid(cpu_i) &&
+            index_valid(NUM_CPUS, cpu_i) &&
             allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
             ==>
             page_ptr_valid(page_ptr)  

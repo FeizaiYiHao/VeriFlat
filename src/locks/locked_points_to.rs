@@ -98,12 +98,6 @@ pub fn wlock<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }),
-        old(lctx).lock_entry_fresh(LockId{
-            container: old(perm).value().container_depth(),
-            process: old(perm).value().process_depth(),
-            major: old(perm).value().view().current_lock_major(),
-            minor: old(perm).lock_minor(),
-        }, obj_id.view(), LOCK_ID_MUTABLE),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
@@ -195,8 +189,6 @@ pub fn wlock_unless_killed<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 
         wlock_requires(old(perm).value(), old(lctx)),
         old(lctx).lock_id_acyclic(old(perm).lock_id()),
-        old(lctx).lock_entry_fresh(
-            old(perm).lock_id(), obj_id.view(), LOCK_ID_MUTABLE),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),

@@ -14,7 +14,7 @@ impl KernelK {
                 old(self).inv(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                cpu_id_valid(cache_cpu),
+                index_valid(NUM_CPUS, cache_cpu),
                 wlock_requires(
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .cpu_caches.spec_index(cache_cpu).view(),
@@ -27,7 +27,6 @@ impl KernelK {
                     major: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(),
                     minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor(),
                 }),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -35,11 +34,44 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (cache now locked) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
+                forall|thread_ptr: RwLockThreadPtr|
+                    #![trigger old(self).thread_map.spec_index(thread_ptr)
+                        .locked_by_thread(old(lctx).thread_id())]
+                    old(self).thread_map.dom().contains(thread_ptr)
+                        && old(self).thread_map.spec_index(thread_ptr)
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).thread_map.dom().contains(thread_ptr)
+                        && final(self).thread_map.spec_index(thread_ptr)
+                            .locked_by_thread(final(lctx).thread_id()),
+                forall|process_ptr: RwLockProcessPtr|
+                    #![trigger old(self).process_map.spec_index(process_ptr)
+                        .locked_by_thread(old(lctx).thread_id())]
+                    old(self).process_map.dom().contains(process_ptr)
+                        && old(self).process_map.spec_index(process_ptr)
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).process_map.dom().contains(process_ptr)
+                        && final(self).process_map.spec_index(process_ptr)
+                            .locked_by_thread(final(lctx).thread_id()),
+                forall|cpu_id: CpuId|
+                    #![trigger old(self).cpu_array.spec_index(cpu_id).view()
+                        .locked_by_thread(old(lctx).thread_id())]
+                    index_valid(NUM_CPUS, cpu_id)
+                        && old(self).cpu_array.spec_index(cpu_id).view()
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).cpu_array.spec_index(cpu_id).view()
+                        .locked_by_thread(final(lctx).thread_id()),
+                forall|page_index: PageIndex|
+                    #![trigger old(self).page_array.spec_index(page_index).view()
+                        .locked_by_thread(old(lctx).thread_id())]
+                    index_valid(NUM_PAGES, page_index)
+                        && old(self).page_array.spec_index(page_index).view()
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).page_array.spec_index(page_index).view()
+                        .locked_by_thread(final(lctx).thread_id()),
                 forall|page_index: PageIndex|
                     #![trigger old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))]
-                    page_index_wf(page_index)
+                    index_valid(NUM_PAGES, page_index)
                         && old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))
                     ==> final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx))
                         && final(self).page_array.spec_index(page_index).view().locked_by(final(lctx)),
@@ -99,6 +131,9 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches.spec_index(cache_cpu).view()
+                    .locked_by_thread(final(lctx).thread_id()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set(),
                 final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
                     (
@@ -122,7 +157,6 @@ impl KernelK {
             let ret = self.allocator_4k_map.wlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
             proof {
-                assert(self.inv()) by {
                     assert(allocator_perms_wf(
                         self.allocator_4k_map,
                     )) by {
@@ -218,7 +252,7 @@ impl KernelK {
                                 #![trigger self.allocator_4k_map.spec_index(a_ptr)
                                     .cpu_caches.spec_index(cpu_id).view().view()]
                                 self.allocator_4k_map.dom().contains(a_ptr)
-                                    && cpu_id_valid(cpu_id)
+                                    && index_valid(NUM_CPUS, cpu_id)
                             implies
                                 self.allocator_4k_map.spec_index(a_ptr).cpu_caches
                                     .spec_index(cpu_id).view().view()
@@ -235,11 +269,8 @@ impl KernelK {
                             lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
                         };
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -259,7 +290,7 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
-                cpu_id_valid(cache_cpu),
+                index_valid(NUM_CPUS, cache_cpu),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
@@ -277,7 +308,6 @@ impl KernelK {
                     ),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -285,11 +315,44 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (cache now released) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
+                forall|thread_ptr: RwLockThreadPtr|
+                    #![trigger old(self).thread_map.spec_index(thread_ptr)
+                        .locked_by_thread(old(lctx).thread_id())]
+                    old(self).thread_map.dom().contains(thread_ptr)
+                        && old(self).thread_map.spec_index(thread_ptr)
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).thread_map.dom().contains(thread_ptr)
+                        && final(self).thread_map.spec_index(thread_ptr)
+                            .locked_by_thread(final(lctx).thread_id()),
+                forall|process_ptr: RwLockProcessPtr|
+                    #![trigger old(self).process_map.spec_index(process_ptr)
+                        .locked_by_thread(old(lctx).thread_id())]
+                    old(self).process_map.dom().contains(process_ptr)
+                        && old(self).process_map.spec_index(process_ptr)
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).process_map.dom().contains(process_ptr)
+                        && final(self).process_map.spec_index(process_ptr)
+                            .locked_by_thread(final(lctx).thread_id()),
+                forall|cpu_id: CpuId|
+                    #![trigger old(self).cpu_array.spec_index(cpu_id).view()
+                        .locked_by_thread(old(lctx).thread_id())]
+                    index_valid(NUM_CPUS, cpu_id)
+                        && old(self).cpu_array.spec_index(cpu_id).view()
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).cpu_array.spec_index(cpu_id).view()
+                        .locked_by_thread(final(lctx).thread_id()),
+                forall|page_index: PageIndex|
+                    #![trigger old(self).page_array.spec_index(page_index).view()
+                        .locked_by_thread(old(lctx).thread_id())]
+                    index_valid(NUM_PAGES, page_index)
+                        && old(self).page_array.spec_index(page_index).view()
+                            .locked_by_thread(old(lctx).thread_id())
+                    ==> final(self).page_array.spec_index(page_index).view()
+                        .locked_by_thread(final(lctx).thread_id()),
                 forall|page_index: PageIndex|
                     #![trigger old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))]
-                    page_index_wf(page_index)
+                    index_valid(NUM_PAGES, page_index)
                         && old(self).page_array.spec_index(page_index).view().wlocked_by(old(lctx))
                     ==> final(self).page_array.spec_index(page_index).view().wlocked_by(final(lctx))
                         && final(self).page_array.spec_index(page_index).view().locked_by(final(lctx)),
@@ -381,7 +444,6 @@ impl KernelK {
             self.allocator_4k_map.wunlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
 
             proof {
-                assert(self.inv()) by {
                     assert(allocator_perms_wf(
                         self.allocator_4k_map,
                     )) by {
@@ -477,7 +539,7 @@ impl KernelK {
                                 #![trigger self.allocator_4k_map.spec_index(a_ptr)
                                     .cpu_caches.spec_index(cpu_id).view().view()]
                                 self.allocator_4k_map.dom().contains(a_ptr)
-                                    && cpu_id_valid(cpu_id)
+                                    && index_valid(NUM_CPUS, cpu_id)
                             implies
                                 self.allocator_4k_map.spec_index(a_ptr).cpu_caches
                                     .spec_index(cpu_id).view().view()
@@ -494,11 +556,8 @@ impl KernelK {
                             lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
                         };
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

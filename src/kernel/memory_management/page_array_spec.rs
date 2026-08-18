@@ -7,9 +7,9 @@ verus! {
         page_array.inv()
         &&&
         forall|p_i:PageIndex|
-            #![trigger page_index_wf(p_i)]
+            #![trigger index_valid(NUM_PAGES, p_i)]
             #![trigger page_array.spec_index(p_i).view().inv()]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             ==>
             page_array.spec_index(p_i).view().inv()
             && page_array.spec_index(p_i).view().view().addr == page_index2page_ptr(p_i)

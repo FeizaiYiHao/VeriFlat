@@ -24,22 +24,22 @@ verus! {
         ) -> bool{
             &&&
             forall|page_index:PageIndex|
-            #![trigger page_array.spec_index(page_index)]
-            #![trigger allocator_4k_map.dom().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
-            &&
-            (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator})
-            ==>
-            allocator_4k_map.dom().contains(page_index2page_ptr(page_index))
+                #![trigger page_array.spec_index(page_index)]
+                #![trigger allocator_4k_map.dom().contains(page_index2page_ptr(page_index))]
+                index_valid(NUM_PAGES, page_index)
+                &&
+                (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator})
+                ==>
+                allocator_4k_map.dom().contains(page_index2page_ptr(page_index))
             &&&
             forall|a_ptr:RwLockPageAllocatorPtr|
-            #![trigger page_array.spec_index(page_ptr2page_index(a_ptr))]
-            #![trigger allocator_4k_map.dom().contains(a_ptr)]
-            allocator_4k_map.dom().contains(a_ptr)
-            ==>
-            page_ptr_valid(a_ptr)
-            &&
-            page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator}
+                #![trigger page_array.spec_index(page_ptr2page_index(a_ptr))]
+                #![trigger allocator_4k_map.dom().contains(a_ptr)]
+                allocator_4k_map.dom().contains(a_ptr)
+                ==>
+                page_ptr_valid(a_ptr)
+                &&
+                page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator}
         }
 
     #[verifier::opaque]
@@ -51,7 +51,7 @@ verus! {
         forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index)]
         #![trigger allocator_2m_map.dom().contains(page_index2page_ptr(page_index))]
-        page_index_wf(page_index)
+        index_valid(NUM_PAGES, page_index)
         &&
         (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator})
         ==>
@@ -77,7 +77,7 @@ verus! {
         forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index)]
         #![trigger allocator_1g_map.dom().contains(page_index2page_ptr(page_index))]
-        page_index_wf(page_index)
+        index_valid(NUM_PAGES, page_index)
         &&
         (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator})
         ==>
@@ -172,7 +172,7 @@ verus! {
         &&&
         forall|p_i: PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().owning_container]
-            page_index_valid(p_i)
+            index_valid(NUM_PAGES, p_i)
             ==>
             container_map.dom().contains(page_array.spec_index(p_i).view().view().owning_container)
             &&
@@ -186,7 +186,7 @@ verus! {
     ) -> bool {
         &&& forall|page_index: PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
                 PageState::Free4k {
                     allocator_ptr: _,
@@ -231,8 +231,10 @@ verus! {
         page_array: PageLockedArray,
     ) -> bool {
         &&& forall|page_index: PageIndex|
-            #![trigger page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            #![trigger page_array.spec_index(page_index).view().view().state->Free4k_allocator_ptr]
+            #![trigger page_array.spec_index(page_index).view().view().state->Free4k_state->PreCpuCache_cpu_id]
+            #![trigger page_array.spec_index(page_index).view().view().free_list_node_storage.addr()]
+            index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
                 PageState::Free4k {
                     allocator_ptr: _,
@@ -244,7 +246,7 @@ verus! {
                 let cpu_id = page_array.spec_index(page_index).view().view().state
                     ->Free4k_state->PreCpuCache_cpu_id;
 
-                &&& cpu_id_valid(cpu_id)
+                &&& index_valid(NUM_CPUS, cpu_id)
                 &&& allocator_4k_map.dom().contains(allocator_ptr_4k)
                 &&& allocator_4k_map.spec_index(allocator_ptr_4k).owning_container
                     == page_array.spec_index(page_index).view().view().owning_container
@@ -262,10 +264,16 @@ verus! {
                     == page_index2page_ptr(page_index)
             }
         &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr|
-            #![trigger allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
-            #![trigger allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), page_ptr2page_index(page_ptr)]
+            // #![trigger
+            //     allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i),
+            //     page_ptr2page_index(page_ptr)]
+            #![trigger
+                page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state,
+                allocator_4k_map.spec_index(alloc_ptr),
+                index_valid(NUM_CPUS, cpu_i)
+                ]
             allocator_4k_map.dom().contains(alloc_ptr)
-            && cpu_id_valid(cpu_i)
+            && index_valid(NUM_CPUS, cpu_i)
             && allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i)
                 .view().view().view().contains(page_ptr)
             ==> page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
@@ -296,7 +304,7 @@ verus! {
     ) -> bool {
         &&& forall|page_index: PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
                 PageState::Free2m {
                     allocator_ptr: _,
@@ -341,7 +349,7 @@ verus! {
     ) -> bool {
         &&& forall|page_index: PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
                 PageState::Free2m {
                     allocator_ptr: _,
@@ -353,7 +361,7 @@ verus! {
                 let cpu_id = page_array.spec_index(page_index).view().view().state
                     ->Free2m_state->PreCpuCache_cpu_id;
 
-                &&& cpu_id_valid(cpu_id)
+                &&& index_valid(NUM_CPUS, cpu_id)
                 &&& allocator_2m_map.dom().contains(allocator_ptr_2m)
                 &&& allocator_2m_map.spec_index(allocator_ptr_2m).owning_container
                     == page_array.spec_index(page_index).view().view().owning_container
@@ -372,7 +380,7 @@ verus! {
         &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr|
             #![trigger allocator_2m_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             allocator_2m_map.dom().contains(alloc_ptr)
-            && cpu_id_valid(cpu_i)
+            && index_valid(NUM_CPUS, cpu_i)
             && allocator_2m_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i)
                 .view().view().view().contains(page_ptr)
             ==> page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
@@ -402,7 +410,7 @@ verus! {
     ) -> bool {
         &&& forall|page_index: PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
                 PageState::Free1g {
                     allocator_ptr: _,
@@ -447,7 +455,7 @@ verus! {
     ) -> bool {
         &&& forall|page_index: PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
                 PageState::Free1g {
                     allocator_ptr: _,
@@ -459,7 +467,7 @@ verus! {
                 let cpu_id = page_array.spec_index(page_index).view().view().state
                     ->Free1g_state->PreCpuCache_cpu_id;
 
-                &&& cpu_id_valid(cpu_id)
+                &&& index_valid(NUM_CPUS, cpu_id)
                 &&& allocator_1g_map.dom().contains(allocator_ptr_1g)
                 &&& allocator_1g_map.spec_index(allocator_ptr_1g).owning_container
                     == page_array.spec_index(page_index).view().view().owning_container
@@ -478,7 +486,7 @@ verus! {
         &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr|
             #![trigger allocator_1g_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             allocator_1g_map.dom().contains(alloc_ptr)
-            && cpu_id_valid(cpu_i)
+            && index_valid(NUM_CPUS, cpu_i)
             && allocator_1g_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i)
                 .view().view().view().contains(page_ptr)
             ==> page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state

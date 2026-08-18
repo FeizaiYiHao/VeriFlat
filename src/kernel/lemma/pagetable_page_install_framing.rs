@@ -22,7 +22,7 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
         post_pagetable_map.spec_index(pagetable_ptr).view().page_closure()
             == pre_pagetable_map.spec_index(pagetable_ptr).view().page_closure()
                 .insert(page_ptr),
-        post_page_array.unchanged_except(
+        post_page_array.entries_unchanged_except(
             &pre_page_array,
             page_ptr2page_index(page_ptr),
         ),
@@ -44,7 +44,7 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
         };
         assert forall|page_index: PageIndex|
             #![trigger post_pagetable_map.dom().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (post_page_array.spec_index(page_index).view().view().state matches
                 PageState::Allocated4k {
                     state: Allocated4KPageState::AsPageTableRoot,
@@ -61,7 +61,7 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
                 post_page_array.spec_index(page_index).view().view().state
                     ->Allocated4k_state->PageTable_pagetable_root)
                 .view().page_closure().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && (post_page_array.spec_index(page_index).view().view().state matches
                 PageState::Allocated4k {
                     state: Allocated4KPageState::PageTable { pagetable_root },
@@ -149,7 +149,7 @@ pub proof fn page_pagetable_wf_preserved_for_page_table_page_insert(
             == pre_pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
             == pre_pagetable_map.spec_index(pagetable_ptr).view().mapping_1g(),
-        post_page_array.unchanged_except(
+        post_page_array.entries_unchanged_except(
             &pre_page_array,
             page_ptr2page_index(page_ptr),
         ),
@@ -171,7 +171,7 @@ pub proof fn page_pagetable_wf_preserved_for_page_table_page_insert(
         assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
             #![trigger post_page_array.spec_index(page_index).view().view()
                 .mappings().contains((pt_ptr, va))]
-            page_index_valid(page_index)
+            index_valid(NUM_PAGES, page_index)
             && post_page_array.spec_index(page_index).view().view().state
                 == PageState::Mapped4k
             && post_page_array.spec_index(page_index).view().view().mappings()
@@ -214,7 +214,7 @@ pub proof fn page_pagetable_wf_preserved_for_page_table_page_insert(
         assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
             #![trigger post_page_array.spec_index(page_index).view().view()
                 .mappings().contains((pt_ptr, va))]
-            page_index_valid(page_index)
+            index_valid(NUM_PAGES, page_index)
             && post_page_array.spec_index(page_index).view().view().state
                 == PageState::Mapped2m
             && post_page_array.spec_index(page_index).view().view().mappings()
@@ -257,7 +257,7 @@ pub proof fn page_pagetable_wf_preserved_for_page_table_page_insert(
         assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
             #![trigger post_page_array.spec_index(page_index).view().view()
                 .mappings().contains((pt_ptr, va))]
-            page_index_valid(page_index)
+            index_valid(NUM_PAGES, page_index)
             && post_page_array.spec_index(page_index).view().view().state
                 == PageState::Mapped1g
             && post_page_array.spec_index(page_index).view().view().mappings()
@@ -327,7 +327,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_page_table_page_i
         post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
         post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr
             == pre_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr,
-        post_page_array.unchanged_except(
+        post_page_array.entries_unchanged_except(
             &pre_page_array,
             page_ptr2page_index(page_ptr),
         ),
@@ -361,7 +361,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_page_table_page_i
         assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
             #![trigger post_page_array.spec_index(page_index).view().view()
                 .mappings().contains((pt_ptr, va))]
-            page_index_valid(page_index)
+            index_valid(NUM_PAGES, page_index)
             && post_page_array.spec_index(page_index).view().view().is_mapped()
             && post_page_array.spec_index(page_index).view().view().mappings()
                 .contains((pt_ptr, va))
@@ -414,7 +414,7 @@ pub proof fn tlb_wf_spec_preserved_for_pagetable_mappings_unchanged(
         reveal(tlb_wf_spec);
         assert forall|cpu_id: CpuId, pcid: Pcid|
             #![trigger cpu_tlb.spec_index((cpu_id, pcid))]
-            cpu_id_valid(cpu_id)
+            index_valid(NUM_CPUS, cpu_id)
             && pcid_valid(pcid)
             && pcid != KERNEL_DEFAULT_PCID
             && !cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
@@ -454,7 +454,7 @@ pub proof fn iommu_table_pages_wf_preserved_for_non_iommu_page_change(
     requires
         iommu_table_pages_wf(iommu_table_map, pre_page_array),
         page_ptr_valid(page_ptr),
-        post_page_array.unchanged_except(
+        post_page_array.entries_unchanged_except(
             &pre_page_array,
             page_ptr2page_index(page_ptr),
         ),
@@ -500,7 +500,7 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_single_consume(
         post_thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
             == pre_thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k
                 .view().remove(page_ptr),
-        post_page_array.unchanged_except(
+        post_page_array.entries_unchanged_except(
             &pre_page_array,
             page_ptr2page_index(page_ptr),
         ),
@@ -518,7 +518,7 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_single_consume(
         };
         assert forall|page_index: PageIndex|
             #![trigger post_page_array.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && post_page_array.spec_index(page_index).view().view().state is Owned4k
         implies {
             let owner = post_page_array.spec_index(page_index).view().view().state

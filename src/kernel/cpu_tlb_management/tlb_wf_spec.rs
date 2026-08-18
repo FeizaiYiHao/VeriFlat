@@ -61,7 +61,7 @@ verus! {
         &&&
         forall|cpu_id:CpuId, pcid:Pcid|
             #![trigger cpu_tlb.spec_index((cpu_id, pcid))]
-            cpu_id_valid(cpu_id)
+            index_valid(NUM_CPUS, cpu_id)
             &&
             pcid_valid(pcid)
             &&

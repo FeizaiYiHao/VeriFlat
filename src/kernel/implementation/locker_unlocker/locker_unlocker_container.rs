@@ -14,7 +14,6 @@ impl KernelK {
                 !old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).container_map.lock_id_by_key(container_ptr)),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -22,7 +21,6 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (success: container locked; failure: no-op) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -97,7 +95,6 @@ impl KernelK {
                 Ghost(KernelObjId::Container(container_ptr)),
             );
             proof {
-                assert(self.inv()) by {
                     assert(container_perms_wf(self.container_map)) by {
                         reveal(container_perms_wf);
                         reveal(container_tree_fields_wf);
@@ -280,11 +277,9 @@ impl KernelK {
                         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
                         reveal(container_cpu_wf);
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
+
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -331,7 +326,6 @@ impl KernelK {
                     KernelObjId::Container(container_ptr),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -339,7 +333,6 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (container now released) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -415,7 +408,6 @@ impl KernelK {
             // other LockedMap entry, and every other KernelK field is
             // unchanged. Same proof template as wlock_container_unless_killed.
             proof {
-                assert(self.inv()) by {
                     assert(container_perms_wf(self.container_map)) by {
                         reveal(container_perms_wf);
                         reveal(container_tree_fields_wf);
@@ -598,11 +590,9 @@ impl KernelK {
                         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
                         reveal(container_cpu_wf);
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
+
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

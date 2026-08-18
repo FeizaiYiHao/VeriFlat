@@ -1,0 +1,335 @@
+use vstd::prelude::*;
+use crate::*;
+
+verus! {
+
+/// Quantified-fact form of the `container_process_allocator_quota_2m_wf`
+/// conservation transport across a process-map mutation that leaves every
+/// process's 2m effective quota intact (a 4k staging op does — it only touches
+/// `temp_alloc_cache_4k`). One invocation installs the fact for ALL
+/// `(container_map, thread_map, allocator_2m_map, old, new)`, so a caller need
+/// not spell out the per-container fold argument or wrap it in an `assert forall`
+/// — the SMT re-derives the target conjunct wherever the goal needs it. The
+/// thread-folds and allocator terms are byte-equal (only `process_map` moved), so
+/// only the process-fold is bridged, via `lemma_process_effective_quota_2m_fold_eq`.
+/// Multi-trigger on the source + target `container_process_allocator_quota_2m_wf`
+/// terms.
+pub proof fn container_process_allocator_quota_2m_wf_forall()
+    ensures
+        forall|
+            container_map: ContainerLockedMap,
+            thread_map: ThreadLockedMap,
+            allocator_2m_map: PageAllocatorUnLockedMap,
+            old_process_map: ProcessLockedMap,
+            new_process_map: ProcessLockedMap,
+        |
+            #![trigger container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map), container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map)]
+            (container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map)
+            && container_process_wf(container_map, old_process_map)
+            && forall|p: RwLockProcessPtr|
+                #![trigger process_effective_quota_2m(new_process_map.spec_index(p))]
+                old_process_map.dom().contains(p) ==>
+                    process_effective_quota_2m(new_process_map.spec_index(p)) == process_effective_quota_2m(old_process_map.spec_index(p)))
+            ==>
+            container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map),
+{
+    assert forall|
+        container_map: ContainerLockedMap,
+        thread_map: ThreadLockedMap,
+        allocator_2m_map: PageAllocatorUnLockedMap,
+        old_process_map: ProcessLockedMap,
+        new_process_map: ProcessLockedMap,
+    |  #![auto]
+        (container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map)
+        && container_process_wf(container_map, old_process_map)
+        && forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_2m(new_process_map.spec_index(p))]
+            old_process_map.dom().contains(p) ==>
+                process_effective_quota_2m(new_process_map.spec_index(p)) == process_effective_quota_2m(old_process_map.spec_index(p)))
+        implies
+        container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map)
+    by {
+        reveal(container_process_allocator_quota_2m_wf);
+        reveal(container_process_wf);
+        assert forall|c_ptr: RwLockContainerPtr|
+            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
+            container_map.dom().contains(c_ptr)
+        implies
+            container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(new_process_map.spec_index(p_ptr))})
+                + thread_effective_quota_2m_fold_sum(
+                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    thread_map,
+                )
+                + container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                + container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                + allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
+                == allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
+        by {
+            assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
+                reveal(container_process_wf);
+            };
+            lemma_process_effective_quota_2m_fold_eq(
+                container_map.spec_index(c_ptr).view().owned_processes.view(),
+                old_process_map, new_process_map);
+        };
+    };
+}
+
+/// 1g twin of `container_process_allocator_quota_2m_wf_forall` — identical shape,
+/// process-fold bridged via `lemma_process_effective_quota_1g_fold_eq`.
+pub proof fn container_process_allocator_quota_1g_wf_forall()
+    ensures
+        forall|
+            container_map: ContainerLockedMap,
+            thread_map: ThreadLockedMap,
+            allocator_1g_map: PageAllocatorUnLockedMap,
+            old_process_map: ProcessLockedMap,
+            new_process_map: ProcessLockedMap,
+        |
+            #![trigger container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map), container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map)]
+            (container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map)
+            && container_process_wf(container_map, old_process_map)
+            && forall|p: RwLockProcessPtr|
+                #![trigger process_effective_quota_1g(new_process_map.spec_index(p))]
+                old_process_map.dom().contains(p) ==>
+                    process_effective_quota_1g(new_process_map.spec_index(p)) == process_effective_quota_1g(old_process_map.spec_index(p)))
+            ==>
+            container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map),
+{
+    assert forall|
+        container_map: ContainerLockedMap,
+        thread_map: ThreadLockedMap,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+        old_process_map: ProcessLockedMap,
+        new_process_map: ProcessLockedMap,
+    |  #![auto]
+        (container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map)
+        && container_process_wf(container_map, old_process_map)
+        && forall|p: RwLockProcessPtr|
+            #![trigger process_effective_quota_1g(new_process_map.spec_index(p))]
+            old_process_map.dom().contains(p) ==>
+                process_effective_quota_1g(new_process_map.spec_index(p)) == process_effective_quota_1g(old_process_map.spec_index(p)))
+        implies
+        container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map)
+    by {
+        reveal(container_process_allocator_quota_1g_wf);
+        reveal(container_process_wf);
+        assert forall|c_ptr: RwLockContainerPtr|
+            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
+            container_map.dom().contains(c_ptr)
+        implies
+            container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(new_process_map.spec_index(p_ptr))})
+                + thread_effective_quota_1g_fold_sum(
+                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    thread_map,
+                )
+                + container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
+                + container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                + allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
+                == allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view()
+        by {
+            assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
+                reveal(container_process_wf);
+            };
+            lemma_process_effective_quota_1g_fold_eq(
+                container_map.spec_index(c_ptr).view().owned_processes.view(),
+                old_process_map, new_process_map);
+        };
+    };
+}
+
+/// Forall-wrapped `lemma_process_effective_quota_4k_fold_eq`, triggered on the
+/// `process_effective_quota_4k_fold_sum` terms so it fires directly off a
+/// revealed `container_process_allocator_quota_4k_wf`.
+pub proof fn lemma_process_effective_quota_4k_fold_sum_eq_forall()
+    ensures
+        forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|
+            #![trigger process_effective_quota_4k_fold_sum(s, post), process_effective_quota_4k_fold_sum(s, pre)]
+            (forall|p: RwLockProcessPtr|
+                #![trigger process_effective_quota_4k(pre.spec_index(p))]
+                s.contains(p) ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)))
+            ==>
+            process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre),
+{
+    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|  #![auto]
+        (forall|p: RwLockProcessPtr|  #![auto]
+            s.contains(p) ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)))
+    implies
+        process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre)
+    by {
+        lemma_process_effective_quota_4k_fold_eq(s, pre, post);
+    };
+}
+
+/// Forall-wrapped `lemma_process_effective_quota_4k_fold_change_by`, triggered on
+/// the `process_effective_quota_4k_fold_sum` terms so it fires directly off a
+/// revealed `container_process_allocator_quota_4k_wf`. `mod_p`/`x` are params
+/// (the delta `x` can only appear additively in the conclusion, so it cannot be
+/// trigger-bound).
+pub proof fn lemma_process_effective_quota_4k_fold_change_by_forall(mod_p: RwLockProcessPtr, x: int)
+    ensures
+        forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|
+            #![trigger process_effective_quota_4k_fold_sum(s, post), process_effective_quota_4k_fold_sum(s, pre)]
+            (s.contains(mod_p)
+            && process_effective_quota_4k(post.spec_index(mod_p)) == process_effective_quota_4k(pre.spec_index(mod_p)) + x
+            && forall|p: RwLockProcessPtr|
+                #![trigger process_effective_quota_4k(pre.spec_index(p))]
+                s.contains(p) && p != mod_p ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)))
+            ==>
+            process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre) + x,
+{
+    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|  #![auto]
+        (s.contains(mod_p)
+        && process_effective_quota_4k(post.spec_index(mod_p)) == process_effective_quota_4k(pre.spec_index(mod_p)) + x
+        && forall|p: RwLockProcessPtr|  #![auto]
+            s.contains(p) && p != mod_p ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)))
+    implies
+        process_effective_quota_4k_fold_sum(s, post) == process_effective_quota_4k_fold_sum(s, pre) + x
+    by {
+        lemma_process_effective_quota_4k_fold_change_by(s, pre, post, mod_p, x);
+    };
+}
+
+pub proof fn lemma_thread_effective_quota_4k_fold_sum_eq_forall()
+    ensures
+        forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap|
+            #![trigger thread_effective_quota_4k_fold_sum(s, post), thread_effective_quota_4k_fold_sum(s, pre)]
+            (forall|t: RwLockThreadPtr|
+                #![trigger thread_effective_quota_4k(pre.spec_index(t))]
+                s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t))
+                    == thread_effective_quota_4k(pre.spec_index(t)))
+            ==> thread_effective_quota_4k_fold_sum(s, post)
+                == thread_effective_quota_4k_fold_sum(s, pre),
+{
+    assert forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap| #![auto]
+        (forall|t: RwLockThreadPtr| #![auto]
+            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t))
+                == thread_effective_quota_4k(pre.spec_index(t)))
+        implies thread_effective_quota_4k_fold_sum(s, post)
+            == thread_effective_quota_4k_fold_sum(s, pre)
+    by {
+        lemma_thread_effective_quota_4k_fold_eq(s, pre, post);
+    };
+}
+
+pub proof fn lemma_thread_effective_quota_4k_fold_sum_eq(
+    s: Set<RwLockThreadPtr>,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        forall|t: RwLockThreadPtr|
+            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
+            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t))
+                == thread_effective_quota_4k(pre.spec_index(t)),
+    ensures
+        thread_effective_quota_4k_fold_sum(s, post)
+            == thread_effective_quota_4k_fold_sum(s, pre),
+{
+    lemma_thread_effective_quota_4k_fold_eq(s, pre, post);
+}
+
+pub proof fn lemma_thread_effective_quota_4k_fold_change_by_forall(
+    mod_t: RwLockThreadPtr,
+    x: int,
+)
+    ensures
+        forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap|
+            #![trigger thread_effective_quota_4k_fold_sum(s, post), thread_effective_quota_4k_fold_sum(s, pre)]
+            (s.contains(mod_t)
+            && thread_effective_quota_4k(post.spec_index(mod_t))
+                == thread_effective_quota_4k(pre.spec_index(mod_t)) + x
+            && forall|t: RwLockThreadPtr|
+                #![trigger thread_effective_quota_4k(pre.spec_index(t))]
+                s.contains(t) && t != mod_t ==> thread_effective_quota_4k(post.spec_index(t))
+                    == thread_effective_quota_4k(pre.spec_index(t)))
+            ==> thread_effective_quota_4k_fold_sum(s, post)
+                == thread_effective_quota_4k_fold_sum(s, pre) + x,
+{
+    assert forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap| #![auto]
+        (s.contains(mod_t)
+        && thread_effective_quota_4k(post.spec_index(mod_t))
+            == thread_effective_quota_4k(pre.spec_index(mod_t)) + x
+        && forall|t: RwLockThreadPtr| #![auto]
+            s.contains(t) && t != mod_t ==> thread_effective_quota_4k(post.spec_index(t))
+                == thread_effective_quota_4k(pre.spec_index(t)))
+        implies thread_effective_quota_4k_fold_sum(s, post)
+            == thread_effective_quota_4k_fold_sum(s, pre) + x
+    by {
+        lemma_thread_effective_quota_4k_fold_change_by(s, pre, post, mod_t, x);
+    };
+}
+
+/// Transport the two 4K pending-quota folds when every thread's pending
+/// counters are unchanged. This is a fold lemma: pointwise equality alone is
+/// intentionally not expanded at allocation callsites.
+pub proof fn lemma_thread_pending_4k_folds_eq_forall(
+    container_map: ContainerLockedMap,
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        container_thread_wf(container_map, pre),
+        post.dom() =~= pre.dom(),
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t)]
+            pre.dom().contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_4k
+                    == pre.spec_index(t).view().direct_free_quota_pending_4k
+                && post.spec_index(t).view().indirect_free_quota_pending_4k
+                    == pre.spec_index(t).view().indirect_free_quota_pending_4k,
+    ensures
+        forall|c_ptr: RwLockContainerPtr|
+            #![trigger container_map.dom().contains(c_ptr)]
+            container_map.dom().contains(c_ptr) ==> {
+                let direct = container_map.spec_index(c_ptr)
+                    .view_user_ghost().owned_threads.view();
+                let indirect = container_map.spec_index(c_ptr)
+                    .view_kernel_ghost().owned_indirect_threads.view();
+                let depth = container_map.spec_index(c_ptr)
+                    .view_rodata().view().depth as int;
+                &&& thread_direct_pending_4k_fold_sum(direct, post)
+                    == thread_direct_pending_4k_fold_sum(direct, pre)
+                &&& thread_indirect_pending_4k_fold_sum_at_depth(indirect, post, depth)
+                    == thread_indirect_pending_4k_fold_sum_at_depth(indirect, pre, depth)
+            },
+{
+    assert forall|c_ptr: RwLockContainerPtr|
+            #![trigger container_map.dom().contains(c_ptr)]
+            container_map.dom().contains(c_ptr) implies {
+                let direct = container_map.spec_index(c_ptr)
+                    .view_user_ghost().owned_threads.view();
+                let indirect = container_map.spec_index(c_ptr)
+                    .view_kernel_ghost().owned_indirect_threads.view();
+                let depth = container_map.spec_index(c_ptr)
+                    .view_rodata().view().depth as int;
+                &&& thread_direct_pending_4k_fold_sum(direct, post)
+                    == thread_direct_pending_4k_fold_sum(direct, pre)
+                &&& thread_indirect_pending_4k_fold_sum_at_depth(indirect, post, depth)
+                    == thread_indirect_pending_4k_fold_sum_at_depth(indirect, pre, depth)
+            }
+        by {
+            let direct = container_map.spec_index(c_ptr)
+                .view_user_ghost().owned_threads.view();
+            let indirect = container_map.spec_index(c_ptr)
+                .view_kernel_ghost().owned_indirect_threads.view();
+            let depth = container_map.spec_index(c_ptr)
+                .view_rodata().view().depth as int;
+            assert(direct.subset_of(pre.dom())) by {
+                reveal(container_thread_wf);
+            };
+            assert(indirect.subset_of(pre.dom())) by {
+                reveal(container_thread_wf);
+            };
+            lemma_thread_direct_pending_4k_fold_eq(direct, pre, post);
+            lemma_thread_indirect_pending_4k_fold_eq_at_depth(
+                indirect,
+                pre,
+                post,
+                depth,
+            );
+    };
+}
+
+}
+

@@ -10,13 +10,11 @@ verus! {
             forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index)]
             #![trigger endpoint_map.dom().contains(page_index2page_ptr(page_index))]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
+            &&
+            {page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsEndpoint}}
             ==>
-            {
-                page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsEndpoint}
-                ==>
-                endpoint_map.dom().contains(page_index2page_ptr(page_index))
-            }
+            endpoint_map.dom().contains(page_index2page_ptr(page_index))
 
             &&&
             forall|e_ptr:RwLockEndpointPtr|
