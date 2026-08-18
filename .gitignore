@@ -1,4 +1,5 @@
 .verus-log/*
+!.verus-log/verify-count
 .verus-solver-log/*
 
 # Added by cargo
