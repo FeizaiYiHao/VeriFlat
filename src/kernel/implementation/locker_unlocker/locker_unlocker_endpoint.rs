@@ -15,11 +15,9 @@ impl KernelK {
                     old(self).endpoint_map.spec_index(endpoint_ptr), old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).endpoint_map.lock_id_by_key(endpoint_ptr)),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(self).pagetable_map == old(self).pagetable_map,
                 final(self).iommu_table_map == old(self).iommu_table_map,
@@ -43,7 +41,7 @@ impl KernelK {
                 endpoint_objects_unlocked(
                     old(self).endpoint_map, old(lctx).thread_id(),
                 ) ==> endpoint_objects_unlocked_except(
-                    final(self).endpoint_map, final(lctx).thread_id(), endpoint_ptr),
+                    final(self).endpoint_map, final(lctx).thread_id(), set![endpoint_ptr]),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 wlock_ensures(
@@ -86,12 +84,12 @@ impl KernelK {
                 };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
+
                 };
                 assert(endpoint_objects_unlocked(
                     old(self).endpoint_map, old(lctx).thread_id(),
                 ) ==> endpoint_objects_unlocked_except(
-                    self.endpoint_map, lctx.thread_id(), endpoint_ptr,
+                    self.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
                 )) by {
                     reveal(endpoint_objects_unlocked_except);
                 };
@@ -121,11 +119,9 @@ impl KernelK {
                     KernelObjId::Endpoint(endpoint_ptr),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(self).pagetable_map == old(self).pagetable_map,
                 final(self).iommu_table_map == old(self).iommu_table_map,
@@ -156,7 +152,7 @@ impl KernelK {
                     final(self).endpoint_map.spec_index(endpoint_ptr),
                 ),
                 endpoint_objects_unlocked_except(
-                    old(self).endpoint_map, old(lctx).thread_id(), endpoint_ptr,
+                    old(self).endpoint_map, old(lctx).thread_id(), set![endpoint_ptr],
                 ) ==> endpoint_objects_unlocked(
                     final(self).endpoint_map, final(lctx).thread_id()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set(),
@@ -198,10 +194,10 @@ impl KernelK {
                 };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
+
                 };
                 assert(endpoint_objects_unlocked_except(
-                    old(self).endpoint_map, old(lctx).thread_id(), endpoint_ptr,
+                    old(self).endpoint_map, old(lctx).thread_id(), set![endpoint_ptr],
                 ) ==> endpoint_objects_unlocked(
                     self.endpoint_map, lctx.thread_id(),
                 )) by {

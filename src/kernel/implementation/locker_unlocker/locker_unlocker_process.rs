@@ -24,7 +24,6 @@ impl KernelK {
                 !old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).process_map.lock_id_by_key(process_ptr)),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -32,7 +31,6 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (success: process locked; failure: no-op) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -63,7 +61,7 @@ impl KernelK {
                 process_objects_unlocked(
                     old(self).process_map, old(lctx).thread_id(),
                 ) ==> process_objects_unlocked_except(
-                    final(self).process_map, final(lctx).thread_id(), process_ptr),
+                    final(self).process_map, final(lctx).thread_id(), set![process_ptr]),
                 process_objects_unlocked(
                     old(self).process_map, old(lctx).thread_id(),
                 ) && !ret.0 ==> process_objects_unlocked(
@@ -116,7 +114,6 @@ impl KernelK {
             );
 
             proof {
-                assert(self.inv()) by {
                     assert(process_perms_wf(self.process_map)) by {
                         reveal(process_perms_wf);
                     };
@@ -333,16 +330,14 @@ impl KernelK {
                     )) by {
                         lemma_no_change_imply_cpu_dirty_map_wf_forall();
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
+
                 };
                 assert(process_objects_unlocked(
                     old(self).process_map, old(lctx).thread_id(),
                 ) ==> process_objects_unlocked_except(
-                    self.process_map, lctx.thread_id(), process_ptr,
+                    self.process_map, lctx.thread_id(), set![process_ptr],
                 )) by {
                     reveal(process_objects_unlocked_except);
                 };
@@ -389,7 +384,6 @@ impl KernelK {
                     KernelObjId::Process(process_ptr),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -397,7 +391,6 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (process now released) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -433,7 +426,7 @@ impl KernelK {
                     final(self).process_map.spec_index(process_ptr),
                 ),
                 process_objects_unlocked_except(
-                    old(self).process_map, old(lctx).thread_id(), process_ptr,
+                    old(self).process_map, old(lctx).thread_id(), set![process_ptr],
                 ) ==> process_objects_unlocked(
                     final(self).process_map, final(lctx).thread_id()),
 
@@ -477,7 +470,6 @@ impl KernelK {
             // other KernelK field is byte-equal pre/post. Same template as
             // wlock_process_unless_killed.
             proof {
-                assert(self.inv()) by {
                     assert(process_perms_wf(self.process_map)) by {
                         reveal(process_perms_wf);
                     };
@@ -694,14 +686,12 @@ impl KernelK {
                     )) by {
                         lemma_no_change_imply_cpu_dirty_map_wf_forall();
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
+
                 };
                 assert(process_objects_unlocked_except(
-                    old(self).process_map, old(lctx).thread_id(), process_ptr,
+                    old(self).process_map, old(lctx).thread_id(), set![process_ptr],
                 ) ==> process_objects_unlocked(
                     self.process_map, lctx.thread_id(),
                 )) by {

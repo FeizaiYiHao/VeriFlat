@@ -8,6 +8,10 @@ use super::*;
 use crate::primitive::*;
 
 verus! {
+    pub open spec fn index_valid(range: usize, index: usize,) -> bool {
+        0 <= index < range
+    }
+
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const N: usize, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE: bool>{
         array: Array<RwLock<T, ROT, KGhostT, UGhostT, LOCK_ID_MUTABLE, HAS_KILL_STATE>, N>,
@@ -41,22 +45,25 @@ verus! {
                 lock_minor: index,
            }
         }
-        pub open spec fn unchanged_except(&self, old: &Self, index:usize) -> bool{
-            &&&
+
+        pub open spec fn entries_unchanged_except(&self, old: &Self, index: usize) -> bool {
             forall|i:usize|
                 #![trigger self.spec_index(i)]
-                0 <= i < N && i != index
+                #![trigger old.spec_index(i)]
+                index_valid(N, i) && i != index
                 ==>
-                self.spec_index(i) === old.spec_index(i)
+                self.spec_index(i) == old.spec_index(i)
         }
 
-        #[verifier::opaque]
-        pub open spec fn payloads_unchanged(&self, old: &Self) -> bool {
+        pub open spec fn unchanged_except(&self, old: &Self, index: usize) -> bool {
             forall|i: usize|
                 #![trigger self.spec_index(i)]
-                0 <= i < N ==>
-                    self.spec_index(i).view().view()
-                        == old.spec_index(i).view().view()
+                #![trigger old.spec_index(i)]
+                index_valid(N, i) ==> {
+                    &&& (i != index ==> self.spec_index(i) == old.spec_index(i))
+                    &&& self.spec_index(i).view().view()
+                            == old.spec_index(i).view().view()
+                }
         }
 
         /// Bridge between `spec_index(i).value` and `view()[i]`.
@@ -83,7 +90,7 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
-                final(self).unchanged_except(old(self), index),
+                final(self).entries_unchanged_except(old(self), index),
 
                 take_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
                 final(self).spec_index(index).view().wlocked_by(lctx),
@@ -107,7 +114,7 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
-                final(self).unchanged_except(old(self), index),
+                final(self).entries_unchanged_except(old(self), index),
 
                 put_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), v),
                 final(self).spec_index(index).view().wlocked_by(lctx),
@@ -145,7 +152,7 @@ verus! {
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
-                final(self).unchanged_except(old(self), index),
+                final(self).entries_unchanged_except(old(self), index),
 
                 // Lock state of the touched entry is preserved.
                 final(self).spec_index(index).view().is_init(),
@@ -186,14 +193,10 @@ verus! {
 
                 wlock_requires(old(self).spec_index(index).view(), old(lctx)),
                 old(lctx).lock_id_acyclic(old(self).lock_id_by_index(index)),
-                old(lctx).lock_entry_fresh(
-                    old(self).lock_id_by_index(index), obj_id.view(),
-                    LOCK_ID_MUTABLE),
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
-                final(self).payloads_unchanged(old(self)),
 
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
 
@@ -227,7 +230,6 @@ verus! {
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
                 final(self).unchanged_except(old(self), index),
-                final(self).payloads_unchanged(old(self)),
 
                 final(self).spec_index(index).view().locking_thread() is None,
                 final(self).lock_id_by_index(index) == old(self).lock_id_by_index(index),

@@ -11,7 +11,7 @@ pub open spec fn iommu_table_pages_wf(
     // A root-object page names an IOMMU table in the map.
     &&& forall|page_index: PageIndex|
         #![trigger iommu_table_map.dom().contains(page_index2page_ptr(page_index))]
-        page_index_wf(page_index)
+        index_valid(NUM_PAGES, page_index)
         && (page_array.spec_index(page_index).view().view().state matches
             PageState::Allocated4k {
                 state: Allocated4KPageState::AsIommuTableRoot,
@@ -27,7 +27,7 @@ pub open spec fn iommu_table_pages_wf(
             page_array.spec_index(page_index).view().view().state
                 ->IOMMUTable_iommu_table_root)
             .view().page_closure().contains(page_index2page_ptr(page_index))]
-        page_index_wf(page_index)
+        index_valid(NUM_PAGES, page_index)
         && (page_array.spec_index(page_index).view().view().state matches
             PageState::IOMMUTable { iommu_table_root })
         ==>

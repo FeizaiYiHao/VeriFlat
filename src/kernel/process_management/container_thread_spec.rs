@@ -9,8 +9,8 @@ verus! {
             thread_map: ThreadLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|
-            // #![trigger container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t_ptr)]
-            #![trigger container_map.spec_index(c_ptr), thread_map.spec_index(t_ptr)]
+            #![trigger container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t_ptr)]
+            // #![trigger container_map.spec_index(c_ptr), thread_map.spec_index(t_ptr)]
             container_map.dom().contains(c_ptr) && container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t_ptr)
             ==>
             thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().owning_container == c_ptr

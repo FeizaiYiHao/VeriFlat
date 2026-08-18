@@ -23,8 +23,8 @@ impl<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE
     pub open spec fn perms_wf(&self) -> bool {
         &&&
         forall|k:usize| 
-            #![trigger self.view().spec_index(k).is_init()]
-            #![trigger self.view().spec_index(k).addr()]
+            // #![trigger self.view().spec_index(k).is_init()]
+            // #![trigger self.view().spec_index(k).addr()]
             #![trigger self.view().dom().contains(k)]
             self.view().dom().contains(k)
             ==>
@@ -141,7 +141,10 @@ impl<T, ROT, KGhostT, UGhostT, const LOCK_ID_MUTABLE: bool, const HAS_KILL_STATE
 
             // Other entries unchanged.
             forall|k:usize|
-                #![auto]
+                #![trigger
+                    final(self).spec_index(k),
+                    old(self).spec_index(k)
+                ]
                 old(self).dom().contains(k) && k != key
                 ==>
                 final(self).spec_index(k) == old(self).spec_index(k),
@@ -256,12 +259,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 major: value.current_lock_major(),
                 minor: key,
             }),
-            old(lctx).lock_entry_fresh(LockId{
-                container: rodata.container_depth(),
-                process: rodata.process_depth(),
-                major: value.current_lock_major(),
-                minor: key,
-            }, obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             final(self).perms_wf(),
             // ---- domain grows by exactly `key`; every prior entry unchanged ----
@@ -373,12 +370,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }),
-            old(lctx).lock_entry_fresh(LockId{
-                container: old(self).spec_index(key).container_depth(),
-                process: old(self).spec_index(key).process_depth(),
-                major: old(self).spec_index(key).view().current_lock_major(),
-                minor: key,
-            }, obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -468,8 +459,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             old(lctx).kernel_view_locking_state() is Acquire,
 
             old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
-            old(lctx).lock_entry_fresh(
-                old(self).lock_id_by_key(key), obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),

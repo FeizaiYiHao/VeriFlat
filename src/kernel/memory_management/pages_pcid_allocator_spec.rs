@@ -11,7 +11,7 @@ pub open spec fn pcid_allocator_pages_wf(
     // Page -> PCID allocator.
     &&& forall|page_index: PageIndex|
         #![trigger page_array.spec_index(page_index).view().view().state]
-        page_index_wf(page_index)
+        index_valid(NUM_PAGES, page_index)
         && (page_array.spec_index(page_index).view().view().state
             matches PageState::Allocated2m {
                 state: Allocated2MPageState::AsPcidAllocator,

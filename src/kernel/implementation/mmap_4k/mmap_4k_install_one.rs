@@ -189,7 +189,7 @@ impl KernelK {
         proof {
             assert(page_objects_unlocked_except(
                 self.page_array, lctx.thread_id(),
-                page_ptr2page_index(page_ptr),
+                set![page_ptr2page_index(page_ptr)],
             )) by {
                 reveal(page_objects_unlocked_except);
             };
@@ -217,15 +217,6 @@ impl KernelK {
                 reveal(lock_id_aligned);
             };
             self.kernel_step_boundary(&mut *lctx, &mut *steps);
-            assert(
-                page_objects_unlocked(self.page_array, lctx.thread_id())
-                && mmap_4k_other_objects_unlocked(
-                    self, lctx.thread_id(), cpu_id, container_ptr,
-                    process_ptr, thread_ptr, pagetable_ptr,
-                )
-            ) by {
-                reveal(no_new_locks_by_thread);
-            };
             assert(self.allocator_4k_map.dom().contains(alloc_ptr_4k)) by {
                 reveal(container_allocator_wf);
             };

@@ -26,7 +26,7 @@ pub proof fn container_page_owner_wf_preserved_for_owning_container_eq(
             ==> new_container_map.spec_index(c_ptr).view().owned_pages == old_container_map.spec_index(c_ptr).view().owned_pages,
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().owning_container]
-            page_index_valid(p_i)
+            index_valid(NUM_PAGES, p_i)
             ==> new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container,
     ensures
         container_page_owner_wf(new_container_map, new_page_array),

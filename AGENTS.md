@@ -36,9 +36,12 @@ this file or live code, this file and live code win.
       && id is that object's current dynamic lock id
   ```
 
-- Acquisition checks object freshness and inserts exactly `(current_id, obj)`.
-  Unlock removes exactly `(current_id, obj)`.  A dynamic-id change replaces the
-  old pair with the new pair during Release.
+- Acquisition requires directly that the target is not already locked by the
+  current thread and inserts exactly `(current_id, obj)`. Unlock removes exactly
+  `(current_id, obj)`. A dynamic-id change replaces the old pair with the new
+  pair during Release. Do not reintroduce a separate lock-entry freshness
+  predicate; acyclicity already excludes the exact pair, while real target lock
+  state is the operation's actual local precondition.
 - `LocalContext` has no separate `wf()` predicate.  Its only ghost state is the
   thread id, phase, and held-lock ledger; consistency with kernel lock state is
   expressed exclusively by `lock_id_aligned` at the kernel layer.
@@ -92,6 +95,16 @@ this file or live code, this file and live code win.
 
 - Prefer direct, explicit facts over chains such as
   `map key -> id set -> major bound -> fresh`.
+- Prove local operation facts from direct preconditions, operation
+  postconditions, or the invariant leaf that states that fact.  Do not run a
+  global relation backwards to rediscover local state—for example, do not use
+  `lock_id_aligned` or held-set membership to infer that a known object is
+  `locked_by_thread` when the lock operation can state that fact directly.
+- Proofs should remain structurally simple even when the property being proved
+  is difficult.  If a local obligation needs a long chain through unrelated
+  maps, ownership relations, lock ledgers, or wrapper invariants, treat that as
+  a missing direct invariant conjunct or lower-level postcondition and improve
+  the producer instead of preserving the indirect proof.
 - Lower-level functions should expose frequently needed facts directly in
   postconditions: exact lock-set changes, target lock state, dynamic lock-id
   stability/change, and unchanged kernel fields.  Callers should not reopen

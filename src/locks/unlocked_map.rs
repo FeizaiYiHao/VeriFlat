@@ -24,8 +24,9 @@ impl<T> UnLockedMap<usize, T>{
     pub open spec fn perms_wf(&self) -> bool {
         &&&
         forall|k:usize| 
-            #![trigger self.view().spec_index(k).is_init()]
-            #![trigger self.view().spec_index(k).addr()]
+            // #![trigger self.view().spec_index(k).is_init()]
+            // #![trigger self.view().spec_index(k).addr()]
+            #![trigger self.view().dom().contains(k)]
             self.view().dom().contains(k)
             ==>
             { 
@@ -46,7 +47,8 @@ impl<T> UnLockedMap<usize, T>{
         old.dom() == self.dom()
         &&&
         forall|k:usize|
-            #![auto]
+            #![trigger self.spec_index(k)]
+            #![trigger old.spec_index(k)]
             old.dom().contains(k) && k != key
             ==>
             self.spec_index(k) == old.spec_index(k)
@@ -70,10 +72,12 @@ impl<T> UnLockedMap<usize, T>{
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), key),
             *ret == old(self).spec_index(key),
             final(self).spec_index(key) == *final(ret),
             forall|k:usize|
-                #![auto]
+                #![trigger final(self).spec_index(k)]
+                #![trigger old(self).spec_index(k)]
                 old(self).dom().contains(k) && k != key
                 ==>
                 final(self).spec_index(k) == old(self).spec_index(k),
@@ -254,7 +258,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             lp.view().state() is WriteLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lp.view()),
             lp.view().state() is ReadLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().read_lock_perm_match(lp.view()),
             self.spec_index(alloc_ptr).cpu_caches.inv(),
@@ -271,7 +275,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
         requires
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             old(self).spec_index(alloc_ptr).cpu_caches.inv(),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
@@ -293,7 +297,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed(),
             // Other cache entries in this allocator unchanged.
-            final(self).spec_index(alloc_ptr).cpu_caches.unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
+            final(self).spec_index(alloc_ptr).cpu_caches.entries_unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
             // Other PageAllocator-side fields unchanged.
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
@@ -335,13 +339,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
             }),
-            old(lctx).lock_entry_fresh(LockId{
-                container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
-            }, KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
-                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -422,7 +419,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
             old(self).spec_index(alloc_ptr).wf(),
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             wlock_requires(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), old(lctx)),
             old(lctx).lock_id_acyclic(LockId{
                 container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
@@ -430,17 +427,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
             }),
-            old(lctx).lock_entry_fresh(LockId{
-                container: old(self).spec_index(alloc_ptr).cpu_caches
-                    .spec_index(cpu_id).container_depth(),
-                process: old(self).spec_index(alloc_ptr).cpu_caches
-                    .spec_index(cpu_id).process_depth(),
-                major: old(self).spec_index(alloc_ptr).cpu_caches
-                    .spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).cpu_caches
-                    .spec_index(cpu_id).lock_minor(),
-            }, KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
-                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -477,7 +463,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
             old(self).spec_index(alloc_ptr).wf(),
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(old(lctx)),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed() == false,
             lock_perm.view().state() is WriteLock,
@@ -527,16 +513,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
             }),
-            old(lctx).lock_entry_fresh(LockId{
-                container: old(self).spec_index(alloc_ptr).global_pool.view()
-                    .container_depth(),
-                process: old(self).spec_index(alloc_ptr).global_pool.view()
-                    .process_depth(),
-                major: old(self).spec_index(alloc_ptr).global_pool.view()
-                    .current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }, KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
-                STABLE_LOCK_ID),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -691,7 +667,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
             old(self)[alloc_ptr].wf(),
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             wlock_requires(old(self)[alloc_ptr].cpu_caches[cpu_id]@, old(lctx)),
             old(lctx).lock_id_acyclic(LockId{
                 container: old(self)[alloc_ptr].cpu_caches[cpu_id].container_depth(),
@@ -736,7 +712,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
             old(self)[alloc_ptr].wf(),
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             old(self)[alloc_ptr].cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
             old(self)[alloc_ptr].cpu_caches[cpu_id]@.being_killed() == false,
             lock_perm@.state() is WriteLock,

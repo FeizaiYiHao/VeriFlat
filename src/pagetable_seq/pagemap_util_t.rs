@@ -154,8 +154,10 @@ pub(super) fn page_map_set_published(
         final(page_map_perm).value().wf(),
         forall|i: usize|
             #![trigger
+                old(page_map_perm).value().spec_index(i),
+            ]
+            #![trigger
                 final(page_map_perm).value().spec_index(i),
-                old(page_map_perm).value().spec_index(i)
             ]
             pei_valid(i) && i != index
             ==> final(page_map_perm).value().spec_index(i)
@@ -273,21 +275,21 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
         ret.view().len() == NUM_CPUS,
         forall|cpu_id: CpuId|
             #![trigger ret.view().spec_index(cpu_id as int)]
-            0 <= cpu_id < NUM_CPUS ==> !(ret.view().spec_index(cpu_id as int).contains_key(va.view())),
+            index_valid(NUM_CPUS, cpu_id) ==> !(ret.view().spec_index(cpu_id as int).contains_key(va.view())),
         forall|cpu_id: CpuId|
             #![trigger ret.view().spec_index(cpu_id as int)]
             #![trigger tlbmap_4k.view().spec_index(cpu_id as int)]
-            0 <= cpu_id < NUM_CPUS ==> ret.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)),
+            index_valid(NUM_CPUS, cpu_id) ==> ret.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)),
 {
     let mut cpu_id = 0;
     let mut ret_map = tlbmap_4k;
 
     assert(forall|cpu_id: CpuId|
-        #![auto]
-        0 <= cpu_id < NUM_CPUS ==> ret_map.view().spec_index(cpu_id as int) =~= tlbmap_4k.view().spec_index(cpu_id as int));
+        #![trigger ret_map.view().spec_index(cpu_id as int)]
+        index_valid(NUM_CPUS, cpu_id) ==> ret_map.view().spec_index(cpu_id as int) =~= tlbmap_4k.view().spec_index(cpu_id as int));
     assert(forall|cpu_id: CpuId|
-        #![auto]
-        0 <= cpu_id < NUM_CPUS ==> ret_map.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
+        #![trigger ret_map.view().spec_index(cpu_id as int)]
+        index_valid(NUM_CPUS, cpu_id) ==> ret_map.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
 
     // #[verifier::loop_isolation(false)]
     for cpu_id in 0..NUM_CPUS
@@ -299,8 +301,8 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
                 #![auto]
                 0 <= cpu_i < cpu_id ==> ret_map.view().spec_index(cpu_i as int).contains_key(va.view()) == false,
             forall|cpu_i: CpuId|
-                #![auto]
-                0 <= cpu_i < NUM_CPUS ==> ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)),
+                #![trigger ret_map.view().spec_index(cpu_i as int)]
+                index_valid(NUM_CPUS, cpu_i) ==> ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)),
     {
         proof {
             assert(cpu_id < ret_map.view().len());
@@ -318,7 +320,7 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
             *ret_map.borrow_mut() = tlbseq;
             // After update, ret_map@[cpu_id] = tlbmap, all others unchanged.
             assert(!ret_map.view().spec_index(cpu_id as int).contains_key(va.view()));
-            assert forall|cpu_i: CpuId| 0 <= cpu_i < NUM_CPUS implies
+            assert forall|cpu_i: CpuId| index_valid(NUM_CPUS, cpu_i) implies
                 #[trigger] ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)) by {
                 if cpu_i as int == cpu_id as int {
                     assert(ret_map.view().spec_index(cpu_i as int) == tlbmap);

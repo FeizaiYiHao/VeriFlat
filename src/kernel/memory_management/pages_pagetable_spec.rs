@@ -9,14 +9,14 @@ verus! {
             &&&
             forall|page_index:PageIndex|
                 #![trigger pagetable_map.dom().contains(page_index2page_ptr(page_index))]
-                page_index_wf(page_index) && (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsPageTableRoot})
+                index_valid(NUM_PAGES, page_index) && (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsPageTableRoot})
                     ==>
                     pagetable_map.dom().contains(page_index2page_ptr(page_index))
             &&&
             forall|page_index:PageIndex|
                 #![trigger pagetable_map.dom().contains(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root)]
                 #![trigger pagetable_map.spec_index(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root).view().page_closure().contains(page_index2page_ptr(page_index))]
-                page_index_wf(page_index) && (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::PageTable { pagetable_root }})
+                index_valid(NUM_PAGES, page_index) && (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::PageTable { pagetable_root }})
                     ==>
                     pagetable_map.dom().contains(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root)
                     &&

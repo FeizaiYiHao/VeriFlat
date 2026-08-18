@@ -94,33 +94,33 @@ pub proof fn lemma_cache_len_fold_change_one(
 
 /// Array-facing wrapper for `lemma_cache_len_fold_change_one`: takes the two
 /// `cpu_caches` arrays directly (not their `view()`), so the "unchanged
-/// elsewhere" hypothesis is `new_arr.unchanged_except(old_arr, j)` — the exact
+/// elsewhere" hypothesis is `new_arr.entries_unchanged_except(old_arr, j)` — the exact
 /// term `LockedArray::borrow_mut` delivers, no call-site `spec_index → view`
 /// bridge. The `spec_index → view()` congruence lives here, once.
 #[verifier::spinoff_prover]
 pub proof fn lemma_cache_len_fold_change_one_array(
     old_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, STABLE_LOCK_ID, NO_KILL_STATE>,
     new_arr: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, STABLE_LOCK_ID, NO_KILL_STATE>,
-    j: int,
+    j: usize,
 )
     requires
         old_arr.inv(),
         new_arr.inv(),
-        0 <= j < NUM_CPUS,
-        new_arr.unchanged_except(&old_arr, j as usize),
-        old_arr.spec_index(j as usize).view().view().linked_list.len()
-            == new_arr.spec_index(j as usize).view().view().linked_list.len() + 1,
+        index_valid(NUM_CPUS, j),
+        new_arr.entries_unchanged_except(&old_arr, j),
+        old_arr.spec_index(j).view().view().linked_list.len()
+            == new_arr.spec_index(j).view().view().linked_list.len() + 1,
     ensures
         old_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()})
             == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), (), STABLE_LOCK_ID, NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
 {
     assert forall|i: int| #![trigger old_arr.view().spec_index(i), new_arr.view().spec_index(i)]
-        0 <= i < old_arr.view().len() && i != j
+        0 <= i < old_arr.view().len() && i != j as int
         implies old_arr.view().spec_index(i).view().linked_list.len() == new_arr.view().spec_index(i).view().linked_list.len()
     by {
         assert(new_arr.spec_index(i as usize) === old_arr.spec_index(i as usize));
     };
-    lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j);
+    lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j as int);
 }
 
 /// The `total_free_pages_wf` fold is nonnegative — every summand is a

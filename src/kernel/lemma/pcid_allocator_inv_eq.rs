@@ -47,8 +47,10 @@ pub proof fn container_pcid_allocator_wf_preserved_for_fields_unchanged(
     ensures
         container_pcid_allocator_wf(post, pcid_allocator_map),
 {
-    reveal(container_pcid_allocator_fields_unchanged);
-    reveal(container_pcid_allocator_wf);
+    assert(container_pcid_allocator_wf(post, pcid_allocator_map)) by {
+        reveal(container_pcid_allocator_fields_unchanged);
+        reveal(container_pcid_allocator_wf);
+    };
 }
 
 pub proof fn process_pcid_allocator_wf_preserved_for_fields_unchanged(
@@ -63,8 +65,10 @@ pub proof fn process_pcid_allocator_wf_preserved_for_fields_unchanged(
     ensures
         process_pcid_allocator_wf(container_map, post, pcid_allocator_map),
 {
-    reveal(process_pcid_fields_unchanged);
-    reveal(process_pcid_allocator_wf);
+    assert(process_pcid_allocator_wf(container_map, post, pcid_allocator_map)) by {
+        reveal(process_pcid_fields_unchanged);
+        reveal(process_pcid_allocator_wf);
+    };
 }
 
 pub proof fn process_pcid_allocator_wf_preserved_for_container_fields_unchanged(
@@ -80,9 +84,11 @@ pub proof fn process_pcid_allocator_wf_preserved_for_container_fields_unchanged(
     ensures
         process_pcid_allocator_wf(post, process_map, pcid_allocator_map),
 {
-    reveal(container_pcid_allocator_fields_unchanged);
-    reveal(container_process_wf);
-    reveal(process_pcid_allocator_wf);
+    assert(process_pcid_allocator_wf(post, process_map, pcid_allocator_map)) by {
+        reveal(container_pcid_allocator_fields_unchanged);
+        reveal(container_process_wf);
+        reveal(process_pcid_allocator_wf);
+    };
 }
 
 pub proof fn lemma_no_change_imply_container_pcid_allocator_wf_forall()
@@ -177,19 +183,22 @@ pub proof fn lemma_no_change_imply_process_pcid_allocator_wf_forall()
     };
 }
 
-pub proof fn pcid_allocator_pages_wf_preserved_for_page_payloads_unchanged(
+pub proof fn pcid_allocator_pages_wf_preserved_for_page_lock_change(
     pre: PageLockedArray,
     post: PageLockedArray,
     pcid_allocator_map: PcidAllocatorLockedMap,
+    changed_page: PageIndex,
 )
     requires
         pcid_allocator_pages_wf(pre, pcid_allocator_map),
-        post.payloads_unchanged(&pre),
+        index_valid(NUM_PAGES, changed_page),
+        post.unchanged_except(&pre, changed_page),
     ensures
         pcid_allocator_pages_wf(post, pcid_allocator_map),
 {
-    reveal(LockedArray::payloads_unchanged);
-    reveal(pcid_allocator_pages_wf);
+    assert(pcid_allocator_pages_wf(post, pcid_allocator_map)) by {
+        reveal(pcid_allocator_pages_wf);
+    };
 }
 
 pub proof fn pcid_allocator_pages_wf_preserved_for_page_state_eq(
@@ -203,7 +212,7 @@ pub proof fn pcid_allocator_pages_wf_preserved_for_page_state_eq(
         post_pcid_allocator_map.dom() == pre_pcid_allocator_map.dom(),
         forall|page_index: PageIndex|
             #![trigger post.spec_index(page_index).view().view().state]
-            page_index_wf(page_index)
+            index_valid(NUM_PAGES, page_index)
             && {
                 ||| pre.spec_index(page_index).view().view().state
                     matches PageState::Allocated2m {
@@ -220,7 +229,9 @@ pub proof fn pcid_allocator_pages_wf_preserved_for_page_state_eq(
     ensures
         pcid_allocator_pages_wf(post, post_pcid_allocator_map),
 {
-    reveal(pcid_allocator_pages_wf);
+    assert(pcid_allocator_pages_wf(post, post_pcid_allocator_map)) by {
+        reveal(pcid_allocator_pages_wf);
+    };
 }
 
 }

@@ -62,7 +62,7 @@ verus! {
                 PageState::Free4k { state: FreePageAllocatorState::PreCpuCache { cpu_id }, .. }|
                 PageState::Free2m { state: FreePageAllocatorState::PreCpuCache { cpu_id }, .. }|
                 PageState::Free1g { state: FreePageAllocatorState::PreCpuCache { cpu_id }, .. } => {
-                    cpu_id_valid(cpu_id)
+                    index_valid(NUM_CPUS, cpu_id)
                 }
                 _ => true,
             }

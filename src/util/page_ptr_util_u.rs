@@ -3,6 +3,7 @@ verus! {
 
 use crate::define::*;
 use crate::lemma::lemma_t::*;
+use crate::locks::index_valid;
 
 /// Page Entry Index valid
 pub open spec fn pei_valid(index: usize) -> bool {
@@ -32,7 +33,7 @@ pub open spec fn spec_page_ptr2page_index(ptr: usize) -> usize
 
 pub open spec fn spec_page_index2page_ptr(i: usize) -> usize
     recommends
-        page_index_valid(i),
+        index_valid(NUM_PAGES, i),
 {
     (i * 4096) as usize
 }
@@ -50,7 +51,7 @@ pub fn page_ptr2page_index(ptr: usize) -> (ret: usize)
 #[verifier(when_used_as_spec(spec_page_index2page_ptr))]
 pub fn page_index2page_ptr(i: usize) -> (ret: usize)
     requires
-        0 <= i < NUM_PAGES,
+        index_valid(NUM_PAGES, i),
     ensures
         ret == spec_page_index2page_ptr(i),
 {
@@ -62,12 +63,12 @@ pub fn page_index2page_ptr(i: usize) -> (ret: usize)
 
 pub open spec fn page_index_2m_valid(i: usize) -> bool {
     &&& i % 512 == 0
-    &&& 0 <= i < NUM_PAGES
+    &&& index_valid(NUM_PAGES, i)
 }
 
 pub open spec fn page_index_1g_valid(i: usize) -> bool {
     &&& i % 262144 == 0
-    &&& 0 <= i < NUM_PAGES
+    &&& index_valid(NUM_PAGES, i)
 }
 
 pub open spec fn mem_valid(v: PAddr) -> bool {
@@ -77,10 +78,6 @@ pub open spec fn mem_valid(v: PAddr) -> bool {
 pub open spec fn page_ptr_valid(ptr: usize) -> bool {
     &&& ptr % 0x1000 == 0
     &&& ptr / 0x1000 < NUM_PAGES
-}
-
-pub open spec fn page_index_valid(index: usize) -> bool {
-    (0 <= index < NUM_PAGES)
 }
 
 pub open spec fn spec_page_index_truncate_2m(index: usize) -> usize {
@@ -334,8 +331,26 @@ pub proof fn page_ptr_valid_imply_page_index_valid()
         forall|pa: PagePtr|
             #![trigger page_ptr_valid(pa)]
             #![trigger page_ptr2page_index(pa)]
-            page_ptr_valid(pa) ==> page_index_valid(page_ptr2page_index(pa)),
+            page_ptr_valid(pa) ==> index_valid(NUM_PAGES, page_ptr2page_index(pa)),
 {
+}
+
+pub proof fn page_index_valid_imply_page_ptr_valid()
+    ensures
+        forall|i: usize|
+            #![trigger index_valid(NUM_PAGES, i)]
+            #![trigger page_index2page_ptr(i)]
+            index_valid(NUM_PAGES, i) ==> page_ptr_valid(page_index2page_ptr(i)),
+{
+    assert forall|i: usize| #[trigger] index_valid(NUM_PAGES, i)
+        implies page_ptr_valid(page_index2page_ptr(i)) by {
+        let ptr = (i * 4096) as usize;
+        assert(ptr == i * 4096);
+        assert(ptr % 4096 == 0) by (nonlinear_arith)
+            requires ptr == i * 4096;
+        assert(ptr / 4096 == i) by (nonlinear_arith)
+            requires ptr == i * 4096;
+    }
 }
 
 pub proof fn page_ptr_roundtrip()
@@ -355,11 +370,11 @@ pub proof fn page_ptr_roundtrip()
 pub proof fn page_index_roundtrip()
     ensures
         forall|i: usize|
-            #![trigger page_index_valid(i)]
+            #![trigger index_valid(NUM_PAGES, i)]
             #![trigger page_index2page_ptr(i)]
-            page_index_valid(i) ==> i == page_ptr2page_index(page_index2page_ptr(i)),
+            index_valid(NUM_PAGES, i) ==> i == page_ptr2page_index(page_index2page_ptr(i)),
 {
-    assert forall|i: usize| #[trigger] page_index_valid(i) implies i == page_ptr2page_index(page_index2page_ptr(i)) by {
+    assert forall|i: usize| #[trigger] index_valid(NUM_PAGES, i) implies i == page_ptr2page_index(page_index2page_ptr(i)) by {
         let p = (i * 4096usize) as usize;
         assert(p / 4096 == i) by (nonlinear_arith)
             requires p == i * 4096;
@@ -382,6 +397,25 @@ pub proof fn page_ptr2page_index_injective()
             requires pi % 4096 == 0, i == pi / 4096;
         assert(j * 4096 == pj) by (nonlinear_arith)
             requires pj % 4096 == 0, j == pj / 4096;
+    }
+}
+
+pub proof fn page_index2page_ptr_injective()
+    ensures
+        forall|i: usize, j: usize|
+            #![trigger page_index2page_ptr(i), page_index2page_ptr(j)]
+            index_valid(NUM_PAGES, i) && index_valid(NUM_PAGES, j) && i != j
+                ==> page_index2page_ptr(i) != page_index2page_ptr(j),
+{
+    assert forall|i: usize, j: usize|
+        index_valid(NUM_PAGES, i) && index_valid(NUM_PAGES, j) && i != j implies
+        #[trigger] page_index2page_ptr(i) != #[trigger] page_index2page_ptr(j) by {
+        let pi = (i * 4096usize) as usize;
+        let pj = (j * 4096usize) as usize;
+        assert(pi / 4096 == i) by (nonlinear_arith)
+            requires pi == i * 4096;
+        assert(pj / 4096 == j) by (nonlinear_arith)
+            requires pj == j * 4096;
     }
 }
 

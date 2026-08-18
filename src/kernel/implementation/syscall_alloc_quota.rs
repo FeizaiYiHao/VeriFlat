@@ -5,7 +5,7 @@ verus! {
     impl KernelK{
         pub fn syscall_alloc_quota_4k(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, alloc_amount: usize) -> (ret: RetValueType)
             requires
-                cpu_id_valid(cpu_id),
+                index_valid(NUM_CPUS, cpu_id),
                 old(self).inv(),
                 old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
                 old(lctx).kernel_view_locking_state() is Acquire,
@@ -14,13 +14,11 @@ verus! {
                 old(self).all_objects_unlocked(old(lctx)),
                 old(steps).steps.len() == 0,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(steps).steps.len() <= 1,
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
                 final(self).all_objects_unlocked(final(lctx)),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
                 final(lctx).stable_lock_id_set() =~= Set::<HeldLock>::empty(),
@@ -78,13 +76,12 @@ verus! {
             let container_ptr = cpu.owning_container;
             let container_res = self.wlock_container_unless_killed(container_ptr, Tracked(lctx));
             if let (false, _) = container_res{
-                proof {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                }
                 self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
+                    assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                        kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    };
                     steps.end_kernel_step(&*self, &*lctx);
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 }
                 return RetValueType::ErrorContainerKilled;
             }
@@ -112,30 +109,28 @@ verus! {
                 alloc_ptr_4k, Tracked(&quota_lock_perm),
             );
             if quota_ref.value < alloc_amount {
-                proof {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                }
                 self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 self.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 self.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 proof {
+                    assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                        kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    };
                     steps.end_kernel_step(&*self, &*lctx);
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 }
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
 
             let process_res = self.wlock_process_unless_killed(process_ptr, Tracked(lctx));
             if let (false, _) = process_res {
-                proof {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                }
                 self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 self.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 self.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 proof {
+                    assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                        kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    };
                     steps.end_kernel_step(&*self, &*lctx);
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
@@ -143,22 +138,23 @@ verus! {
             let process_ref: &Process = self.process_map.borrow(process_ptr, Tracked(&process_lock_perm));
             let process_quota_4k = process_ref.quota_4k;
             if alloc_amount > usize::MAX - process_quota_4k {
-                proof {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
-                }
                 self.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 self.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 self.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 self.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
                 proof {
+                    assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                        kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                    };
                     steps.end_kernel_step(&*self, &*lctx);
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 }
                 return RetValueType::ErrorProcessQuotaOverflow;
             }
 
             proof {
-                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by {
+                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+                };
             }
             self.commit_alloc_quota_4k(
                 Tracked(lctx),
@@ -193,7 +189,7 @@ verus! {
         )
             requires
                 old(self).inv(),
-                cpu_id_valid(cpu_id),
+                index_valid(NUM_CPUS, cpu_id),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
                 cpu_lock_perm.view().state() is WriteLock,
@@ -240,11 +236,9 @@ verus! {
                 old(self).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
                 alloc_amount <= usize::MAX - old(self).process_map.spec_index(process_ptr).view().quota_4k,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.view().value >= alloc_amount,
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(self).pagetable_map     == old(self).pagetable_map,
                 final(self).iommu_table_map     == old(self).iommu_table_map,
@@ -260,7 +254,7 @@ verus! {
                 final(self).allocator_2m_map  == old(self).allocator_2m_map,
                 final(self).allocator_1g_map  == old(self).allocator_1g_map,
                 final(self).default_pagetable == old(self).default_pagetable,
-                final(self).cpu_array.unchanged_except(&old(self).cpu_array, cpu_id),
+                final(self).cpu_array.entries_unchanged_except(&old(self).cpu_array, cpu_id),
                 final(self).cpu_array.spec_index(cpu_id).view().locking_thread() is None,
                 final(self).container_map.unchanged_except(&old(self).container_map, container_ptr),
                 final(self).container_map.spec_index(container_ptr).locking_thread() is None,
@@ -330,8 +324,14 @@ verus! {
             }
 
             proof {
-                assert(allocator_perms_wf(self.allocator_4k_map)) by { reveal(allocator_perms_wf); };
-                assert(process_perms_wf(self.process_map)) by { reveal(process_perms_wf); };
+                assert(
+                    allocator_perms_wf(self.allocator_4k_map)
+                    && self.allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+                    && process_perms_wf(self.process_map)
+                ) by {
+                    reveal(allocator_perms_wf);
+                    reveal(process_perms_wf);
+                };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
                     assert(allocator_pages_wf(self.page_array, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
@@ -341,11 +341,11 @@ verus! {
                         reveal(container_process_allocator_quota_4k_wf);
                         reveal(container_process_wf);
                         reveal(container_allocator_wf);
-                        crate::kernel::implementation::allocate_free_4k_page::lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, alloc_amount as int);
-                        crate::kernel::implementation::allocate_free_4k_page::lemma_process_effective_quota_4k_fold_sum_eq_forall();
+                        crate::kernel::lemma::allocator_quota_fold::lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, alloc_amount as int);
+                        crate::kernel::lemma::allocator_quota_fold::lemma_process_effective_quota_4k_fold_sum_eq_forall();
                     };
-                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map)) by { crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_2m_wf_forall(); };
-                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map)) by { crate::kernel::implementation::allocate_free_4k_page::container_process_allocator_quota_1g_wf_forall(); };
+                    assert(container_process_allocator_quota_2m_wf(self.container_map, self.process_map, self.thread_map, self.allocator_2m_map)) by { crate::kernel::lemma::allocator_quota_fold::container_process_allocator_quota_2m_wf_forall(); };
+                    assert(container_process_allocator_quota_1g_wf(self.container_map, self.process_map, self.thread_map, self.allocator_1g_map)) by { crate::kernel::lemma::allocator_quota_fold::container_process_allocator_quota_1g_wf_forall(); };
                     assert(container_allocator_wf(self.container_map, self.allocator_4k_map, self.allocator_2m_map, self.allocator_1g_map)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
                     assert(allocator_free_page_ptrs_wf(self.allocator_4k_map)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
                     assert(process_pagetable_match(self.process_map, self.pagetable_map)) by { lemma_no_change_imply_process_pagetable_match_forall(); };
@@ -365,11 +365,6 @@ verus! {
                 assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.iommu_root_table, self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
                 assert(lock_id_aligned(&*self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                };
-                assert(
-                    self.allocator_4k_map.spec_index(alloc_ptr_4k).wf()
-                ) by {
-                    reveal(allocator_perms_wf);
                 };
             }
             self.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
@@ -392,7 +387,6 @@ verus! {
                         process_ptr,
                         alloc_amount as int,
                     )) by {
-                        reveal(kernel_k_to_kernel_u);
                         assert_seqs_equal!(
                             kernel_k_to_kernel_u(*self).cpu_array
                                 == kernel_k_to_kernel_u(*old(self)).cpu_array

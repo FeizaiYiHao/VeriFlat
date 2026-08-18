@@ -7,7 +7,7 @@ verus! {
         &&&
         forall|cpu_i:CpuId|
             #![trigger cpu_array.spec_index(cpu_i).view().view().current_thread]
-            cpu_id_valid(cpu_i)
+            index_valid(NUM_CPUS, cpu_i)
             &&
             cpu_array.spec_index(cpu_i).view().view().state is Running
             ==>
@@ -33,7 +33,7 @@ verus! {
             ==>
             {
                 &&&
-                cpu_id_valid(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id)
+                index_valid(NUM_CPUS, thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id)
                 &&&
                 cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().state is Running
                 &&&

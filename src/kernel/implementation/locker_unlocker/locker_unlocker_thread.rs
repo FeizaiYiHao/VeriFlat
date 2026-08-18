@@ -15,11 +15,9 @@ impl KernelK {
                 !old(self).thread_map.spec_index(thread_ptr).wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).thread_map.lock_id_by_key(thread_ptr)),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
                 final(self).pagetable_map == old(self).pagetable_map,
                 final(self).iommu_table_map == old(self).iommu_table_map,
@@ -43,7 +41,7 @@ impl KernelK {
                 thread_objects_unlocked(
                     old(self).thread_map, old(lctx).thread_id(),
                 ) ==> thread_objects_unlocked_except(
-                    final(self).thread_map, final(lctx).thread_id(), thread_ptr),
+                    final(self).thread_map, final(lctx).thread_id(), set![thread_ptr]),
                 thread_objects_unlocked(
                     old(self).thread_map, old(lctx).thread_id(),
                 ) && !ret.0 ==> thread_objects_unlocked(
@@ -92,10 +90,9 @@ impl KernelK {
                 Ghost(KernelObjId::Thread(thread_ptr)),
             );
             proof {
-                assert(self.inv()) by {
                     assert(thread_perms_wf(self.thread_map)) by {
                         reveal(thread_perms_wf);
-                        reveal(threads_inv);
+
                         reveal(thread_free_quota_pending_empty_unless_wlocked);
                         reveal(thread_temp_alloc_empty_unless_wlocked);
                     };
@@ -184,16 +181,14 @@ impl KernelK {
                             reveal(thread_cpu_wf);
                         };
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
+
                 };
                 assert(thread_objects_unlocked(
                     old(self).thread_map, old(lctx).thread_id(),
                 ) ==> thread_objects_unlocked_except(
-                    self.thread_map, lctx.thread_id(), thread_ptr,
+                    self.thread_map, lctx.thread_id(), set![thread_ptr],
                 )) by {
                     reveal(thread_objects_unlocked_except);
                 };
@@ -214,7 +209,7 @@ impl KernelK {
                         reveal(thread_perms_wf);
                         reveal(thread_free_quota_pending_empty_unless_wlocked);
                         reveal(thread_temp_alloc_empty_unless_wlocked);
-                        reveal(wlock_ensures);
+
                     };
                 }
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
@@ -264,7 +259,6 @@ impl KernelK {
                     KernelObjId::Thread(thread_ptr),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -272,7 +266,6 @@ impl KernelK {
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
 
                 // ---- Every held lock still matches lctx (thread now released) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
                 lock_id_aligned(final(self), final(lctx)),
 
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -305,7 +298,7 @@ impl KernelK {
                     final(self).thread_map.spec_index(thread_ptr),
                 ),
                 thread_objects_unlocked_except(
-                    old(self).thread_map, old(lctx).thread_id(), thread_ptr,
+                    old(self).thread_map, old(lctx).thread_id(), set![thread_ptr],
                 ) ==> thread_objects_unlocked(
                     final(self).thread_map, final(lctx).thread_id()),
                 forall|held_thread: RwLockThreadPtr|
@@ -351,10 +344,9 @@ impl KernelK {
                 Ghost(KernelObjId::Thread(thread_ptr)),
             );
             proof {
-                assert(self.inv()) by {
                     assert(thread_perms_wf(self.thread_map)) by {
                         reveal(thread_perms_wf);
-                        reveal(threads_inv);
+
                         reveal(thread_free_quota_pending_empty_unless_wlocked);
                         reveal(thread_temp_alloc_empty_unless_wlocked);
                     };
@@ -468,14 +460,12 @@ impl KernelK {
                             reveal(thread_cpu_wf);
                         };
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
+
                 };
                 assert(thread_objects_unlocked_except(
-                    old(self).thread_map, old(lctx).thread_id(), thread_ptr,
+                    old(self).thread_map, old(lctx).thread_id(), set![thread_ptr],
                 ) ==> thread_objects_unlocked(
                     self.thread_map, lctx.thread_id(),
                 )) by {

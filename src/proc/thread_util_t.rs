@@ -28,12 +28,6 @@ use vstd::simple_pptr::*;
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             thread_value.inv(),
-            old(lctx).lock_entry_fresh(LockId{
-                container: LockOwnerId::NotApp,
-                process: LockOwnerId::NotApp,
-                major: thread_value.current_lock_major(),
-                minor: page_ptr,
-            }, obj_id.view(), STABLE_LOCK_ID),
         ensures
             // ---- the ThreadRwLock: initialized, write-locked, holds thread_value ----
             ret.0.view().addr() == page_ptr,

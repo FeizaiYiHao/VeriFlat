@@ -173,7 +173,7 @@ pub open spec fn allocator_free_page_fields_unchanged(
             &&& forall|cpu_id: CpuId|
                 #![trigger post.spec_index(a_ptr).cpu_caches
                     .spec_index(cpu_id).view().view()]
-                cpu_id_valid(cpu_id) ==>
+                index_valid(NUM_CPUS, cpu_id) ==>
                     post.spec_index(a_ptr).cpu_caches
                         .spec_index(cpu_id).view().view()
                     == pre.spec_index(a_ptr).cpu_caches
@@ -251,7 +251,7 @@ pub open spec fn allocator_quota_value_framed_fields_unchanged(
             &&& forall|cpu_id: CpuId|
                 #![trigger post.spec_index(a_ptr).cpu_caches
                     .spec_index(cpu_id).view().view()]
-                cpu_id_valid(cpu_id) ==>
+                index_valid(NUM_CPUS, cpu_id) ==>
                     post.spec_index(a_ptr).cpu_caches
                         .spec_index(cpu_id).view().view()
                     == pre.spec_index(a_ptr).cpu_caches

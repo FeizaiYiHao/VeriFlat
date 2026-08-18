@@ -19,14 +19,12 @@ impl KernelK {
                 ),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id()),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
 
                 // ---- Every held lock still matches lctx (quota now locked) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -89,7 +87,6 @@ impl KernelK {
             let ret = self.allocator_4k_map.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
             proof {
-                assert(self.inv()) by {
                     assert(allocator_perms_wf(
                         self.allocator_4k_map,
                     )) by {
@@ -184,7 +181,7 @@ impl KernelK {
                                 #![trigger self.allocator_4k_map.spec_index(a_ptr)
                                     .cpu_caches.spec_index(cpu_id).view().view()]
                                 self.allocator_4k_map.dom().contains(a_ptr)
-                                    && cpu_id_valid(cpu_id)
+                                    && index_valid(NUM_CPUS, cpu_id)
                             implies
                                 self.allocator_4k_map.spec_index(a_ptr).cpu_caches
                                     .spec_index(cpu_id).view().view()
@@ -201,11 +198,8 @@ impl KernelK {
                             lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
                         };
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(lock_ensures);
                 };
             }
             ret
@@ -244,14 +238,12 @@ impl KernelK {
                     KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
                     STABLE_LOCK_ID,
                 ),
-                old(self).locked_objects_match_lctx(old(lctx)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
 
                 // ---- Every held lock still matches lctx (quota now released) ----
-                final(self).locked_objects_match_lctx(final(lctx)),
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
@@ -323,7 +315,6 @@ impl KernelK {
             self.allocator_4k_map.wunlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
 
             proof {
-                assert(self.inv()) by {
                     assert(allocator_perms_wf(
                         self.allocator_4k_map,
                     )) by {
@@ -418,7 +409,7 @@ impl KernelK {
                                 #![trigger self.allocator_4k_map.spec_index(a_ptr)
                                     .cpu_caches.spec_index(cpu_id).view().view()]
                                 self.allocator_4k_map.dom().contains(a_ptr)
-                                    && cpu_id_valid(cpu_id)
+                                    && index_valid(NUM_CPUS, cpu_id)
                             implies
                                 self.allocator_4k_map.spec_index(a_ptr).cpu_caches
                                     .spec_index(cpu_id).view().view()
@@ -435,11 +426,8 @@ impl KernelK {
                             lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
                         };
                     };
-                    reveal(KernelK::inv);
-                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
-                    reveal(unlock_ensures);
                 };
             }
         }

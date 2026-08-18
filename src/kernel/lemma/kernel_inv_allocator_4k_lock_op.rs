@@ -27,7 +27,7 @@ pub open spec fn allocator_4k_invariant_fields_unchanged(
             &&& forall|cpu_id: CpuId|
                 #![trigger post.spec_index(a_ptr).cpu_caches
                     .spec_index(cpu_id).view().view()]
-                cpu_id_valid(cpu_id) ==>
+                index_valid(NUM_CPUS, cpu_id) ==>
                     post.spec_index(a_ptr).cpu_caches
                         .spec_index(cpu_id).view().view()
                     == pre.spec_index(a_ptr).cpu_caches
@@ -60,15 +60,12 @@ pub proof fn allocator_4k_cache_lock_op_preserves_invariant_fields(
             &pre.spec_index(changed_allocator).cpu_caches,
             changed_cpu,
         ),
-        post.spec_index(changed_allocator).cpu_caches
-            .spec_index(changed_cpu).view().view()
-        == pre.spec_index(changed_allocator).cpu_caches
-            .spec_index(changed_cpu).view().view(),
     ensures
         allocator_4k_invariant_fields_unchanged(pre, post),
 {
-    reveal(allocator_4k_invariant_fields_unchanged);
-    reveal(LockedArray::unchanged_except);
+    assert(allocator_4k_invariant_fields_unchanged(pre, post)) by {
+        reveal(allocator_4k_invariant_fields_unchanged);
+    };
 }
 
 pub proof fn allocator_4k_quota_lock_op_preserves_invariant_fields(

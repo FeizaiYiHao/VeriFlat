@@ -473,8 +473,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
-            old(lctx).lock_entry_fresh(
-                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), final(self).view(),
@@ -535,8 +533,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
-            old(lctx).lock_entry_fresh(
-                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
         ensures
             ret.0 == false ==> 
             {
@@ -623,8 +619,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
-            old(lctx).lock_entry_fresh(
-                lock_id.view(), obj_id.view(), LOCK_ID_MUTABLE),
 
         ensures
             ret.0 == false ==>

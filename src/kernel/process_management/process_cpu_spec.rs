@@ -8,7 +8,7 @@ verus! {
         forall|cpu_i:CpuId|
             #![trigger cpu_array.spec_index(cpu_i).view().view().current_process]
             #![trigger cpu_array.spec_index(cpu_i).view().view().current_pagetable]
-            cpu_id_valid(cpu_i) 
+            index_valid(NUM_CPUS, cpu_i)
             &&
             cpu_array.spec_index(cpu_i).view().view().current_process is Some
             ==> 

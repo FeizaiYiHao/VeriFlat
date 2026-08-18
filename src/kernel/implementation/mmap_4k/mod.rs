@@ -291,7 +291,7 @@ impl KernelK {
                     .spec_index(process_ptr).pagetable.mapping_4k.dom()
                     .contains(va)
             }) by {
-                reveal(kernel_k_to_kernel_u);
+
                 reveal(process_thread_wf);
                 reveal(process_pagetable_match);
             };

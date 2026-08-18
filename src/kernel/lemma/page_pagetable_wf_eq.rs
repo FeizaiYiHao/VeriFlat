@@ -30,7 +30,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
         pre_pagetable_map.dom().contains(pagetable_ptr),
         page_ptr_valid(page_ptr),
         post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
-        post_page_array.unchanged_except(&pre_page_array, page_ptr2page_index(page_ptr)),
+        post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(page_ptr)),
         post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr
             == pre_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr,
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().is_mapped(),
@@ -69,7 +69,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
     reveal(container_process_page_pagetable_wf);
     assert forall|p_i: PageIndex, pt_ptr: RwLockPageTableRoot, mapped_va: VAddr|
         #![trigger post_page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, mapped_va))]
-        page_index_wf(p_i)
+        index_valid(NUM_PAGES, p_i)
         && post_page_array.spec_index(p_i).view().view().is_mapped()
         && post_page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, mapped_va))
         implies {
@@ -105,7 +105,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
         page_ptr_valid(page_ptr),
         va_4k_valid(va),
         post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
-        post_page_array.unchanged_except(&pre_page_array, page_ptr2page_index(page_ptr)),
+        post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(page_ptr)),
         pre_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k,
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Mapped4k,
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings()
@@ -132,7 +132,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     reveal(mapped_4k_page_pagetable_wf);
     assert forall|p_i: PageIndex, pt_ptr: RwLockPageTableRoot, mapped_va: VAddr|
         #![trigger post_page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, mapped_va))]
-        page_index_wf(p_i)
+        index_valid(NUM_PAGES, p_i)
         && post_page_array.spec_index(p_i).view().view().state is Mapped4k
         && post_page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, mapped_va))
         implies
@@ -156,6 +156,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             &&& post_page_array.spec_index(mapped_page).view().view().state is Mapped4k
             &&& post_page_array.spec_index(mapped_page).view().view().mappings().contains((pt_ptr, mapped_va))
         } by {
+        page_ptr_valid_imply_page_index_valid();
         if pt_ptr == pagetable_ptr && mapped_va == va {
         } else if page_ptr2page_index(
             post_pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(mapped_va).addr,
@@ -167,7 +168,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     };
     assert forall|p_i: PageIndex|
         #![trigger post_page_array.spec_index(p_i).view().view().state]
-        page_index_wf(p_i)
+        index_valid(NUM_PAGES, p_i)
         && ((pre_page_array.spec_index(p_i).view().view().state is Mapped2m)
             || (post_page_array.spec_index(p_i).view().view().state is Mapped2m))
         implies post_page_array.spec_index(p_i) === pre_page_array.spec_index(p_i) by {
@@ -187,7 +188,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
     };
     assert forall|p_i: PageIndex|
         #![trigger post_page_array.spec_index(p_i).view().view().state]
-        page_index_wf(p_i)
+        index_valid(NUM_PAGES, p_i)
         && ((pre_page_array.spec_index(p_i).view().view().state is Mapped1g)
             || (post_page_array.spec_index(p_i).view().view().state is Mapped1g))
         implies post_page_array.spec_index(p_i) === pre_page_array.spec_index(p_i) by {
@@ -221,45 +222,51 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(
         page_pagetable_wf(old_pagetable_map, old_page_array),
         pagetable_perms_wf(old_pagetable_map),
         new_pagetable_map == old_pagetable_map,
-        page_index_wf(changed_page),
-        new_page_array.unchanged_except(&old_page_array, changed_page),
+        index_valid(NUM_PAGES, changed_page),
+        new_page_array.entries_unchanged_except(&old_page_array, changed_page),
         !old_page_array.spec_index(changed_page).view().view().is_mapped(),
         !new_page_array.spec_index(changed_page).view().view().is_mapped(),
     ensures
         page_pagetable_wf(new_pagetable_map, new_page_array),
 {
     assert(page_pagetable_wf(new_pagetable_map, new_page_array)) by {
-        reveal(page_pagetable_wf);
+ 
         reveal(mapped_4k_page_pagetable_wf);
         reveal(mapped_2m_page_pagetable_wf);
         reveal(mapped_1g_page_pagetable_wf);
         reveal(pagetable_perms_wf);
+        page_ptr_valid_imply_page_index_valid();
+        assert(mapped_4k_page_pagetable_wf(new_pagetable_map, new_page_array));      
+        assert(mapped_2m_page_pagetable_wf(new_pagetable_map, new_page_array));        
+        assert(mapped_1g_page_pagetable_wf(new_pagetable_map, new_page_array));
     };
 }
 
-/// Lock-state-only changes preserve the mapping invariant when every page
-/// payload is unchanged.
-pub proof fn page_pagetable_wf_preserved_for_page_payloads_unchanged(
+/// A lock-state-only change preserves the mapping invariant: every non-target
+/// slot is unchanged and every payload is unchanged.
+pub proof fn page_pagetable_wf_preserved_for_page_lock_change(
     old_pagetable_map: PageTableLockedMap,
     new_pagetable_map: PageTableLockedMap,
     old_page_array: PageLockedArray,
     new_page_array: PageLockedArray,
+    changed_page: PageIndex,
 )
     requires
         page_pagetable_wf(old_pagetable_map, old_page_array),
         pagetable_perms_wf(old_pagetable_map),
         new_pagetable_map == old_pagetable_map,
-        new_page_array.payloads_unchanged(&old_page_array),
+        index_valid(NUM_PAGES, changed_page),
+        new_page_array.unchanged_except(&old_page_array, changed_page),
     ensures
         page_pagetable_wf(new_pagetable_map, new_page_array),
 {
     assert(page_pagetable_wf(new_pagetable_map, new_page_array)) by {
-        reveal(page_pagetable_wf);
+ 
         reveal(mapped_4k_page_pagetable_wf);
         reveal(mapped_2m_page_pagetable_wf);
         reveal(mapped_1g_page_pagetable_wf);
         reveal(pagetable_perms_wf);
-        reveal(LockedArray::payloads_unchanged);
+        page_ptr_valid_imply_page_index_valid();
     };
 }
 

@@ -22,7 +22,7 @@ impl KernelK {
         range: usize,
     ) -> (ret: RetValueType)
         requires
-            cpu_id_valid(cpu_id),
+            index_valid(NUM_CPUS, cpu_id),
             old(self).inv(),
             old(self).cpu_array.spec_index(cpu_id).view().view().state
                 == CpuState::Running,

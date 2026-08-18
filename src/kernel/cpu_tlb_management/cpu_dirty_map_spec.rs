@@ -22,8 +22,8 @@ verus! {
         &&&
         forall|cpu_i:CpuId, pcid: Pcid|
             #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid)]
-            #![trigger cpu_id_valid(cpu_i), pcid_valid(pcid)]
-            cpu_id_valid(cpu_i)
+            #![trigger index_valid(NUM_CPUS, cpu_i), pcid_valid(pcid)]
+            index_valid(NUM_CPUS, cpu_i)
             &&
             pcid_valid(pcid)
             &&
@@ -40,7 +40,7 @@ verus! {
         &&&
         forall|cpu_i:CpuId, pcid: Pcid|
         #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid)]
-            cpu_id_valid(cpu_i)
+            index_valid(NUM_CPUS, cpu_i)
             &&
             pcid_valid(pcid)
             &&
@@ -58,7 +58,7 @@ verus! {
         &&&
         forall|cpu_id:CpuId, pcid: Pcid|
             #![auto]
-            cpu_id_valid(cpu_id) && pcid_valid(pcid)
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid)
             && pcid != KERNEL_DEFAULT_PCID
             && tlb.spec_index((cpu_id, pcid)).is_empty() == false
             ==>
@@ -73,7 +73,7 @@ verus! {
         &&&
         forall|cpu_i:CpuId, pcid: Pcid|
             #![trigger cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid)]
-            cpu_id_valid(cpu_i)
+            index_valid(NUM_CPUS, cpu_i)
             &&
             pcid_valid(pcid)
             &&

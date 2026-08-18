@@ -41,10 +41,10 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
     {
         proof {
             let s = Seq::new(N as nat, |i: int| i as usize);
-            assert forall|i: usize| usize_in_range::<N>(i) implies s.to_set().contains(i) by {
+            assert forall|i: usize| #![auto] usize_in_range::<N>(i) implies s.to_set().contains(i) by {
                 assert(s.spec_index(i as int) == i);
             }
-            assert forall|i: usize| s.to_set().contains(i) implies usize_in_range::<N>(i) by {
+            assert forall|i: usize| #![auto] s.to_set().contains(i) implies usize_in_range::<N>(i) by {
                 let j = choose|j: int| 0 <= j < s.len() && s.spec_index(j) == i;
             }
         }

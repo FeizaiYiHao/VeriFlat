@@ -19,7 +19,7 @@ pub proof fn container_pages_wf_preserved_for_page_state_eq(
         new_container_map.dom() == old_container_map.dom(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsContainer })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsContainer }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -41,7 +41,7 @@ pub proof fn process_pages_wf_preserved_for_page_state_eq(
         new_process_map.dom() == old_process_map.dom(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsProcess })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsProcess }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -63,7 +63,7 @@ pub proof fn thread_pages_wf_preserved_for_page_state_eq(
         new_thread_map.dom() == old_thread_map.dom(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsThread })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsThread }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -85,7 +85,7 @@ pub proof fn endpoint_pages_wf_preserved_for_page_state_eq(
         new_endpoint_map.dom() == old_endpoint_map.dom(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -106,8 +106,9 @@ pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(
         allocator_4k_pages_wf(old_page_array, old_allocator_map),
         new_allocator_map.dom() == old_allocator_map.dom(),
         forall|p_i: PageIndex|
-            #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            // #![trigger index_valid(NUM_PAGES, p_i)]
+            #![trigger old_page_array.spec_index(p_i).view().view().state]
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -129,7 +130,8 @@ pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq(
         new_allocator_map.dom() == old_allocator_map.dom(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            #![trigger old_page_array.spec_index(p_i).view().view().state]
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
@@ -151,7 +153,7 @@ pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq(
         new_allocator_map.dom() == old_allocator_map.dom(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
-            page_index_wf(p_i)
+            index_valid(NUM_PAGES, p_i)
             && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator })
                 || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }))
             ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
