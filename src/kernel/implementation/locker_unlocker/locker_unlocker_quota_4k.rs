@@ -71,10 +71,10 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     (
-                        ret.view().ordering_lock_id(),
+                        final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                            .quota.lock_id(),
                         KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
                     ),
                 ),
@@ -230,14 +230,10 @@ impl KernelK {
                         .locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     .wlocked_by(old(lctx)),
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                            .quota.lock_id(),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .quota.lock_id(),
+                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -296,13 +292,10 @@ impl KernelK {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                                .quota.lock_id(),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                            .quota.lock_id(),
                         KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
                     ),
                 ),

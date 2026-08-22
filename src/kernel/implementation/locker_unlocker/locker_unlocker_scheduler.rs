@@ -74,11 +74,10 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set()
-                    == old(lctx).stable_lock_id_set().insert(
+                final(lctx).lock_id_set()
+                    == old(lctx).lock_id_set().insert(
                     (
-                        ret.view().ordering_lock_id(),
+                        final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                         KernelObjId::Scheduler(scheduler_ptr),
                     ),
                 ),
@@ -159,13 +158,9 @@ impl KernelK {
                     == old(self).scheduler_map.spec_index(scheduler_ptr)
                         .locking_thread()->Write_lock_id,
                 lock_id_aligned(old(self), old(lctx)),
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::Scheduler(scheduler_ptr),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                    KernelObjId::Scheduler(scheduler_ptr)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -222,15 +217,18 @@ impl KernelK {
                     final(self).scheduler_map,
                     final(lctx).thread_id(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set()
-                    == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set()
+                    == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                         KernelObjId::Scheduler(scheduler_ptr),
                     ),
+                ),
+                unlock_ensures(
+                    old(lctx), final(lctx), (),
+                    lock_perm.view().lock_id(),
+                    KernelObjId::Scheduler(scheduler_ptr),
+                    old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
                 ),
         {
             proof {

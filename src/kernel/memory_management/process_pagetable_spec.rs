@@ -11,6 +11,17 @@ pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetabl
         ==>
         pagetable_map.dom().contains(process_map.spec_index(proc_ptr).view().pagetable)
         &&
+        process_map.spec_index(proc_ptr).view_rodata().view().pagetable
+            == process_map.spec_index(proc_ptr).view().pagetable
+        &&
+        process_map.spec_index(proc_ptr).view_rodata().view().pcid
+            == process_map.spec_index(proc_ptr).view().pcid
+        &&
+        process_map.spec_index(proc_ptr).view_rodata().view().cr3
+            == pagetable_map.spec_index(
+                process_map.spec_index(proc_ptr).view().pagetable,
+            ).view().cr3
+        &&
         pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().proc_ptr == proc_ptr
         &&
         pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_value() == process_map.spec_index(proc_ptr).view().pcid

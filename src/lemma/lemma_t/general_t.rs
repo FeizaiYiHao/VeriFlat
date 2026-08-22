@@ -2,7 +2,6 @@ use vstd::prelude::*;
 verus! {
 
 use crate::define::*;
-use crate::util::page_ptr_util_u::*;
 
 pub proof fn lemma_usize_u64(x: u64)
     ensures

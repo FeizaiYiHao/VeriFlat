@@ -7,6 +7,7 @@ pub mod locked_map;
 pub mod unlocked_map;
 pub mod lock_array_element;
 pub mod lock_array;
+pub mod random_step;
 
 pub use rwlock::*;
 pub use local_context::*;
@@ -17,3 +18,4 @@ pub use locked_map::*;
 pub use unlocked_map::*;
 pub use lock_array_element::*;
 pub use lock_array::*;
+pub use random_step::*;

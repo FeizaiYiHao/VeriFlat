@@ -64,6 +64,76 @@ impl Cpu{
     }
 
 
+    pub fn block_current(&mut self)
+        requires
+            old(self).wf(),
+            old(self).state is Running,
+        ensures
+            final(self).wf(),
+            final(self).state is Idle,
+            final(self).owning_container == old(self).owning_container,
+            final(self).current_process == old(self).current_process,
+            final(self).current_thread == old(self).current_thread,
+            final(self).current_pagetable == old(self).current_pagetable,
+            final(self).current_cr3 == old(self).current_cr3,
+            final(self).current_pcid == old(self).current_pcid,
+            final(self).tlb_dirty_bitmap == old(self).tlb_dirty_bitmap,
+            final(self).container_depth == old(self).container_depth,
+            final(self).process_depth == old(self).process_depth,
+    {
+        self.state = CpuState::Idle;
+    }
+
+    /// Directly hand a running CPU to another thread in the same container.
+    /// The PCID slot is refreshed to name the selected process/address space.
+    pub fn switch_running_thread(
+        &mut self,
+        process_ptr: RwLockProcessPtr,
+        thread_ptr: RwLockThreadPtr,
+        pagetable_ptr: RwLockPageTableRoot,
+        cr3: PageTableRoot,
+        pcid: Pcid,
+        process_depth: usize,
+    )
+        requires
+            old(self).wf(),
+            old(self).state is Running,
+            pcid_valid(pcid),
+        ensures
+            final(self).wf(),
+            final(self).state is Running,
+            final(self).owning_container == old(self).owning_container,
+            final(self).current_process == Some(process_ptr),
+            final(self).current_thread == Some(thread_ptr),
+            final(self).current_pagetable == pagetable_ptr,
+            final(self).current_cr3 == cr3,
+            final(self).current_pcid == pcid,
+            final(self).tlb_dirty_bitmap()
+                == old(self).tlb_dirty_bitmap().insert(
+                    pcid,
+                    Some(ProcessPageTablePair {
+                        process_ptr,
+                        pagetable_ptr,
+                    }),
+                ),
+            final(self).container_depth == old(self).container_depth,
+            final(self).process_depth == process_depth,
+    {
+        self.current_process = Some(process_ptr);
+        self.current_thread = Some(thread_ptr);
+        self.current_pagetable = pagetable_ptr;
+        self.current_cr3 = cr3;
+        self.current_pcid = pcid;
+        self.process_depth = process_depth;
+        self.tlb_dirty_bitmap.update(
+            pcid,
+            Some(ProcessPageTablePair {
+                process_ptr,
+                pagetable_ptr,
+            }),
+        );
+    }
+
     // pub fn set_process_and_pagetable(&mut self, process_pagetable_ptr: ProcessPageTablePair, cr3: PageTableRoot, pcid: Pcid)
     //     requires
     //         old(self).wf(),

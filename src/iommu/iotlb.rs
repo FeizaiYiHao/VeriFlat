@@ -17,22 +17,6 @@ pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool {
 }
 
 
-/// TODO just use va_4k_valid
-/// VT-d second-level addresses use the physical-address-width and alignment
-/// constraints of the selected page size.  They are not CPU kernel virtual
-/// addresses and therefore must not use the kernel-L4-range VA predicates.
-pub open spec fn iova_4k_valid(iova: Iova) -> bool {
-    iova & (!MEM_4K_MASK) as usize == 0
-}
-
-pub open spec fn iova_2m_valid(iova: Iova) -> bool {
-    iova & (!MEM_2M_MASK) as usize == 0
-}
-
-pub open spec fn iova_1g_valid(iova: Iova) -> bool {
-    iova & (!MEM_1G_MASK) as usize == 0
-}
-
 /// Cached translations for one VT-d domain.  As with the CPU TLB model, the
 /// three maps retain the page size of the translation from which an entry was
 /// filled.

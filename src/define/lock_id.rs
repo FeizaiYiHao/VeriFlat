@@ -20,8 +20,6 @@ pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
 // write-locked.
 pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = THREAD_LOCK_MAJOR + 1;
 pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
-pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
-pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
@@ -37,12 +35,13 @@ pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
 pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
 pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
 
-// The scheduler sits in the container tier (below the process, major 105) so a
-// syscall can hold it across a page allocation: it must top the container/quota
-// but stay under the process, thread, allocator cache, and the staged page, whose
-// lock id is frozen at Free4k time (major FREE_PAGE_LOCK_MAJOR = 30000). Locking
-// the scheduler first (103) then the page (30000) is acyclic; the reverse is not.
-pub const SCHEDULER_LOCK_MAJOR:LockMajorId = 103;
+// An endpoint rendezvous discovers the peer only after locking the endpoint
+// and that blocked thread. Its owning-container scheduler is therefore locked
+// afterward. Keep allocation above the scheduler so new-thread creation can
+// still allocate while holding the destination scheduler.
+pub const SCHEDULER_LOCK_MAJOR:LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
+pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = SCHEDULER_LOCK_MAJOR + 1;
+pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
 
 pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;

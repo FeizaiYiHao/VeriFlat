@@ -71,7 +71,6 @@ impl KernelK {
                         KernelObjId::Page(page_index),
                     ),
                 ),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
         {
             proof {
                 assert(old(self).page_array.inv()) by {
@@ -322,6 +321,9 @@ impl KernelK {
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
                     == old(self).page_array.spec_index(page_index).view().locking_thread()->Write_lock_id,
+                old(lctx).lock_entry_contains(
+                    old(self).page_array.lock_id_by_index(page_index),
+                    KernelObjId::Page(page_index)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -376,17 +378,17 @@ impl KernelK {
                         KernelObjId::Page(page_index),
                     ),
                 ),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
+                unlock_ensures(
+                    old(lctx),
+                    final(lctx),
+                    (),
+                    lock_perm.view().lock_id(),
+                    KernelObjId::Page(page_index),
+                    old(self).page_array.lock_id_by_index(page_index),
+                ),
         {
             assert(self.page_array.inv()) by {
                 reveal(page_array_wf);
-            };
-            assert(lctx.lock_entry_contains_for(
-                self.page_array.lock_id_by_index(page_index),
-                KernelObjId::Page(page_index),
-                MUTABLE_LOCK_ID,
-            )) by {
-                reveal(lock_id_aligned);
             };
             self.page_array.wunlock(page_index, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Page(page_index)));
             proof {

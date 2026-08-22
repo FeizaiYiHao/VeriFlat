@@ -1,0 +1,15 @@
+[package]
+name = "veriflat_syscall_ipc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vstd = { path = "../../verus/source/vstd" }
+veriflat_kernel_core = { path = "../veriflat_kernel_core" }
+
+[features]
+default = ["ipc-pilot"]
+ipc-pilot = []
+
+[package.metadata.verus]
+verify = true

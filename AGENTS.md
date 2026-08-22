@@ -138,6 +138,13 @@ this file or live code, this file and live code win.
 ## Layout
 
 - Use the nearest live sibling as the formatting reference.
+- Every syscall implementation lives under
+  `src/kernel/implementation/syscall_xxx/`.  That directory's `mod.rs`
+  contains declarations only: no implementation, specification, proof, or
+  re-export code.
+- `syscall_xxx/syscall_xxx.rs` contains only the syscall entry point(s).
+  Put helper implementations, specifications, and proofs in sibling `.rs`
+  files in the same directory.
 - Keep submodule declarations in the directory's `mod.rs`.  Name split files
   with the original module prefix so repository search remains obvious (for
   example `locker_unlocker_pagetable.rs`).

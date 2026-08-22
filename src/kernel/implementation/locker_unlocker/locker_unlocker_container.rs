@@ -48,6 +48,10 @@ impl KernelK {
                 // ---- (success) or nothing at all (failure) changed.
                 final(self).container_map.unchanged_except(&old(self).container_map, container_ptr),
                 final(self).container_map.perms_wf(),
+                container_objects_unlocked(
+                    old(self).container_map, old(lctx).thread_id(),
+                ) ==> container_objects_unlocked_except(
+                    final(self).container_map, final(lctx).thread_id(), set![container_ptr]),
 
                 // ---- LocalContext phase preservation ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
@@ -60,7 +64,6 @@ impl KernelK {
                     &&& final(self).container_map.spec_index(container_ptr) == old(self).container_map.spec_index(container_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
-                    &&& final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
                 },
 
                 // ---- Success: container locked by us, perm returned ----
@@ -75,10 +78,9 @@ impl KernelK {
                         final(lctx),
                         ret.1.unwrap().view(),
                     )
-                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set()
-                    &&& final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                         (
-                            ret.1.unwrap().view().ordering_lock_id(),
+                            final(self).container_map.lock_id_by_key(container_ptr),
                             KernelObjId::Container(container_ptr),
                         ),
                     )
@@ -281,6 +283,13 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
+                assert(container_objects_unlocked(
+                    old(self).container_map, old(lctx).thread_id(),
+                ) ==> container_objects_unlocked_except(
+                    self.container_map, lctx.thread_id(), set![container_ptr],
+                )) by {
+                    reveal(container_objects_unlocked_except);
+                };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
@@ -300,7 +309,7 @@ impl KernelK {
         ///  * Every other entry of `container_map` is byte-equal pre/post
         ///    (`unchanged_except`).
         ///  * Every other `KernelK` field is byte-equal pre/post.
-        ///  * `lctx.lock_map` loses the `KernelObjId::Container(container_ptr)`
+        ///  * the held-lock ledger loses the exact container pair
         ///    entry (encapsulated by `unlock_ensures`).
         #[verifier::spinoff_prover]
         pub fn wunlock_container(
@@ -319,13 +328,9 @@ impl KernelK {
                     == old(self).container_map.spec_index(container_ptr)
                         .locking_thread()->Write_lock_id,
                 old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).container_map.lock_id_by_key(container_ptr),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::Container(container_ptr),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).container_map.lock_id_by_key(container_ptr),
+                    KernelObjId::Container(container_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -366,6 +371,10 @@ impl KernelK {
                     old(self).container_map.spec_index(container_ptr),
                     final(self).container_map.spec_index(container_ptr),
                 ),
+                container_objects_unlocked_except(
+                    old(self).container_map, old(lctx).thread_id(), set![container_ptr],
+                ) ==> container_objects_unlocked(
+                    final(self).container_map, final(lctx).thread_id()),
 
                 // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
@@ -377,13 +386,10 @@ impl KernelK {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
 
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
 
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).container_map.lock_id_by_key(container_ptr),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).container_map.lock_id_by_key(container_ptr),
                         KernelObjId::Container(container_ptr),
                     ),
                 ),
@@ -593,6 +599,13 @@ impl KernelK {
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
+                };
+                assert(container_objects_unlocked_except(
+                    old(self).container_map, old(lctx).thread_id(), set![container_ptr],
+                ) ==> container_objects_unlocked(
+                    self.container_map, lctx.thread_id(),
+                )) by {
+                    reveal(container_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

@@ -22,7 +22,7 @@ pub struct Process {
     pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
 }
 
-pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, (), (), STABLE_LOCK_ID, PROCESS_HAS_KILL_STATE>;
+pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
     pub pagetable: PageTableU,
@@ -49,6 +49,8 @@ pub struct ProcessRO {
     pub parent: Option<RwLockProcessPtr>,    
     pub depth: usize,
     pub pagetable: RwLockPageTableRoot,
+    pub cr3: PageTableRoot,
+    pub pcid: Pcid,
 }
 
 

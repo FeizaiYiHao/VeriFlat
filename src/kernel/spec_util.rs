@@ -61,6 +61,18 @@ pub open spec fn container_objects_unlocked(
         container_map.spec_index(c_ptr).locked_by_thread(thread_id) == false
 }
 
+#[verifier::opaque]
+pub open spec fn container_objects_unlocked_except(
+    container_map: ContainerLockedMap,
+    thread_id: LockThreadId,
+    exceptions: Set<RwLockContainerPtr>,
+) -> bool {
+    forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.spec_index(c_ptr).locked_by_thread(thread_id)]
+        container_map.dom().contains(c_ptr) && !exceptions.contains(c_ptr)
+        ==> !container_map.spec_index(c_ptr).locked_by_thread(thread_id)
+}
+
 pub open spec fn process_objects_unlocked(
     process_map: ProcessLockedMap,
     thread_id: LockThreadId,
@@ -139,6 +151,18 @@ pub open spec fn pagetable_objects_unlocked(
         pagetable_map.dom().contains(pt_ptr)
         ==>
         pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id) == false
+}
+
+#[verifier::opaque]
+pub open spec fn pagetable_objects_unlocked_except(
+    pagetable_map: PageTableLockedMap,
+    thread_id: LockThreadId,
+    exceptions: Set<RwLockPageTableRoot>,
+) -> bool {
+    forall|pt_ptr: RwLockPageTableRoot|
+        #![trigger pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id)]
+        pagetable_map.dom().contains(pt_ptr) && !exceptions.contains(pt_ptr)
+        ==> !pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id)
 }
 
 pub open spec fn iommu_table_objects_unlocked(

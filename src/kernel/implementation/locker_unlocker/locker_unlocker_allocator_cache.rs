@@ -134,10 +134,10 @@ impl KernelK {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                     .cpu_caches.spec_index(cache_cpu).view()
                     .locked_by_thread(final(lctx).thread_id()),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     (
-                        ret.view().ordering_lock_id(),
+                        final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                            .cpu_caches.lock_id_by_index(cache_cpu),
                         KernelObjId::AllocatorCache(
                             PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
                         ),
@@ -298,16 +298,12 @@ impl KernelK {
                         .cpu_caches.spec_index(cache_cpu).view().locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                     .cpu_caches.spec_index(cache_cpu).view().wlocked_by(old(lctx)),
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                            .cpu_caches.lock_id_by_index(cache_cpu),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                old(lctx).lock_entry_contains(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches.lock_id_by_index(cache_cpu),
                     KernelObjId::AllocatorCache(
                         PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
-                    ),
-                    STABLE_LOCK_ID,
-                ),
+                    )),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -418,17 +414,25 @@ impl KernelK {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                                .cpu_caches.spec_index(cache_cpu).lock_id(),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                            .cpu_caches.spec_index(cache_cpu).lock_id(),
                         KernelObjId::AllocatorCache(
                             PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
                         ),
                     ),
+                ),
+                unlock_ensures(
+                    old(lctx),
+                    final(lctx),
+                    (),
+                    lock_perm.view().lock_id(),
+                    KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
+                    ),
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches.spec_index(cache_cpu).lock_id(),
                 ),
         {
             proof {

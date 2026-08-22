@@ -14,6 +14,10 @@ pub open spec fn thread_process_management_fields_unchanged(
         {
             &&& post.spec_index(t_ptr).view().state
                 == pre.spec_index(t_ptr).view().state
+            &&& post.spec_index(t_ptr).view().caller
+                == pre.spec_index(t_ptr).view().caller
+            &&& post.spec_index(t_ptr).view().callee
+                == pre.spec_index(t_ptr).view().callee
             &&& post.spec_index(t_ptr).view().owning_container
                 == pre.spec_index(t_ptr).view().owning_container
             &&& post.spec_index(t_ptr).view().container_depth
@@ -37,6 +41,31 @@ pub open spec fn thread_process_management_fields_unchanged(
             &&& post.spec_index(t_ptr).view().upper_container_seq
                 == pre.spec_index(t_ptr).view().upper_container_seq
         }
+}
+
+pub proof fn thread_invariant_fields_unchanged_implies_process_management_fields(
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        thread_invariant_fields_unchanged(pre, post),
+    ensures
+        thread_process_management_fields_unchanged(pre, post),
+{
+    reveal(thread_invariant_fields_unchanged);
+}
+
+pub proof fn thread_caller_callee_wf_preserved_for_thread_process_management_fields(
+    pre: ThreadLockedMap,
+    post: ThreadLockedMap,
+)
+    requires
+        thread_caller_callee_wf(pre),
+        thread_process_management_fields_unchanged(pre, post),
+    ensures
+        thread_caller_callee_wf(post),
+{
+    reveal(thread_caller_callee_wf);
 }
 
 pub proof fn thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(

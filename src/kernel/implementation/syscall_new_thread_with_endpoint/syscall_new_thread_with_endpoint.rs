@@ -1,0 +1,319 @@
+use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_sets_equal};
+use crate::*;
+use crate::implementation::syscall_new_thread::syscall_new_thread_helpers::{
+    kernel_u_new_thread_changed,
+    new_thread_other_objects_unlocked,
+};
+
+verus! {
+
+impl KernelK {
+    /// Create a thread whose endpoint descriptor 0 aliases descriptor
+    /// `endpoint_index` of the thread currently running on `cpu_id`.
+    #[verifier::spinoff_prover]
+    pub fn syscall_new_thread_with_endpoint(
+        &mut self,
+        Tracked(lctx): Tracked<&mut LocalContext>,
+        Tracked(steps): Tracked<&mut KernelSteps>,
+        cpu_id: CpuId,
+        endpoint_index: EndpointIdx,
+    ) -> (ret: RetValueType)
+        requires
+            index_valid(NUM_CPUS, cpu_id),
+            edp_idx_valid(endpoint_index),
+            old(self).inv(),
+            old(self).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
+            old(self).cpu_array.spec_index(cpu_id).view().view().current_process is Some,
+            old(self).cpu_array.spec_index(cpu_id).view().view().current_thread is Some,
+            old(self).process_map.dom().contains(
+                old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0,
+            ),
+            old(self).container_map.dom().contains(
+                old(self).process_map.spec_index(
+                    old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0,
+                ).view_rodata().view().owning_container,
+            ),
+            {
+                let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
+                let container_ptr = old(self).process_map.spec_index(process_ptr)
+                    .view_rodata().view().owning_container;
+                old(self).scheduler_map.dom().contains(
+                    old(self).container_map.spec_index(container_ptr)
+                        .view_rodata().view().scheduler,
+                )
+            },
+            old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(self).cpu_array.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
+            {
+                let process_ptr = old(self).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
+                let container_ptr = old(self).process_map.spec_index(process_ptr)
+                    .view_rodata().view().owning_container;
+                let scheduler_ptr = old(self).container_map.spec_index(container_ptr)
+                    .view_rodata().view().scheduler;
+                &&& old(self).cpu_array.spec_index(cpu_id).view().view().current_process is Some
+                &&& old(self).cpu_array.spec_index(cpu_id).view().view().current_thread is Some
+                &&& old(self).process_map.dom().contains(process_ptr)
+                &&& old(self).container_map.dom().contains(container_ptr)
+                &&& old(self).scheduler_map.dom().contains(scheduler_ptr)
+                &&& old(self).process_map.spec_index(process_ptr).locked_by(old(lctx)) == false
+                &&& old(self).scheduler_map.spec_index(scheduler_ptr).locked_by(old(lctx)) == false
+            },
+            old(steps).steps.len() == 0,
+            old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
+            lock_id_aligned(old(self), old(lctx)),
+            old(self).all_objects_unlocked(old(lctx)),
+        ensures
+            final(steps).steps.len() <= 1,
+            final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
+            lock_id_aligned(final(self), final(lctx)),
+            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(self).all_objects_unlocked(final(lctx)),
+            !(ret is Success) ==> final(steps).steps.len() == 0,
+            ret is Success ==> {
+                let process_ptr = old(self).cpu_array.spec_index(cpu_id)
+                    .view().view().current_process->Some_0;
+                &&& final(steps).steps.len() == 1
+                &&& final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(self))
+                &&& kernel_u_new_thread_changed(
+                    final(steps).steps.last().old_u,
+                    final(steps).steps.last().new_u,
+                    process_ptr,
+                )
+            },
+            ret is Success
+                || ret is ErrorProcessKilled
+                || ret is ErrorThreadKilled
+                || ret is ErrorNoQuota
+                || ret is Error,
+    {
+        proof {
+            assert(
+                self.cpu_array.spec_index(cpu_id).view().view().current_process is Some
+                && self.cpu_array.spec_index(cpu_id).view().view().current_thread is Some
+            ) by { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
+        }
+        let Tracked(cpu_lock_perm) = self.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+        let cpu = self.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
+        let process_ptr = cpu.current_process.unwrap();
+        let current_thread_ptr = cpu.current_thread.unwrap();
+
+        proof {
+            assert(self.process_map.dom().contains(process_ptr)) by { reveal(process_cpu_wf); };
+            assert(self.process_map.perms_wf()) by { reveal(process_perms_wf); };
+        }
+        let container_ptr = self.process_map.borrow_rodata(process_ptr)
+            .borrow().owning_container;
+        proof {
+            assert(self.container_map.dom().contains(container_ptr)) by { reveal(container_process_wf); };
+            assert(self.container_map.perms_wf()) by { reveal(container_perms_wf); };
+        }
+        let scheduler_ptr = self.container_map.borrow_rodata(container_ptr)
+            .borrow().scheduler;
+
+        proof {
+            assert(self.process_map.lock_id_by_key(process_ptr).major
+                == PROCESS_LOCK_MAJOR) by { reveal(process_perms_wf); };
+            assert(
+                self.process_map.dom().contains(process_ptr)
+                && self.process_map.spec_index(process_ptr).locked_by(&*lctx) == false
+            ) by { reveal(process_cpu_wf); };
+            assert(self.process_map.lock_id_by_key(process_ptr)
+                .spec_gt(self.cpu_array.lock_id_by_index(cpu_id))) by {
+                reveal(container_cpu_wf);
+                reveal(process_cpu_wf);
+                reveal(container_process_wf);
+            };
+        }
+        let process_res = self.wlock_process_unless_killed(
+            process_ptr, Tracked(&mut *lctx),
+        );
+        if let (false, _) = process_res {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                assert(new_thread_other_objects_unlocked(
+                    self, lctx.thread_id(), Some(cpu_id),
+                    None, None, None, None
+                )) by {
+                    reveal(new_thread_other_objects_unlocked);
+                };
+            }
+            self.release_cpu_and_finish(
+                Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
+                Tracked(cpu_lock_perm),
+            );
+            return RetValueType::ErrorProcessKilled;
+        }
+        let Tracked(process_lock_perm) = process_res.1.unwrap();
+
+        proof {
+            assert({
+                &&& self.thread_map.dom().contains(current_thread_ptr)
+                &&& self.thread_map.spec_index(current_thread_ptr).view().owning_proc
+                    == process_ptr
+                &&& self.thread_map.spec_index(current_thread_ptr).view().owning_container
+                    == container_ptr
+                &&& self.thread_map.spec_index(current_thread_ptr).view().container_depth
+                    == self.process_map.spec_index(process_ptr).view_rodata().view().container_depth
+                &&& self.thread_map.spec_index(current_thread_ptr).view().process_depth
+                    == self.process_map.spec_index(process_ptr).view_rodata().view().depth
+            }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            assert(self.thread_map.lock_id_by_key(current_thread_ptr)
+                .spec_gt(self.process_map.lock_id_by_key(process_ptr))) by { reveal(process_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf); };
+        }
+        let thread_res = self.wlock_thread_unless_killed(
+            current_thread_ptr, Tracked(&mut *lctx),
+        );
+        if let (false, _) = thread_res {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                assert(new_thread_other_objects_unlocked(
+                    self, lctx.thread_id(), Some(cpu_id),
+                    None, Some(process_ptr), None, None
+                )) by {
+                    reveal(new_thread_other_objects_unlocked);
+                };
+            }
+            self.release_cpu_and_process_and_finish(
+                Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
+                process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm),
+            );
+            return RetValueType::ErrorThreadKilled;
+        }
+        let Tracked(current_thread_lock_perm) = thread_res.1.unwrap();
+
+        proof {
+            assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+        }
+
+        let thread_ref = self.thread_map.borrow(
+            current_thread_ptr, Tracked(&current_thread_lock_perm),
+        );
+        let endpoint_option = *thread_ref.endpoint_descriptors.get(endpoint_index);
+        if let None = endpoint_option {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                assert(new_thread_other_objects_unlocked(
+                    self, lctx.thread_id(), Some(cpu_id),
+                    None, Some(process_ptr),
+                    Some(current_thread_ptr), None
+                )) by {
+                    reveal(new_thread_other_objects_unlocked);
+                };
+            }
+            self.release_cpu_and_process_and_thread_and_finish(
+                Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
+                process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm),
+                Tracked(process_lock_perm), Tracked(cpu_lock_perm),
+            );
+            return RetValueType::Error;
+        }
+        let endpoint_ptr = endpoint_option.unwrap();
+
+        if thread_ref.quota_4k < 1 {
+            proof {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*self)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+                assert(new_thread_other_objects_unlocked(
+                    self, lctx.thread_id(), Some(cpu_id),
+                    None, Some(process_ptr),
+                    Some(current_thread_ptr), None
+                )) by {
+                    reveal(new_thread_other_objects_unlocked);
+                };
+            }
+            self.release_cpu_and_process_and_thread_and_finish(
+                Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
+                process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm),
+                Tracked(process_lock_perm), Tracked(cpu_lock_perm),
+            );
+            return RetValueType::ErrorNoQuota;
+        }
+
+        proof {
+            assert({
+                &&& self.endpoint_map.dom().contains(endpoint_ptr)
+                &&& self.container_map.dom().contains(
+                    self.endpoint_map.spec_index(endpoint_ptr).view().owning_container,
+                )
+                &&& self.endpoint_map.spec_index(endpoint_ptr).view().owning_threads
+                    .view().contains((current_thread_ptr, endpoint_index))
+            }) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
+            assert(
+                self.container_map.dom().contains(
+                    self.endpoint_map.spec_index(endpoint_ptr).view().owning_container,
+                )
+                && {
+                    ||| self.endpoint_map.spec_index(endpoint_ptr).view().owning_container
+                        == container_ptr
+                    ||| self.container_map.spec_index(
+                            self.endpoint_map.spec_index(endpoint_ptr).view().owning_container,
+                        ).view().subtree_set.view().contains(container_ptr)
+                }
+            ) by { reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
+            assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
+        }
+        proof {
+            assert(current_thread_lock_perm.ordering_lock_id().major
+                == THREAD_LOCK_MAJOR) by {
+                reveal(thread_cpu_wf);
+                reveal(thread_perms_wf);
+            };
+            assert(self.endpoint_map.lock_id_by_key(endpoint_ptr).major
+                == ENDPOINT_LOCK_MAJOR) by {
+                reveal(endpoint_perms_wf);
+            };
+            assert(lctx.lock_id_acyclic(
+                self.endpoint_map.lock_id_by_key(endpoint_ptr),
+            )) by {
+                reveal(process_perms_wf);
+                reveal(thread_perms_wf);
+                reveal(endpoint_perms_wf);
+            };
+        }
+        let Tracked(endpoint_lock_perm) = self.wlock_endpoint(
+            endpoint_ptr, Tracked(&mut *lctx),
+        );
+
+        proof {
+            assert(self.scheduler_map.dom().contains(scheduler_ptr)) by {
+                reveal(container_scheduler_wf);
+            };
+            let scheduler_lock_id = self.scheduler_map.lock_id_by_key(scheduler_ptr);
+            assert(scheduler_lock_id.major == SCHEDULER_LOCK_MAJOR) by {
+                reveal(scheduler_perms_wf);
+            };
+            assert(lctx.lock_id_acyclic(scheduler_lock_id)) by {
+                reveal(process_perms_wf);
+                reveal(thread_perms_wf);
+                reveal(endpoint_perms_wf);
+                reveal(scheduler_perms_wf);
+            };
+        }
+        let Tracked(scheduler_lock_perm) = self.wlock_scheduler(
+            scheduler_ptr, Tracked(&mut *lctx),
+        );
+
+        proof {
+            assert(new_thread_other_objects_unlocked(
+                self, lctx.thread_id(), Some(cpu_id),
+                Some(scheduler_ptr), Some(process_ptr),
+                Some(current_thread_ptr), Some(endpoint_ptr)
+            )) by {
+                reveal(new_thread_other_objects_unlocked);
+            };
+        }
+        self.add_new_thread_with_endpoint(
+            Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr,
+            current_thread_ptr, container_ptr, scheduler_ptr, endpoint_ptr,
+            endpoint_index, Tracked(process_lock_perm),
+            Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm),
+            Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm),
+        );
+        RetValueType::Success
+    }
+}
+
+}

@@ -1,10 +1,15 @@
 use vstd::prelude::*;
+use vstd::simple_pptr::*;
 verus! {
 
 use crate::*;
 
 pub struct Thread {
     pub state: ThreadState,
+    /// The upstream caller currently served by this thread, if any.
+    pub caller: Option<RwLockThreadPtr>,
+    /// The downstream callee while this thread is waiting for a reply.
+    pub callee: Option<RwLockThreadPtr>,
 
     pub owning_container: RwLockContainerPtr,
     pub container_depth: usize,
@@ -51,9 +56,32 @@ pub struct Thread {
     pub indirect_free_quota_pending_1g: Ghost<Seq<usize>>,
 }
 
-pub type ThreadRwLock = RwLock<Thread, (), (), (), STABLE_LOCK_ID, THREAD_HAS_KILL_STATE>;
+pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
+pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
+    pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
+        &&& self.owning_container == other.owning_container
+        &&& self.container_depth == other.container_depth
+        &&& self.scheduler_linkedlist_node.addr()
+            == other.scheduler_linkedlist_node.addr()
+        &&& self.owning_proc == other.owning_proc
+        &&& self.process_depth == other.process_depth
+        &&& self.proc_pagetable_ptr == other.proc_pagetable_ptr
+        &&& self.proc_linkedlist_node.addr() == other.proc_linkedlist_node.addr()
+        &&& self.quota_4k == other.quota_4k
+        &&& self.quota_2m == other.quota_2m
+        &&& self.quota_1g == other.quota_1g
+        &&& self.temp_alloc_cache_4k == other.temp_alloc_cache_4k
+        &&& self.temp_alloc_cache_2m == other.temp_alloc_cache_2m
+        &&& self.temp_alloc_cache_1g == other.temp_alloc_cache_1g
+        &&& self.endpoint_descriptors == other.endpoint_descriptors
+        &&& self.endpoint_linkedlist_node.addr()
+            == other.endpoint_linkedlist_node.addr()
+        &&& self.upper_container_seq == other.upper_container_seq
+        &&& self.free_quota_pending_fields_equal(other)
+    }
+
     pub open spec fn free_quota_pending_fields_equal(&self, other: &Self) -> bool {
         &&& self.direct_free_quota_pending_4k
             == other.direct_free_quota_pending_4k
@@ -94,9 +122,9 @@ impl Thread{
     }
 
     /// Construct a fresh Thread for retype operations.
-    /// State is RUNNING{cpu_id: 0} (not BLOCKED, not SCHEDULED).
+    /// State is RUNNING{cpu_id: 0} (not waiting, not SCHEDULED).
     /// All endpoint fields are None/empty, all pending quotas are 0,
-    /// linkedlist nodes are init, trap_frame is None.
+    /// caller/callee are None, linkedlist nodes are init, trap_frame is None.
     #[verifier::external_body]
     pub fn new_fresh(
         owning_container: RwLockContainerPtr,
@@ -114,8 +142,11 @@ impl Thread{
             ret.process_depth == process_depth,
             ret.proc_pagetable_ptr == proc_pagetable_ptr,
             ret.upper_container_seq.view() == upper_container_seq.view(),
-            (ret.state is BLOCKED) == false,
+            !ret.state.is_endpoint_waiting(),
+            (ret.state is WAITING_REPLY) == false,
             (ret.state is SCHEDULED) == false,
+            ret.caller is None,
+            ret.callee is None,
             ret.proc_linkedlist_node.is_init(),
             ret.scheduler_linkedlist_node.is_init(),
             ret.blocking_endpoint_ptr is None,
@@ -129,6 +160,237 @@ impl Thread{
             ret.quota_1g == 0,
     {
         unimplemented!()
+    }
+}
+
+impl Thread {
+    /// Move the running thread into an endpoint wait queue and hand its
+    /// intrusive endpoint node to the queue owner.
+    pub fn block_on_endpoint(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        endpoint_ptr: RwLockEndpointPtr,
+        endpoint_index: EndpointIdx,
+        waiting_state: ThreadState,
+        payload: IPCPayLoad,
+        pt_regs: &Registers,
+    ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        requires
+            old(self).inv(),
+            old(self).state is RUNNING,
+            waiting_state.is_endpoint_waiting(),
+            waiting_state is RECEIVING_CALL ==> old(self).caller is None,
+            edp_idx_valid(endpoint_index),
+            old(self).endpoint_descriptors.spec_index(endpoint_index)
+                == Some(endpoint_ptr),
+            payload is Empty,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state == waiting_state,
+            final(self).blocking_endpoint_ptr == Some(endpoint_ptr),
+            final(self).blocking_endpoint_index == Some(endpoint_index),
+            final(self).ipc_payload is Empty,
+            final(self).trap_frame.is_some(),
+            final(self).trap_frame.get_some_0() =~= pt_regs,
+            final(self).caller == old(self).caller,
+            final(self).callee == old(self).callee,
+            final(self).owning_container == old(self).owning_container,
+            final(self).container_depth == old(self).container_depth,
+            final(self).scheduler_linkedlist_node.addr()
+                == old(self).scheduler_linkedlist_node.addr(),
+            final(self).owning_proc == old(self).owning_proc,
+            final(self).process_depth == old(self).process_depth,
+            final(self).proc_pagetable_ptr == old(self).proc_pagetable_ptr,
+            final(self).proc_linkedlist_node.addr()
+                == old(self).proc_linkedlist_node.addr(),
+            final(self).endpoint_descriptors == old(self).endpoint_descriptors,
+            final(self).upper_container_seq == old(self).upper_container_seq,
+            final(self).endpoint_linkedlist_node.addr()
+                == old(self).endpoint_linkedlist_node.addr(),
+            ret.0 == final(self).endpoint_linkedlist_node.addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == thread_ptr,
+    {
+        let (node_addr, mut node_perm) = self.endpoint_linkedlist_node.take();
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        self.blocking_endpoint_ptr = Some(endpoint_ptr);
+        self.blocking_endpoint_index = Some(endpoint_index);
+        self.ipc_payload = payload;
+        self.trap_frame.set_self(pt_regs);
+        self.state = waiting_state;
+        (node_addr, node_perm)
+    }
+
+    /// Remove an ordinary sender/receiver from its endpoint and prepare its
+    /// scheduler node. The saved trap frame remains available for dispatch.
+    pub fn endpoint_waiter_to_scheduled(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        requires
+            old(self).inv(),
+            old(self).state is SENDING || old(self).state is RECEIVING,
+            endpoint_node_perm.view().is_init(),
+            endpoint_node_perm.view().addr()
+                == old(self).endpoint_linkedlist_node.addr(),
+            endpoint_node_perm.view().value().view() == thread_ptr,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state is SCHEDULED,
+            final(self).blocking_endpoint_ptr is None,
+            final(self).blocking_endpoint_index is None,
+            final(self).endpoint_linkedlist_node.is_init(),
+            final(self).scheduler_linkedlist_node.is_init() == false,
+            final(self).error_code == Some(RetValueType::Success),
+            final(self).trap_frame == old(self).trap_frame,
+            final(self).caller == old(self).caller,
+            final(self).callee == old(self).callee,
+            ret.0 == final(self).scheduler_linkedlist_node.addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == thread_ptr,
+    {
+        self.endpoint_linkedlist_node.put(endpoint_node_perm);
+        let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        self.blocking_endpoint_ptr = None;
+        self.blocking_endpoint_index = None;
+        self.error_code = Some(RetValueType::Success);
+        self.state = ThreadState::SCHEDULED;
+        (node_addr, node_perm)
+    }
+
+    /// A queued caller has met a receive-call thread. It leaves the endpoint
+    /// but stays blocked until its callee replies.
+    pub fn endpoint_caller_to_waiting_reply(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        callee_ptr: RwLockThreadPtr,
+        endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    )
+        requires
+            old(self).inv(),
+            old(self).state is CALLING,
+            thread_ptr != callee_ptr,
+            endpoint_node_perm.view().is_init(),
+            endpoint_node_perm.view().addr()
+                == old(self).endpoint_linkedlist_node.addr(),
+            endpoint_node_perm.view().value().view() == thread_ptr,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state is WAITING_REPLY,
+            final(self).callee == Some(callee_ptr),
+            final(self).caller == old(self).caller,
+            final(self).blocking_endpoint_ptr is None,
+            final(self).blocking_endpoint_index is None,
+            final(self).endpoint_linkedlist_node.is_init(),
+            final(self).scheduler_linkedlist_node
+                == old(self).scheduler_linkedlist_node,
+            final(self).trap_frame == old(self).trap_frame,
+    {
+        self.endpoint_linkedlist_node.put(endpoint_node_perm);
+        self.blocking_endpoint_ptr = None;
+        self.blocking_endpoint_index = None;
+        self.callee = Some(callee_ptr);
+        self.state = ThreadState::WAITING_REPLY;
+    }
+
+    /// The currently running receive-call thread accepts a queued caller.
+    pub fn accept_queued_caller(
+        &mut self,
+        caller_ptr: RwLockThreadPtr,
+        self_ptr: RwLockThreadPtr,
+    )
+        requires
+            old(self).inv(),
+            old(self).state is RUNNING,
+            old(self).caller is None,
+            old(self).callee is None,
+            caller_ptr != self_ptr,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state == old(self).state,
+            final(self).caller == Some(caller_ptr),
+            final(self).callee is None,
+            final(self).trap_frame == old(self).trap_frame,
+    {
+        self.caller = Some(caller_ptr);
+    }
+
+    /// The running caller waits for a reply while a previously blocked
+    /// receive-call thread takes over its CPU.
+    pub fn running_caller_to_waiting_reply(
+        &mut self,
+        callee_ptr: RwLockThreadPtr,
+        self_ptr: RwLockThreadPtr,
+        pt_regs: &Registers,
+    )
+        requires
+            old(self).inv(),
+            old(self).state is RUNNING,
+            old(self).callee is None,
+            callee_ptr != self_ptr,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state is WAITING_REPLY,
+            final(self).callee == Some(callee_ptr),
+            final(self).caller == old(self).caller,
+            final(self).trap_frame.is_some(),
+            final(self).trap_frame.get_some_0() =~= pt_regs,
+    {
+        self.trap_frame.set_self(pt_regs);
+        self.callee = Some(callee_ptr);
+        self.state = ThreadState::WAITING_REPLY;
+    }
+
+    /// A blocked receive-call thread becomes the running callee and restores
+    /// the register image it saved when entering the endpoint.
+    pub fn endpoint_receiver_to_running(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        caller_ptr: RwLockThreadPtr,
+        cpu_id: CpuId,
+        endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+        pt_regs: &mut Registers,
+    )
+        requires
+            old(self).inv(),
+            old(self).state is RECEIVING_CALL,
+            old(self).caller is None,
+            old(self).callee is None,
+            thread_ptr != caller_ptr,
+            endpoint_node_perm.view().is_init(),
+            endpoint_node_perm.view().addr()
+                == old(self).endpoint_linkedlist_node.addr(),
+            endpoint_node_perm.view().value().view() == thread_ptr,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state == (ThreadState::RUNNING { cpu_id }),
+            final(self).caller == Some(caller_ptr),
+            final(self).callee is None,
+            final(self).blocking_endpoint_ptr is None,
+            final(self).blocking_endpoint_index is None,
+            final(self).endpoint_linkedlist_node.is_init(),
+            final(self).scheduler_linkedlist_node
+                == old(self).scheduler_linkedlist_node,
+            final(self).trap_frame.is_none(),
+            *final(pt_regs) =~= *old(self).trap_frame.get_some_0(),
+    {
+        self.endpoint_linkedlist_node.put(endpoint_node_perm);
+        self.trap_frame.set_dst(pt_regs);
+        self.trap_frame.set_to_none();
+        self.blocking_endpoint_ptr = None;
+        self.blocking_endpoint_index = None;
+        self.caller = Some(caller_ptr);
+        self.state = ThreadState::RUNNING { cpu_id };
     }
 }
 
@@ -155,19 +417,34 @@ impl LockInvTrait for Thread {
         &&&
         self.state is RUNNING ==> self.trap_frame.is_none()
         &&&
-        self.state is BLOCKED == self.blocking_endpoint_ptr is Some
+        (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY)
+            ==> self.trap_frame.is_some()
         &&&
-        self.state is BLOCKED == self.blocking_endpoint_index is Some
+        self.state.is_endpoint_waiting() == self.blocking_endpoint_ptr is Some
         &&&
-        self.state is BLOCKED ==> edp_idx_valid(self.blocking_endpoint_index.unwrap())
+        self.state.is_endpoint_waiting() == self.blocking_endpoint_index is Some
         &&&
-        self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()) is Some
+        self.state.is_endpoint_waiting()
+            ==> edp_idx_valid(self.blocking_endpoint_index.unwrap())
         &&&
-        self.state is BLOCKED ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()).unwrap() == self.blocking_endpoint_ptr.unwrap()
+        self.state.is_endpoint_waiting()
+            ==> self.endpoint_descriptors.spec_index(
+                self.blocking_endpoint_index.unwrap(),
+            ) is Some
         &&&
-        self.state is BLOCKED == !self.endpoint_linkedlist_node.is_init()
+        self.state.is_endpoint_waiting()
+            ==> self.endpoint_descriptors.spec_index(
+                self.blocking_endpoint_index.unwrap(),
+            ).unwrap() == self.blocking_endpoint_ptr.unwrap()
+        &&&
+        self.state.is_endpoint_waiting()
+            == !self.endpoint_linkedlist_node.is_init()
         &&&
         self.state is SCHEDULED == !self.scheduler_linkedlist_node.is_init()
+        &&&
+        (self.state is WAITING_REPLY) == (self.callee is Some)
+        &&&
+        self.state is RECEIVING_CALL ==> self.caller is None
         &&&
         self.upper_container_seq.view().len() == self.container_depth
         &&&
@@ -345,11 +622,11 @@ impl LockMajorTrait for Thread {
     }
 
     open spec fn lock_major_2(&self) -> LockMajorId {
-        233
+        THREAD_BLOCKED_LOCK_MAJOR
     }
 
     open spec fn lock_major_3(&self) -> LockMajorId {
-        233
+        THREAD_SCHEDULED_LOCK_MAJOR
     }
 
     open spec fn lock_major_default(&self) -> LockMajorId {
@@ -357,29 +634,37 @@ impl LockMajorTrait for Thread {
     }
 
     open spec fn lock_major_1_predicate(&self) -> bool {
-        true
+        self.state is RUNNING
     }
 
     open spec fn lock_major_2_predicate(&self) -> bool {
-        true
+        self.state.is_endpoint_waiting() || self.state is WAITING_REPLY
     }
 
     open spec fn lock_major_3_predicate(&self) -> bool {
-        true
+        self.state is SCHEDULED
     }
 
     open spec fn lock_major_default_predicate(&self) -> bool {
-        true
+        false
     }
 }
 
 impl LockOwnerIdTrait for Thread {
     open spec fn container_depth(&self) -> LockOwnerId {
-        LockOwnerId::Some(self.container_depth)
+        if self.state.is_endpoint_waiting() || self.state is WAITING_REPLY {
+            LockOwnerId::NotApp
+        } else {
+            LockOwnerId::Some(self.container_depth)
+        }
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::Some(self.process_depth)
+        if self.state.is_endpoint_waiting() || self.state is WAITING_REPLY {
+            LockOwnerId::NotApp
+        } else {
+            LockOwnerId::Some(self.process_depth)
+        }
     }
 }
 

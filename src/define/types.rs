@@ -101,10 +101,41 @@ pub type L1Index = usize;
 pub type SLLIndex = i32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(non_camel_case_types)]
 pub enum ThreadState {
     SCHEDULED,
-    BLOCKED,
+    SENDING,
+    RECEIVING,
+    CALLING,
+    RECEIVING_CALL,
+    WAITING_REPLY,
     RUNNING{cpu_id:CpuId},
+}
+
+impl ThreadState {
+    pub open spec fn is_endpoint_waiting(&self) -> bool {
+        match self {
+            ThreadState::SENDING
+            | ThreadState::RECEIVING
+            | ThreadState::CALLING
+            | ThreadState::RECEIVING_CALL => true,
+            _ => false,
+        }
+    }
+
+    pub open spec fn is_endpoint_send_waiting(&self) -> bool {
+        match self {
+            ThreadState::SENDING | ThreadState::CALLING => true,
+            _ => false,
+        }
+    }
+
+    pub open spec fn is_endpoint_receive_waiting(&self) -> bool {
+        match self {
+            ThreadState::RECEIVING | ThreadState::RECEIVING_CALL => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -283,6 +314,12 @@ pub enum RetValueType {
     ErrorProcessKilled,
     /// The currently running thread is being torn down.
     ErrorThreadKilled,
+    // ---- empty IPC failure modes ----
+    ErrorInvalidEndpoint,
+    ErrorIpcTypeMismatch,
+    ErrorIpcPeerKilled,
+    ErrorCallAcrossContainers,
+    ErrorReplyOutOfPhase,
     /// Adding `alloc_amount` to the running process's `quota_4k` would
     /// overflow `usize::MAX`.
     ErrorProcessQuotaOverflow,

@@ -40,9 +40,13 @@ verus! {
         &&&
         forall|t_ptr:RwLockThreadPtr|
             #![trigger thread_map.spec_index(t_ptr).view().state]
-            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().state is BLOCKED
+            #![trigger thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr]
+            thread_map.dom().contains(t_ptr)
+                && thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
             ==>
             endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.view().contains(t_ptr)
+            &&
+            endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.map().dom().contains(thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr())
             &&
             endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.map().spec_index(thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr())
                 ==
@@ -50,13 +54,24 @@ verus! {
         &&&
         forall|e_ptr:RwLockEndpointPtr, t_ptr: RwLockThreadPtr,|
             #![trigger endpoint_map.spec_index(e_ptr).view().queue.view().contains(t_ptr)]
+            #![trigger thread_map.spec_index(t_ptr).view().state,
+                endpoint_map.spec_index(e_ptr).view().queue]
+            #![trigger thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr,
+                endpoint_map.spec_index(e_ptr).view().queue]
             endpoint_map.dom().contains(e_ptr) && endpoint_map.spec_index(e_ptr).view().queue.view().contains(t_ptr)
             ==>
             thread_map.dom().contains(t_ptr)
             &&
-            thread_map.spec_index(t_ptr).view().state is BLOCKED
+            thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
             &&
             thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap() == e_ptr
+            &&
+            match endpoint_map.spec_index(e_ptr).view().queue_state {
+                EndpointState::SEND => thread_map.spec_index(t_ptr).view()
+                    .state.is_endpoint_send_waiting(),
+                EndpointState::RECEIVE => thread_map.spec_index(t_ptr).view()
+                    .state.is_endpoint_receive_waiting(),
+            }
 
     }
 

@@ -1,6 +1,24 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/veriflat_kernel_core",
+    "crates/veriflat_model",
+    "crates/veriflat_syscall_ipc",
+]
+exclude = ["verus"]
+
 [package]
 name = "VeriFlat"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "veriflat_monolith"
+path = "src/lib.rs"
+
 [dependencies]
+vstd = { path = "verus/source/vstd" }
+
+[features]
+ipc-pilot = []
+ipc-pilot-core = []

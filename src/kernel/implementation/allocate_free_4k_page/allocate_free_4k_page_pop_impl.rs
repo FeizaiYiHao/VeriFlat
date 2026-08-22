@@ -5,6 +5,10 @@ use crate::*;
 
 verus! {
 
+// TODO(AGENTS): Replace the two quota-fold assert-forall bridges in this module
+// with a trigger/postcondition on the fold producer. They are the remaining
+// non-local proof steps in these otherwise framed allocator transitions.
+
 impl KernelK {
 
     // ================================================================
@@ -143,7 +147,6 @@ impl KernelK {
                     KernelObjId::Page(page_ptr2page_index(ret.0)),
                 ),
             ),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
             lock_id_aligned(final(self), final(lctx)),
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
@@ -468,6 +471,14 @@ impl KernelK {
             };
             // ---- process_management_inv: container_map, thread_map, etc. all byte-equal ----
             assert(self.process_management_inv()) by {
+                assert(thread_caller_callee_wf(self.thread_map)) by {
+                    assert(thread_process_management_fields_unchanged(
+                        old(self).thread_map, self.thread_map,
+                    )) by { reveal(thread_perms_wf); };
+                    thread_caller_callee_wf_preserved_for_thread_process_management_fields(
+                        old(self).thread_map, self.thread_map,
+                    );
+                };
                 assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                     per_container_process_tree_wf_preserved_for_tree_fields_eq(
                         self.container_map, old(self).process_map, self.process_map,
@@ -528,6 +539,10 @@ impl KernelK {
                 .global_pool.wlocked_by(old(lctx)),
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                 .global_pool.locked_by_thread(old(lctx).thread_id()),
+            old(lctx).lock_id_set().contains((
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.lock_id(),
+                KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k),
+            )),
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().view().len() > 0,
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().len() > 0,
             old(self).thread_map.spec_index(thread_ptr).being_killed() == false,
@@ -608,7 +623,6 @@ impl KernelK {
                     KernelObjId::Page(page_ptr2page_index(ret.0)),
                 ),
             ),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
             lock_id_aligned(final(self), final(lctx)),
             // ---- staging: ret staged Owned4k; 4k cache gained exactly ret, 2m/1g caches + nominal quota untouched ----
             final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
@@ -738,8 +752,23 @@ impl KernelK {
                 old_page_lock_id,
                 self.page_array.lock_id_by_index(page_index),
             );
+            assert({
+                &&& self.allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .global_pool.lock_id()
+                    == old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .global_pool.lock_id()
+                &&& lctx.lock_entry_contains(
+                    self.allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .global_pool.lock_id(),
+                    KernelObjId::AllocatorGlobalPoll(
+                        PageSize::SZ4k, alloc_ptr_4k),
+                )
+            }) by {
+                lock_id_fields_eq_imply_eq();
+            };
             assert(lock_id_aligned(self, &*lctx)) by {
                 reveal(lock_id_aligned);
+                lock_id_fields_eq_imply_eq();
             };
         }
         // ---- staging delta: page_ptr fresh in temp_alloc_cache_4k ⟹ effective_quota_4k −1 ----
@@ -888,9 +917,11 @@ impl KernelK {
                     self.allocator_4k_map, self.page_array,
                 )) by {
                     reveal(container_allocator_free_4k_page_wf);
+                    reveal(container_allocator_global_free_4k_page_wf);
                     reveal(container_allocator_cpu_cache_free_4k_page_wf);
                     reveal(allocator_free_page_ptrs_wf);
                     page_ptr_valid_imply_page_index_valid();
+                    page_ptr2page_index_injective();
                 };
                 assert(container_allocator_free_4k_page_wf(
                     self.allocator_4k_map, self.page_array,
@@ -938,6 +969,14 @@ impl KernelK {
             };
             // ---- process_management_inv: container_map, thread_map, etc. all byte-equal ----
             assert(self.process_management_inv()) by {
+                assert(thread_caller_callee_wf(self.thread_map)) by {
+                    assert(thread_process_management_fields_unchanged(
+                        old(self).thread_map, self.thread_map,
+                    )) by { reveal(thread_perms_wf); };
+                    thread_caller_callee_wf_preserved_for_thread_process_management_fields(
+                        old(self).thread_map, self.thread_map,
+                    );
+                };
                 assert(per_container_process_tree_wf(self.container_map, self.process_map)) by {
                     per_container_process_tree_wf_preserved_for_tree_fields_eq(self.container_map, old(self).process_map, self.process_map);
                 };

@@ -16,6 +16,7 @@ pub mod process_pci_function_spec;
 pub mod process_cpu_spec;
 pub mod process_thread_spec;
 pub mod container_thread_endpoint_spec;
+pub mod thread_call_reply_spec;
 
 pub use container_tree::*;
 pub use process_tree::*;
@@ -35,3 +36,4 @@ pub use process_pci_function_spec::*;
 pub use process_cpu_spec::*;
 pub use process_thread_spec::*;
 pub use container_thread_endpoint_spec::*;
+pub use thread_call_reply_spec::*;

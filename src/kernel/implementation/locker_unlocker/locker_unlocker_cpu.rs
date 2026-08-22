@@ -69,7 +69,6 @@ impl KernelK {
                         KernelObjId::Cpu(cpu_id),
                     ),
                 ),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
         {
             proof {
                 assert(old(self).cpu_array.inv()) by {
@@ -232,16 +231,14 @@ impl KernelK {
                         KernelObjId::Cpu(cpu_id),
                     ),
                 ),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
         {
             proof {
                 assert(old(self).cpu_array.inv()) by {
                     reveal(cpu_array_wf);
                 };
-                assert(old(lctx).lock_entry_contains_for(
+                assert(old(lctx).lock_entry_contains(
                     old(self).cpu_array.lock_id_by_index(cpu_id),
                     KernelObjId::Cpu(cpu_id),
-                    MUTABLE_LOCK_ID,
                 )) by {
                     reveal(lock_id_aligned);
                 };
