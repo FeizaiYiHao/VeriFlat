@@ -1,8 +1,16 @@
+#[cfg(not(feature = "ipc-pilot-core"))]
 pub mod syscall_alloc_quota;
+#[cfg(not(feature = "ipc-pilot-core"))]
 pub mod syscall_new_thread;
+#[cfg(not(feature = "ipc-pilot-core"))]
 pub mod syscall_new_thread_with_endpoint;
+#[cfg(not(feature = "ipc-pilot-core"))]
+pub mod syscall_mmap_4k;
+#[cfg(not(feature = "ipc-pilot-core"))]
+pub mod syscall_ipc;
 pub mod locker_unlocker;
+#[cfg(not(feature = "ipc-pilot-core"))]
 pub mod allocate_free_4k_page;
-// mmap_4k is under construction; keep it out of the crate until its allocator
-// and PageTable protocol is verified end-to-end.
-// pub mod mmap_4k;
+#[cfg(feature = "ipc-pilot-core")]
+#[path = "syscall_ipc/syscall_ipc_release_helpers.rs"]
+pub mod ipc_release_helpers;

@@ -54,7 +54,6 @@ impl KernelK {
                         == old(self).thread_map.spec_index(thread_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
-                    &&& final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
                 },
                 ret.0 == true ==> {
                     &&& old(self).thread_map.spec_index(thread_ptr).being_killed() == false
@@ -70,10 +69,9 @@ impl KernelK {
                         .free_quota_pending_clean()
                     &&& final(self).thread_map.spec_index(thread_ptr).view()
                         .temp_alloc_clean()
-                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set()
-                    &&& final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                         (
-                            ret.1.unwrap().view().ordering_lock_id(),
+                            final(self).thread_map.lock_id_by_key(thread_ptr),
                             KernelObjId::Thread(thread_ptr),
                         ),
                     )
@@ -143,43 +141,15 @@ impl KernelK {
                         };
                     };
                     assert(self.process_management_inv()) by {
-                        assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_endpoint_ref_counter_wf);
-                        };
-                        assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_endpoint_queue_wf);
-                        };
-                        assert(container_thread_endpoint_wf(
-                            self.container_map, self.thread_map, self.endpoint_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(container_endpoint_wf);
-                            reveal(thread_endpoint_ref_counter_wf);
-                            reveal(thread_endpoint_queue_wf);
-                            reveal(container_thread_endpoint_wf);
-                        };
-                        assert(container_thread_scheduler_wf(
-                            self.container_map, self.thread_map, self.scheduler_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                            reveal(container_scheduler_wf);
-                            reveal(container_thread_scheduler_wf);
-                        };
-                        assert(container_thread_wf(self.container_map, self.thread_map)) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                        };
-                        assert(process_thread_wf(self.process_map, self.thread_map)) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(process_thread_wf);
-                        };
-                        assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_cpu_wf);
-                        };
+                        thread_invariant_fields_unchanged_implies_process_management_fields(old(self).thread_map, self.thread_map);
+                        assert(thread_caller_callee_wf(self.thread_map)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map); };
+                        assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
+                        assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
+                        assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.endpoint_map); };
+                        assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.scheduler_map); };
+                        assert(container_thread_wf(self.container_map, self.thread_map)) by { container_thread_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map); };
+                        assert(process_thread_wf(self.process_map, self.thread_map)) by { process_thread_wf_preserved_for_thread_process_management_fields(self.process_map, old(self).thread_map, self.thread_map); };
+                        assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.cpu_array); };
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
@@ -252,13 +222,9 @@ impl KernelK {
                 // releasing the write lock (see doc comment above).
                 old(self).thread_map.spec_index(thread_ptr).view().free_quota_pending_clean(),
                 old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).thread_map.lock_id_by_key(thread_ptr),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::Thread(thread_ptr),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).thread_map.lock_id_by_key(thread_ptr),
+                    KernelObjId::Thread(thread_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -302,6 +268,7 @@ impl KernelK {
                 ) ==> thread_objects_unlocked(
                     final(self).thread_map, final(lctx).thread_id()),
                 forall|held_thread: RwLockThreadPtr|
+                    #![trigger final(self).thread_map.lock_id_by_key(held_thread)]
                     #![trigger old(self).thread_map.spec_index(held_thread).wlocked_by(old(lctx))]
                     old(self).thread_map.dom().contains(held_thread)
                         && held_thread != thread_ptr
@@ -318,16 +285,24 @@ impl KernelK {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
 
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
 
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).thread_map.lock_id_by_key(thread_ptr),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).thread_map.lock_id_by_key(thread_ptr),
                         KernelObjId::Thread(thread_ptr),
                     ),
                 ),
+                unlock_ensures(
+                    old(lctx), final(lctx), (),
+                    lock_perm.view().lock_id(),
+                    KernelObjId::Thread(thread_ptr),
+                    old(self).thread_map.lock_id_by_key(thread_ptr),
+                ),
+                forall|held: HeldLock|
+                    #![trigger final(lctx).lock_entry_contains(held.0, held.1)]
+                    held.1 != KernelObjId::Thread(thread_ptr)
+                    ==> final(lctx).lock_entry_contains(held.0, held.1)
+                        == old(lctx).lock_entry_contains(held.0, held.1),
         {
             proof {
                 assert({
@@ -403,62 +378,15 @@ impl KernelK {
                         };
                     };
                     assert(self.process_management_inv()) by {
-                        assert(thread_endpoint_ref_counter_wf(
-                            self.thread_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_endpoint_ref_counter_wf);
-                        };
-                        assert(thread_endpoint_queue_wf(
-                            self.thread_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_endpoint_queue_wf);
-                        };
-                        assert(container_thread_endpoint_wf(
-                            self.container_map,
-                            self.thread_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(container_endpoint_wf);
-                            reveal(thread_endpoint_ref_counter_wf);
-                            reveal(thread_endpoint_queue_wf);
-                            reveal(container_thread_endpoint_wf);
-                        };
-                        assert(container_thread_scheduler_wf(
-                            self.container_map,
-                            self.thread_map,
-                            self.scheduler_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                            reveal(container_scheduler_wf);
-                            reveal(container_thread_scheduler_wf);
-                        };
-                        assert(container_thread_wf(
-                            self.container_map,
-                            self.thread_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                        };
-                        assert(process_thread_wf(
-                            self.process_map,
-                            self.thread_map,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(process_thread_wf);
-                        };
-                        assert(thread_cpu_wf(
-                            self.thread_map,
-                            self.cpu_array,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_cpu_wf);
-                        };
+                        thread_invariant_fields_unchanged_implies_process_management_fields(old(self).thread_map, self.thread_map);
+                        assert(thread_caller_callee_wf(self.thread_map)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map); };
+                        assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
+                        assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
+                        assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.endpoint_map); };
+                        assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.scheduler_map); };
+                        assert(container_thread_wf(self.container_map, self.thread_map)) by { container_thread_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map); };
+                        assert(process_thread_wf(self.process_map, self.thread_map)) by { process_thread_wf_preserved_for_thread_process_management_fields(self.process_map, old(self).thread_map, self.thread_map); };
+                        assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.cpu_array); };
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);

@@ -3,6 +3,10 @@ use crate::*;
 
 verus! {
 
+// TODO(AGENTS): Replace the assert-forall bridges in this module with
+// producer postconditions or triggers local to their consuming assertions.
+// The no-change preservation lemmas themselves are intentionally retained.
+
 /// Installing one freshly initialized page-table page grows exactly one
 /// page-table closure and retags the backing `Page` with that closure's root.
 /// This is the structural counterpart of the nonstructural mmap framing lemma.

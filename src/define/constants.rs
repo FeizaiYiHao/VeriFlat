@@ -33,12 +33,18 @@ pub const MAX_USIZE: u64 = 31 * 1024 * 1024 * 1024;
 
 pub const PCID_MAX: usize = 4096;
 
+pub const KERNEL_DEFAULT_PCID: Pcid = 0;
+
 pub open spec fn pcid_valid(pcid: Pcid) -> bool{
     0 <= pcid < PCID_MAX
 }
 
 pub open spec fn usize_in_range<const RANGE: usize>(value: usize) -> bool{
     0 <= value < RANGE
+}
+
+pub open spec fn index_valid(range: usize, index: usize) -> bool {
+    0 <= index < range
 }
 
 pub const MEM_MASK: u64 = 0x0000_ffff_ffff_f000;
@@ -115,8 +121,6 @@ pub const ALLOCATOR_BATCH: usize = 64;
 
 pub const NO_KILL_STATE: bool = false; 
 pub const HAS_KILL_STATE: bool = true; 
-pub const STABLE_LOCK_ID: bool = false;
-pub const MUTABLE_LOCK_ID: bool = true;
 
 pub const PAGE_TABLE_HAS_KILL_STATE: bool = NO_KILL_STATE;
 pub const PAGE_HAS_KILL_STATE: bool = NO_KILL_STATE;

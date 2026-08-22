@@ -78,7 +78,6 @@ impl KernelK {
                     &&& final(self).process_map.spec_index(process_ptr) == old(self).process_map.spec_index(process_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
-                    &&& final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
                 },
 
                 // ---- Success: process locked by us, perm returned ----
@@ -93,10 +92,9 @@ impl KernelK {
                         final(lctx),
                         ret.1.unwrap().view(),
                     )
-                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set()
-                    &&& final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                    &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                         (
-                            ret.1.unwrap().view().ordering_lock_id(),
+                            final(self).process_map.lock_id_by_key(process_ptr),
                             KernelObjId::Process(process_ptr),
                         ),
                     )
@@ -377,13 +375,9 @@ impl KernelK {
                 lock_perm.view().lock_id()
                     == old(self).process_map.spec_index(process_ptr)
                         .locking_thread()->Write_lock_id,
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).process_map.lock_id_by_key(process_ptr),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::Process(process_ptr),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).process_map.lock_id_by_key(process_ptr),
+                    KernelObjId::Process(process_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
@@ -440,13 +434,10 @@ impl KernelK {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
 
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
 
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).process_map.lock_id_by_key(process_ptr),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).process_map.lock_id_by_key(process_ptr),
                         KernelObjId::Process(process_ptr),
                     ),
                 ),

@@ -432,6 +432,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).view() == old(self).view().push(perm.view().value().view()),
             final(self).dom() == old(self).dom().insert(addr),
             final(self).map() == old(self).map().insert(addr, perm.view().value().view()),
+            forall|value: T|
+                #![trigger final(self).view().contains(value)]
+                old(self).view().contains(value)
+                    ==> final(self).view().contains(value),
+            forall|old_addr: usize|
+                #![trigger final(self).map().dom().contains(old_addr)]
+                old(self).map().dom().contains(old_addr) ==> {
+                    &&& final(self).map().dom().contains(old_addr)
+                    &&& final(self).map().spec_index(old_addr)
+                        == old(self).map().spec_index(old_addr)
+                },
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
             old(self).dom().contains(addr) == false,
@@ -657,6 +668,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.map().dom().contains(ret.0),
             // value is the head element, == map[head].
             ret.1 == self.view().spec_index(0),
+            self.view().contains(ret.1),
             ret.1 == self.map().spec_index(ret.0),
     {
         proof{
@@ -687,6 +699,25 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).view() == old(self).view().skip(1),
             final(self).length == old(self).length - 1,
             final(self).map() == old(self).map().remove(ret.0),
+            forall|value: T|
+                #![trigger final(self).view().contains(value)]
+                old(self).view().contains(value)
+                    && value != ret.1.view().value().view()
+                ==> final(self).view().contains(value),
+            forall|value: T|
+                #![trigger final(self).view().contains(value)]
+                final(self).view().contains(value)
+                    ==> old(self).view().contains(value),
+            !final(self).view().contains(ret.1.view().value().view()),
+            forall|old_addr: usize|
+                #![trigger final(self).map().dom().contains(old_addr)]
+                old(self).map().dom().contains(old_addr)
+                    && old_addr != ret.0
+                ==> {
+                    &&& final(self).map().dom().contains(old_addr)
+                    &&& final(self).map().spec_index(old_addr)
+                        == old(self).map().spec_index(old_addr)
+                },
 
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,

@@ -1,0 +1,10 @@
+[package]
+name = "veriflat_model"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vstd = { path = "../../verus/source/vstd" }
+
+[package.metadata.verus]
+verify = true

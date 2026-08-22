@@ -3,6 +3,10 @@ use crate::*;
 
 verus! {
 
+// TODO(AGENTS): Replace the assert-forall bridges in this module with direct
+// endpoint queue/reference operation postconditions or producer triggers. The
+// current endpoint framing relation alone does not instantiate these leaves.
+
 #[verifier::opaque]
 pub open spec fn endpoint_invariant_fields_unchanged(
     pre: EndpointLockedMap,
@@ -56,11 +60,16 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(
     assert forall|t_ptr: RwLockThreadPtr|
         #![trigger thread_map.spec_index(t_ptr).view().state]
         thread_map.dom().contains(t_ptr)
-            && thread_map.spec_index(t_ptr).view().state is BLOCKED
+            && thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
         implies
             post.spec_index(
                 thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap(),
             ).view().queue.view().contains(t_ptr)
+            && post.spec_index(
+                thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap(),
+            ).view().queue.map().dom().contains(
+                thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr(),
+            )
             && post.spec_index(
                 thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap(),
             ).view().queue.map().spec_index(
@@ -80,8 +89,14 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(
             && post.spec_index(e_ptr).view().queue.view().contains(t_ptr)
         implies
             thread_map.dom().contains(t_ptr)
-            && thread_map.spec_index(t_ptr).view().state is BLOCKED
-            && thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap() == e_ptr by {
+            && thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
+            && thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap() == e_ptr
+            && match post.spec_index(e_ptr).view().queue_state {
+                EndpointState::SEND => thread_map.spec_index(t_ptr).view()
+                    .state.is_endpoint_send_waiting(),
+                EndpointState::RECEIVE => thread_map.spec_index(t_ptr).view()
+                    .state.is_endpoint_receive_waiting(),
+            } by {
         reveal(endpoint_invariant_fields_unchanged);
     };
 }
@@ -154,9 +169,12 @@ pub open spec fn endpoint_queue_fields_unchanged(
     &&& pre.dom() =~= post.dom()
     &&& forall|endpoint_ptr: RwLockEndpointPtr|
         #![trigger post.spec_index(endpoint_ptr).view().queue]
-        pre.dom().contains(endpoint_ptr) ==>
-            post.spec_index(endpoint_ptr).view().queue
+        pre.dom().contains(endpoint_ptr) ==> {
+            &&& post.spec_index(endpoint_ptr).view().queue
                 == pre.spec_index(endpoint_ptr).view().queue
+            &&& post.spec_index(endpoint_ptr).view().queue_state
+                == pre.spec_index(endpoint_ptr).view().queue_state
+        }
 }
 
 pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
@@ -187,12 +205,19 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
     assert forall|t_ptr: RwLockThreadPtr|
         #![trigger post_thread_map.spec_index(t_ptr).view().state]
         post_thread_map.dom().contains(t_ptr)
-            && post_thread_map.spec_index(t_ptr).view().state is BLOCKED
+            && post_thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
         implies
             post_endpoint_map.spec_index(
                 post_thread_map.spec_index(t_ptr).view()
                     .blocking_endpoint_ptr.unwrap(),
             ).view().queue.view().contains(t_ptr)
+            && post_endpoint_map.spec_index(
+                post_thread_map.spec_index(t_ptr).view()
+                    .blocking_endpoint_ptr.unwrap(),
+            ).view().queue.map().dom().contains(
+                post_thread_map.spec_index(t_ptr).view()
+                    .endpoint_linkedlist_node.addr(),
+            )
             && post_endpoint_map.spec_index(
                 post_thread_map.spec_index(t_ptr).view()
                     .blocking_endpoint_ptr.unwrap(),
@@ -216,9 +241,15 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
                 .queue.view().contains(t_ptr)
         implies
             post_thread_map.dom().contains(t_ptr)
-            && post_thread_map.spec_index(t_ptr).view().state is BLOCKED
+            && post_thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
             && post_thread_map.spec_index(t_ptr).view()
-                .blocking_endpoint_ptr.unwrap() == endpoint_ptr by {
+                .blocking_endpoint_ptr.unwrap() == endpoint_ptr
+            && match post_endpoint_map.spec_index(endpoint_ptr).view().queue_state {
+                EndpointState::SEND => post_thread_map.spec_index(t_ptr).view()
+                    .state.is_endpoint_send_waiting(),
+                EndpointState::RECEIVE => post_thread_map.spec_index(t_ptr).view()
+                    .state.is_endpoint_receive_waiting(),
+            } by {
         reveal(thread_endpoint_queue_fields_unchanged);
         reveal(endpoint_queue_fields_unchanged);
     };
@@ -262,6 +293,10 @@ pub open spec fn thread_endpoint_reference_added(
                     == pre.spec_index(t_ptr).view().owning_container
             &&& post.spec_index(t_ptr).view().state
                     == pre.spec_index(t_ptr).view().state
+            &&& post.spec_index(t_ptr).view().caller
+                    == pre.spec_index(t_ptr).view().caller
+            &&& post.spec_index(t_ptr).view().callee
+                    == pre.spec_index(t_ptr).view().callee
             &&& post.spec_index(t_ptr).view().scheduler_linkedlist_node.addr()
                     == pre.spec_index(t_ptr).view().scheduler_linkedlist_node.addr()
             &&& post.spec_index(t_ptr).view().owning_proc
@@ -304,6 +339,10 @@ pub proof fn thread_endpoint_reference_added_from_single_update(
             == pre.spec_index(thread_ptr).view().owning_container,
         post.spec_index(thread_ptr).view().state
             == pre.spec_index(thread_ptr).view().state,
+        post.spec_index(thread_ptr).view().caller
+            == pre.spec_index(thread_ptr).view().caller,
+        post.spec_index(thread_ptr).view().callee
+            == pre.spec_index(thread_ptr).view().callee,
         post.spec_index(thread_ptr).view().scheduler_linkedlist_node.addr()
             == pre.spec_index(thread_ptr).view().scheduler_linkedlist_node.addr(),
         post.spec_index(thread_ptr).view().owning_proc

@@ -54,7 +54,7 @@ use vstd::simple_pptr::*;
                 process: LockOwnerId::NotApp,
                 major: thread_value.current_lock_major(),
                 minor: page_ptr,
-            }, obj_id.view(), STABLE_LOCK_ID),
+            }, obj_id.view()),
     {
         unimplemented!()
     }

@@ -51,10 +51,9 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     (
-                        ret.view().ordering_lock_id(),
+                        final(self).endpoint_map.lock_id_by_key(endpoint_ptr),
                         KernelObjId::Endpoint(endpoint_ptr),
                     ),
                 ),
@@ -112,13 +111,9 @@ impl KernelK {
                 lock_perm.view().lock_id()
                     == old(self).endpoint_map.spec_index(endpoint_ptr)
                         .locking_thread()->Write_lock_id,
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::Endpoint(endpoint_ptr),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
+                    KernelObjId::Endpoint(endpoint_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
@@ -155,12 +150,9 @@ impl KernelK {
                     old(self).endpoint_map, old(lctx).thread_id(), set![endpoint_ptr],
                 ) ==> endpoint_objects_unlocked(
                     final(self).endpoint_map, final(lctx).thread_id()),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
                         KernelObjId::Endpoint(endpoint_ptr),
                     ),
                 ),

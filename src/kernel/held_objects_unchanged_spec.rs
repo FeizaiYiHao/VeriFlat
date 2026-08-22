@@ -261,4 +261,24 @@ pub open spec fn held_allocator_objects_unchanged(
         })
 }
 
+pub proof fn endpoint_objects_unlocked_except_preserved_for_held_unchanged(
+    pre: EndpointLockedMap,
+    post: EndpointLockedMap,
+    lctx: &LocalContext,
+    exceptions: Set<RwLockEndpointPtr>,
+)
+    requires
+        endpoint_objects_unlocked_except(
+            pre, lctx.thread_id(), exceptions,
+        ),
+        held_endpoints_unchanged(pre, post, lctx),
+    ensures
+        endpoint_objects_unlocked_except(
+            post, lctx.thread_id(), exceptions,
+        ),
+{
+    reveal(endpoint_objects_unlocked_except);
+    reveal(held_endpoints_unchanged);
+}
+
 }

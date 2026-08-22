@@ -7,7 +7,6 @@ use crate::define::*;
 use crate::locks::*;
 use vstd::simple_pptr::*;
 use crate::util::page_ptr_util_u::*;
-use crate::iommu::{iova_1g_valid, iova_2m_valid, iova_4k_valid};
 use super::pagemap_util_t::*;
 use super::entry::*;
 use super::pagemap::*;

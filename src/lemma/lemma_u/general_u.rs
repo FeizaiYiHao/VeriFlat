@@ -1,8 +1,6 @@
 use vstd::prelude::*;
 verus! {
 
-use crate::util::page_ptr_util_u::*;
-
 pub broadcast proof fn map_equal_implies_submap_each_other<K, V>(a: Map<K, V>, b: Map<K, V>)
     requires
         a =~= b,
@@ -24,18 +22,6 @@ pub broadcast proof fn submap_by_transitivity<K, V>(a: Map<K, V>, b: Map<K, V>, 
         #![trigger a.dom().contains(k)]
         #![trigger b.dom().contains(k)]
         a.dom().contains(k) ==> b.dom().contains(k) && a.spec_index(k) == b.spec_index(k));
-}
-
-pub proof fn page_ptr_valid_imply_mem_valid(v: usize)
-    requires
-        page_ptr_valid(v),
-    ensures
-        mem_valid(v),
-{
-    assert(v & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector)
-        requires
-            ((v % 4096) == 0) && ((v / 4096) < 2 * 1024 * 1024),
-    ;
 }
 
 pub proof fn seq_push_lemma<A>()

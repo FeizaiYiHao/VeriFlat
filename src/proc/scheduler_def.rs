@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::simple_pptr::*;
 verus! {
 
 use crate::*;
@@ -63,6 +64,54 @@ impl LockUserVisibilityTrait for Scheduler {
     open spec fn is_user_visible() -> bool {
         false
     }
+}
+
+impl Scheduler {
+    pub fn enqueue_scheduled_thread(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        node_addr: usize,
+        node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    )
+        requires
+            old(self).inv(),
+            node_perm.view().is_init(),
+            node_perm.view().addr() == node_addr,
+            node_perm.view().value().view() == thread_ptr,
+            !old(self).queue.view().contains(thread_ptr),
+        ensures
+            final(self).inv(),
+            final(self).queue.length == old(self).queue.length + 1,
+            final(self).queue.view()
+                == old(self).queue.view().push(thread_ptr),
+            final(self).queue.dom()
+                == old(self).queue.dom().insert(node_addr),
+            final(self).queue.map()
+                == old(self).queue.map().insert(node_addr, thread_ptr),
+            !old(self).queue.dom().contains(node_addr),
+            !old(self).queue.map().dom().contains(node_addr),
+            forall|value: RwLockThreadPtr|
+                #![trigger final(self).queue.view().contains(value)]
+                old(self).queue.view().contains(value)
+                    ==> final(self).queue.view().contains(value),
+            final(self).owning_container == old(self).owning_container,
+    {
+        proof {
+            assert(self.queue.length != usize::MAX) by {
+                scheduler_queue_len_bounded(&*self);
+            };
+        }
+        self.queue.push_tail(node_addr, node_perm);
+    }
+}
+
+#[verifier::external_body]
+pub proof fn scheduler_queue_len_bounded(scheduler: &Scheduler)
+    requires
+        scheduler.inv(),
+    ensures
+        scheduler.queue.length < NUM_PAGES,
+{
 }
 
 }

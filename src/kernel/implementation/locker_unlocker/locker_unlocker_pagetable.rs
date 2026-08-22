@@ -48,6 +48,10 @@ impl KernelK {
                 ),
                 final(self).pagetable_map.spec_index(pagetable_ptr).view()
                     == old(self).pagetable_map.spec_index(pagetable_ptr).view(),
+                pagetable_objects_unlocked(
+                    old(self).pagetable_map, old(lctx).thread_id(),
+                ) ==> pagetable_objects_unlocked_except(
+                    final(self).pagetable_map, final(lctx).thread_id(), set![pagetable_ptr]),
 
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state()
@@ -59,10 +63,9 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().insert(
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     (
-                        ret.view().ordering_lock_id(),
+                        final(self).pagetable_map.lock_id_by_key(pagetable_ptr),
                         KernelObjId::PageTable(pagetable_ptr),
                     ),
                 ),
@@ -130,6 +133,13 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
+                assert(pagetable_objects_unlocked(
+                    old(self).pagetable_map, old(lctx).thread_id(),
+                ) ==> pagetable_objects_unlocked_except(
+                    self.pagetable_map, lctx.thread_id(), set![pagetable_ptr],
+                )) by {
+                    reveal(pagetable_objects_unlocked_except);
+                };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
@@ -153,13 +163,9 @@ impl KernelK {
                 lock_perm.view().lock_id()
                     == old(self).pagetable_map.spec_index(pagetable_ptr)
                         .locking_thread()->Write_lock_id,
-                old(lctx).lock_entry_contains_for(
-                    lock_id_for_unlock(
-                        old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
-                        lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
-                    KernelObjId::PageTable(pagetable_ptr),
-                    STABLE_LOCK_ID,
-                ),
+                old(lctx).lock_entry_contains(
+                    old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                    KernelObjId::PageTable(pagetable_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
@@ -202,12 +208,13 @@ impl KernelK {
                     old(self).pagetable_map.spec_index(pagetable_ptr),
                     final(self).pagetable_map.spec_index(pagetable_ptr),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set().remove(
+                pagetable_objects_unlocked_except(
+                    old(self).pagetable_map, old(lctx).thread_id(), set![pagetable_ptr],
+                ) ==> pagetable_objects_unlocked(
+                    final(self).pagetable_map, final(lctx).thread_id()),
+                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
-                        lock_id_for_unlock(
-                            old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
-                            lock_perm.view().ordering_lock_id(), STABLE_LOCK_ID),
+                        old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
                         KernelObjId::PageTable(pagetable_ptr),
                     ),
                 ),
@@ -281,6 +288,13 @@ impl KernelK {
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
+                };
+                assert(pagetable_objects_unlocked_except(
+                    old(self).pagetable_map, old(lctx).thread_id(), set![pagetable_ptr],
+                ) ==> pagetable_objects_unlocked(
+                    self.pagetable_map, lctx.thread_id(),
+                )) by {
+                    reveal(pagetable_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

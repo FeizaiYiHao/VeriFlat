@@ -8,7 +8,6 @@ use super::pagemap::*;
 use super::entry::*;
 use crate::define::*;
 use crate::locks::*;
-use crate::iommu::iova_4k_valid;
 use vstd::simple_pptr::*;
 use crate::lemma::lemma_u::*;
 
@@ -358,7 +357,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -519,7 +518,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -703,7 +702,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -896,14 +895,27 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
-            final(self).page_closure() =~= old(self).page_closure(),
+            final(self).page_closure() == old(self).page_closure(),
             final(self).mapping_4k.view() == old(self).mapping_4k.view().insert(
                 spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
                 *target_entry,
             ),
+            final(self).spec_resolve_mapping_4k_l1(
+                target_l4i, target_l3i, target_l2i, target_l1i,
+            ) == Some(PageEntry {
+                addr: target_entry.addr,
+                perm: PageEntryPerm {
+                    present: true,
+                    ps: false,
+                    write: target_entry.write,
+                    execute_disable: target_entry.execute_disable,
+                    user: true,
+                    kernel_present: true,
+                },
+            }),
             final(self).mapping_2m() =~= old(self).mapping_2m(),
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).spec_resolve_mapping_l4(target_l4i)

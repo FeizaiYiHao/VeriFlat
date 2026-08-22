@@ -115,7 +115,6 @@ impl KernelK {
                 final(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0)),
                 KernelObjId::Page(page_ptr2page_index(ret.0)),
             )),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
             held_containers_unchanged(
                 old(self).container_map, final(self).container_map, old(lctx)),
             held_processes_unchanged(
@@ -459,7 +458,6 @@ impl KernelK {
                 final(self).page_array.lock_id_by_index(page_ptr2page_index(ret.0)),
                 KernelObjId::Page(page_ptr2page_index(ret.0)),
             )),
-            final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set(),
             held_containers_unchanged(
                 old(self).container_map, final(self).container_map, old(lctx)),
             held_processes_unchanged(
@@ -702,7 +700,6 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
-            final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set(),
             lock_id_aligned(final(self), final(lctx)),
             final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
@@ -1183,7 +1180,6 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
-            final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set(),
             lock_id_aligned(final(self), final(lctx)),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
@@ -1299,7 +1295,6 @@ impl KernelK {
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
                 lctx.lock_id_set() == old(lctx).lock_id_set(),
-                lctx.stable_lock_id_set() == old(lctx).stable_lock_id_set(),
                 lock_id_aligned(self, &*lctx),
                 steps.steps == old(steps).steps,
                 steps.snap_shot == kernel_k_to_kernel_u(*self),
@@ -1580,20 +1575,25 @@ impl KernelK {
                     == old(self).allocator_4k_map.spec_index(p),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
-            final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
-            final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
+            final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
                 + Self::allocator_cache_lock_entry_prefix(
                     alloc_ptr_4k, NUM_CPUS).insert((
                         ret.1.view().ordering_lock_id(),
                         KernelObjId::AllocatorGlobalPoll(
                             PageSize::SZ4k, alloc_ptr_4k),
                     )),
+            final(lctx).lock_entry_contains(
+                final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .global_pool.lock_id(),
+                KernelObjId::AllocatorGlobalPoll(
+                    PageSize::SZ4k, alloc_ptr_4k,
+                )),
             forall|c: CpuId|
-                #![trigger final(lctx).stable_lock_id_set().contains((
+                #![trigger final(lctx).lock_id_set().contains((
                     Self::allocator_cache_lock_id(c),
                     KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c)))]
                 index_valid(NUM_CPUS, c)
-                ==> final(lctx).stable_lock_id_set().contains((
+                ==> final(lctx).lock_id_set().contains((
                     Self::allocator_cache_lock_id(c),
                     KernelObjId::AllocatorCache(
                         PageSize::SZ4k, alloc_ptr_4k, c),
@@ -1658,8 +1658,7 @@ impl KernelK {
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
                 0 <= cpu <= NUM_CPUS,
-                lctx.lock_id_set() =~= old(lctx).lock_id_set(),
-                lctx.stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
+                lctx.lock_id_set() =~= old(lctx).lock_id_set()
                     + Self::allocator_cache_lock_entry_prefix(
                         alloc_ptr_4k, cpu),
                 !self.allocator_4k_map.spec_index(alloc_ptr_4k)
@@ -1685,12 +1684,12 @@ impl KernelK {
                             .cpu_caches.spec_index(c).view().wlocked_by(&*lctx)
                     },
                 forall|c: CpuId|
-                    #![trigger lctx.stable_lock_id_set().contains((
+                    #![trigger lctx.lock_id_set().contains((
                         Self::allocator_cache_lock_id(c),
                         KernelObjId::AllocatorCache(
                             PageSize::SZ4k, alloc_ptr_4k, c)))]
                     index_valid(NUM_CPUS, c) && c < cpu
-                    ==> lctx.stable_lock_id_set().contains((
+                    ==> lctx.lock_id_set().contains((
                         Self::allocator_cache_lock_id(c),
                         KernelObjId::AllocatorCache(
                             PageSize::SZ4k, alloc_ptr_4k, c),
@@ -1743,7 +1742,7 @@ impl KernelK {
                     reveal(KernelK::allocator_cache_lock_entry_prefix_seq);
                     reveal(KernelK::allocator_cache_lock_entry_prefix);
                 };
-                assert(lctx.stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
+                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set()
                     + Self::allocator_cache_lock_entry_prefix(
                         alloc_ptr_4k, (cpu + 1) as CpuId,
                     )) by {
@@ -1815,13 +1814,13 @@ impl KernelK {
             Self::cache_perms_match_lctx(
                 old(self).allocator_4k_map, alloc_ptr_4k, old(lctx), &cache_perms),
             Self::allocator_cache_lock_entry_prefix(
-                alloc_ptr_4k, NUM_CPUS).subset_of(old(lctx).stable_lock_id_set()),
+                alloc_ptr_4k, NUM_CPUS).subset_of(old(lctx).lock_id_set()),
             forall|c: CpuId|
-                #![trigger old(lctx).stable_lock_id_set().contains((
+                #![trigger old(lctx).lock_id_set().contains((
                     Self::allocator_cache_lock_id(c),
                     KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, c)))]
                 index_valid(NUM_CPUS, c)
-                ==> old(lctx).stable_lock_id_set().contains((
+                ==> old(lctx).lock_id_set().contains((
                     Self::allocator_cache_lock_id(c),
                     KernelObjId::AllocatorCache(
                         PageSize::SZ4k, alloc_ptr_4k, c),
@@ -1829,6 +1828,12 @@ impl KernelK {
             old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
             old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                 .global_pool.wlocked_by(old(lctx)),
+            old(lctx).lock_entry_contains(
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .global_pool.lock_id(),
+                KernelObjId::AllocatorGlobalPoll(
+                    PageSize::SZ4k, alloc_ptr_4k,
+                )),
         ensures
             final(self).inv(),
             final(self).thread_map.dom().contains(thread_ptr),
@@ -1841,8 +1846,7 @@ impl KernelK {
                 .locked_by_thread(final(lctx).thread_id()),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_id_set() =~= old(lctx).lock_id_set(),
-            final(lctx).stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
+            final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
                 - Self::allocator_cache_lock_entry_prefix(
                     alloc_ptr_4k, NUM_CPUS),
             lock_id_aligned(final(self), final(lctx)),
@@ -1875,6 +1879,12 @@ impl KernelK {
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
             final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                 .global_pool.wlocked_by(final(lctx)),
+            final(lctx).lock_entry_contains(
+                old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .global_pool.lock_id(),
+                KernelObjId::AllocatorGlobalPoll(
+                    PageSize::SZ4k, alloc_ptr_4k,
+                )),
             Self::allocator_caches_unlocked(
                 final(self).allocator_4k_map, alloc_ptr_4k),
             Self::allocator_objects_unlocked_except_cache_pool(
@@ -1932,20 +1942,25 @@ impl KernelK {
                 self.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 lctx.thread_id() == old(lctx).thread_id(),
                 0 <= cpu <= NUM_CPUS,
-                lctx.lock_id_set() =~= old(lctx).lock_id_set(),
-                lctx.stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
+                lctx.lock_id_set() =~= old(lctx).lock_id_set()
                     - Self::allocator_cache_lock_entry_prefix(
                         alloc_ptr_4k, cpu),
                 forall|c: CpuId|
-                    #![trigger lctx.stable_lock_id_set().contains((
+                    #![trigger lctx.lock_id_set().contains((
                         Self::allocator_cache_lock_id(c),
                         KernelObjId::AllocatorCache(
                             PageSize::SZ4k, alloc_ptr_4k, c)))]
                     index_valid(NUM_CPUS, c) && c >= cpu
-                    ==> lctx.stable_lock_id_set().contains((
+                    ==> lctx.lock_id_set().contains((
                         Self::allocator_cache_lock_id(c),
                         KernelObjId::AllocatorCache(
                             PageSize::SZ4k, alloc_ptr_4k, c),
+                    )),
+                lctx.lock_entry_contains(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .global_pool.lock_id(),
+                    KernelObjId::AllocatorGlobalPoll(
+                        PageSize::SZ4k, alloc_ptr_4k,
                     )),
                 self.allocator_4k_map.spec_index(alloc_ptr_4k)
                     .global_pool.wlocked_by(&*lctx),
@@ -2025,7 +2040,7 @@ impl KernelK {
                     reveal(KernelK::allocator_cache_lock_entry_prefix_seq);
                     reveal(KernelK::allocator_cache_lock_entry_prefix);
                 };
-                assert(lctx.stable_lock_id_set() =~= old(lctx).stable_lock_id_set()
+                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set()
                     - Self::allocator_cache_lock_entry_prefix(
                         alloc_ptr_4k, (cpu + 1) as CpuId,
                     )) by {
@@ -2236,7 +2251,6 @@ impl KernelK {
                         page_ptr2page_index(ret.1.unwrap().1)),
                     KernelObjId::Page(page_ptr2page_index(ret.1.unwrap().1)),
                 ))
-                &&& final(lctx).stable_lock_id_set() == old(lctx).stable_lock_id_set()
                 &&& Self::cache_perms_match_lctx(
                     final(self).allocator_4k_map, alloc_ptr_4k, final(lctx), cache_perms)
                 &&& final(self).thread_map.spec_index(thread_ptr)

@@ -3,7 +3,6 @@ verus! {
 
 use crate::define::*;
 use crate::lemma::lemma_t::*;
-use crate::locks::index_valid;
 
 /// Page Entry Index valid
 pub open spec fn pei_valid(index: usize) -> bool {
@@ -75,9 +74,33 @@ pub open spec fn mem_valid(v: PAddr) -> bool {
     v & (!MEM_MASK) as usize == 0
 }
 
+pub open spec fn iova_4k_valid(iova: usize) -> bool {
+    iova & (!MEM_4K_MASK) as usize == 0
+}
+
+pub open spec fn iova_2m_valid(iova: usize) -> bool {
+    iova & (!MEM_2M_MASK) as usize == 0
+}
+
+pub open spec fn iova_1g_valid(iova: usize) -> bool {
+    iova & (!MEM_1G_MASK) as usize == 0
+}
+
 pub open spec fn page_ptr_valid(ptr: usize) -> bool {
     &&& ptr % 0x1000 == 0
     &&& ptr / 0x1000 < NUM_PAGES
+}
+
+pub proof fn page_ptr_valid_imply_mem_valid(v: usize)
+    requires
+        page_ptr_valid(v),
+    ensures
+        mem_valid(v),
+{
+    assert(v & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector)
+        requires
+            ((v % 4096) == 0) && ((v / 4096) < 2 * 1024 * 1024),
+    ;
 }
 
 pub open spec fn spec_page_index_truncate_2m(index: usize) -> usize {

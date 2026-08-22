@@ -1,0 +1,15 @@
+[package]
+name = "veriflat_kernel_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vstd = { path = "../../verus/source/vstd" }
+veriflat_model = { path = "../veriflat_model" }
+
+[features]
+default = ["ipc-pilot-core"]
+ipc-pilot-core = []
+
+[package.metadata.verus]
+verify = true
