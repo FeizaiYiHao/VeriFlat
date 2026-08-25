@@ -425,47 +425,6 @@ impl PageAllocator{
         (node_addr, node_perm)
     }
 
-    /// Extract the `PagePerm4k` for a page that was just popped from the given
-    /// CPU's cache.  The perm must be in `cpu_caches[cpu_id].page_perms_4k`.
-    /// //@Xiangdong PROOF GAP: when the cache was refilled from the global pool,
-    /// the perms need to move from global_pool.page_perms_4k to the cache's map.
-    /// This transfer is not yet implemented.
-    #[verifier::external_body]
-    pub fn extract_page_perm_4k(
-        &mut self,
-        cpu_id: CpuId,
-        page_ptr: PagePtr,
-        Tracked(lctx): Tracked<&LocalContext>,
-        lock_perm: Tracked<&LockPerm>,
-    ) -> (ret: Tracked<PagePerm4k>)
-        requires
-            old(self).wf(),
-            index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            old(self).cpu_caches.spec_index(cpu_id).view().is_init(),
-            lock_perm.view().state() is WriteLock,
-            lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(self).cpu_caches.spec_index(cpu_id).view().view().page_perms_4k.view().dom().contains(page_ptr),
-        ensures
-            final(self).wf(),
-            final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            final(self).cpu_caches.spec_index(cpu_id).view()
-                .write_lock_perm_match(lock_perm.view()),
-            final(self).cpu_caches.spec_index(cpu_id).lock_id()
-                == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-            final(self).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
-            ret.view().is_init(),
-            ret.view().addr() == page_ptr,
-    {
-        unimplemented!()
-    }
-
     // Global-pool twin of `pop_cache_page`: pop the head off the write-locked
     // `global_pool` list and rebalance `total_free_pages`. Conservation is
     // simpler than the cache case -- `total_free_pages_wf` folds `global_pool.len()

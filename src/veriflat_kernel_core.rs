@@ -2,29 +2,17 @@
 
 use vstd::prelude::*;
 
-#[path = "../../../src/define/mod.rs"]
 pub mod define;
-#[path = "../../../src/lemma/mod.rs"]
 pub mod lemma;
-#[path = "../../../src/util/mod.rs"]
 pub mod util;
-#[path = "../../../src/primitive/mod.rs"]
 pub mod primitive;
-#[path = "../../../src/locks/mod.rs"]
 pub mod locks;
-#[path = "../../../src/linkedlist/mod.rs"]
 pub mod linkedlist;
-#[path = "../../../src/page/mod.rs"]
 pub mod page;
-#[path = "../../../src/cpu/mod.rs"]
 pub mod cpu;
-#[path = "../../../src/proc/mod.rs"]
 pub mod proc;
-#[path = "../../../src/allocator/mod.rs"]
 pub mod allocator;
-#[path = "../../../src/pagetable_seq/mod.rs"]
 pub mod pagetable_seq;
-#[path = "../../../src/iommu/mod.rs"]
 pub mod iommu;
 
 pub use define::*;
@@ -39,6 +27,21 @@ pub use proc::*;
 pub use allocator::*;
 pub use pagetable_seq::*;
 pub use iommu::*;
+
+pub mod kernel;
+
+pub use kernel::kernel_k_define_spec::*;
+pub use kernel::kernel_u_define_spec::*;
+pub use kernel::kernel_total_define_spec::*;
+pub use kernel::held_objects_unchanged_spec::*;
+pub use kernel::process_management::*;
+pub use kernel::memory_management::*;
+pub use kernel::cpu_tlb_management;
+pub use kernel::cpu_tlb_management::*;
+pub use kernel::iommu_tlb_management::*;
+pub use kernel::lemma::*;
+pub use kernel::spec_util::*;
+pub use kernel::release_and_finish_syscall::*;
 
 verus! {
 global size_of usize == 8;

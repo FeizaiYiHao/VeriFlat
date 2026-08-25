@@ -286,6 +286,9 @@ verus! {
         ///     is done),
         ///   - `lock_id_aligned(self, lctx)` (no stealth locks, every
         ///     LocalContext entry corresponds to the named real held lock),
+        /// TCB maintenance rule: do not change this function's signature,
+        /// contract, triggers, or body without the user's explicit approval.
+        ///
         #[verifier::external_body]
         pub proof fn kernel_step_boundary(
             tracked &mut self,
@@ -378,11 +381,6 @@ verus! {
                     ) ==> cpu_objects_unlocked_except(
                         final(self).cpu_array, final(lctx).thread_id(), exceptions,
                     ),
-                page_objects_unlocked(
-                    old(self).page_array, old(lctx).thread_id(),
-                ) ==> page_objects_unlocked(
-                    final(self).page_array, final(lctx).thread_id(),
-                ),
                 forall|exceptions: Set<PageIndex>|
                     #![trigger page_objects_unlocked_except(
                         old(self).page_array, old(lctx).thread_id(), exceptions)]
@@ -391,26 +389,6 @@ verus! {
                     ) ==> page_objects_unlocked_except(
                         final(self).page_array, final(lctx).thread_id(), exceptions,
                     ),
-                container_objects_unlocked(
-                    old(self).container_map, old(lctx).thread_id())
-                    ==> container_objects_unlocked(
-                        final(self).container_map, final(lctx).thread_id()),
-                process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id())
-                    ==> process_objects_unlocked(
-                        final(self).process_map, final(lctx).thread_id()),
-                thread_objects_unlocked(
-                    old(self).thread_map, old(lctx).thread_id())
-                    ==> thread_objects_unlocked(
-                        final(self).thread_map, final(lctx).thread_id()),
-                endpoint_objects_unlocked(
-                    old(self).endpoint_map, old(lctx).thread_id())
-                    ==> endpoint_objects_unlocked(
-                        final(self).endpoint_map, final(lctx).thread_id()),
-                pagetable_objects_unlocked(
-                    old(self).pagetable_map, old(lctx).thread_id())
-                    ==> pagetable_objects_unlocked(
-                        final(self).pagetable_map, final(lctx).thread_id()),
                 forall|exceptions: Set<RwLockContainerPtr>|
                     #![trigger container_objects_unlocked_except(
                         old(self).container_map, old(lctx).thread_id(), exceptions)]
@@ -439,6 +417,47 @@ verus! {
                         old(self).pagetable_map, old(lctx).thread_id(), exceptions)
                     ==> pagetable_objects_unlocked_except(
                         final(self).pagetable_map, final(lctx).thread_id(), exceptions),
+                forall|exceptions: Set<RwLockEndpointPtr>|
+                    #![trigger endpoint_objects_unlocked_except(
+                        old(self).endpoint_map, old(lctx).thread_id(), exceptions)]
+                    endpoint_objects_unlocked_except(
+                        old(self).endpoint_map, old(lctx).thread_id(), exceptions,
+                    ) ==> endpoint_objects_unlocked_except(
+                        final(self).endpoint_map, final(lctx).thread_id(), exceptions,
+                    ),
+                forall|exceptions: Set<RwLockSchedulerPtr>|
+                    #![trigger scheduler_objects_unlocked_except(
+                        old(self).scheduler_map, old(lctx).thread_id(), exceptions)]
+                    scheduler_objects_unlocked_except(
+                        old(self).scheduler_map, old(lctx).thread_id(), exceptions,
+                    ) ==> scheduler_objects_unlocked_except(
+                        final(self).scheduler_map, final(lctx).thread_id(), exceptions,
+                    ),
+                page_objects_unlocked(
+                    old(self).page_array, old(lctx).thread_id(),
+                ) ==> page_objects_unlocked(
+                    final(self).page_array, final(lctx).thread_id(),
+                ),
+                container_objects_unlocked(
+                    old(self).container_map, old(lctx).thread_id())
+                    ==> container_objects_unlocked(
+                        final(self).container_map, final(lctx).thread_id()),
+                process_objects_unlocked(
+                    old(self).process_map, old(lctx).thread_id())
+                    ==> process_objects_unlocked(
+                        final(self).process_map, final(lctx).thread_id()),
+                thread_objects_unlocked(
+                    old(self).thread_map, old(lctx).thread_id())
+                    ==> thread_objects_unlocked(
+                        final(self).thread_map, final(lctx).thread_id()),
+                endpoint_objects_unlocked(
+                    old(self).endpoint_map, old(lctx).thread_id())
+                    ==> endpoint_objects_unlocked(
+                        final(self).endpoint_map, final(lctx).thread_id()),
+                pagetable_objects_unlocked(
+                    old(self).pagetable_map, old(lctx).thread_id())
+                    ==> pagetable_objects_unlocked(
+                        final(self).pagetable_map, final(lctx).thread_id()),
                 iommu_table_objects_unlocked(
                     old(self).iommu_table_map, old(lctx).thread_id())
                     ==> iommu_table_objects_unlocked(
@@ -473,6 +492,12 @@ verus! {
                     kernel_k_to_kernel_u(*old(self)),
                 ),
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
+                containers_rodata_unchanged(
+                    old(self).container_map, final(self).container_map,
+                ),
+                processes_rodata_unchanged(
+                    old(self).process_map, final(self).process_map,
+                ),
                 // The kernel lock state is the anchor: every object held
                 // before interleaving is
                 // still present and bit-for-bit unchanged afterwards.

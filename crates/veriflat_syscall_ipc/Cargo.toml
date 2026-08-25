@@ -3,13 +3,13 @@ name = "veriflat_syscall_ipc"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+path = "../../src/kernel/implementation/veriflat_syscall_ipc.rs"
+
 [dependencies]
 vstd = { path = "../../verus/source/vstd" }
 veriflat_kernel_core = { path = "../veriflat_kernel_core" }
-
-[features]
-default = ["ipc-pilot"]
-ipc-pilot = []
+veriflat_map_4k = { path = "../veriflat_map_4k" }
 
 [package.metadata.verus]
 verify = true

@@ -1,0 +1,209 @@
+diff --git a/source/cargo-verus/src/plan.rs b/source/cargo-verus/src/plan.rs
+index 77cd6b6d8..fed67f30e 100644
+--- a/source/cargo-verus/src/plan.rs
++++ b/source/cargo-verus/src/plan.rs
+@@ -31,6 +31,7 @@ pub fn plan_execution<'a>(
+     let parsed_cli = CargoVerusCli::from_args(args.into_iter())?;
+ 
+     let current_dir: PathBuf = current_dir.as_ref().to_owned();
++    let pipeline_smt = std::env::var("VERUS_PIPELINE_SMT").as_deref() == Ok("1");
+ 
+     let cfg = match parsed_cli.command {
+         VerusSubcommand::New(new_cmd) => {
+@@ -46,9 +47,9 @@ pub fn plan_execution<'a>(
+         },
+         VerusSubcommand::Verify(options) => VerusConfig {
+             current_dir,
+-            subcommand: "check",
++            subcommand: if pipeline_smt { "build" } else { "check" },
+             options,
+-            compile_primary: false,
++            compile_primary: pipeline_smt,
+             verify_deps: true,
+             warn_if_nothing_verified: true,
+         },
+diff --git a/source/rust_verify/src/driver.rs b/source/rust_verify/src/driver.rs
+index ffa425fdb..f39a33e84 100644
+--- a/source/rust_verify/src/driver.rs
++++ b/source/rust_verify/src/driver.rs
+@@ -8,6 +8,8 @@ use rustc_middle::ty::TyCtxt;
+ use rustc_span::{Span, sym};
+ use std::time::{Duration, Instant};
+ 
++pub const PIPELINED_ERASURE_DRIVER_ARG: &str = "--internal-pipelined-erasure";
++
+ struct DefaultCallbacks;
+ impl rustc_driver::Callbacks for DefaultCallbacks {}
+ 
+@@ -249,6 +251,32 @@ pub fn find_verusroot() -> Option<VerusRoot> {
+         })
+ }
+ 
++#[doc(hidden)]
++pub fn run_pipelined_erasure_driver(rustc_args: Vec<String>, vstd: Vstd) -> Result<(), ()> {
++    run_with_erase_macro_compile(rustc_args, true, vstd)
++}
++
++pub(crate) fn run_pipelined_erasure_compile(
++    rustc_args: Vec<String>,
++    vstd: Vstd,
++) -> Result<Duration, ()> {
++    let vstd_mode = match vstd {
++        Vstd::IsVstd => "is-vstd",
++        Vstd::NoVstd => "no-vstd",
++        Vstd::Imported => "imported",
++        Vstd::IsCore => "is-core",
++        Vstd::ImportedViaCore => "imported-via-core",
++    };
++    let start = Instant::now();
++    let status = std::process::Command::new(std::env::current_exe().map_err(|_| ())?)
++        .arg(PIPELINED_ERASURE_DRIVER_ARG)
++        .arg(vstd_mode)
++        .args(rustc_args)
++        .status()
++        .map_err(|_| ())?;
++    if status.success() { Ok(start.elapsed()) } else { Err(()) }
++}
++
+ pub fn run(
+     verifier: Verifier,
+     mut rustc_args: Vec<String>,
+@@ -279,6 +307,10 @@ pub fn run(
+         None
+     };
+ 
++    let pipeline_smt = verifier.via_cargo_args.is_some()
++        && !verifier.args.no_verify
++        && std::env::var("VERUS_PIPELINE_SMT").as_deref() == Ok("1");
++    let verifier_vstd = verifier.args.vstd;
+     let time0 = Instant::now();
+     let mut rustc_args_verify = rustc_args.clone();
+     rustc_args_verify.extend(["--cfg", "verus_only"].map(|s| s.to_string()));
+@@ -297,6 +329,12 @@ pub fn run(
+         verus_externs,
+         spans: None,
+         unresolved_import_deps: std::collections::HashSet::new(),
++        pipeline_erasure: if pipeline_smt {
++            Some((rustc_args.clone(), verifier_vstd))
++        } else {
++            None
++        },
++        pipeline_compile_time: Duration::new(0, 0),
+     };
+     let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
+     let VerifierCallbacksEraseMacro {
+@@ -305,6 +343,7 @@ pub fn run(
+         rust_end_time,
+         tc_start_time,
+         tc_end_time,
++        pipeline_compile_time,
+         ..
+     } = verifier_callbacks;
+     let time1 = Instant::now();
+@@ -323,29 +362,30 @@ pub fn run(
+             verifier,
+             Stats {
+                 time_rustc,
+-                time_verify: (time1 - time0) - time_trait_conflicts,
++                time_verify: (time1 - time0) - time_trait_conflicts - pipeline_compile_time,
+                 time_trait_conflicts,
+-                time_compile: Duration::new(0, 0),
++                time_compile: pipeline_compile_time,
+             },
+             Err(()),
+         );
+     }
+ 
+-    let compile_status =
+-        if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
+-            Ok(())
+-        } else {
+-            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+-            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+-        };
++    let compile_status = if pipeline_smt {
++        Ok(())
++    } else if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
++        Ok(())
++    } else {
++        let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
++        run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
++    };
+ 
+     let time2 = Instant::now();
+ 
+     let stats = Stats {
+         time_rustc,
+-        time_verify: (time1 - time0) - time_trait_conflicts,
++        time_verify: (time1 - time0) - time_trait_conflicts - pipeline_compile_time,
+         time_trait_conflicts,
+-        time_compile: time2 - time1,
++        time_compile: if pipeline_smt { pipeline_compile_time } else { time2 - time1 },
+     };
+ 
+     // Run borrow checker and compiler with #[exec] (not #[proof])
+diff --git a/source/rust_verify/src/main.rs b/source/rust_verify/src/main.rs
+index 19b1d7547..9eccecc19 100644
+--- a/source/rust_verify/src/main.rs
++++ b/source/rust_verify/src/main.rs
+@@ -34,6 +34,21 @@ pub fn main() {
+     let internal_program = internal_args.next().unwrap();
+     let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
+         match first_arg.as_str() {
++            rust_verify::driver::PIPELINED_ERASURE_DRIVER_ARG => {
++                let vstd = match internal_args.next().as_deref() {
++                    Some("is-vstd") => rust_verify::config::Vstd::IsVstd,
++                    Some("no-vstd") => rust_verify::config::Vstd::NoVstd,
++                    Some("imported") => rust_verify::config::Vstd::Imported,
++                    Some("is-core") => rust_verify::config::Vstd::IsCore,
++                    Some("imported-via-core") => rust_verify::config::Vstd::ImportedViaCore,
++                    mode => panic!("invalid pipelined erasure vstd mode: {mode:?}"),
++                };
++                let rustc_args: Vec<_> = internal_args.collect();
++                if rust_verify::driver::run_pipelined_erasure_driver(rustc_args, vstd).is_err() {
++                    std::process::exit(1);
++                }
++                return;
++            }
+             rust_verify::trait_check::TC_DRIVER_ARG => {
+                 let mut internal_args: Vec<_> = internal_args.collect();
+                 internal_args.insert(0, internal_program);
+diff --git a/source/rust_verify/src/verifier.rs b/source/rust_verify/src/verifier.rs
+index fe7269c49..2976fce5f 100644
+--- a/source/rust_verify/src/verifier.rs
++++ b/source/rust_verify/src/verifier.rs
+@@ -1,6 +1,6 @@
+ use crate::boundary_suggestions::build_boundary_suggestion;
+ use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
+-use crate::config::{Args, CargoVerusArgs, ShowTriggers};
++use crate::config::{Args, CargoVerusArgs, ShowTriggers, Vstd};
+ use crate::context::{ContextX, ErasureInfo};
+ use crate::debugger::Debugger;
+ use crate::external::VerifOrExternal;
+@@ -3025,6 +3025,8 @@ pub(crate) struct VerifierCallbacksEraseMacro {
+     /// import-dep-if-present names that did not match any direct `--extern`;
+     /// resolved against rustc's loaded transitive crates in `after_expansion`.
+     pub(crate) unresolved_import_deps: HashSet<String>,
++    pub(crate) pipeline_erasure: Option<(Vec<String>, Vstd)>,
++    pub(crate) pipeline_compile_time: Duration,
+ }
+ 
+ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
+@@ -3229,6 +3231,17 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+                 self.verifier.encountered_error = true;
+                 return rustc_driver::Compilation::Stop;
+             }
++            if let Some((rustc_args, vstd)) = self.pipeline_erasure.take() {
++                match crate::driver::run_pipelined_erasure_compile(rustc_args, vstd) {
++                    Ok(elapsed) => {
++                        self.pipeline_compile_time = elapsed;
++                    }
++                    Err(()) => {
++                        self.verifier.encountered_error = true;
++                        return rustc_driver::Compilation::Stop;
++                    }
++                }
++            }
+             self.tc_start_time = Some(Instant::now());
+             let status = if self.verifier.args.no_lifetime {
+                 Ok(vec![])

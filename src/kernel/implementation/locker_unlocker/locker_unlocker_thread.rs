@@ -211,6 +211,8 @@ impl KernelK {
                 old(self).inv(),
                 old(self).thread_map.dom().contains(thread_ptr),
                 old(self).thread_map.spec_index(thread_ptr).being_killed() == false,
+                !(old(self).thread_map.spec_index(thread_ptr).view().state
+                    is IPC_ENDPOINT_TRANSIT),
                 old(self).thread_map.spec_index(thread_ptr)
                     .wlocked_by(old(lctx)),
                 lock_perm.view().state() is WriteLock,

@@ -14,13 +14,6 @@ pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;
 pub const PROCESS_LOCK_MAJOR:LockMajorId = 105;
 pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
 
-// A process address space is pinned before allocating the physical pages that
-// will populate it.  Allocator cache/pool locks therefore sit above both page
-// table kinds, allowing allocation on demand while the target table remains
-// write-locked.
-pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = THREAD_LOCK_MAJOR + 1;
-pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
-
 pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
 
 pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
@@ -30,10 +23,15 @@ pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
 pub const OWNED_PAGE_LOCK_MAJOR:LockMajorId = 1;
 pub const PAGETABLE_PAGE_MAJOR:LockMajorId = 1001;
 
-pub const THREAD_RUNNING_LOCK_MAJOR:LockMajorId = 10000;
+pub const THREAD_IPC_TRANSIT_LOCK_MAJOR:LockMajorId = 10000;
 pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
 pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
-pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
+// A rendezvous discovers and pins its blocked peer before it can discover the
+// two process address spaces.  Page tables therefore follow blocked threads;
+// mapped pages still follow both page-table kinds.
+pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
+pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
+pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
 
 // An endpoint rendezvous discovers the peer only after locking the endpoint
 // and that blocked thread. Its owning-container scheduler is therefore locked

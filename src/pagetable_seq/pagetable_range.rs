@@ -127,6 +127,50 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 ==> !self.mapping_4k().dom().contains(va)
     }
 
+    /// Every address in the 4K range resolves to a user-present concrete leaf
+    /// whose abstract mapping carries a valid physical page pointer.
+    pub open spec fn spec_mapping_4k_va_range_present(
+        &self,
+        range: &VaRange4K,
+    ) -> bool
+        recommends
+            self.wf(),
+            range.wf(),
+            self.kernel_l4_end <= spec_va2index(range.start).0,
+    {
+        forall|i: int|
+            #![trigger self.mapping_4k().dom().contains(
+                range.view().spec_index(i),
+            )]
+            #![trigger self.spec_resolve_mapping_4k_l1(
+                spec_va2index(range.view().spec_index(i)).0,
+                spec_va2index(range.view().spec_index(i)).1,
+                spec_va2index(range.view().spec_index(i)).2,
+                spec_va2index(range.view().spec_index(i)).3,
+            )]
+            0 <= i < range.len
+            ==> {
+                let va = range.view().spec_index(i);
+                let indices = spec_va2index(va);
+                &&& self.kernel_l4_end <= indices.0
+                &&& pei_valid(indices.0)
+                &&& pei_valid(indices.1)
+                &&& pei_valid(indices.2)
+                &&& pei_valid(indices.3)
+                &&& self.mapping_4k().dom().contains(va)
+                &&& self.mapping_4k().spec_index(va).present
+                &&& page_ptr_valid(self.mapping_4k().spec_index(va).addr)
+                &&& {
+                    let resolved = self.spec_resolve_mapping_4k_l1(
+                        indices.0, indices.1, indices.2, indices.3,
+                    );
+                    &&& resolved is Some
+                    &&& resolved->0.perm.kernel_present
+                    &&& resolved->0.perm.present
+                }
+            }
+    }
+
     pub broadcast proof fn mapping_4k_index_range_empty_implies_va_empty_at(
         &self,
         start_l4i: L4Index,
@@ -552,4 +596,303 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     }
 }
 
+impl PageTable<PT_TYPE> {
+    /// Check whether every address in a 4K range has a user-present leaf.
+    ///
+    /// This scans only the page table and does not mutate any page-table state.
+    pub fn mapping_4k_va_range_present(
+        &self,
+        range: &VaRange4K,
+    ) -> (ret: bool)
+        requires
+            self.wf(),
+            range.wf(),
+            self.kernel_l4_end <= spec_va2index(range.start).0,
+        ensures
+            ret == self.spec_mapping_4k_va_range_present(range),
+    {
+        let range_start = range.start;
+        let range_len = range.len;
+        let mut i: usize = 0;
+        while i < range_len
+            invariant
+                self.wf(),
+                range.wf(),
+                range_start == range.start,
+                range_len == range.len,
+                self.kernel_l4_end <= spec_va2index(range.start).0,
+                0 <= i <= range_len,
+                forall|done: int|
+                    #![trigger self.mapping_4k().dom().contains(
+                        range.view().spec_index(done),
+                    )]
+                    #![trigger self.spec_resolve_mapping_4k_l1(
+                        spec_va2index(range.view().spec_index(done)).0,
+                        spec_va2index(range.view().spec_index(done)).1,
+                        spec_va2index(range.view().spec_index(done)).2,
+                        spec_va2index(range.view().spec_index(done)).3,
+                    )]
+                    0 <= done < i
+                    ==> {
+                        let va = range.view().spec_index(done);
+                        let indices = spec_va2index(va);
+                        &&& self.kernel_l4_end <= indices.0
+                        &&& pei_valid(indices.0)
+                        &&& pei_valid(indices.1)
+                        &&& pei_valid(indices.2)
+                        &&& pei_valid(indices.3)
+                        &&& self.mapping_4k().dom().contains(va)
+                        &&& self.mapping_4k().spec_index(va).present
+                        &&& page_ptr_valid(
+                            self.mapping_4k().spec_index(va).addr,
+                        )
+                        &&& {
+                            let resolved = self.spec_resolve_mapping_4k_l1(
+                                indices.0, indices.1, indices.2, indices.3,
+                            );
+                            &&& resolved is Some
+                            &&& resolved->0.perm.kernel_present
+                            &&& resolved->0.perm.present
+                        }
+                    },
+            decreases range_len - i,
+        {
+            let va = va_add_range(range_start, i);
+            proof {
+                assert(va_4k_valid(va)) by {
+                    range.va_range_lemma();
+                };
+            }
+            let (l4i, l3i, l2i, l1i) = va2index(va);
+            proof {
+                assert(self.kernel_l4_end <= l4i) by {
+                    assert(
+                        spec_v2l4index(range_start) <= l4i
+                    ) by (bit_vector)
+                        requires
+                            va == spec_va_add_range(range_start, i),
+                            l4i == spec_v2l4index(va),
+                            spec_va_4k_valid(range_start),
+                            spec_va_4k_valid(va),
+                            range_len <= usize::MAX / 4096,
+                            range_start < usize::MAX - range_len * 4096,
+                            i < range_len;
+                };
+            }
+            let resolved = self.resolve_mapping_4k_l1(
+                l4i, l3i, l2i, l1i,
+            );
+            if resolved.2.is_none() {
+                proof {
+                    assert(!self.spec_mapping_4k_va_range_present(range)) by {
+                        range.va_range_lemma();
+                    };
+                }
+                return false;
+            }
+            let entry = resolved.2.unwrap();
+            if !entry.present {
+                proof {
+                    assert(!self.spec_mapping_4k_va_range_present(range)) by {
+                        range.va_range_lemma();
+                        assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
+                            spec_va_4k_index_roundtrip();
+                        };
+                    };
+                }
+                return false;
+            }
+            proof {
+                assert({
+                    let checked_va = range.view().spec_index(i as int);
+                    let checked_indices = spec_va2index(checked_va);
+                    &&& self.kernel_l4_end <= checked_indices.0
+                    &&& pei_valid(checked_indices.0)
+                    &&& pei_valid(checked_indices.1)
+                    &&& pei_valid(checked_indices.2)
+                    &&& pei_valid(checked_indices.3)
+                    &&& self.mapping_4k().dom().contains(checked_va)
+                    &&& self.mapping_4k().spec_index(checked_va).present
+                    &&& page_ptr_valid(
+                        self.mapping_4k().spec_index(checked_va).addr,
+                    )
+                    &&& {
+                        let spec_resolved = self.spec_resolve_mapping_4k_l1(
+                            checked_indices.0,
+                            checked_indices.1,
+                            checked_indices.2,
+                            checked_indices.3,
+                        );
+                        &&& spec_resolved is Some
+                        &&& spec_resolved->0.perm.kernel_present
+                        &&& spec_resolved->0.perm.present
+                    }
+                }) by {
+                    range.va_range_lemma();
+                    assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
+                        spec_va_4k_index_roundtrip();
+                    };
+                    reveal(PageTable::wf_mapping_4k);
+                };
+            }
+            i = i + 1;
+        }
+        true
+    }
+}
+
+impl PageTable<PT_TYPE> {
+    /// Every 4K slot in the range is available for a new leaf. Missing
+    /// directory levels are allowed; existing 1G, 2M, and 4K leaves are not.
+    pub open spec fn spec_mapping_4k_va_range_buildable(
+        &self,
+        range: &VaRange4K,
+    ) -> bool {
+        forall|i: int|
+            #![trigger self.spec_resolve_mapping_4k_l1(
+                spec_va2index(range.view().spec_index(i)).0,
+                spec_va2index(range.view().spec_index(i)).1,
+                spec_va2index(range.view().spec_index(i)).2,
+                spec_va2index(range.view().spec_index(i)).3,
+            )]
+            0 <= i < range.len
+                ==> self.spec_4k_entry_useable(
+                    spec_va2index(range.view().spec_index(i)).0,
+                    spec_va2index(range.view().spec_index(i)).1,
+                    spec_va2index(range.view().spec_index(i)).2,
+                    spec_va2index(range.view().spec_index(i)).3,
+                )
+    }
+
+    pub fn mapping_4k_va_range_buildable(
+        &self,
+        range: &VaRange4K,
+    ) -> (ret: bool)
+        requires
+            self.wf(),
+            range.wf(),
+            range.len > 0,
+            self.kernel_l4_end <= spec_va2index(range.start).0,
+        ensures
+            ret == self.spec_mapping_4k_va_range_buildable(range),
+    {
+        let range_start = range.start;
+        let range_len = range.len;
+        let mut i: usize = 0;
+        while i < range.len
+            invariant
+                self.wf(),
+                range.wf(),
+                range_start == range.start,
+                range_len == range.len,
+                range.len > 0,
+                self.kernel_l4_end <= spec_va2index(range.start).0,
+                0 <= i <= range.len,
+                forall|j: int|
+                    #![trigger range.view().spec_index(j)]
+                    0 <= j < i ==> {
+                        let indices = spec_va2index(range.view().spec_index(j));
+                        &&& self.kernel_l4_end <= indices.0
+                        &&& pei_valid(indices.0)
+                        &&& pei_valid(indices.1)
+                        &&& pei_valid(indices.2)
+                        &&& pei_valid(indices.3)
+                    },
+                forall|j: int|
+                    #![trigger self.spec_resolve_mapping_4k_l1(
+                        spec_va2index(range.view().spec_index(j)).0,
+                        spec_va2index(range.view().spec_index(j)).1,
+                        spec_va2index(range.view().spec_index(j)).2,
+                        spec_va2index(range.view().spec_index(j)).3,
+                    )]
+                    0 <= j < i ==> {
+                        let indices = spec_va2index(range.view().spec_index(j));
+                        self.spec_4k_entry_useable(
+                            indices.0, indices.1, indices.2, indices.3,
+                        )
+                    },
+            decreases range.len - i,
+        {
+            let va = va_add_range(range_start, i);
+            proof {
+                assert(va_4k_valid(va)) by {
+                    range.va_range_lemma();
+                };
+            }
+            let (l4i, l3i, l2i, l1i) = va2index(va);
+            proof {
+                assert(self.kernel_l4_end <= l4i) by {
+                    assert(spec_v2l4index(range_start) <= l4i)
+                        by (bit_vector)
+                        requires
+                            va == spec_va_add_range(range_start, i),
+                            l4i == spec_v2l4index(va),
+                            spec_va_4k_valid(range_start),
+                            spec_va_4k_valid(va),
+                            range_len <= usize::MAX / 4096,
+                            range_start < usize::MAX - range_len * 4096,
+                            i < range_len;
+                };
+            }
+            let resolved = self.resolve_mapping_4k_l1(
+                l4i, l3i, l2i, l1i,
+            );
+            match resolved.1 {
+                PageTableErrorCode::NoError
+                | PageTableErrorCode::EntryTakenBy4k
+                | PageTableErrorCode::EntryTakenBy1g
+                | PageTableErrorCode::EntryTakenBy2m => {
+                    proof {
+                        assert(!self.spec_4k_entry_useable(
+                            spec_va2index(va).0,
+                            spec_va2index(va).1,
+                            spec_va2index(va).2,
+                            spec_va2index(va).3,
+                        )) by {
+                            spec_va_4k_valid_imply_indices_valid();
+                        };
+                        assert(!self.spec_mapping_4k_va_range_buildable(range)) by {
+                            range.va_range_lemma();
+                        };
+                    }
+                    return false;
+                },
+                PageTableErrorCode::L4EntryNotExist
+                | PageTableErrorCode::L3EntryNotExist
+                | PageTableErrorCode::L2EntryNotExist
+                | PageTableErrorCode::L1EntryNotExist => {},
+            }
+            proof {
+                assert(self.spec_4k_entry_useable(
+                    l4i, l3i, l2i, l1i,
+                )) by {
+                    spec_va_4k_valid_imply_indices_valid();
+                };
+                assert({
+                    let checked_indices = spec_va2index(
+                        range.view().spec_index(i as int),
+                    );
+                    &&& self.kernel_l4_end <= checked_indices.0
+                    &&& pei_valid(checked_indices.0)
+                    &&& pei_valid(checked_indices.1)
+                    &&& pei_valid(checked_indices.2)
+                    &&& pei_valid(checked_indices.3)
+                    &&& self.spec_4k_entry_useable(
+                        checked_indices.0,
+                        checked_indices.1,
+                        checked_indices.2,
+                        checked_indices.3,
+                    )
+                }) by {
+                    range.va_range_lemma();
+                    assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
+                        spec_va_4k_index_roundtrip();
+                    };
+                };
+            }
+            i = i + 1;
+        }
+        true
+    }
+}
 } // verus!

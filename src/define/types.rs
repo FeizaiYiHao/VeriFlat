@@ -104,6 +104,7 @@ pub type SLLIndex = i32;
 #[allow(non_camel_case_types)]
 pub enum ThreadState {
     SCHEDULED,
+    IPC_ENDPOINT_TRANSIT,
     SENDING,
     RECEIVING,
     CALLING,
@@ -314,10 +315,16 @@ pub enum RetValueType {
     ErrorProcessKilled,
     /// The currently running thread is being torn down.
     ErrorThreadKilled,
-    // ---- empty IPC failure modes ----
+    // ---- IPC failure modes ----
     ErrorInvalidEndpoint,
     ErrorIpcTypeMismatch,
     ErrorIpcPeerKilled,
+    ErrorIpcSameProcess,
+    ErrorIpcSourceUnmapped,
+    ErrorIpcPageOwnerMismatch,
+    ErrorIpcEndpointSourceInvalid,
+    ErrorIpcEndpointTargetInUse,
+    ErrorIpcEndpointOwnerMismatch,
     ErrorCallAcrossContainers,
     ErrorReplyOutOfPhase,
     /// Adding `alloc_amount` to the running process's `quota_4k` would

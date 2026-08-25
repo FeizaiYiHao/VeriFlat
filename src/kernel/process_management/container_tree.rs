@@ -222,6 +222,7 @@ verus! {
     /// then `container_tree_wf` is preserved. Lets callers that only changed
     /// lock-state (not payload) re-establish the tree invariant with a single
     /// cheap call instead of revealing all seven parts inline.
+    #[verifier::spinoff_prover]
     pub proof fn container_no_change_to_tree_fields_imply_wf(
         root_container: RwLockContainerPtr,
         old_container_perms: ContainerLockedMap,

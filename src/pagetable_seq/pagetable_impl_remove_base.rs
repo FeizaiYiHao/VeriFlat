@@ -55,6 +55,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     write: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).write,
                     execute_disable: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).execute_disable,
                     present: false,
+                    owning_container: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).owning_container,
                 }),
             final(self).mapping_2m() =~= old(self).mapping_2m(),
             final(self).mapping_1g() =~= old(self).mapping_1g(),
@@ -103,6 +104,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     write: old(self).mapping_4k.view().spec_index(va.view()).write,
                     execute_disable: old(self).mapping_4k.view().spec_index(va.view()).execute_disable,
                     present: false,
+                    owning_container: old(self).mapping_4k.view().spec_index(va.view()).owning_container,
                 }));
         }
 

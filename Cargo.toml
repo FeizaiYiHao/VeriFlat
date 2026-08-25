@@ -2,7 +2,11 @@
 resolver = "3"
 members = [
     "crates/veriflat_kernel_core",
-    "crates/veriflat_model",
+    "crates/veriflat_alloc_page",
+    "crates/veriflat_map_4k",
+    "crates/veriflat_syscall_alloc_quota",
+    "crates/veriflat_syscall_new_thread",
+    "crates/veriflat_syscall_mmap_4k",
     "crates/veriflat_syscall_ipc",
 ]
 exclude = ["verus"]
@@ -20,5 +24,4 @@ path = "src/lib.rs"
 vstd = { path = "verus/source/vstd" }
 
 [features]
-ipc-pilot = []
-ipc-pilot-core = []
+split-crates = []

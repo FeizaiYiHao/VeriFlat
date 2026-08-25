@@ -233,6 +233,30 @@ pub open spec fn allocator_objects_unlocked(
             .locked_by_thread(thread_id) == false
 }
 
+pub open spec fn allocator_objects_unlocked_except_quota(
+    alloc_map: PageAllocatorUnLockedMap,
+    thread_id: LockThreadId,
+    quota_allocator_ptr: RwLockPageAllocatorPtr,
+) -> bool {
+    &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+        #![trigger alloc_map.spec_index(alloc_ptr).global_pool]
+        alloc_map.dom().contains(alloc_ptr)
+        ==> !alloc_map.spec_index(alloc_ptr).global_pool
+            .locked_by_thread(thread_id)
+    &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+        #![trigger alloc_map.spec_index(alloc_ptr).quota]
+        alloc_map.dom().contains(alloc_ptr)
+            && alloc_ptr != quota_allocator_ptr
+        ==> !alloc_map.spec_index(alloc_ptr).quota
+            .locked_by_thread(thread_id)
+    &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
+        #![trigger alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i),
+            index_valid(NUM_CPUS, cpu_i)]
+        alloc_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i)
+        ==> !alloc_map.spec_index(alloc_ptr).cpu_caches
+            .spec_index(cpu_i).view().locked_by_thread(thread_id)
+}
+
 impl KernelK{
     pub open spec fn get_process_pagetable(&self, process_ptr:RwLockProcessPtr) -> PageTable<PT_TYPE>
         recommends
