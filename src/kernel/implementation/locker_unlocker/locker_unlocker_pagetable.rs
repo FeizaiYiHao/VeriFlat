@@ -41,13 +41,10 @@ impl KernelK {
                 final(self).allocator_1g_map == old(self).allocator_1g_map,
                 final(self).default_pagetable == old(self).default_pagetable,
 
-                final(self).pagetable_map.dom() == old(self).pagetable_map.dom(),
                 final(self).pagetable_map.unchanged_except(
                     &old(self).pagetable_map,
                     pagetable_ptr,
                 ),
-                final(self).pagetable_map.spec_index(pagetable_ptr).view()
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view(),
                 pagetable_objects_unlocked(
                     old(self).pagetable_map, old(lctx).thread_id(),
                 ) ==> pagetable_objects_unlocked_except(
@@ -69,6 +66,20 @@ impl KernelK {
                         KernelObjId::PageTable(pagetable_ptr),
                     ),
                 ),
+                forall|other_pagetable: RwLockPageTableRoot|
+                    #![trigger final(lctx).lock_entry_contains(
+                        final(self).pagetable_map.lock_id_by_key(other_pagetable),
+                        KernelObjId::PageTable(other_pagetable),
+                    )]
+                    old(self).pagetable_map.dom().contains(other_pagetable)
+                        && other_pagetable != pagetable_ptr
+                    ==> final(lctx).lock_entry_contains(
+                            final(self).pagetable_map.lock_id_by_key(other_pagetable),
+                            KernelObjId::PageTable(other_pagetable),
+                        ) == old(lctx).lock_entry_contains(
+                            old(self).pagetable_map.lock_id_by_key(other_pagetable),
+                            KernelObjId::PageTable(other_pagetable),
+                        ),
         {
             proof {
                 assert(old(self).pagetable_map.perms_wf()) by { reveal(pagetable_perms_wf); };
@@ -190,15 +201,10 @@ impl KernelK {
                 final(self).allocator_1g_map == old(self).allocator_1g_map,
                 final(self).default_pagetable == old(self).default_pagetable,
 
-                final(self).pagetable_map.dom() == old(self).pagetable_map.dom(),
                 final(self).pagetable_map.unchanged_except(
                     &old(self).pagetable_map,
                     pagetable_ptr,
                 ),
-                final(self).pagetable_map.spec_index(pagetable_ptr).view()
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view(),
-                final(self).pagetable_map.spec_index(pagetable_ptr)
-                    .locking_thread() is None,
                 final(self).pagetable_map.lock_id_by_key(pagetable_ptr)
                     == old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
 
@@ -218,6 +224,20 @@ impl KernelK {
                         KernelObjId::PageTable(pagetable_ptr),
                     ),
                 ),
+                forall|other_pagetable: RwLockPageTableRoot|
+                    #![trigger final(lctx).lock_entry_contains(
+                        final(self).pagetable_map.lock_id_by_key(other_pagetable),
+                        KernelObjId::PageTable(other_pagetable),
+                    )]
+                    old(self).pagetable_map.dom().contains(other_pagetable)
+                        && other_pagetable != pagetable_ptr
+                    ==> final(lctx).lock_entry_contains(
+                            final(self).pagetable_map.lock_id_by_key(other_pagetable),
+                            KernelObjId::PageTable(other_pagetable),
+                        ) == old(lctx).lock_entry_contains(
+                            old(self).pagetable_map.lock_id_by_key(other_pagetable),
+                            KernelObjId::PageTable(other_pagetable),
+                        ),
         {
             proof {
                 assert({

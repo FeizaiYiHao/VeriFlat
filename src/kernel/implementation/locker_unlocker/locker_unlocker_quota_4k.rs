@@ -56,8 +56,18 @@ impl KernelK {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
-                forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
+                forall|k: usize|
+                    #![trigger old(self).allocator_4k_map.spec_index(k)]
+                    #![trigger final(self).allocator_4k_map.spec_index(k)]
+                    old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
+                allocator_objects_unlocked(
+                    old(self).allocator_4k_map, old(lctx).thread_id(),
+                ) ==> allocator_objects_unlocked_except_quota(
+                    final(self).allocator_4k_map,
+                    final(lctx).thread_id(),
+                    alloc_ptr_4k,
+                ),
 
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
@@ -266,11 +276,23 @@ impl KernelK {
                 // ---- allocator_4k_map: dom unchanged; only the targeted entry's quota lock state changed (now unlocked) ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
+                !final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
+                    .locked_by_thread(final(lctx).thread_id()),
+                allocator_objects_unlocked_except_quota(
+                    old(self).allocator_4k_map,
+                    old(lctx).thread_id(),
+                    alloc_ptr_4k,
+                ) ==> allocator_objects_unlocked(
+                    final(self).allocator_4k_map, final(lctx).thread_id(),
+                ),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
-                forall|k: usize| #![auto] old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
+                forall|k: usize|
+                    #![trigger old(self).allocator_4k_map.spec_index(k)]
+                    #![trigger final(self).allocator_4k_map.spec_index(k)]
+                    old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
 
                 // ---- LocalContext: lock dropped; thread preserved ----

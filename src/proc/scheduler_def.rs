@@ -79,6 +79,7 @@ impl Scheduler {
             node_perm.view().addr() == node_addr,
             node_perm.view().value().view() == thread_ptr,
             !old(self).queue.view().contains(thread_ptr),
+            old(self).queue.length != usize::MAX,
         ensures
             final(self).inv(),
             final(self).queue.length == old(self).queue.length + 1,
@@ -96,22 +97,8 @@ impl Scheduler {
                     ==> final(self).queue.view().contains(value),
             final(self).owning_container == old(self).owning_container,
     {
-        proof {
-            assert(self.queue.length != usize::MAX) by {
-                scheduler_queue_len_bounded(&*self);
-            };
-        }
         self.queue.push_tail(node_addr, node_perm);
     }
-}
-
-#[verifier::external_body]
-pub proof fn scheduler_queue_len_bounded(scheduler: &Scheduler)
-    requires
-        scheduler.inv(),
-    ensures
-        scheduler.queue.length < NUM_PAGES,
-{
 }
 
 }

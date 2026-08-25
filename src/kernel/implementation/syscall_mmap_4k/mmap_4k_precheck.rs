@@ -13,12 +13,12 @@ pub enum Mmap4kPrecheck {
     InUse,
 }
 
-impl KernelK {
+
     /// Check the conservative `4 * range.len` quota bound first, then check
     /// the entire inclusive VA interval for existing abstract 4K mappings.
     /// No kernel or LocalContext state changes.
-    pub fn mmap_4k_precheck(
-        &self,
+    pub(super) fn mmap_4k_precheck(
+        kernel: &KernelK,
         range: &VaRange4K,
         thread_ptr: RwLockThreadPtr,
         pagetable_ptr: RwLockPageTableRoot,
@@ -27,55 +27,60 @@ impl KernelK {
         Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: Mmap4kPrecheck)
         requires
-            self.inv(),
+            kernel.inv(),
             range.wf(),
             range.len > 0,
             range.len <= usize::MAX / 4usize,
-            self.thread_map.dom().contains(thread_ptr),
-            self.thread_map.spec_index(thread_ptr).wlocked_by(lctx),
+            kernel.thread_map.dom().contains(thread_ptr),
+            kernel.thread_map.spec_index(thread_ptr).wlocked_by(lctx),
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == lctx.thread_id(),
             thread_lock_perm.lock_id()
-                == self.thread_map.spec_index(thread_ptr)
+                == kernel.thread_map.spec_index(thread_ptr)
                     .locking_thread()->Write_lock_id,
-            self.pagetable_map.dom().contains(pagetable_ptr),
-            self.pagetable_map.spec_index(pagetable_ptr).wlocked_by(lctx),
+            kernel.pagetable_map.dom().contains(pagetable_ptr),
+            kernel.pagetable_map.spec_index(pagetable_ptr).wlocked_by(lctx),
             pagetable_lock_perm.state() is WriteLock,
             pagetable_lock_perm.thread_id() == lctx.thread_id(),
             pagetable_lock_perm.lock_id()
-                == self.pagetable_map.spec_index(pagetable_ptr)
+                == kernel.pagetable_map.spec_index(pagetable_ptr)
                     .locking_thread()->Write_lock_id,
         ensures
             ret is Ready ==> {
                 let end_va = range.view().spec_index((range.len - 1) as int);
-                &&& self.thread_map.spec_index(thread_ptr).view().quota_4k
+                &&& kernel.thread_map.spec_index(thread_ptr).view().quota_4k
                     >= 4 * range.len
-                &&& self.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
                     <= spec_va2index(range.start).0
-                &&& self.pagetable_map.spec_index(pagetable_ptr).view()
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
                     .spec_mapping_4k_va_range_empty(range.start, end_va)
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .spec_mapping_4k_va_range_buildable(range)
             },
             ret is NoQuota ==>
-                self.thread_map.spec_index(thread_ptr).view().quota_4k
+                kernel.thread_map.spec_index(thread_ptr).view().quota_4k
                     < 4 * range.len,
             ret is Invalid ==> {
-                &&& self.thread_map.spec_index(thread_ptr).view().quota_4k
+                &&& kernel.thread_map.spec_index(thread_ptr).view().quota_4k
                     >= 4 * range.len
                 &&& spec_va2index(range.start).0
-                    < self.pagetable_map.spec_index(pagetable_ptr).view()
+                    < kernel.pagetable_map.spec_index(pagetable_ptr).view()
                         .kernel_l4_end
             },
             ret is InUse ==> {
                 let end_va = range.view().spec_index((range.len - 1) as int);
-                &&& self.thread_map.spec_index(thread_ptr).view().quota_4k
+                &&& kernel.thread_map.spec_index(thread_ptr).view().quota_4k
                     >= 4 * range.len
-                &&& self.pagetable_map.spec_index(pagetable_ptr).view()
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
                     .kernel_l4_end <= spec_va2index(range.start).0
-                &&& !self.pagetable_map.spec_index(pagetable_ptr).view()
-                    .spec_mapping_4k_range_empty(
-                        spec_va2index(range.start),
-                        spec_va2index(end_va),
-                    )
+                &&& (
+                    !kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                        .spec_mapping_4k_range_empty(
+                            spec_va2index(range.start), spec_va2index(end_va),
+                        )
+                    || !kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                        .spec_mapping_4k_va_range_buildable(range)
+                )
             },
     {
         let range_len = range.len;
@@ -83,13 +88,13 @@ impl KernelK {
         let credit = 4usize * range_len;
         proof {
             assert(
-                self.thread_map.perms_wf()
-                    && self.thread_map.spec_index(thread_ptr).inv()
+                kernel.thread_map.perms_wf()
+                    && kernel.thread_map.spec_index(thread_ptr).inv()
             ) by {
                 reveal(thread_perms_wf);
             };
         }
-        let thread = self.thread_map.borrow(
+        let thread = kernel.thread_map.borrow(
             thread_ptr,
             Tracked(thread_lock_perm),
         );
@@ -113,25 +118,27 @@ impl KernelK {
         let start_indices = va2index(range_start);
         proof {
             assert(
-                self.pagetable_map.perms_wf()
-                    && self.pagetable_map.spec_index(pagetable_ptr).inv()
+                kernel.pagetable_map.perms_wf()
+                    && kernel.pagetable_map.spec_index(pagetable_ptr).inv()
             ) by {
                 reveal(pagetable_perms_wf);
             };
         }
-        let pagetable = self.pagetable_map.borrow(
+        let pagetable = kernel.pagetable_map.borrow(
             pagetable_ptr,
             Tracked(pagetable_lock_perm),
         );
         if start_indices.0 < pagetable.kernel_l4_end {
             return Mmap4kPrecheck::Invalid;
         }
-        if pagetable.mapping_4k_va_range_empty(range_start, end_va) {
-            Mmap4kPrecheck::Ready
-        } else {
-            Mmap4kPrecheck::InUse
+        if !pagetable.mapping_4k_va_range_empty(range_start, end_va) {
+            return Mmap4kPrecheck::InUse;
         }
+        if !pagetable.mapping_4k_va_range_buildable(range) {
+            return Mmap4kPrecheck::InUse;
+        }
+        Mmap4kPrecheck::Ready
     }
-}
+
 
 }

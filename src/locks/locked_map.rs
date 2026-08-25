@@ -140,13 +140,18 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
 
             // Other entries unchanged.
             forall|k:usize|
-                #![trigger
-                    final(self).spec_index(k),
-                    old(self).spec_index(k)
-                ]
+                #![trigger final(self).spec_index(k)]
+                #![trigger old(self).spec_index(k)]
                 old(self).dom().contains(k) && k != key
                 ==>
                 final(self).spec_index(k) == old(self).spec_index(k),
+
+            forall|k: usize|
+                #![trigger old(self).view().spec_index(k)]
+                #![trigger final(self).view().spec_index(k)]
+                old(self).dom().contains(k) && k != key
+                ==> final(self).dom().contains(k)
+                    && final(self).view().spec_index(k) == old(self).view().spec_index(k),
 
             // Lock state of `key`'s rwlock is preserved.
             final(self).spec_index(key).is_init(),

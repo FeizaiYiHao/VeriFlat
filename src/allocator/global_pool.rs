@@ -6,9 +6,6 @@ verus! {
 
 pub struct GlobalPool {
     pub linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
-    pub page_perms_4k: Tracked<Map<PagePtr, PagePerm4k>>,
-    pub page_perms_2m: Tracked<Map<PagePtr, PagePerm2m>>,
-    pub page_perms_1g: Tracked<Map<PagePtr, PagePerm1g>>,
 }
 
 impl LockOwnerIdTrait for GlobalPool {
@@ -54,7 +51,6 @@ impl GlobalPool {
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()
         &&& self.linked_list.view().no_duplicates()
-        //@Xiangdong TODO: add self.perm_wf() once pop_global_pool_page returns the PagePerm
     }
 
     pub open spec fn view(&self) -> Seq<PagePtr> { self.linked_list.view() }
@@ -85,32 +81,6 @@ impl GlobalPool {
         ensures self.linked_list.view().len() == self.linked_list.len(),
     { self.linked_list.lemma_len_view(); }
 
-    /// Same invariant as AllocatorCache::perm_wf — see there for details.
-    pub open spec fn perm_wf(&self) -> bool {
-        let pages = self.linked_list.view().to_set();
-        &&& self.page_perms_4k.view().dom().subset_of(pages)
-        &&& self.page_perms_2m.view().dom().subset_of(pages)
-        &&& self.page_perms_1g.view().dom().subset_of(pages)
-        &&& self.page_perms_4k.view().dom().disjoint(self.page_perms_2m.view().dom())
-        &&& self.page_perms_4k.view().dom().disjoint(self.page_perms_1g.view().dom())
-        &&& self.page_perms_2m.view().dom().disjoint(self.page_perms_1g.view().dom())
-        &&& self.page_perms_4k.view().dom() + self.page_perms_2m.view().dom() + self.page_perms_1g.view().dom() =~= pages
-        &&& forall|p: PagePtr|
-            #![trigger self.page_perms_4k.view().spec_index(p).is_init()]
-            #![trigger self.page_perms_4k.view().spec_index(p).addr()]
-            self.page_perms_4k.view().dom().contains(p)
-            ==> self.page_perms_4k.view().spec_index(p).is_init() && self.page_perms_4k.view().spec_index(p).addr() == p
-        &&& forall|p: PagePtr|
-            #![trigger self.page_perms_2m.view().spec_index(p).is_init()]
-            #![trigger self.page_perms_2m.view().spec_index(p).addr()]
-            self.page_perms_2m.view().dom().contains(p)
-            ==> self.page_perms_2m.view().spec_index(p).is_init() && self.page_perms_2m.view().spec_index(p).addr() == p
-        &&& forall|p: PagePtr|
-            #![trigger self.page_perms_1g.view().spec_index(p).is_init()]
-            #![trigger self.page_perms_1g.view().spec_index(p).addr()]
-            self.page_perms_1g.view().dom().contains(p)
-            ==> self.page_perms_1g.view().spec_index(p).is_init() && self.page_perms_1g.view().spec_index(p).addr() == p
-    }
 }
 
 } // verus!

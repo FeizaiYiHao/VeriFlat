@@ -87,6 +87,7 @@ pub struct MapEntry {
     pub write: bool,
     pub execute_disable: bool,
     pub present: bool,
+    pub owning_container: Ghost<RwLockContainerPtr>,
 }
 
 pub struct TLBEntry {
@@ -95,16 +96,34 @@ pub struct TLBEntry {
     pub execute_disable: bool,
 }
 
-pub open spec fn spec_page_entry_to_map_entry(p: &PageEntry) -> MapEntry {
-    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present:p.perm.present }
+pub open spec fn spec_page_entry_to_map_entry(
+    p: &PageEntry,
+    owning_container: Ghost<RwLockContainerPtr>,
+) -> MapEntry {
+    MapEntry {
+        addr: p.addr,
+        write: p.perm.write,
+        execute_disable: p.perm.execute_disable,
+        present: p.perm.present,
+        owning_container,
+    }
 }
 
 #[verifier(when_used_as_spec(spec_page_entry_to_map_entry))]
-pub fn page_entry_to_map_entry(p: &PageEntry) -> (ret: MapEntry)
+pub fn page_entry_to_map_entry(
+    p: &PageEntry,
+    owning_container: Ghost<RwLockContainerPtr>,
+) -> (ret: MapEntry)
     ensures
-        ret =~= spec_page_entry_to_map_entry(p),
+        ret =~= spec_page_entry_to_map_entry(p, owning_container),
 {
-    MapEntry { addr: p.addr, write: p.perm.write, execute_disable: p.perm.execute_disable, present:p.perm.present  }
+    MapEntry {
+        addr: p.addr,
+        write: p.perm.write,
+        execute_disable: p.perm.execute_disable,
+        present: p.perm.present,
+        owning_container,
+    }
 }
 
 

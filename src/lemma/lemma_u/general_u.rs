@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_sets_equal;
 verus! {
 
 pub broadcast proof fn map_equal_implies_submap_each_other<K, V>(a: Map<K, V>, b: Map<K, V>)
@@ -23,6 +24,27 @@ pub broadcast proof fn submap_by_transitivity<K, V>(a: Map<K, V>, b: Map<K, V>, 
         #![trigger b.dom().contains(k)]
         a.dom().contains(k) ==> b.dom().contains(k) && a.spec_index(k) == b.spec_index(k));
 }
+pub proof fn set_insert_remove_absent_lemma<A>(s: Set<A>, a: A)
+    requires
+        !s.contains(a),
+    ensures
+        s.insert(a).remove(a) == s,
+{
+    assert_sets_equal!(
+        s.insert(a).remove(a) == s,
+        x => {
+            if x == a {
+                vstd::set::lemma_set_remove_same(s.insert(a), a);
+            } else {
+                vstd::set::lemma_set_insert_different(s, x, a);
+                vstd::set::lemma_set_remove_different(
+                    s.insert(a), x, a,
+                );
+            }
+        }
+    );
+}
+
 
 pub proof fn seq_push_lemma<A>()
     ensures

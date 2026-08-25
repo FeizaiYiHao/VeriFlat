@@ -3,13 +3,15 @@ name = "veriflat_kernel_core"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+path = "../../src/veriflat_kernel_core.rs"
+
 [dependencies]
 vstd = { path = "../../verus/source/vstd" }
-veriflat_model = { path = "../veriflat_model" }
 
 [features]
-default = ["ipc-pilot-core"]
-ipc-pilot-core = []
+default = ["split-crates"]
+split-crates = []
 
 [package.metadata.verus]
 verify = true

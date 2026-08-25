@@ -35,7 +35,13 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
             == pre_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr,
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().is_mapped(),
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings()
-            == Set::empty().insert((pagetable_ptr, va)),
+            == if pre_page_array.spec_index(page_ptr2page_index(page_ptr))
+                .view().view().state is Mapped4k {
+                pre_page_array.spec_index(page_ptr2page_index(page_ptr))
+                    .view().view().mappings().insert((pagetable_ptr, va))
+            } else {
+                Set::empty().insert((pagetable_ptr, va))
+            },
         process_map.dom().contains(post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr),
         {
             let owner = post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container;
@@ -106,10 +112,20 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
         va_4k_valid(va),
         post_pagetable_map.unchanged_except(&pre_pagetable_map, pagetable_ptr),
         post_page_array.entries_unchanged_except(&pre_page_array, page_ptr2page_index(page_ptr)),
-        pre_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k,
+        post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container
+            == pre_page_array.spec_index(page_ptr2page_index(page_ptr))
+                .view().view().owning_container,
+        (pre_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k
+            || pre_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Mapped4k),
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Mapped4k,
         post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings()
-            == Set::empty().insert((pagetable_ptr, va)),
+            == if pre_page_array.spec_index(page_ptr2page_index(page_ptr))
+                .view().view().state is Mapped4k {
+                pre_page_array.spec_index(page_ptr2page_index(page_ptr))
+                    .view().view().mappings().insert((pagetable_ptr, va))
+            } else {
+                Set::empty().insert((pagetable_ptr, va))
+            },
         pre_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va)
             == false,
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va),
@@ -120,6 +136,10 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             ),
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).addr
             == page_ptr,
+        post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k()
+                .spec_index(va).owning_container@
+            == post_page_array.spec_index(page_ptr2page_index(page_ptr))
+                .view().view().owning_container,
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_2m()
             == pre_pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
@@ -153,8 +173,12 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             let mapped_page = page_ptr2page_index(
                 post_pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(mapped_va).addr,
             );
+            &&& index_valid(NUM_PAGES, mapped_page)
             &&& post_page_array.spec_index(mapped_page).view().view().state is Mapped4k
             &&& post_page_array.spec_index(mapped_page).view().view().mappings().contains((pt_ptr, mapped_va))
+            &&& post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
+                    .spec_index(mapped_va).owning_container@
+                == post_page_array.spec_index(mapped_page).view().view().owning_container
         } by {
         page_ptr_valid_imply_page_index_valid();
         if pt_ptr == pagetable_ptr && mapped_va == va {

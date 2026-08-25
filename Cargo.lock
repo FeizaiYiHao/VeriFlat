@@ -84,17 +84,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
-name = "veriflat_kernel_core"
+name = "veriflat_alloc_page"
 version = "0.1.0"
 dependencies = [
- "veriflat_model",
+ "veriflat_kernel_core",
  "vstd",
 ]
 
 [[package]]
-name = "veriflat_model"
+name = "veriflat_kernel_core"
 version = "0.1.0"
 dependencies = [
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_map_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_alloc_quota"
+version = "0.1.0"
+dependencies = [
+ "veriflat_kernel_core",
  "vstd",
 ]
 
@@ -102,6 +119,26 @@ dependencies = [
 name = "veriflat_syscall_ipc"
 version = "0.1.0"
 dependencies = [
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_mmap_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_new_thread"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
  "veriflat_kernel_core",
  "vstd",
 ]

@@ -11,6 +11,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
     endpoint_ptr: RwLockEndpointPtr,
     endpoint_index: EndpointIdx,
     waiting_state: ThreadState,
+    payload: IPCPayLoad,
     pt_regs: &Registers,
     thread_lock_perm: Tracked<&LockPerm>,
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
@@ -25,6 +26,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
                 .locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state is RUNNING,
         waiting_state.is_endpoint_waiting(),
+        payload.wf(),
         waiting_state is RECEIVING_CALL ==>
             old(thread_map).spec_index(thread_ptr).view().caller is None,
         edp_idx_valid(endpoint_index),
@@ -71,7 +73,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
             == Some(endpoint_ptr),
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_index
             == Some(endpoint_index),
-        final(thread_map).spec_index(thread_ptr).view().ipc_payload is Empty,
+        final(thread_map).spec_index(thread_ptr).view().ipc_payload =~= payload,
         final(thread_map).spec_index(thread_ptr).view().trap_frame.is_some(),
         final(thread_map).spec_index(thread_ptr).view().trap_frame.get_some_0()
             =~= pt_regs,
@@ -95,7 +97,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
     );
     let ret = thread_mut.block_on_endpoint(
         thread_ptr, endpoint_ptr, endpoint_index,
-        waiting_state, IPCPayLoad::Empty, pt_regs,
+        waiting_state, payload, pt_regs,
     );
     proof {
         assert(thread_perms_wf(*thread_map)) by {
@@ -132,6 +134,8 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
         node_perm.view().value().view() == thread_ptr,
         !old(endpoint_map).spec_index(endpoint_ptr).view().queue.view()
             .contains(thread_ptr),
+        old(endpoint_map).spec_index(endpoint_ptr).view().queue.length
+            != usize::MAX,
     ensures
         endpoint_perms_wf(*final(endpoint_map)),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
@@ -199,6 +203,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
     Tracked(lctx): Tracked<&LocalContext>,
     thread_ptr: RwLockThreadPtr,
     current_thread_ptr: RwLockThreadPtr,
+    result: RetValueType,
     endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
     thread_lock_perm: Tracked<&LockPerm>,
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
@@ -213,8 +218,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         thread_lock_perm.view().lock_id()
             == old(thread_map).spec_index(thread_ptr)
                 .locking_thread()->Write_lock_id,
-        old(thread_map).spec_index(thread_ptr).view().state is SENDING
-            || old(thread_map).spec_index(thread_ptr).view().state is RECEIVING,
+        old(thread_map).spec_index(thread_ptr).view().state.is_endpoint_waiting(),
         endpoint_node_perm.view().is_init(),
         endpoint_node_perm.view().addr()
             == old(thread_map).spec_index(thread_ptr).view()
@@ -266,7 +270,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         final(thread_map).spec_index(thread_ptr).view()
             .scheduler_linkedlist_node.is_init() == false,
         final(thread_map).spec_index(thread_ptr).view().error_code
-            == Some(RetValueType::Success),
+            == Some(result),
         ret.0 == final(thread_map).spec_index(thread_ptr).view()
             .scheduler_linkedlist_node.addr(),
         ret.1.view().is_init(),
@@ -286,7 +290,214 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         thread_ptr, Tracked(lctx), thread_lock_perm,
     );
     let ret = thread_mut.endpoint_waiter_to_scheduled(
+        thread_ptr, result, endpoint_node_perm,
+    );
+    proof {
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf);
+            reveal(thread_free_quota_pending_empty_unless_wlocked);
+            reveal(thread_temp_alloc_empty_unless_wlocked);
+        };
+        assert({
+            &&& final(thread_map).spec_index(current_thread_ptr)
+                == old(thread_map).spec_index(current_thread_ptr)
+            &&& final(thread_map).lock_id_by_key(current_thread_ptr)
+                == old(thread_map).lock_id_by_key(current_thread_ptr)
+        }) by {
+            lock_id_fields_eq_imply_eq();
+        };
+    }
+    ret
+}
+
+pub(super) fn ipc_move_endpoint_waiter_to_transit(
+    thread_map: &mut ThreadLockedMap,
+    Tracked(lctx): Tracked<&LocalContext>,
+    thread_ptr: RwLockThreadPtr,
+    current_thread_ptr: RwLockThreadPtr,
+    endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    thread_lock_perm: Tracked<&LockPerm>,
+)
+    requires
+        thread_perms_wf(*old(thread_map)),
+        old(thread_map).dom().contains(thread_ptr),
+        old(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
+        old(thread_map).dom().contains(current_thread_ptr),
+        current_thread_ptr != thread_ptr,
+        thread_lock_perm.view().state() is WriteLock,
+        thread_lock_perm.view().thread_id() == lctx.thread_id(),
+        thread_lock_perm.view().lock_id()
+            == old(thread_map).spec_index(thread_ptr)
+                .locking_thread()->Write_lock_id,
+        old(thread_map).spec_index(thread_ptr).view().state is SENDING
+            || old(thread_map).spec_index(thread_ptr).view().state is RECEIVING,
+        old(thread_map).spec_index(thread_ptr).view().ipc_payload is Endpoint,
+        endpoint_node_perm.view().is_init(),
+        endpoint_node_perm.view().addr()
+            == old(thread_map).spec_index(thread_ptr).view()
+                .endpoint_linkedlist_node.addr(),
+        endpoint_node_perm.view().value().view() == thread_ptr,
+    ensures
+        thread_perms_wf(*final(thread_map)),
+        final(thread_map).unchanged_except(old(thread_map), thread_ptr),
+        final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
+        final(thread_map).spec_index(thread_ptr).locking_thread()
+            == old(thread_map).spec_index(thread_ptr).locking_thread(),
+        final(thread_map).spec_index(thread_ptr).being_killed()
+            == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(current_thread_ptr)
+            == old(thread_map).spec_index(current_thread_ptr),
+        final(thread_map).lock_id_by_key(current_thread_ptr)
+            == old(thread_map).lock_id_by_key(current_thread_ptr),
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger final(thread_map).spec_index(t_ptr)]
+            old(thread_map).dom().contains(t_ptr) ==> {
+                &&& final(thread_map).spec_index(t_ptr).view()
+                    .ipc_framed_fields_equal(
+                        &old(thread_map).spec_index(t_ptr).view())
+                &&& final(thread_map).spec_index(t_ptr).view().caller
+                    == old(thread_map).spec_index(t_ptr).view().caller
+                &&& final(thread_map).spec_index(t_ptr).view().callee
+                    == old(thread_map).spec_index(t_ptr).view().callee
+                &&& t_ptr != thread_ptr ==>
+                    final(thread_map).spec_index(t_ptr).view().state
+                        == old(thread_map).spec_index(t_ptr).view().state
+                &&& t_ptr != thread_ptr ==>
+                    final(thread_map).spec_index(t_ptr).view()
+                        .blocking_endpoint_ptr
+                        == old(thread_map).spec_index(t_ptr).view()
+                            .blocking_endpoint_ptr
+                &&& t_ptr != thread_ptr ==>
+                    final(thread_map).spec_index(t_ptr).view()
+                        .endpoint_linkedlist_node
+                        == old(thread_map).spec_index(t_ptr).view()
+                            .endpoint_linkedlist_node
+            },
+        final(thread_map).spec_index(thread_ptr).view().state
+            is IPC_ENDPOINT_TRANSIT,
+        final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr
+            is None,
+        final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_index
+            is None,
+        final(thread_map).spec_index(thread_ptr).view()
+            .endpoint_linkedlist_node.is_init(),
+        final(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node
+            == old(thread_map).spec_index(thread_ptr).view()
+                .scheduler_linkedlist_node,
+        final(thread_map).spec_index(thread_ptr).view().ipc_payload
+            == old(thread_map).spec_index(thread_ptr).view().ipc_payload,
+{
+    proof {
+        assert({
+            &&& old(thread_map).perms_wf()
+            &&& old(thread_map).spec_index(thread_ptr).is_init()
+            &&& old(thread_map).spec_index(thread_ptr).view().inv()
+        }) by {
+            reveal(thread_perms_wf);
+        };
+    }
+    let thread_mut = thread_map.borrow_mut(
+        thread_ptr, Tracked(lctx), thread_lock_perm,
+    );
+    thread_mut.endpoint_waiter_to_endpoint_transit(
         thread_ptr, endpoint_node_perm,
+    );
+    proof {
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf);
+            reveal(thread_free_quota_pending_empty_unless_wlocked);
+            reveal(thread_temp_alloc_empty_unless_wlocked);
+        };
+        assert({
+            &&& final(thread_map).spec_index(current_thread_ptr)
+                == old(thread_map).spec_index(current_thread_ptr)
+            &&& final(thread_map).lock_id_by_key(current_thread_ptr)
+                == old(thread_map).lock_id_by_key(current_thread_ptr)
+        }) by {
+            lock_id_fields_eq_imply_eq();
+        };
+    }
+}
+
+pub(super) fn ipc_schedule_endpoint_transit(
+    thread_map: &mut ThreadLockedMap,
+    Tracked(lctx): Tracked<&LocalContext>,
+    thread_ptr: RwLockThreadPtr,
+    current_thread_ptr: RwLockThreadPtr,
+    result: RetValueType,
+    thread_lock_perm: Tracked<&LockPerm>,
+) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    requires
+        thread_perms_wf(*old(thread_map)),
+        old(thread_map).dom().contains(thread_ptr),
+        old(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
+        old(thread_map).dom().contains(current_thread_ptr),
+        current_thread_ptr != thread_ptr,
+        thread_lock_perm.view().state() is WriteLock,
+        thread_lock_perm.view().thread_id() == lctx.thread_id(),
+        thread_lock_perm.view().lock_id()
+            == old(thread_map).spec_index(thread_ptr)
+                .locking_thread()->Write_lock_id,
+        old(thread_map).spec_index(thread_ptr).view().state
+            is IPC_ENDPOINT_TRANSIT,
+    ensures
+        thread_perms_wf(*final(thread_map)),
+        final(thread_map).unchanged_except(old(thread_map), thread_ptr),
+        final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
+        final(thread_map).spec_index(thread_ptr).locking_thread()
+            == old(thread_map).spec_index(thread_ptr).locking_thread(),
+        final(thread_map).spec_index(thread_ptr).being_killed()
+            == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(current_thread_ptr)
+            == old(thread_map).spec_index(current_thread_ptr),
+        final(thread_map).lock_id_by_key(current_thread_ptr)
+            == old(thread_map).lock_id_by_key(current_thread_ptr),
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger final(thread_map).spec_index(t_ptr)]
+            old(thread_map).dom().contains(t_ptr) ==> {
+                &&& final(thread_map).spec_index(t_ptr).view()
+                    .ipc_framed_fields_equal(
+                        &old(thread_map).spec_index(t_ptr).view())
+                &&& final(thread_map).spec_index(t_ptr).view().caller
+                    == old(thread_map).spec_index(t_ptr).view().caller
+                &&& final(thread_map).spec_index(t_ptr).view().callee
+                    == old(thread_map).spec_index(t_ptr).view().callee
+                &&& t_ptr != thread_ptr ==>
+                    final(thread_map).spec_index(t_ptr).view().state
+                        == old(thread_map).spec_index(t_ptr).view().state
+            },
+        final(thread_map).spec_index(thread_ptr).view().state is SCHEDULED,
+        final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr
+            is None,
+        final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_index
+            is None,
+        final(thread_map).spec_index(thread_ptr).view()
+            .endpoint_linkedlist_node.is_init(),
+        final(thread_map).spec_index(thread_ptr).view()
+            .scheduler_linkedlist_node.is_init() == false,
+        final(thread_map).spec_index(thread_ptr).view().error_code
+            == Some(result),
+        final(thread_map).spec_index(thread_ptr).view().ipc_payload is Empty,
+        ret.0 == final(thread_map).spec_index(thread_ptr).view()
+            .scheduler_linkedlist_node.addr(),
+        ret.1.view().is_init(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().value().view() == thread_ptr,
+{
+    proof {
+        assert({
+            &&& old(thread_map).perms_wf()
+            &&& old(thread_map).spec_index(thread_ptr).is_init()
+            &&& old(thread_map).spec_index(thread_ptr).view().inv()
+        }) by {
+            reveal(thread_perms_wf);
+        };
+    }
+    let thread_mut = thread_map.borrow_mut(
+        thread_ptr, Tracked(lctx), thread_lock_perm,
+    );
+    let ret = thread_mut.endpoint_transit_to_scheduled(
+        thread_ptr, result,
     );
     proof {
         assert(thread_perms_wf(*thread_map)) by {
@@ -439,6 +650,8 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         node_perm.view().value().view() == thread_ptr,
         !old(scheduler_map).spec_index(scheduler_ptr).view().queue.view()
             .contains(thread_ptr),
+        old(scheduler_map).spec_index(scheduler_ptr).view().queue.length
+            != usize::MAX,
     ensures
         scheduler_perms_wf(*final(scheduler_map)),
         final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),

@@ -16,13 +16,9 @@ verus! {
         pub free_list_node_storage: ExternalNode<PageIndex>,
         pub free_list: RwLockContainerPtr,
 
-        /// Tracked ownership of the physical memory backing this page.
-        /// `Some` while a Free or Owned page is exclusively kernel-owned.
-        /// Publishing a writable user mapping forgets this contents permission:
-        /// user writes may immediately invalidate its `value()`. A future unmap
-        /// path must therefore reclaim a fresh permission describing the current
-        /// bytes after the mapping is inaccessible and every stale TLB entry has
-        /// been flushed; it must never resurrect the pre-publication token.
+        /// Tracked ownership of the physical memory backing this page. Ordinary
+        /// Free, Owned, and Mapped pages retain this permission; retyping the
+        /// page as a kernel object consumes it.
         pub perm_4k: Tracked<Option<PagePerm4k>>,
         pub perm_2m: Tracked<Option<PagePerm2m>>,
         pub perm_1g: Tracked<Option<PagePerm1g>>,
@@ -68,19 +64,19 @@ verus! {
             }
         }
 
-        /// Contents ownership exists exactly while an ordinary page is Free or
-        /// Owned. Mapped pages intentionally retain no stable `PointsTo` value.
+        /// Contents ownership exists while an ordinary page is Free, Owned, or
+        /// Mapped. Retyping the page as a kernel object consumes the permission.
         pub open spec fn perm_inv(&self) -> bool {
             &&& match self.state {
-                PageState::Free4k{..} | PageState::Owned4k{..} => self.perm_4k.view().is_some(),
+                PageState::Free4k{..} | PageState::Owned4k{..} | PageState::Mapped4k => self.perm_4k.view().is_some(),
                 _ => self.perm_4k.view().is_none(),
             }
             &&& match self.state {
-                PageState::Free2m{..} | PageState::Owned2m{..} => self.perm_2m.view().is_some(),
+                PageState::Free2m{..} | PageState::Owned2m{..} | PageState::Mapped2m => self.perm_2m.view().is_some(),
                 _ => self.perm_2m.view().is_none(),
             }
             &&& match self.state {
-                PageState::Free1g{..} | PageState::Owned1g{..} => self.perm_1g.view().is_some(),
+                PageState::Free1g{..} | PageState::Owned1g{..} | PageState::Mapped1g => self.perm_1g.view().is_some(),
                 _ => self.perm_1g.view().is_none(),
             }
             // The perm's address matches this page's address.
@@ -269,5 +265,47 @@ verus! {
     {
         let tracked ret = page.perm_4k.borrow_mut().tracked_take();
         Tracked(ret)
+    }
+
+    /// Add one reverse mapping to an already-published 4K page.
+    pub fn add_4k_mapping(
+        page: &mut Page,
+        pagetable_ptr: RwLockPageTableRoot,
+        va: VAddr,
+    )
+        requires
+            old(page).inv(),
+            old(page).state is Mapped4k,
+            va_4k_valid(va),
+            !old(page).mappings().contains((pagetable_ptr, va)),
+            old(page).ref_count < usize::MAX,
+        ensures
+            final(page).inv(),
+            final(page).mappings()
+                == old(page).mappings().insert((pagetable_ptr, va)),
+            final(page).ref_count == old(page).ref_count + 1,
+            final(page).addr == old(page).addr,
+            final(page).state == old(page).state,
+            final(page).is_io_page == old(page).is_io_page,
+            final(page).owning_container == old(page).owning_container,
+            final(page).free_list_node_storage == old(page).free_list_node_storage,
+            final(page).free_list == old(page).free_list,
+            final(page).perm_4k.view() == old(page).perm_4k.view(),
+            final(page).perm_2m.view() == old(page).perm_2m.view(),
+            final(page).perm_1g.view() == old(page).perm_1g.view(),
+    {
+        proof {
+            assert(
+                page.mappings().insert((pagetable_ptr, va)).len()
+                    == page.mappings().len() + 1
+            ) by {
+                vstd::set::lemma_set_insert_len(
+                    page.mappings(),
+                    (pagetable_ptr, va),
+                );
+            };
+        }
+        page.mappings = Ghost(page.mappings().insert((pagetable_ptr, va)));
+        page.ref_count = page.ref_count + 1;
     }
 }

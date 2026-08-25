@@ -277,7 +277,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),) =~= ret is Some,
             ret is Some
                 ==> self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))
-                && self.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == page_entry_to_map_entry(&ret.unwrap()),
+                && self.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == page_entry_to_map_entry(
+                    &ret.unwrap(),
+                    Ghost(self.mapping_4k().spec_index(spec_index2va((
+                        target_l4i, target_l3i, target_l2i, target_l1i,
+                    ))).owning_container@),
+                ),
     {
         assert({
             &&& self.l1_tables.view().dom().contains(l2_entry.addr)
@@ -312,12 +317,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 target_l3i,
                 target_l2i,
                 target_l1i,
-            ))) == page_entry_to_map_entry(&self.spec_resolve_mapping_4k_l1(
-                target_l4i,
-                target_l3i,
-                target_l2i,
-                target_l1i,
-            )->0)
+            ))) == page_entry_to_map_entry(
+                &self.spec_resolve_mapping_4k_l1(
+                    target_l4i, target_l3i, target_l2i, target_l1i,
+                )->0,
+                Ghost(self.mapping_4k().spec_index(spec_index2va((
+                    target_l4i, target_l3i, target_l2i, target_l1i,
+                ))).owning_container@),
+            )
         }) by {
             reveal(PageTable::wf_mapping_4k);
         };

@@ -1,12 +1,52 @@
 use vstd::prelude::*;
 use crate::*;
-use super::mmap_4k_context::{
-    mmap_4k_held_context,
-    mmap_4k_allocation_ready,
-};
-use super::mmap_4k_build_structure::Mmap4kStructureBuild;
+use super::mmap_4k_map_one_leaf::map_one_mmap_4k_page;
 
 verus! {
+
+pub open spec fn mmap_4k_lock_scope(
+    kernel: &KernelK,
+    lctx: &LocalContext,
+    cpu_id: CpuId,
+    container_ptr: RwLockContainerPtr,
+    process_ptr: RwLockProcessPtr,
+    thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot,
+) -> bool {
+    &&& cpu_objects_unlocked_except(
+        kernel.cpu_array, lctx.thread_id(), set![cpu_id],
+    )
+    &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
+    &&& container_objects_unlocked_except(
+        kernel.container_map, lctx.thread_id(), set![container_ptr],
+    )
+    &&& process_objects_unlocked_except(
+        kernel.process_map, lctx.thread_id(), set![process_ptr],
+    )
+    &&& thread_objects_unlocked_except(
+        kernel.thread_map, lctx.thread_id(), set![thread_ptr],
+    )
+    &&& endpoint_objects_unlocked(kernel.endpoint_map, lctx.thread_id())
+    &&& pagetable_objects_unlocked_except(
+        kernel.pagetable_map, lctx.thread_id(), set![pagetable_ptr],
+    )
+    &&& iommu_table_objects_unlocked(
+        kernel.iommu_table_map, lctx.thread_id(),
+    )
+    &&& scheduler_objects_unlocked(kernel.scheduler_map, lctx.thread_id())
+    &&& pcid_allocator_objects_unlocked(
+        kernel.pcid_allocator_map, lctx.thread_id(),
+    )
+    &&& allocator_objects_unlocked(
+        kernel.allocator_4k_map, lctx.thread_id(),
+    )
+    &&& allocator_objects_unlocked(
+        kernel.allocator_2m_map, lctx.thread_id(),
+    )
+    &&& allocator_objects_unlocked(
+        kernel.allocator_1g_map, lctx.thread_id(),
+    )
+}
 
 /// Every not-yet-processed VA is still absent from the 4K mapping.
 pub open spec fn mmap_4k_leaf_range_empty_from(
@@ -25,31 +65,6 @@ pub open spec fn mmap_4k_leaf_range_empty_from(
 }
 
 /// Every VA in the range already has the L1 table needed by a 4K leaf.
-pub open spec fn mmap_4k_leaf_range_prepared(
-    pagetable: PageTable<PT_TYPE>,
-    range: &VaRange4K,
-) -> bool {
-    forall|i: int|
-        #![trigger pagetable.spec_resolve_mapping_l2(
-            spec_va2index(range.view().spec_index(i)).0,
-            spec_va2index(range.view().spec_index(i)).1,
-            spec_va2index(range.view().spec_index(i)).2,
-        )]
-        0 <= i < range.len
-        ==> {
-            let indices = spec_va2index(range.view().spec_index(i));
-            &&& pagetable.kernel_l4_end <= indices.0
-            &&& pei_valid(indices.0)
-            &&& pei_valid(indices.1)
-            &&& pei_valid(indices.2)
-            &&& pei_valid(indices.3)
-            &&& pagetable.spec_resolve_mapping_l2(
-                indices.0, indices.1, indices.2,
-            ) is Some
-        }
-}
-
-/// Abstract permissions accumulated by the mutating loop.
 pub open spec fn mmap_4k_leaf_range_mapped_prefix(
     pagetable: PageTable<PT_TYPE>,
     range: &VaRange4K,
@@ -74,56 +89,9 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
 
 /// Physical publication for the completed range. A resolved L1 entry is
 /// kernel-present by definition; architectural present is stated separately.
-pub open spec fn mmap_4k_leaf_range_pte_present(
-    pagetable: PageTable<PT_TYPE>,
-    range: &VaRange4K,
-) -> bool {
-    forall|i: int|
-        #![trigger pagetable.mapping_4k().dom().contains(
-            range.view().spec_index(i),
-        )]
-        #![trigger pagetable.spec_resolve_mapping_l2(
-            spec_va2index(range.view().spec_index(i)).0,
-            spec_va2index(range.view().spec_index(i)).1,
-            spec_va2index(range.view().spec_index(i)).2,
-        )]
-        #![trigger pagetable.spec_resolve_mapping_4k_l1(
-            spec_va2index(range.view().spec_index(i)).0,
-            spec_va2index(range.view().spec_index(i)).1,
-            spec_va2index(range.view().spec_index(i)).2,
-            spec_va2index(range.view().spec_index(i)).3,
-        )]
-        0 <= i < range.len
-        ==> {
-            let va = range.view().spec_index(i);
-            let indices = spec_va2index(va);
-            &&& pagetable.kernel_l4_end <= indices.0
-            &&& pei_valid(indices.0)
-            &&& pei_valid(indices.1)
-            &&& pei_valid(indices.2)
-            &&& pei_valid(indices.3)
-            &&& pagetable.spec_resolve_mapping_l2(
-                indices.0, indices.1, indices.2,
-            ) is Some
-            &&& pagetable.mapping_4k().dom().contains(va)
-            &&& pagetable.mapping_4k().spec_index(va).present
-            &&& pagetable.spec_resolve_mapping_4k_l1(
-                indices.0, indices.1, indices.2, indices.3,
-            ) is Some
-            &&& pagetable.spec_resolve_mapping_4k_l1(
-                indices.0, indices.1, indices.2, indices.3,
-            )->0.perm.present
-            &&& pagetable.spec_resolve_mapping_4k_l1(
-                indices.0, indices.1, indices.2, indices.3,
-            )->0.perm.kernel_present
-        }
-}
-
-impl KernelK {
-    /// Publish one data page for every VA after the three directory passes
-    /// have certified the complete range structure.
+    /// Build each target path immediately before publishing its data page.
     pub(super) fn mmap_4k_map_leaf_range(
-        &mut self,
+        kernel: &mut KernelK,
         range: &VaRange4K,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         thread_ptr: RwLockThreadPtr,
@@ -138,83 +106,111 @@ impl KernelK {
     )
         requires
             mmap_4k_held_context(
-                old(self), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
+                old(kernel), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
                 container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
                 pagetable_lock_perm,
             ),
-            old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
-            mmap_4k_allocation_ready(old(self), old(lctx)),
+            old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
+            mmap_4k_allocation_ready(old(kernel), old(lctx)),
+            mmap_4k_lock_scope(
+                old(kernel), old(lctx), cpu_id, container_ptr, process_ptr,
+                thread_ptr, pagetable_ptr,
+            ),
+            old(kernel).container_map.spec_index(container_ptr)
+                .locked_by_thread(old(lctx).thread_id()),
+            old(kernel).process_map.spec_index(process_ptr)
+                .locked_by_thread(old(lctx).thread_id()),
+            old(lctx).lock_entry_contains(
+                old(kernel).container_map.lock_id_by_key(container_ptr),
+                KernelObjId::Container(container_ptr),
+            ),
+            old(lctx).lock_entry_contains(
+                old(kernel).process_map.lock_id_by_key(process_ptr),
+                KernelObjId::Process(process_ptr),
+            ),
             range.wf(),
             range.len > 0,
-            old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-            old(self).thread_map.spec_index(thread_ptr).view()
+            old(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
+            old(kernel).thread_map.spec_index(thread_ptr).view()
                 .free_quota_pending_clean(),
-            old(self).thread_map.spec_index(thread_ptr).view().quota_4k
-                >= range.len,
-            old(self).pagetable_map.spec_index(pagetable_ptr).view()
+            range.len <= usize::MAX / 4usize,
+            old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                >= 4 * range.len,
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view().wf(),
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+                <= spec_v2l4index(range.start),
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
                 .spec_mapping_4k_va_range_empty(
                     range.start,
                     range.view().spec_index((range.len - 1) as int),
                 ),
-            old(self).pagetable_map.spec_index(pagetable_ptr).view()
-                .spec_va_range_structure_present(
-                    range.start,
-                    range.view().spec_index((range.len - 1) as int),
-                ),
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                .spec_mapping_4k_va_range_buildable(range),
         ensures
             mmap_4k_held_context(
-                final(self), final(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
+                final(kernel), final(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
                 container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
                 pagetable_lock_perm,
             ),
             final(steps).steps.len() == old(steps).steps.len() + range.len,
-            final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
-            mmap_4k_allocation_ready(final(self), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-            final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-            final(self).thread_map.spec_index(thread_ptr).view()
-                .free_quota_pending_clean(),
-            final(self).thread_map.spec_index(thread_ptr).view().quota_4k
-                == old(self).thread_map.spec_index(thread_ptr).view().quota_4k
-                    - range.len,
-            final(self).process_map.spec_index(process_ptr)
-                == old(self).process_map.spec_index(process_ptr),
-            final(self).container_map.spec_index(container_ptr)
-                == old(self).container_map.spec_index(container_ptr),
-            final(self).cpu_array.spec_index(cpu_id).view()
-                == old(self).cpu_array.spec_index(cpu_id).view(),
-            final(self).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m()
-                == old(self).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
-            final(self).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
-                == old(self).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g(),
-            final(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                == old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end,
-            mmap_4k_leaf_range_prepared(
-                final(self).pagetable_map.spec_index(pagetable_ptr).view(),
-                range,
+            final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
+            mmap_4k_allocation_ready(final(kernel), final(lctx)),
+            mmap_4k_lock_scope(
+                final(kernel), final(lctx), cpu_id, container_ptr, process_ptr,
+                thread_ptr, pagetable_ptr,
             ),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            final(lctx).lock_entry_contains(
+                final(kernel).container_map.lock_id_by_key(container_ptr),
+                KernelObjId::Container(container_ptr),
+            ),
+            final(lctx).lock_entry_contains(
+                final(kernel).process_map.lock_id_by_key(process_ptr),
+                KernelObjId::Process(process_ptr),
+            ),
+            final(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
+            final(kernel).thread_map.spec_index(thread_ptr).view()
+                .free_quota_pending_clean(),
+            final(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                <= old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                    - range.len,
+            final(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                >= old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                    - 4 * range.len,
+            final(kernel).process_map.spec_index(process_ptr)
+                == old(kernel).process_map.spec_index(process_ptr),
+            final(kernel).container_map.spec_index(container_ptr)
+                == old(kernel).container_map.spec_index(container_ptr),
+            final(kernel).cpu_array.spec_index(cpu_id).view()
+                == old(kernel).cpu_array.spec_index(cpu_id).view(),
+            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m()
+                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
+            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
+                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g(),
+            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end,
             mmap_4k_leaf_range_mapped_prefix(
-                final(self).pagetable_map.spec_index(pagetable_ptr).view(),
+                final(kernel).pagetable_map.spec_index(pagetable_ptr).view(),
                 range,
                 range.len as int,
             ),
-            mmap_4k_leaf_range_pte_present(
-                final(self).pagetable_map.spec_index(pagetable_ptr).view(),
-                range,
-            ),
     {
+        let range_start = range.start;
         proof {
+            assert({
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .wf_mapping_1g()
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .wf_mapping_2m()
+                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .wf_mapping_4k()
+            }) by {
+                reveal(pagetable_perms_wf);
+            };
             assert(mmap_4k_leaf_range_empty_from(
-                self.pagetable_map.spec_index(pagetable_ptr).view(), range, 0,
+                kernel.pagetable_map.spec_index(pagetable_ptr).view(), range, 0,
             )) by {
                 reveal(PageTable::spec_mapping_4k_va_range_empty);
-                range.va_range_lemma();
-            };
-            assert(mmap_4k_leaf_range_prepared(
-                self.pagetable_map.spec_index(pagetable_ptr).view(), range,
-            )) by {
-                reveal(PageTable::spec_va_range_structure_present);
                 range.va_range_lemma();
             };
         }
@@ -222,58 +218,210 @@ impl KernelK {
         while i < range.len
             invariant
                 mmap_4k_held_context(
-                    self, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr,
+                    kernel, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr,
                     container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
                     pagetable_lock_perm,
                 ),
-                steps.snap_shot == kernel_k_to_kernel_u(*self),
-                mmap_4k_allocation_ready(self, &*lctx),
+                steps.snap_shot == kernel_k_to_kernel_u(*kernel),
+                mmap_4k_allocation_ready(kernel, &*lctx),
+                mmap_4k_lock_scope(
+                    kernel, &*lctx, cpu_id, container_ptr, process_ptr,
+                    thread_ptr, pagetable_ptr,
+                ),
                 range.wf(),
                 range.len > 0,
+                range_start == range.start,
                 0 <= i <= range.len,
                 steps.steps.len() == old(steps).steps.len() + i,
                 lctx.lock_id_set() == old(lctx).lock_id_set(),
-                lctx.lock_id_set() == old(lctx).lock_id_set(),
-                old(self).thread_map.dom().contains(thread_ptr),
-                old(self).process_map.dom().contains(process_ptr),
-                old(self).container_map.dom().contains(container_ptr),
-                old(self).pagetable_map.dom().contains(pagetable_ptr),
-                self.thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-                self.thread_map.spec_index(thread_ptr).view()
-                    .free_quota_pending_clean(),
-                old(self).thread_map.spec_index(thread_ptr).view().quota_4k
-                    >= range.len,
-                self.thread_map.spec_index(thread_ptr).view().quota_4k
-                    == old(self).thread_map.spec_index(thread_ptr).view().quota_4k - i,
-                self.process_map.spec_index(process_ptr)
-                    == old(self).process_map.spec_index(process_ptr),
-                self.container_map.spec_index(container_ptr)
-                    == old(self).container_map.spec_index(container_ptr),
-                self.cpu_array.spec_index(cpu_id).view()
-                    == old(self).cpu_array.spec_index(cpu_id).view(),
-                self.pagetable_map.spec_index(pagetable_ptr).view().mapping_2m()
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
-                self.pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g(),
-                self.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                    == old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end,
-                mmap_4k_leaf_range_prepared(
-                    self.pagetable_map.spec_index(pagetable_ptr).view(), range,
+                kernel.container_map.spec_index(container_ptr)
+                    .locked_by_thread(lctx.thread_id()),
+                kernel.process_map.spec_index(process_ptr)
+                    .locked_by_thread(lctx.thread_id()),
+                lctx.lock_entry_contains(
+                    kernel.container_map.lock_id_by_key(container_ptr),
+                    KernelObjId::Container(container_ptr),
                 ),
+                lctx.lock_entry_contains(
+                    kernel.process_map.lock_id_by_key(process_ptr),
+                    KernelObjId::Process(process_ptr),
+                ),
+                old(kernel).thread_map.dom().contains(thread_ptr),
+                old(kernel).process_map.dom().contains(process_ptr),
+                old(kernel).container_map.dom().contains(container_ptr),
+                old(kernel).pagetable_map.dom().contains(pagetable_ptr),
+                old(kernel).pagetable_map.spec_index(pagetable_ptr).view().wf(),
+                kernel.thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
+                kernel.thread_map.spec_index(thread_ptr).view()
+                    .free_quota_pending_clean(),
+                old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                    >= 4 * range.len,
+                kernel.thread_map.spec_index(thread_ptr).view().quota_4k
+                    >= 4 * (range.len - i),
+                kernel.thread_map.spec_index(thread_ptr).view().quota_4k
+                    >= old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
+                        - 4 * i,
+                kernel.thread_map.spec_index(thread_ptr).view().quota_4k
+                    <= old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k - i,
+                kernel.process_map.spec_index(process_ptr)
+                    == old(kernel).process_map.spec_index(process_ptr),
+                kernel.container_map.spec_index(container_ptr)
+                    == old(kernel).container_map.spec_index(container_ptr),
+                kernel.cpu_array.spec_index(cpu_id).view()
+                    == old(kernel).cpu_array.spec_index(cpu_id).view(),
+                kernel.pagetable_map.spec_index(pagetable_ptr).view().mapping_2m()
+                    == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
+                kernel.pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
+                    == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g(),
+                kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+                    == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end,
+                kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+                    <= spec_v2l4index(range.start),
+                kernel.pagetable_map.spec_index(pagetable_ptr).view().wf(),
+                old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                    .spec_mapping_4k_va_range_buildable(range),
+                old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                    .wf_mapping_1g(),
+                old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                    .wf_mapping_2m(),
+                old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                    .wf_mapping_4k(),
                 mmap_4k_leaf_range_mapped_prefix(
-                    self.pagetable_map.spec_index(pagetable_ptr).view(),
+                    kernel.pagetable_map.spec_index(pagetable_ptr).view(),
                     range,
                     i as int,
                 ),
                 mmap_4k_leaf_range_empty_from(
-                    self.pagetable_map.spec_index(pagetable_ptr).view(),
+                    kernel.pagetable_map.spec_index(pagetable_ptr).view(),
                     range,
                     i as int,
                 ),
             decreases range.len - i,
         {
             let current_va = range.index(i);
-            self.map_one_mmap_4k_page(
+            proof {
+                assert({
+                    &&& spec_va_4k_valid(range_start)
+                    &&& spec_va_4k_valid(current_va)
+                    &&& range_start <= current_va
+                }) by {
+                    range.va_range_lemma();
+                };
+                assert(spec_v2l4index(range_start)
+                    <= spec_v2l4index(current_va)) by (bit_vector)
+                    requires
+                        spec_va_4k_valid(range_start),
+                        spec_va_4k_valid(current_va),
+                        range_start <= current_va,
+                ;
+                assert(va_4k_valid(current_va)) by {
+                    range.va_range_lemma();
+                };
+                assert(kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .kernel_l4_end <= spec_v2l4index(current_va)) by {
+                    range.va_range_lemma();
+                };
+                assert({
+                    &&& pei_valid(spec_v2l4index(current_va))
+                    &&& pei_valid(spec_v2l3index(current_va))
+                    &&& pei_valid(spec_v2l2index(current_va))
+                    &&& pei_valid(spec_v2l1index(current_va))
+                }) by {
+                    spec_va_4k_valid_imply_indices_valid();
+                };
+                assert(old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                    .spec_4k_entry_useable(
+                        spec_v2l4index(current_va), spec_v2l3index(current_va),
+                        spec_v2l2index(current_va), spec_v2l1index(current_va),
+                    )) by {
+                    range.va_range_lemma();
+                    seq_index_lemma::<VAddr>();
+                    assert(old(kernel).pagetable_map.spec_index(pagetable_ptr)
+                        .view().spec_resolve_mapping_4k_l1(
+                            spec_va2index(range.view().spec_index(i as int)).0,
+                            spec_va2index(range.view().spec_index(i as int)).1,
+                            spec_va2index(range.view().spec_index(i as int)).2,
+                            spec_va2index(range.view().spec_index(i as int)).3,
+                        ) is None) by {
+                            seq_index_lemma::<VAddr>();
+                        };
+                };
+                assert({
+                    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                        .wf_mapping_1g()
+                    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                        .wf_mapping_2m()
+                    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                        .wf_mapping_4k()
+                }) by {
+                    reveal(pagetable_perms_wf);
+                };
+                assert(kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .spec_resolve_mapping_1g_l3(
+                        spec_v2l4index(current_va), spec_v2l3index(current_va),
+                    ) is None) by {
+                    reveal(PageTable::wf_mapping_1g);
+                };
+                assert(kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .spec_resolve_mapping_2m_l2(
+                        spec_v2l4index(current_va), spec_v2l3index(current_va),
+                        spec_v2l2index(current_va),
+                    ) is None) by {
+                    reveal(PageTable::wf_mapping_2m);
+                };
+                assert(!kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .mapping_4k().dom().contains(current_va)) by {
+                    range.va_range_lemma();
+                    seq_index_lemma::<VAddr>();
+                };
+                assert(kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                    .spec_resolve_mapping_4k_l1(
+                        spec_v2l4index(current_va), spec_v2l3index(current_va),
+                        spec_v2l2index(current_va), spec_v2l1index(current_va),
+                    ) is None) by {
+                    reveal(PageTable::wf_mapping_4k);
+                    spec_va_4k_index_roundtrip();
+                };
+            }
+            mmap_4k_build_one_structure(kernel,
+                current_va,
+                alloc_ptr_4k,
+                thread_ptr,
+                process_ptr,
+                container_ptr,
+                cpu_id,
+                pagetable_ptr,
+                1 + 4 * (range.len - i - 1),
+                Tracked(&mut *lctx),
+                Tracked(&mut *steps),
+                Tracked(thread_lock_perm),
+                Tracked(pagetable_lock_perm),
+            );
+            proof {
+                assert(mmap_4k_lock_scope(
+                    kernel, &*lctx, cpu_id, container_ptr, process_ptr,
+                    thread_ptr, pagetable_ptr,
+                )) by {
+                    reveal(held_cpus_unchanged);
+                    reveal(held_containers_unchanged);
+                    reveal(held_processes_unchanged);
+                    reveal(held_endpoints_unchanged);
+                    reveal(held_schedulers_unchanged);
+                    reveal(held_pcid_allocators_unchanged);
+                    reveal(held_iommu_tables_unchanged);
+                    reveal(cpu_objects_unlocked_except);
+                    reveal(container_objects_unlocked_except);
+                    reveal(process_objects_unlocked_except);
+                    reveal(thread_objects_unlocked_except);
+                    reveal(pagetable_objects_unlocked_except);
+                };
+                assert(thread_effective_quota_4k(
+                    kernel.thread_map.spec_index(thread_ptr),
+                ) >= 1) by {
+                    reveal(thread_perms_wf);
+                };
+            }
+            map_one_mmap_4k_page(kernel,
                 alloc_ptr_4k,
                 thread_ptr,
                 process_ptr,
@@ -287,40 +435,45 @@ impl KernelK {
                 Tracked(pagetable_lock_perm),
             );
             proof {
-                assert(mmap_4k_leaf_range_prepared(
-                    self.pagetable_map.spec_index(pagetable_ptr).view(), range,
+                assert(mmap_4k_lock_scope(
+                    kernel, &*lctx, cpu_id, container_ptr, process_ptr,
+                    thread_ptr, pagetable_ptr,
                 )) by {
-                    spec_va_4k_valid_imply_indices_valid();
+                    reveal(held_cpus_unchanged);
+                    reveal(held_containers_unchanged);
+                    reveal(held_processes_unchanged);
+                    reveal(held_endpoints_unchanged);
+                    reveal(held_schedulers_unchanged);
+                    reveal(held_pcid_allocators_unchanged);
+                    reveal(held_iommu_tables_unchanged);
+                    reveal(cpu_objects_unlocked_except);
+                    reveal(container_objects_unlocked_except);
+                    reveal(process_objects_unlocked_except);
+                    reveal(thread_objects_unlocked_except);
+                    reveal(pagetable_objects_unlocked_except);
                 };
                 assert(mmap_4k_leaf_range_mapped_prefix(
-                    self.pagetable_map.spec_index(pagetable_ptr).view(),
+                    kernel.pagetable_map.spec_index(pagetable_ptr).view(),
                     range,
                     (i + 1) as int,
                 )) by {
+                    assert(kernel.pagetable_map.spec_index(pagetable_ptr).view()
+                        .wf_mapping_4k()) by {
+                        reveal(pagetable_perms_wf);
+                    };
                     reveal(PageTable::wf_mapping_4k);
                     broadcast use vstd::map::group_map_lemmas;
                     seq_index_lemma::<VAddr>();
+                    range.va_range_lemma();
                 };
             }
             i = i + 1;
-        }
-        proof {
-            assert(mmap_4k_leaf_range_pte_present(
-                self.pagetable_map.spec_index(pagetable_ptr).view(), range,
-            )) by {
-                assert(self.pagetable_map.spec_index(pagetable_ptr).view()
-                    .wf_mapping_4k()) by {
-                    reveal(pagetable_perms_wf);
-                };
-                reveal(PageTable::wf_mapping_4k);
-                spec_va_4k_index_roundtrip();
-            };
         }
     }
 
     /// Compose the three directory passes with the final per-VA leaf pass.
     pub(super) fn mmap_4k_build_and_map_leaf_range(
-        &mut self,
+        kernel: &mut KernelK,
         range: &VaRange4K,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         thread_ptr: RwLockThreadPtr,
@@ -335,64 +488,90 @@ impl KernelK {
     ) -> (ret: Mmap4kStructureBuild)
         requires
             mmap_4k_held_context(
-                old(self), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
+                old(kernel), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
                 container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
                 pagetable_lock_perm,
             ),
-            old(steps).snap_shot == kernel_k_to_kernel_u(*old(self)),
-            mmap_4k_allocation_ready(old(self), old(lctx)),
+            old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
+            mmap_4k_allocation_ready(old(kernel), old(lctx)),
+            mmap_4k_lock_scope(
+                old(kernel), old(lctx), cpu_id, container_ptr, process_ptr,
+                thread_ptr, pagetable_ptr,
+            ),
+            old(kernel).container_map.spec_index(container_ptr)
+                .locked_by_thread(old(lctx).thread_id()),
+            old(kernel).process_map.spec_index(process_ptr)
+                .locked_by_thread(old(lctx).thread_id()),
+            old(lctx).lock_entry_contains(
+                old(kernel).container_map.lock_id_by_key(container_ptr),
+                KernelObjId::Container(container_ptr),
+            ),
+            old(lctx).lock_entry_contains(
+                old(kernel).process_map.lock_id_by_key(process_ptr),
+                KernelObjId::Process(process_ptr),
+            ),
             range.wf(),
             range.len > 0,
             range.len <= usize::MAX / 4usize,
-            old(self).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-            old(self).thread_map.spec_index(thread_ptr).view()
+            old(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
+            old(kernel).thread_map.spec_index(thread_ptr).view()
                 .free_quota_pending_clean(),
-            old(self).thread_map.spec_index(thread_ptr).view().quota_4k
+            old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
                 >= 4 * range.len,
-            old(self).pagetable_map.spec_index(pagetable_ptr).view().wf(),
-            old(self).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view().wf(),
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
                 <= spec_v2l4index(range.start),
-            old(self).pagetable_map.spec_index(pagetable_ptr).view()
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
                 .spec_mapping_4k_va_range_empty(
                     range.start,
                     range.view().spec_index((range.len - 1) as int),
                 ),
+            old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                .spec_mapping_4k_va_range_buildable(range),
         ensures
+            ret is Ready,
             mmap_4k_held_context(
-                final(self), final(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
+                final(kernel), final(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
                 container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
                 pagetable_lock_perm,
             ),
-            final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
-            mmap_4k_allocation_ready(final(self), final(lctx)),
+            final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
+            mmap_4k_allocation_ready(final(kernel), final(lctx)),
+            mmap_4k_lock_scope(
+                final(kernel), final(lctx), cpu_id, container_ptr, process_ptr,
+                thread_ptr, pagetable_ptr,
+            ),
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-            final(self).cpu_array.spec_index(cpu_id).view().locking_thread()
-                == old(self).cpu_array.spec_index(cpu_id).view().locking_thread(),
-            final(self).cpu_array.lock_id_by_index(cpu_id)
-                == old(self).cpu_array.lock_id_by_index(cpu_id),
-            final(self).container_map.spec_index(container_ptr).locking_thread()
-                == old(self).container_map.spec_index(container_ptr).locking_thread(),
-            final(self).process_map.spec_index(process_ptr).locking_thread()
-                == old(self).process_map.spec_index(process_ptr).locking_thread(),
-            final(self).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-            final(self).thread_map.spec_index(thread_ptr).view()
+            final(lctx).lock_entry_contains(
+                final(kernel).container_map.lock_id_by_key(container_ptr),
+                KernelObjId::Container(container_ptr),
+            ),
+            final(lctx).lock_entry_contains(
+                final(kernel).process_map.lock_id_by_key(process_ptr),
+                KernelObjId::Process(process_ptr),
+            ),
+            final(kernel).cpu_array.spec_index(cpu_id).view().locking_thread()
+                == old(kernel).cpu_array.spec_index(cpu_id).view().locking_thread(),
+            final(kernel).cpu_array.lock_id_by_index(cpu_id)
+                == old(kernel).cpu_array.lock_id_by_index(cpu_id),
+            final(kernel).process_map.spec_index(process_ptr)
+                == old(kernel).process_map.spec_index(process_ptr),
+            final(kernel).container_map.spec_index(container_ptr)
+                == old(kernel).container_map.spec_index(container_ptr),
+            final(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
+            final(kernel).thread_map.spec_index(thread_ptr).view()
                 .free_quota_pending_clean(),
             ret is Ready ==>
                 final(steps).steps.len() == old(steps).steps.len() + range.len,
             (ret is NoQuota || ret is InUse) ==>
                 final(steps).steps == old(steps).steps,
             ret is Ready ==> mmap_4k_leaf_range_mapped_prefix(
-                final(self).pagetable_map.spec_index(pagetable_ptr).view(),
+                final(kernel).pagetable_map.spec_index(pagetable_ptr).view(),
                 range,
                 range.len as int,
             ),
-            ret is Ready ==> mmap_4k_leaf_range_pte_present(
-                final(self).pagetable_map.spec_index(pagetable_ptr).view(),
-                range,
-            ),
     {
-        let structure = self.mmap_4k_build_structure(
+        mmap_4k_map_leaf_range(kernel,
             range,
             alloc_ptr_4k,
             thread_ptr,
@@ -405,27 +584,8 @@ impl KernelK {
             Tracked(thread_lock_perm),
             Tracked(pagetable_lock_perm),
         );
-        match structure {
-            Mmap4kStructureBuild::Ready => {
-                self.mmap_4k_map_leaf_range(
-                    range,
-                    alloc_ptr_4k,
-                    thread_ptr,
-                    process_ptr,
-                    container_ptr,
-                    cpu_id,
-                    pagetable_ptr,
-                    Tracked(&mut *lctx),
-                    Tracked(&mut *steps),
-                    Tracked(thread_lock_perm),
-                    Tracked(pagetable_lock_perm),
-                );
-                Mmap4kStructureBuild::Ready
-            },
-            Mmap4kStructureBuild::NoQuota => Mmap4kStructureBuild::NoQuota,
-            Mmap4kStructureBuild::InUse => Mmap4kStructureBuild::InUse,
-        }
+        Mmap4kStructureBuild::Ready
     }
-}
+
 
 } // verus!

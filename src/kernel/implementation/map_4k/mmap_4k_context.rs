@@ -5,7 +5,7 @@ use crate::*;
 verus! {
 
 /// No page object is present in this thread's held-lock ledger.
-pub(super) open spec fn mmap_4k_no_page_locks(lctx: &LocalContext) -> bool {
+pub open spec fn mmap_4k_no_page_locks(lctx: &LocalContext) -> bool {
     forall|lock_id: LockId, page_index: PageIndex|
         #![trigger lctx.lock_id_set().contains((lock_id, KernelObjId::Page(page_index)))]
         !lctx.lock_id_set().contains((lock_id, KernelObjId::Page(page_index)))
@@ -13,7 +13,7 @@ pub(super) open spec fn mmap_4k_no_page_locks(lctx: &LocalContext) -> bool {
 
 /// The owner-lock context is ready to enter the 4K allocator only when no
 /// page or allocator locks are held and every held owner lock orders below it.
-pub(super) open spec fn mmap_4k_allocation_ready(
+pub open spec fn mmap_4k_allocation_ready(
     kernel: &KernelK,
     lctx: &LocalContext,
 ) -> bool {
@@ -25,43 +25,11 @@ pub(super) open spec fn mmap_4k_allocation_ready(
     &&& lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)
 }
 
-/// Direct physical lock footprint while mmap keeps its five owner locks.
-/// This remains separate from the LocalContext ledger so callers never need
-/// empty-set/alignment reasoning to recover negative lock-state facts.
-pub(super) open spec fn mmap_4k_other_objects_unlocked(
-    kernel: &KernelK,
-    thread_id: LockThreadId,
-    cpu_id: CpuId,
-    container_ptr: RwLockContainerPtr,
-    process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr,
-    pagetable_ptr: RwLockPageTableRoot,
-) -> bool {
-    &&& cpu_objects_unlocked_except(
-        kernel.cpu_array, thread_id, set![cpu_id])
-    &&& container_objects_unlocked_except(
-        kernel.container_map, thread_id, set![container_ptr])
-    &&& process_objects_unlocked_except(
-        kernel.process_map, thread_id, set![process_ptr])
-    &&& thread_objects_unlocked_except(
-        kernel.thread_map, thread_id, set![thread_ptr])
-    &&& pagetable_objects_unlocked_except(
-        kernel.pagetable_map, thread_id, set![pagetable_ptr])
-    &&& endpoint_objects_unlocked(kernel.endpoint_map, thread_id)
-    &&& iommu_table_objects_unlocked(kernel.iommu_table_map, thread_id)
-    &&& scheduler_objects_unlocked(kernel.scheduler_map, thread_id)
-    &&& pcid_allocator_objects_unlocked(kernel.pcid_allocator_map, thread_id)
-    &&& allocator_objects_unlocked(kernel.allocator_4k_map, thread_id)
-    &&& allocator_objects_unlocked(kernel.allocator_2m_map, thread_id)
-    &&& allocator_objects_unlocked(kernel.allocator_1g_map, thread_id)
-}
-
-/// State shared by every internal mmap operation while the syscall keeps its
-/// allocator, owner-thread, and target-page-table locks.  Keeping this as one
-/// open subsystem predicate avoids repeating the same lock/object relations in
-/// every helper contract and loop invariant; callers can still use each fact
-/// directly without a reveal.
-pub(super) open spec fn mmap_4k_held_context(
+/// State shared by 4K directory construction.  The locked allocation thread
+/// is the stable owner root; its process and container do not need separate
+/// locks.  Extra endpoint/thread/page-table locks are permitted so IPC can use
+/// the same builder after discovering a blocked peer.
+pub open spec fn mmap_4k_held_context(
     kernel: &KernelK,
     lctx: &LocalContext,
     alloc_ptr_4k: RwLockPageAllocatorPtr,
@@ -79,22 +47,14 @@ pub(super) open spec fn mmap_4k_held_context(
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& kernel.cpu_array.spec_index(cpu_id).view().wlocked_by(lctx)
     &&& kernel.cpu_array.spec_index(cpu_id).view().being_killed() == false
-    &&& kernel.cpu_array.spec_index(cpu_id).view().locked_by(lctx)
     &&& kernel.container_map.dom().contains(container_ptr)
-    &&& kernel.container_map.spec_index(container_ptr).wlocked_by(lctx)
-    &&& kernel.container_map.spec_index(container_ptr).being_killed() == false
-    &&& kernel.container_map.spec_index(container_ptr).locked_by(lctx)
     &&& kernel.container_map.spec_index(container_ptr).view_rodata().view()
         .allocator_ptr_4k == alloc_ptr_4k
     &&& kernel.process_map.dom().contains(process_ptr)
-    &&& kernel.process_map.spec_index(process_ptr).wlocked_by(lctx)
-    &&& kernel.process_map.spec_index(process_ptr).being_killed() == false
-    &&& kernel.process_map.spec_index(process_ptr).locked_by(lctx)
     &&& kernel.process_map.spec_index(process_ptr).view_rodata().view()
         .owning_container == container_ptr
     &&& kernel.thread_map.dom().contains(thread_ptr)
     &&& kernel.thread_map.spec_index(thread_ptr).wlocked_by(lctx)
-    &&& kernel.thread_map.spec_index(thread_ptr).locked_by(lctx)
     &&& kernel.thread_map.spec_index(thread_ptr).being_killed() == false
     &&& kernel.thread_map.spec_index(thread_ptr).view().owning_proc
         == process_ptr
@@ -110,10 +70,6 @@ pub(super) open spec fn mmap_4k_held_context(
     &&& kernel.allocator_4k_map.dom().contains(alloc_ptr_4k)
     &&& kernel.pagetable_map.dom().contains(pagetable_ptr)
     &&& kernel.pagetable_map.spec_index(pagetable_ptr).wlocked_by(lctx)
-    &&& kernel.pagetable_map.spec_index(pagetable_ptr).locked_by(lctx)
-    &&& mmap_4k_other_objects_unlocked(
-        kernel, lctx.thread_id(), cpu_id, container_ptr, process_ptr,
-        thread_ptr, pagetable_ptr)
     &&& pagetable_lock_perm.state() is WriteLock
     &&& pagetable_lock_perm.thread_id() == lctx.thread_id()
     &&& pagetable_lock_perm.lock_id()
@@ -122,14 +78,6 @@ pub(super) open spec fn mmap_4k_held_context(
     &&& lctx.lock_entry_contains(
         kernel.cpu_array.lock_id_by_index(cpu_id),
         KernelObjId::Cpu(cpu_id),
-    )
-    &&& lctx.lock_entry_contains(
-        kernel.container_map.lock_id_by_key(container_ptr),
-        KernelObjId::Container(container_ptr),
-    )
-    &&& lctx.lock_entry_contains(
-        kernel.process_map.lock_id_by_key(process_ptr),
-        KernelObjId::Process(process_ptr),
     )
     &&& lctx.lock_entry_contains(
         kernel.thread_map.lock_id_by_key(thread_ptr),
@@ -162,9 +110,8 @@ pub open spec fn staged_4k_page_op_requires(
     &&& kernel.thread_map.dom().contains(thread_ptr)
     &&& kernel.thread_map.spec_index(thread_ptr).being_killed() == false
     &&& kernel.pagetable_map.dom().contains(pagetable_ptr)
-    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0 && pei_valid(spec_va2index(va).0)
-    &&& pei_valid(spec_va2index(va).1)
-    &&& pei_valid(spec_va2index(va).2)
+    &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
+        <= spec_va2index(va).0
     &&& kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
         == (PageState::Owned4k { thread_ptr })
     &&& kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view()
@@ -308,8 +255,6 @@ pub open spec fn staged_4k_page_op_ensures(
         == post.pagetable_map.spec_index(pagetable_ptr)
             .locking_thread()->Write_lock_id
     &&& post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view()
-        .perm_4k.view().is_none()
-    &&& post.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view()
         .owning_container
         == pre.page_array.spec_index(page_ptr2page_index(page_ptr)).view().view()
             .owning_container
@@ -345,12 +290,16 @@ pub open spec fn staged_4k_page_op_ensures(
         )
     &&& post.thread_map.spec_index(thread_ptr).view().state
         == pre.thread_map.spec_index(thread_ptr).view().state
+    &&& post.thread_map.spec_index(thread_ptr).view().blocking_endpoint_ptr
+        == pre.thread_map.spec_index(thread_ptr).view().blocking_endpoint_ptr
     &&& post.thread_map.spec_index(thread_ptr).view().caller
         == pre.thread_map.spec_index(thread_ptr).view().caller
     &&& post.thread_map.spec_index(thread_ptr).view().callee
         == pre.thread_map.spec_index(thread_ptr).view().callee
     &&& post.thread_map.spec_index(thread_ptr).view().owning_container
         == pre.thread_map.spec_index(thread_ptr).view().owning_container
+    &&& post.thread_map.spec_index(thread_ptr).view().upper_container_seq
+        == pre.thread_map.spec_index(thread_ptr).view().upper_container_seq
     &&& post.thread_map.spec_index(thread_ptr).view().owning_proc
         == pre.thread_map.spec_index(thread_ptr).view().owning_proc
     &&& post.thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr

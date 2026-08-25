@@ -274,13 +274,15 @@ pub open spec fn thread_endpoint_reference_added(
     post: ThreadLockedMap,
     thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr,
+    endpoint_index: EndpointIdx,
 ) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& pre.dom().contains(thread_ptr)
-    &&& pre.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) is None
+    &&& edp_idx_valid(endpoint_index)
+    &&& pre.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) is None
     &&& post.spec_index(thread_ptr).view().endpoint_descriptors.view()
         =~= pre.spec_index(thread_ptr).view().endpoint_descriptors.view()
-            .update(0, Some(endpoint_ptr))
+            .update(endpoint_index as int, Some(endpoint_ptr))
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger post.spec_index(t_ptr).view().owning_container]
         #![trigger post.spec_index(t_ptr)]
@@ -323,18 +325,20 @@ pub proof fn thread_endpoint_reference_added_from_single_update(
     post: ThreadLockedMap,
     thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr,
+    endpoint_index: EndpointIdx,
 )
     requires
         thread_perms_wf(pre),
         thread_perms_wf(post),
         post.unchanged_except(&pre, thread_ptr),
         pre.dom().contains(thread_ptr),
+        edp_idx_valid(endpoint_index),
         pre.spec_index(thread_ptr).view().endpoint_descriptors.wf(),
-        pre.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) is None,
+        pre.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) is None,
         post.spec_index(thread_ptr).view().endpoint_descriptors.wf(),
         post.spec_index(thread_ptr).view().endpoint_descriptors.view()
             =~= pre.spec_index(thread_ptr).view().endpoint_descriptors.view()
-                .update(0, Some(endpoint_ptr)),
+                .update(endpoint_index as int, Some(endpoint_ptr)),
         post.spec_index(thread_ptr).view().owning_container
             == pre.spec_index(thread_ptr).view().owning_container,
         post.spec_index(thread_ptr).view().state
@@ -356,10 +360,11 @@ pub proof fn thread_endpoint_reference_added_from_single_update(
         post.spec_index(thread_ptr).view().proc_linkedlist_node.addr()
             == pre.spec_index(thread_ptr).view().proc_linkedlist_node.addr(),
     ensures
-        thread_endpoint_reference_added(pre, post, thread_ptr, endpoint_ptr),
+        thread_endpoint_reference_added(
+            pre, post, thread_ptr, endpoint_ptr, endpoint_index),
 {
     assert(thread_endpoint_reference_added(
-        pre, post, thread_ptr, endpoint_ptr,
+        pre, post, thread_ptr, endpoint_ptr, endpoint_index,
     )) by {
         reveal(thread_endpoint_reference_added);
         reveal(thread_perms_wf);
@@ -372,12 +377,13 @@ pub open spec fn endpoint_reference_added(
     post: EndpointLockedMap,
     thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr,
+    endpoint_index: EndpointIdx,
 ) -> bool {
     &&& post.unchanged_except(&pre, endpoint_ptr)
     &&& pre.dom().contains(endpoint_ptr)
     &&& post.spec_index(endpoint_ptr).view().owning_threads.view()
         =~= pre.spec_index(endpoint_ptr).view().owning_threads.view()
-            .insert((thread_ptr, 0))
+            .insert((thread_ptr, endpoint_index))
     &&& post.spec_index(endpoint_ptr).view().rf_counter
         == pre.spec_index(endpoint_ptr).view().rf_counter + 1
     &&& post.spec_index(endpoint_ptr).view().owning_container
@@ -389,22 +395,24 @@ pub proof fn endpoint_reference_added_from_single_update(
     post: EndpointLockedMap,
     thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr,
+    endpoint_index: EndpointIdx,
 )
     requires
         post.unchanged_except(&pre, endpoint_ptr),
         pre.dom().contains(endpoint_ptr),
         post.spec_index(endpoint_ptr).view().owning_threads.view()
             =~= pre.spec_index(endpoint_ptr).view().owning_threads.view()
-                .insert((thread_ptr, 0)),
+                .insert((thread_ptr, endpoint_index)),
         post.spec_index(endpoint_ptr).view().rf_counter
             == pre.spec_index(endpoint_ptr).view().rf_counter + 1,
         post.spec_index(endpoint_ptr).view().owning_container
             == pre.spec_index(endpoint_ptr).view().owning_container,
     ensures
-        endpoint_reference_added(pre, post, thread_ptr, endpoint_ptr),
+        endpoint_reference_added(
+            pre, post, thread_ptr, endpoint_ptr, endpoint_index),
 {
     assert(endpoint_reference_added(
-        pre, post, thread_ptr, endpoint_ptr,
+        pre, post, thread_ptr, endpoint_ptr, endpoint_index,
     )) by {
         reveal(endpoint_reference_added);
     };
@@ -418,6 +426,7 @@ pub proof fn container_thread_endpoint_wf_preserved_on_reference_add(
     post_endpoint_map: EndpointLockedMap,
     thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr,
+    added_endpoint_index: EndpointIdx,
 )
     requires
         thread_perms_wf(pre_thread_map),
@@ -436,6 +445,7 @@ pub proof fn container_thread_endpoint_wf_preserved_on_reference_add(
             post_thread_map,
             thread_ptr,
             endpoint_ptr,
+            added_endpoint_index,
         ),
         endpoint_owning_container_fields_unchanged(
             pre_endpoint_map,
@@ -486,7 +496,7 @@ pub proof fn container_thread_endpoint_wf_preserved_on_reference_add(
         reveal(endpoint_owning_container_fields_unchanged);
         reveal(thread_endpoint_ref_counter_wf);
         reveal(container_endpoint_wf);
-        if t_ptr == thread_ptr && endpoint_index == 0 {
+        if t_ptr == thread_ptr && endpoint_index == added_endpoint_index {
             assert(post_thread_map.spec_index(t_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)) by { reveal(thread_endpoint_reference_added); };
         }
     };

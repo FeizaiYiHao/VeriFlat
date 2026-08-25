@@ -124,6 +124,7 @@ impl Endpoint {
             node_perm.view().addr() == node_addr,
             node_perm.view().value().view() == thread_ptr,
             !old(self).queue.view().contains(thread_ptr),
+            old(self).queue.length != usize::MAX,
         ensures
             final(self).inv(),
             final(self).queue.length == old(self).queue.length + 1,
@@ -156,38 +157,8 @@ impl Endpoint {
                 _ => EndpointState::RECEIVE,
             };
         }
-        proof {
-            assert(self.queue.length != usize::MAX) by {
-                endpoint_queue_len_bounded(&*self);
-            };
-        }
         self.queue.push_tail(node_addr, node_perm);
     }
-}
-
-/// Trusted cardinality bound used before adding an endpoint reference.
-/// The current endpoint invariants record the exact reference set, but do not
-/// yet derive this global address-space bound internally.
-#[verifier::external_body]
-pub proof fn endpoint_ref_counter_bounded(endpoint: &Endpoint)
-    requires
-        endpoint.inv(),
-    ensures
-        endpoint.rf_counter < NUM_PAGES,
-{
-}
-
-/// Trusted cardinality bound for the intrusive endpoint wait queue. As with
-/// the endpoint reference bound above, queue entries are backed by the finite
-/// thread-page domain; exposing that global cardinality locally keeps every
-/// enqueue proof focused on the queue transition itself.
-#[verifier::external_body]
-pub proof fn endpoint_queue_len_bounded(endpoint: &Endpoint)
-    requires
-        endpoint.inv(),
-    ensures
-        endpoint.queue.length < NUM_PAGES,
-{
 }
 
 } // verus!

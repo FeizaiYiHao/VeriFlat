@@ -60,6 +60,14 @@ pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
 pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
+    #[verifier::opaque]
+    pub open spec fn stable_allocation_root_equal(&self, other: &Self) -> bool {
+        &&& self.owning_container == other.owning_container
+        &&& self.upper_container_seq == other.upper_container_seq
+        &&& self.state == other.state
+        &&& self.blocking_endpoint_ptr == other.blocking_endpoint_ptr
+    }
+
     pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
         &&& self.owning_container == other.owning_container
         &&& self.container_depth == other.container_depth
@@ -180,17 +188,17 @@ impl Thread {
             old(self).state is RUNNING,
             waiting_state.is_endpoint_waiting(),
             waiting_state is RECEIVING_CALL ==> old(self).caller is None,
+            payload.wf(),
             edp_idx_valid(endpoint_index),
             old(self).endpoint_descriptors.spec_index(endpoint_index)
                 == Some(endpoint_ptr),
-            payload is Empty,
         ensures
             final(self).inv(),
             final(self).ipc_framed_fields_equal(old(self)),
             final(self).state == waiting_state,
             final(self).blocking_endpoint_ptr == Some(endpoint_ptr),
             final(self).blocking_endpoint_index == Some(endpoint_index),
-            final(self).ipc_payload is Empty,
+            final(self).ipc_payload =~= payload,
             final(self).trap_frame.is_some(),
             final(self).trap_frame.get_some_0() =~= pt_regs,
             final(self).caller == old(self).caller,
@@ -228,11 +236,12 @@ impl Thread {
     pub fn endpoint_waiter_to_scheduled(
         &mut self,
         thread_ptr: RwLockThreadPtr,
+        result: RetValueType,
         endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
     ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
-            old(self).state is SENDING || old(self).state is RECEIVING,
+            old(self).state.is_endpoint_waiting(),
             endpoint_node_perm.view().is_init(),
             endpoint_node_perm.view().addr()
                 == old(self).endpoint_linkedlist_node.addr(),
@@ -245,7 +254,8 @@ impl Thread {
             final(self).blocking_endpoint_index is None,
             final(self).endpoint_linkedlist_node.is_init(),
             final(self).scheduler_linkedlist_node.is_init() == false,
-            final(self).error_code == Some(RetValueType::Success),
+            final(self).error_code == Some(result),
+            final(self).ipc_payload is Empty,
             final(self).trap_frame == old(self).trap_frame,
             final(self).caller == old(self).caller,
             final(self).callee == old(self).callee,
@@ -259,7 +269,81 @@ impl Thread {
         node_update_value(node_addr, &mut node_perm, thread_ptr);
         self.blocking_endpoint_ptr = None;
         self.blocking_endpoint_index = None;
-        self.error_code = Some(RetValueType::Success);
+        self.ipc_payload = IPCPayLoad::Empty;
+        self.error_code = Some(result);
+        self.state = ThreadState::SCHEDULED;
+        (node_addr, node_perm)
+    }
+
+    /// Remove a matched endpoint sender/receiver from the channel while its
+    /// endpoint descriptor is kept stable by the thread write lock.
+    pub fn endpoint_waiter_to_endpoint_transit(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    )
+        requires
+            old(self).inv(),
+            old(self).state is SENDING || old(self).state is RECEIVING,
+            old(self).ipc_payload is Endpoint,
+            endpoint_node_perm.view().is_init(),
+            endpoint_node_perm.view().addr()
+                == old(self).endpoint_linkedlist_node.addr(),
+            endpoint_node_perm.view().value().view() == thread_ptr,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state is IPC_ENDPOINT_TRANSIT,
+            final(self).blocking_endpoint_ptr is None,
+            final(self).blocking_endpoint_index is None,
+            final(self).endpoint_linkedlist_node.is_init(),
+            final(self).scheduler_linkedlist_node
+                == old(self).scheduler_linkedlist_node,
+            final(self).ipc_payload == old(self).ipc_payload,
+            final(self).error_code == old(self).error_code,
+            final(self).trap_frame == old(self).trap_frame,
+            final(self).caller == old(self).caller,
+            final(self).callee == old(self).callee,
+    {
+        self.endpoint_linkedlist_node.put(endpoint_node_perm);
+        self.blocking_endpoint_ptr = None;
+        self.blocking_endpoint_index = None;
+        self.state = ThreadState::IPC_ENDPOINT_TRANSIT;
+    }
+
+    /// Prepare an endpoint-transit peer for its scheduler with the rendezvous
+    /// result that the current thread also receives.
+    pub fn endpoint_transit_to_scheduled(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        result: RetValueType,
+    ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        requires
+            old(self).inv(),
+            old(self).state is IPC_ENDPOINT_TRANSIT,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).state is SCHEDULED,
+            final(self).blocking_endpoint_ptr is None,
+            final(self).blocking_endpoint_index is None,
+            final(self).endpoint_linkedlist_node
+                == old(self).endpoint_linkedlist_node,
+            final(self).scheduler_linkedlist_node.is_init() == false,
+            final(self).error_code == Some(result),
+            final(self).ipc_payload is Empty,
+            final(self).trap_frame == old(self).trap_frame,
+            final(self).caller == old(self).caller,
+            final(self).callee == old(self).callee,
+            ret.0 == final(self).scheduler_linkedlist_node.addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == thread_ptr,
+    {
+        let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        self.ipc_payload = IPCPayLoad::Empty;
+        self.error_code = Some(result);
         self.state = ThreadState::SCHEDULED;
         (node_addr, node_perm)
     }
@@ -413,12 +497,18 @@ impl LockInvTrait for Thread {
         &&&
         self.endpoint_descriptors.wf()
         &&&
+        self.ipc_payload.wf()
+        &&&
         self.error_code is Some ==> self.state is SCHEDULED
         &&&
         self.state is RUNNING ==> self.trap_frame.is_none()
         &&&
-        (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY)
+        (self.state.is_endpoint_waiting()
+            || self.state is WAITING_REPLY
+            || self.state is IPC_ENDPOINT_TRANSIT)
             ==> self.trap_frame.is_some()
+        &&&
+        self.state is IPC_ENDPOINT_TRANSIT ==> self.ipc_payload is Endpoint
         &&&
         self.state.is_endpoint_waiting() == self.blocking_endpoint_ptr is Some
         &&&
@@ -512,6 +602,15 @@ pub enum IPCPayLoad {
 }
 
 impl IPCPayLoad {
+    pub open spec fn wf(&self) -> bool {
+        match self {
+            IPCPayLoad::Pages { va_range } => va_range.wf(),
+            IPCPayLoad::Endpoint { endpoint_index } =>
+                edp_idx_valid(*endpoint_index),
+            _ => true,
+        }
+    }
+
     pub open spec fn is_some(&self) -> bool {
         match self {
             IPCPayLoad::Empty => false,
@@ -630,7 +729,7 @@ impl LockMajorTrait for Thread {
     }
 
     open spec fn lock_major_default(&self) -> LockMajorId {
-        233
+        THREAD_IPC_TRANSIT_LOCK_MAJOR
     }
 
     open spec fn lock_major_1_predicate(&self) -> bool {
@@ -646,13 +745,16 @@ impl LockMajorTrait for Thread {
     }
 
     open spec fn lock_major_default_predicate(&self) -> bool {
-        false
+        self.state is IPC_ENDPOINT_TRANSIT
     }
 }
 
 impl LockOwnerIdTrait for Thread {
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state is WAITING_REPLY {
+        if self.state.is_endpoint_waiting()
+            || self.state is WAITING_REPLY
+            || self.state is IPC_ENDPOINT_TRANSIT
+        {
             LockOwnerId::NotApp
         } else {
             LockOwnerId::Some(self.container_depth)
@@ -660,7 +762,10 @@ impl LockOwnerIdTrait for Thread {
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state is WAITING_REPLY {
+        if self.state.is_endpoint_waiting()
+            || self.state is WAITING_REPLY
+            || self.state is IPC_ENDPOINT_TRANSIT
+        {
             LockOwnerId::NotApp
         } else {
             LockOwnerId::Some(self.process_depth)

@@ -151,9 +151,8 @@ impl PageTable<PT_TYPE> {
             ret.0 =~= self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
             ret.0 is Some <==> ret.1 == PageTableErrorCode::NoError,
             ret.0 is Some == ret.2 is Some,
-            ret.0 is Some && ret.2 is Some ==> ret.2->0 =~= page_entry_to_map_entry(
-                &ret.0->0,
-            ),
+            ret.0 is Some && ret.2 is Some ==> ret.2->0 =~= self.mapping_4k()
+                .spec_index(spec_index2va((l4i, l3i, l2i, l1i))),
             ret.1 == PageTableErrorCode::L4EntryNotExist <==> self.spec_resolve_mapping_l4(
                 l4i,
             ) is None,
@@ -196,7 +195,12 @@ impl PageTable<PT_TYPE> {
                 match self.get_entry_l1(l4i, l3i, l2i, l1i, &l2_entry) {
                     None => { (None, PageTableErrorCode::L1EntryNotExist, None) },
                     Some(l1_entry) => {
-                        let map_entry = page_entry_to_map_entry(&l1_entry);
+                        let map_entry = page_entry_to_map_entry(
+                            &l1_entry,
+                            Ghost(self.mapping_4k().spec_index(
+                                spec_index2va((l4i, l3i, l2i, l1i)),
+                            ).owning_container@),
+                        );
                         (Some(l1_entry), PageTableErrorCode::NoError, Some(map_entry))
                     },
                 }

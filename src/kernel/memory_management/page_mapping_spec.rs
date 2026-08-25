@@ -44,6 +44,9 @@ verus! {
                 page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().state == PageState::Mapped4k
                 &&
                 page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+                &&
+                pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).owning_container@
+                    == page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().owning_container
     }
 
     #[verifier::opaque]
@@ -74,6 +77,9 @@ verus! {
             page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).addr)).view().view().state == PageState::Mapped2m
             &&
             page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+            &&
+            pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).owning_container@
+                == page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_2m().spec_index(va).addr)).view().view().owning_container
     }
 
     #[verifier::opaque]
@@ -104,6 +110,9 @@ verus! {
             page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr)).view().view().state == PageState::Mapped1g
             &&
             page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+            &&
+            pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).owning_container@
+                == page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr)).view().view().owning_container
     }
 
     #[verifier::opaque]
@@ -130,5 +139,6 @@ verus! {
                     .subtree_set.view().contains(process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view_rodata().view().owning_container)
             }
     }
+
 
 }
