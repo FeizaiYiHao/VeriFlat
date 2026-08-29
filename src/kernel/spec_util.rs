@@ -15,7 +15,6 @@ pub open spec fn cpu_objects_unlocked(
         cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn cpu_objects_unlocked_except(
     cpu_array: CpuLockedArray,
     thread_id: LockThreadId,
@@ -38,7 +37,6 @@ pub open spec fn page_objects_unlocked(
         page_array.spec_index(p_i).view().locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn page_objects_unlocked_except(
     page_array: PageLockedArray,
     thread_id: LockThreadId,
@@ -61,7 +59,6 @@ pub open spec fn container_objects_unlocked(
         container_map.spec_index(c_ptr).locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn container_objects_unlocked_except(
     container_map: ContainerLockedMap,
     thread_id: LockThreadId,
@@ -84,7 +81,6 @@ pub open spec fn process_objects_unlocked(
         process_map.spec_index(p_ptr).locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn process_objects_unlocked_except(
     process_map: ProcessLockedMap,
     thread_id: LockThreadId,
@@ -107,7 +103,6 @@ pub open spec fn thread_objects_unlocked(
         thread_map.spec_index(t_ptr).locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn thread_objects_unlocked_except(
     thread_map: ThreadLockedMap,
     thread_id: LockThreadId,
@@ -130,7 +125,6 @@ pub open spec fn endpoint_objects_unlocked(
         endpoint_map.spec_index(e_ptr).locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn endpoint_objects_unlocked_except(
     endpoint_map: EndpointLockedMap,
     thread_id: LockThreadId,
@@ -153,7 +147,6 @@ pub open spec fn pagetable_objects_unlocked(
         pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn pagetable_objects_unlocked_except(
     pagetable_map: PageTableLockedMap,
     thread_id: LockThreadId,
@@ -186,7 +179,6 @@ pub open spec fn scheduler_objects_unlocked(
         scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id) == false
 }
 
-#[verifier::opaque]
 pub open spec fn scheduler_objects_unlocked_except(
     scheduler_map: SchedulerLockedMap,
     thread_id: LockThreadId,

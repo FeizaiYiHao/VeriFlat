@@ -8,10 +8,10 @@ verus! {
 /// `borrow` / `borrow_mut` give direct read/write access to the
 /// `AllocatorQuota` value protected by the inner RwLock — the caller must hold
 /// the appropriate `LockPerm`.
-impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
+impl UnLockedMap<usize, PageAllocator>{
     /// Shared borrow into the quota of the allocator at `alloc_ptr`. Caller
     /// holds either a read or a write lock on `quota`.
-    pub fn borrow_quota<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a crate::allocator::allocator_quota::AllocatorQuota)
+    pub fn borrow_quota<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorQuota)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -28,10 +28,11 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     /// Mutably borrow the quota of the allocator at `alloc_ptr`. Caller must
     /// hold a write lock on `quota`. Mutations through the returned reference
     /// are reflected in the map's value when the borrow ends.
-    pub fn borrow_mut_quota<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut crate::allocator::allocator_quota::AllocatorQuota)
+    pub fn borrow_mut_quota<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorQuota)
         requires
-            old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
+            old(self).view().spec_index(alloc_ptr).is_init(),
+            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
             old(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
             old(self).spec_index(alloc_ptr).quota.is_init(),
 
@@ -39,8 +40,9 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lp.view().thread_id() == lctx.thread_id(),
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
         ensures
-            final(self).perms_wf(),
+            old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).quota.is_init(),
             final(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
             final(self).spec_index(alloc_ptr).quota.write_lock_perm_match(lp.view()),
@@ -58,12 +60,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             // The `&mut AllocatorQuota` ⇄ inner-value linkage.
             *ret == old(self).spec_index(alloc_ptr).quota.view(),
             final(self).spec_index(alloc_ptr).quota.view() == *final(ret),
-            // Other map entries untouched.
-            forall|k:usize|
-                #![auto]
-                old(self).dom().contains(k) && k != alloc_ptr
-                ==>
-                final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.quota.borrow_mut(Tracked(lctx), lp)
@@ -91,8 +87,9 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     /// Caller must hold a write lock on `global_pool`.
     pub fn borrow_mut_global_pool<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut GlobalPool)
         requires
-            old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
+            old(self).view().spec_index(alloc_ptr).is_init(),
+            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
             old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
             old(self).spec_index(alloc_ptr).global_pool.is_init(),
 
@@ -100,8 +97,9 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lp.view().thread_id() == lctx.thread_id(),
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
         ensures
-            final(self).perms_wf(),
+            old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).global_pool.is_init(),
             final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
             final(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lp.view()),
@@ -119,8 +117,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             // The `&mut LinkedList` ⇄ inner-value linkage.
             *ret == old(self).spec_index(alloc_ptr).global_pool.view(),
             final(self).spec_index(alloc_ptr).global_pool.view() == *final(ret),
-            // Other map entries untouched.
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.global_pool.borrow_mut(Tracked(lctx), lp)
@@ -130,7 +126,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
 
     /// Shared borrow into the per-cpu cache `cpu_caches[cpu_id]` of the
     /// allocator at `alloc_ptr`. Caller holds a read or write lock on it.
-    pub fn borrow_cache<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, lp: Tracked<&'a LockPerm>) -> (ret: &'a crate::allocator::pre_cpu_cache::AllocatorCache)
+    pub fn borrow_cache<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorCache)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -147,10 +143,11 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
 
     /// Mutably borrow the per-cpu cache `cpu_caches[cpu_id]` of the allocator
     /// at `alloc_ptr`. Caller must hold a write lock on it.
-    pub fn borrow_mut_cache<'a>(&'a mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut crate::allocator::pre_cpu_cache::AllocatorCache)
+    pub fn borrow_mut_cache<'a>(&'a mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorCache)
         requires
-            old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
+            old(self).view().spec_index(alloc_ptr).is_init(),
+            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
             index_valid(NUM_CPUS, cpu_id),
             old(self).spec_index(alloc_ptr).cpu_caches.inv(),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
@@ -160,8 +157,9 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             lp.view().thread_id() == lctx.thread_id(),
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         ensures
-            final(self).perms_wf(),
+            old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).cpu_caches.inv(),
             // Touched cache's lock state is preserved.
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
@@ -182,8 +180,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             // The `&mut AllocatorCache` ⇄ inner-value linkage.
             *ret == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view() == *final(ret),
-            // Other map entries untouched.
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lp)
@@ -201,7 +197,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
 // matching pair on release) flow straight through from the `PageAllocator`
 // helpers.
 // ====================================================================
-impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
+impl UnLockedMap<usize, PageAllocator>{
     /// Acquire the quota lock of the allocator at `alloc_ptr`.
     pub fn wlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires
@@ -217,7 +213,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             }),
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             wlock_ensures(old(self).spec_index(alloc_ptr).quota, final(self).spec_index(alloc_ptr).quota, LockId{
                 container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
@@ -236,15 +232,13 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            // Other map entries untouched.
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wlock_quota(Tracked(lctx), page_size, Ghost(alloc_ptr))
     }
 }
 
-impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
+impl UnLockedMap<usize, PageAllocator>{
     /// Release the quota lock of the allocator at `alloc_ptr`.
     pub fn wunlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>)
         requires
@@ -261,7 +255,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             final(self).spec_index(alloc_ptr).quota.lock_id()
                 == old(self).spec_index(alloc_ptr).quota.lock_id(),
@@ -278,14 +272,13 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_quota(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
 }
 
-impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
+impl UnLockedMap<usize, PageAllocator>{
     /// Acquire the per-cpu cache lock of the allocator at `alloc_ptr`.
     pub fn wlock_cache(&mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires
@@ -302,7 +295,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             }),
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             wlock_ensures(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), LockId{
                 container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
@@ -321,7 +314,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wlock_cache(cpu_id, Tracked(lctx), page_size, Ghost(alloc_ptr))
@@ -346,7 +338,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id()
                 == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
@@ -364,7 +356,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_cache(cpu_id, Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
@@ -385,7 +376,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             }),
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             wlock_ensures(old(self).spec_index(alloc_ptr).global_pool, final(self).spec_index(alloc_ptr).global_pool, LockId{
                 container: old(self).spec_index(alloc_ptr).global_pool.view().container_depth(),
@@ -403,7 +394,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wlock_global_pool(Tracked(lctx), page_size, Ghost(alloc_ptr))
@@ -425,7 +415,7 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr)),
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             final(self).spec_index(alloc_ptr).global_pool.lock_id()
                 == old(self).spec_index(alloc_ptr).global_pool.lock_id(),
@@ -442,7 +432,6 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            forall|k:usize| #![auto] old(self).dom().contains(k) && k != alloc_ptr ==> final(self).spec_index(k) == old(self).spec_index(k),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_global_pool(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))

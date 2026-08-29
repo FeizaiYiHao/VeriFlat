@@ -3,52 +3,33 @@ use crate::*;
 
 verus! {
 
-/// Quantified-fact form of the `container_process_allocator_quota_2m_wf`
-/// conservation transport across a process-map mutation that leaves every
-/// process's 2m effective quota intact (a 4k staging op does — it only touches
-/// `temp_alloc_cache_4k`). One invocation installs the fact for ALL
-/// `(container_map, thread_map, allocator_2m_map, old, new)`, so a caller need
-/// not spell out the per-container fold argument or wrap it in an `assert forall`
-/// — the SMT re-derives the target conjunct wherever the goal needs it. The
-/// thread-folds and allocator terms are byte-equal (only `process_map` moved), so
-/// only the process-fold is bridged, via `lemma_process_effective_quota_2m_fold_eq`.
-/// Multi-trigger on the source + target `container_process_allocator_quota_2m_wf`
-/// terms.
-pub proof fn container_process_allocator_quota_2m_wf_forall()
-    ensures
-        forall|
-            container_map: ContainerLockedMap,
-            thread_map: ThreadLockedMap,
-            allocator_2m_map: PageAllocatorUnLockedMap,
-            old_process_map: ProcessLockedMap,
-            new_process_map: ProcessLockedMap,
-        |
-            #![trigger container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map), container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map)]
-            (container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map)
-            && container_process_wf(container_map, old_process_map)
-            && forall|p: RwLockProcessPtr|
-                #![trigger process_effective_quota_2m(new_process_map.spec_index(p))]
-                old_process_map.dom().contains(p) ==>
-                    process_effective_quota_2m(new_process_map.spec_index(p)) == process_effective_quota_2m(old_process_map.spec_index(p)))
-            ==>
-            container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map),
-{
-    assert forall|
-        container_map: ContainerLockedMap,
-        thread_map: ThreadLockedMap,
-        allocator_2m_map: PageAllocatorUnLockedMap,
-        old_process_map: ProcessLockedMap,
-        new_process_map: ProcessLockedMap,
-    |  #![auto]
-        (container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map)
-        && container_process_wf(container_map, old_process_map)
-        && forall|p: RwLockProcessPtr|
+/// Preserve 2M quota conservation across a process-map mutation that leaves
+/// every process's 2M effective quota unchanged.
+pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(
+    container_map: ContainerLockedMap,
+    thread_map: ThreadLockedMap,
+    allocator_2m_map: PageAllocatorUnLockedMap,
+    old_process_map: ProcessLockedMap,
+    new_process_map: ProcessLockedMap,
+)
+    requires
+        container_process_allocator_quota_2m_wf(
+            container_map, old_process_map, thread_map, allocator_2m_map,
+        ),
+        container_process_wf(container_map, old_process_map),
+        forall|p: RwLockProcessPtr|
             #![trigger process_effective_quota_2m(new_process_map.spec_index(p))]
             old_process_map.dom().contains(p) ==>
-                process_effective_quota_2m(new_process_map.spec_index(p)) == process_effective_quota_2m(old_process_map.spec_index(p)))
-        implies
-        container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map)
-    by {
+                process_effective_quota_2m(new_process_map.spec_index(p))
+                    == process_effective_quota_2m(old_process_map.spec_index(p)),
+    ensures
+        container_process_allocator_quota_2m_wf(
+            container_map, new_process_map, thread_map, allocator_2m_map,
+        ),
+{
+    assert(container_process_allocator_quota_2m_wf(
+        container_map, new_process_map, thread_map, allocator_2m_map,
+    )) by {
         reveal(container_process_allocator_quota_2m_wf);
         reveal(container_process_wf);
         assert forall|c_ptr: RwLockContainerPtr|
@@ -75,43 +56,33 @@ pub proof fn container_process_allocator_quota_2m_wf_forall()
     };
 }
 
-/// 1g twin of `container_process_allocator_quota_2m_wf_forall` — identical shape,
-/// process-fold bridged via `lemma_process_effective_quota_1g_fold_eq`.
-pub proof fn container_process_allocator_quota_1g_wf_forall()
-    ensures
-        forall|
-            container_map: ContainerLockedMap,
-            thread_map: ThreadLockedMap,
-            allocator_1g_map: PageAllocatorUnLockedMap,
-            old_process_map: ProcessLockedMap,
-            new_process_map: ProcessLockedMap,
-        |
-            #![trigger container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map), container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map)]
-            (container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map)
-            && container_process_wf(container_map, old_process_map)
-            && forall|p: RwLockProcessPtr|
-                #![trigger process_effective_quota_1g(new_process_map.spec_index(p))]
-                old_process_map.dom().contains(p) ==>
-                    process_effective_quota_1g(new_process_map.spec_index(p)) == process_effective_quota_1g(old_process_map.spec_index(p)))
-            ==>
-            container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map),
-{
-    assert forall|
-        container_map: ContainerLockedMap,
-        thread_map: ThreadLockedMap,
-        allocator_1g_map: PageAllocatorUnLockedMap,
-        old_process_map: ProcessLockedMap,
-        new_process_map: ProcessLockedMap,
-    |  #![auto]
-        (container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map)
-        && container_process_wf(container_map, old_process_map)
-        && forall|p: RwLockProcessPtr|
+/// Preserve 1G quota conservation across a process-map mutation that leaves
+/// every process's 1G effective quota unchanged.
+pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(
+    container_map: ContainerLockedMap,
+    thread_map: ThreadLockedMap,
+    allocator_1g_map: PageAllocatorUnLockedMap,
+    old_process_map: ProcessLockedMap,
+    new_process_map: ProcessLockedMap,
+)
+    requires
+        container_process_allocator_quota_1g_wf(
+            container_map, old_process_map, thread_map, allocator_1g_map,
+        ),
+        container_process_wf(container_map, old_process_map),
+        forall|p: RwLockProcessPtr|
             #![trigger process_effective_quota_1g(new_process_map.spec_index(p))]
             old_process_map.dom().contains(p) ==>
-                process_effective_quota_1g(new_process_map.spec_index(p)) == process_effective_quota_1g(old_process_map.spec_index(p)))
-        implies
-        container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map)
-    by {
+                process_effective_quota_1g(new_process_map.spec_index(p))
+                    == process_effective_quota_1g(old_process_map.spec_index(p)),
+    ensures
+        container_process_allocator_quota_1g_wf(
+            container_map, new_process_map, thread_map, allocator_1g_map,
+        ),
+{
+    assert(container_process_allocator_quota_1g_wf(
+        container_map, new_process_map, thread_map, allocator_1g_map,
+    )) by {
         reveal(container_process_allocator_quota_1g_wf);
         reveal(container_process_wf);
         assert forall|c_ptr: RwLockContainerPtr|
@@ -211,24 +182,6 @@ pub proof fn lemma_thread_effective_quota_4k_fold_sum_eq_forall()
         lemma_thread_effective_quota_4k_fold_eq(s, pre, post);
     };
 }
-
-pub proof fn lemma_thread_effective_quota_4k_fold_sum_eq(
-    s: Set<RwLockThreadPtr>,
-    pre: ThreadLockedMap,
-    post: ThreadLockedMap,
-)
-    requires
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t))
-                == thread_effective_quota_4k(pre.spec_index(t)),
-    ensures
-        thread_effective_quota_4k_fold_sum(s, post)
-            == thread_effective_quota_4k_fold_sum(s, pre),
-{
-    lemma_thread_effective_quota_4k_fold_eq(s, pre, post);
-}
-
 pub proof fn lemma_thread_effective_quota_4k_fold_change_by_forall(
     mod_t: RwLockThreadPtr,
     x: int,
@@ -332,4 +285,3 @@ pub proof fn lemma_thread_pending_4k_folds_eq_forall(
 }
 
 }
-

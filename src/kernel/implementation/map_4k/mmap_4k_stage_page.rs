@@ -49,6 +49,8 @@ verus! {
                 ),
                 KernelObjId::Page(page_ptr2page_index(ret.0)),
             )),
+            final(kernel).thread_map.lock_id_by_key(thread_ptr)
+                == old(kernel).thread_map.lock_id_by_key(thread_ptr),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             allocator_objects_unlocked(
@@ -166,52 +168,6 @@ verus! {
             Tracked(thread_lock_perm),
         );
         proof {
-            assert({
-                &&& kernel.process_map.dom().contains(process_ptr)
-                &&& kernel.process_map.spec_index(process_ptr).view_rodata().view()
-                    .owning_container == container_ptr
-                &&& kernel.container_map.dom().contains(container_ptr)
-                &&& kernel.container_map.spec_index(container_ptr).view_rodata()
-                    == old(kernel).container_map.spec_index(container_ptr).view_rodata()
-                &&& kernel.thread_map.dom().contains(thread_ptr)
-                &&& old(kernel).thread_map.spec_index(thread_ptr)
-                    .locked_by_thread(old(lctx).thread_id())
-                &&& kernel.thread_map.spec_index(thread_ptr).view()
-                    .temp_alloc_cache_4k.view()
-                    =~= old(kernel).thread_map.spec_index(thread_ptr).view()
-                        .temp_alloc_cache_4k.view().insert(page_ptr)
-                &&& kernel.thread_map.spec_index(thread_ptr).view().quota_4k
-                    == old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
-                &&& kernel.thread_map.spec_index(thread_ptr).view().owning_container
-                    == old(kernel).thread_map.spec_index(thread_ptr).view().owning_container
-                &&& kernel.thread_map.spec_index(thread_ptr).view().owning_proc
-                    == old(kernel).thread_map.spec_index(thread_ptr).view().owning_proc
-                &&& kernel.thread_map.spec_index(thread_ptr).view().owning_proc
-                    == process_ptr
-                &&& kernel.thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr
-                    == old(kernel).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr
-                &&& kernel.thread_map.spec_index(thread_ptr).being_killed() == false
-                &&& kernel.thread_map.spec_index(thread_ptr)
-                    .locked_by_thread(lctx.thread_id())
-            }) by {
-                reveal(container_process_wf);
-                reveal(process_thread_wf);
-            };
-            assert({
-                &&& kernel.pagetable_map.dom().contains(pagetable_ptr)
-                &&& old(kernel).pagetable_map.spec_index(pagetable_ptr)
-                    .locked_by_thread(old(lctx).thread_id())
-                &&& kernel.pagetable_map.spec_index(pagetable_ptr)
-                    == old(kernel).pagetable_map.spec_index(pagetable_ptr)
-                &&& kernel.pagetable_map.spec_index(pagetable_ptr)
-                    .locked_by_thread(lctx.thread_id())
-                &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().wf()
-            }) by {
-                reveal(pagetable_perms_wf);
-            };
-            assert(kernel.allocator_4k_map.dom().contains(alloc_ptr_4k)) by {
-                reveal(container_allocator_wf);
-            };
             assert(mmap_4k_held_context(
                 kernel,
                 &*lctx,
@@ -224,10 +180,10 @@ verus! {
                 thread_lock_perm,
                 pagetable_lock_perm,
             )) by {
-                assert(
-                    OWNED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR
-                ) by (compute);
-                lock_id_fields_eq_imply_eq();
+                reveal(container_process_wf);
+                reveal(process_thread_wf);
+                reveal(pagetable_perms_wf);
+                reveal(container_allocator_wf);
             };
             assert({
                 &&& kernel.thread_map.spec_index(thread_ptr).view()

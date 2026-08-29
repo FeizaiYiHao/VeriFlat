@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::allocate_free_4k_page_pop_impl::{pop_stage_4k_page, pop_stage_global_4k_page};
 
@@ -161,30 +160,28 @@ verus! {
             final(kernel).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
                 == old(kernel).thread_map.spec_index(thread_ptr).view().endpoint_descriptors,
     {
-        assert(kernel.container_map.perms_wf()
-            && kernel.container_map.dom().contains(container_ptr)) by {
+        assert({
+            &&& kernel.container_map.dom().contains(container_ptr)
+            &&& kernel.container_map.view().spec_index(container_ptr).is_init()
+            &&& kernel.container_map.view().spec_index(container_ptr).addr()
+                == container_ptr
+        }) by {
             reveal(container_perms_wf);
             reveal(container_thread_wf);
         };
         let alloc_ptr_4k = kernel.container_map
             .borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-        assert(kernel.allocator_4k_map.dom().contains(alloc_ptr_4k)) by {
+        assert(
+            kernel.allocator_4k_map.dom().contains(alloc_ptr_4k)
+            && kernel.allocator_4k_map.spec_index(alloc_ptr_4k).wf()
+        ) by {
             reveal(container_allocator_wf);
-        };
-        assert(kernel.allocator_4k_map.spec_index(alloc_ptr_4k).wf()) by {
             reveal(allocator_perms_wf);
         };
         // Fast path: lock the running cpu's cache.
         let Tracked(cache_lock_perm) = kernel.wlock_allocator_cache(
             alloc_ptr_4k, cpu_id, Tracked(&mut *lctx),
         );
-        proof {
-            assert(allocator_objects_unlocked_except_cache_pool(
-                kernel.allocator_4k_map, alloc_ptr_4k, lctx.thread_id(),
-            )) by {
-                reveal(allocator_objects_unlocked_except_cache_pool);
-            };
-        }
 
         // Read the cache length via a shared borrow (preserves wf() for the slow path).
         let cache_ref = kernel.allocator_4k_map.borrow_cache(
@@ -201,11 +198,6 @@ verus! {
                 alloc_ptr_4k, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm),
             );
             proof {
-                assert(allocator_objects_unlocked(
-                    kernel.allocator_4k_map, lctx.thread_id(),
-                )) by {
-                    reveal(allocator_objects_unlocked_except_cache_pool);
-                };
                 kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
                 assert(kernel.container_map.dom().contains(container_ptr)) by {
                     reveal(container_thread_wf);
@@ -217,13 +209,6 @@ verus! {
         let Tracked(gp_lock_perm) = kernel.wlock_allocator_global_pool(
             alloc_ptr_4k, Tracked(&mut *lctx),
         );
-        proof {
-            assert(allocator_objects_unlocked_except_cache_pool(
-                kernel.allocator_4k_map, alloc_ptr_4k, lctx.thread_id(),
-            )) by {
-                reveal(allocator_objects_unlocked_except_cache_pool);
-            };
-        }
         assert(kernel.allocator_4k_map.perms_wf()) by {
             reveal(allocator_perms_wf);
         };
@@ -244,11 +229,6 @@ verus! {
                 alloc_ptr_4k, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm),
             );
             proof {
-                assert(allocator_objects_unlocked(
-                    kernel.allocator_4k_map, lctx.thread_id(),
-                )) by {
-                    reveal(allocator_objects_unlocked_except_cache_pool);
-                };
                 kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
                 assert(kernel.container_map.dom().contains(container_ptr)) by {
                     reveal(container_thread_wf);
@@ -420,8 +400,12 @@ verus! {
             final(kernel).thread_map.spec_index(thread_ptr).view().endpoint_descriptors
                 == old(kernel).thread_map.spec_index(thread_ptr).view().endpoint_descriptors,
     {
-        assert(kernel.container_map.perms_wf()
-            && kernel.container_map.dom().contains(container_ptr)) by {
+        assert({
+            &&& kernel.container_map.dom().contains(container_ptr)
+            &&& kernel.container_map.view().spec_index(container_ptr).is_init()
+            &&& kernel.container_map.view().spec_index(container_ptr).addr()
+                == container_ptr
+        }) by {
             reveal(container_perms_wf);
             reveal(container_thread_wf);
         };
@@ -457,7 +441,6 @@ verus! {
                 assert(allocator_objects_unlocked(
                     kernel.allocator_4k_map, lctx.thread_id(),
                 )) by {
-                    reveal(allocator_objects_unlocked_except_cache_pool);
                     reveal(allocator_caches_unlocked);
                 };
                 kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
@@ -494,11 +477,6 @@ verus! {
         )) by {
             reveal(cache_perms_match_lctx);
         };
-        assert(allocator_objects_unlocked_except_cache_pool(
-            kernel.allocator_4k_map, alloc_ptr_4k, lctx.thread_id(),
-        )) by {
-            reveal(allocator_objects_unlocked_except_cache_pool);
-        };
         wunlock_all_caches(kernel,
             alloc_ptr_4k, thread_ptr,
             page_ptr2page_index(page_ptr),
@@ -510,7 +488,6 @@ verus! {
             assert(allocator_objects_unlocked(
                 kernel.allocator_4k_map, lctx.thread_id(),
             )) by {
-                reveal(allocator_objects_unlocked_except_cache_pool);
                 reveal(allocator_caches_unlocked);
             };
             kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
@@ -538,7 +515,6 @@ verus! {
         }
     }
 
-    #[verifier::opaque]
     pub(crate) open spec fn allocator_objects_unlocked_except_cache_pool(
         alloc_map: PageAllocatorUnLockedMap,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
@@ -631,13 +607,12 @@ verus! {
             final(kernel).allocator_1g_map  == old(kernel).allocator_1g_map,
             final(kernel).default_pagetable == old(kernel).default_pagetable,
             final(kernel).allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
+            final(kernel).allocator_4k_map.unchanged_except(
+                &old(kernel).allocator_4k_map,
+                alloc_ptr_4k,
+            ),
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                 == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger final(kernel).allocator_4k_map.spec_index(p)]
-                old(kernel).allocator_4k_map.dom().contains(p) && p != alloc_ptr_4k
-                ==> final(kernel).allocator_4k_map.spec_index(p)
-                    == old(kernel).allocator_4k_map.spec_index(p),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
@@ -710,13 +685,12 @@ verus! {
                 kernel.allocator_1g_map  == old(kernel).allocator_1g_map,
                 kernel.default_pagetable == old(kernel).default_pagetable,
                 kernel.allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
+                kernel.allocator_4k_map.unchanged_except(
+                    &old(kernel).allocator_4k_map,
+                    alloc_ptr_4k,
+                ),
                 kernel.allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-                forall|p: RwLockPageAllocatorPtr|
-                    #![trigger kernel.allocator_4k_map.spec_index(p)]
-                    old(kernel).allocator_4k_map.dom().contains(p) && p != alloc_ptr_4k
-                    ==> kernel.allocator_4k_map.spec_index(p)
-                        == old(kernel).allocator_4k_map.spec_index(p),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.kernel_view_locking_state() is Acquire,
                 0 <= cpu <= NUM_CPUS,
@@ -828,11 +802,6 @@ verus! {
                 kernel.allocator_4k_map, alloc_ptr_4k, &*lctx, &cache_perms)) by {
                 reveal(cache_perms_match_lctx);
             };
-            assert(allocator_objects_unlocked_except_cache_pool(
-                kernel.allocator_4k_map, alloc_ptr_4k, lctx.thread_id(),
-            )) by {
-                reveal(allocator_objects_unlocked_except_cache_pool);
-            };
             assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel);
             };
@@ -924,13 +893,12 @@ verus! {
             final(kernel).allocator_1g_map  == old(kernel).allocator_1g_map,
             final(kernel).default_pagetable == old(kernel).default_pagetable,
             final(kernel).allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
+            final(kernel).allocator_4k_map.unchanged_except(
+                &old(kernel).allocator_4k_map,
+                alloc_ptr_4k,
+            ),
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                 == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger final(kernel).allocator_4k_map.spec_index(p)]
-                old(kernel).allocator_4k_map.dom().contains(p) && p != alloc_ptr_4k
-                ==> final(kernel).allocator_4k_map.spec_index(p)
-                    == old(kernel).allocator_4k_map.spec_index(p),
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
                 .global_pool.wlocked_by(final(lctx)),
@@ -984,13 +952,12 @@ verus! {
                 kernel.default_pagetable == old(kernel).default_pagetable,
                 kernel.allocator_4k_map.dom().contains(alloc_ptr_4k),
                 kernel.allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
+                kernel.allocator_4k_map.unchanged_except(
+                    &old(kernel).allocator_4k_map,
+                    alloc_ptr_4k,
+                ),
                 kernel.allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-                forall|p: RwLockPageAllocatorPtr|
-                    #![trigger kernel.allocator_4k_map.spec_index(p)]
-                    old(kernel).allocator_4k_map.dom().contains(p) && p != alloc_ptr_4k
-                    ==> kernel.allocator_4k_map.spec_index(p)
-                        == old(kernel).allocator_4k_map.spec_index(p),
                 kernel.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 lctx.thread_id() == old(lctx).thread_id(),
                 0 <= cpu <= NUM_CPUS,
@@ -1034,8 +1001,8 @@ verus! {
             decreases NUM_CPUS - cpu,
         {
             proof {
-                assert(
-                    perms.dom().contains(cpu)
+                assert({
+                    &&& perms.dom().contains(cpu)
                     && perms.spec_index(cpu).state() is WriteLock
                     && perms.spec_index(cpu).thread_id() == lctx.thread_id()
                     && perms.spec_index(cpu).lock_id()
@@ -1045,16 +1012,13 @@ verus! {
                         == allocator_cache_lock_id(cpu)
                     && kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
                         .cpu_caches.spec_index(cpu).view().wlocked_by(&*lctx)
-                ) by {
+                    &&& kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches.spec_index(cpu).view().being_killed() == false
+                    &&& kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches.lock_id_by_index(cpu)
+                        == allocator_cache_lock_id(cpu)
+                }) by {
                     reveal(cache_perms_match_lctx_from);
-                };
-                assert(kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .cpu_caches.spec_index(cpu).view().being_killed() == false) by {
-                    reveal(allocator_perms_wf);
-                };
-                assert(kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .cpu_caches.lock_id_by_index(cpu)
-                    == allocator_cache_lock_id(cpu)) by {
                     reveal(allocator_perms_wf);
                     reveal(allocator_cache_lock_id);
                 };
@@ -1114,13 +1078,6 @@ verus! {
                 kernel.allocator_4k_map, alloc_ptr_4k,
             )) by {
                 reveal(allocator_caches_unlocked);
-            };
-            assert(allocator_objects_unlocked_except_cache_pool(
-                kernel.allocator_4k_map,
-                alloc_ptr_4k,
-                lctx.thread_id(),
-            )) by {
-                reveal(allocator_objects_unlocked_except_cache_pool);
             };
             assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel);
@@ -1259,6 +1216,7 @@ verus! {
                 alloc_ptr_4k,
                 final(lctx).thread_id(),
             ),
+            final(kernel).allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
             final(kernel).allocator_4k_map.unchanged_except(
                 &old(kernel).allocator_4k_map, alloc_ptr_4k),
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota
@@ -1274,10 +1232,13 @@ verus! {
                 &&& ret.1 is None
                 &&& *final(kernel) == *old(kernel)
                 &&& *final(lctx) == *old(lctx)
-                &&& forall|c: CpuId|
-                    #![trigger final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c)]
-                    index_valid(NUM_CPUS, c)
-                    ==> final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c).view().view().view().len() == 0
+                &&& final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches.view().fold_left(
+                        0int,
+                        |sum: int, cache: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {
+                            sum + cache.view().linked_list.len()
+                        },
+                    ) == 0
             },
             // ---- success: popped + staged a page from cache `cpu`, page slot held ----
             ret.0 == true ==> {
@@ -1375,11 +1336,13 @@ verus! {
                 cache_perms_match_lctx(
                     kernel.allocator_4k_map, alloc_ptr_4k, &*lctx, cache_perms),
                 lctx.held_lock_majors_lt(FREE_PAGE_LOCK_MAJOR),
-                // Caches [0, cpu) were all found empty.
-                forall|c: CpuId|
-                    #![trigger kernel.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c)]
-                    index_valid(NUM_CPUS, c) && c < cpu
-                    ==> kernel.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c).view().view().view().len() == 0,
+                kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches.view().take(cpu as int).fold_left(
+                        0int,
+                        |sum: int, cache: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {
+                            sum + cache.view().linked_list.len()
+                        },
+                    ) == 0,
             decreases NUM_CPUS - cpu,
         {
             proof {
@@ -1433,15 +1396,56 @@ verus! {
                 )) by {
                     reveal(cache_perms_match_lctx);
                 };
-                assert(allocator_objects_unlocked_except_cache_pool(
-                    kernel.allocator_4k_map, alloc_ptr_4k, lctx.thread_id(),
-                )) by {
-                    reveal(allocator_objects_unlocked_except_cache_pool);
-                };
                 return (true, Some((cpu, page_ptr, Tracked(page_lock_perm))));
             }
+            assert(
+                kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
+                    .cpu_caches.view().take(cpu as int + 1).fold_left(
+                        0int,
+                        |sum: int, cache: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {
+                            sum + cache.view().linked_list.len()
+                        },
+                    ) == 0
+            ) by {
+                let caches = kernel.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches;
+                let cache_seq = caches.view();
+                let cache_len_sum =
+                    |sum: int, cache: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {
+                        sum + cache.view().linked_list.len()
+                    };
+                assert(cache_seq.spec_index(cpu as int).view().linked_list.len() == 0) by {
+                    caches.lemma_view_index(cpu);
+                };
+                assert(cache_seq.take(cpu as int + 1).fold_left(0int, cache_len_sum)
+                    == cache_len_sum(
+                        cache_seq.take(cpu as int).fold_left(0int, cache_len_sum),
+                        cache_seq.spec_index(cpu as int),
+                    )) by {
+                    assert(
+                        cache_seq.take(cpu as int + 1).drop_last() =~=
+                            cache_seq.take(cpu as int)
+                        && cache_seq.take(cpu as int + 1).last() ==
+                            cache_seq.spec_index(cpu as int)
+                    ) by {
+                        cache_seq.lemma_take_succ_push(cpu as int);
+                    };
+                };
+            };
             cpu = cpu + 1;
         }
+        assert(
+            kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
+                .cpu_caches.view().fold_left(
+                    0int,
+                    |sum: int, cache: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {
+                        sum + cache.view().linked_list.len()
+                    },
+                ) == 0
+        ) by {
+            reveal(allocator_perms_wf);
+            kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
+                .cpu_caches.view().lemma_take_len();
+        };
         (false, None)
     }
 
@@ -1471,31 +1475,21 @@ pub proof fn lemma_scan_fail_pool_nonempty(
         k.container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
         k.container_map.spec_index(container_ptr).view_user_ghost().owned_threads.view().contains(thread_ptr),
         thread_effective_quota_4k(k.thread_map.spec_index(thread_ptr)) >= 1,
-        forall|c: CpuId|
-            #![trigger k.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c)]
-            index_valid(NUM_CPUS, c)
-            ==> k.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(c).view().view().view().len() == 0,
+        k.allocator_4k_map.spec_index(alloc_ptr_4k)
+            .cpu_caches.view().fold_left(
+                0int,
+                |sum: int, cache: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {
+                    sum + cache.view().linked_list.len()
+                },
+            ) == 0,
     ensures
         k.allocator_4k_map.spec_index(alloc_ptr_4k).global_pool.view().view().len() > 0,
 {
+    let owned_processes = k.container_map.spec_index(container_ptr).view().owned_processes.view();
+    let owned_threads = k.container_map.spec_index(container_ptr).view_user_ghost().owned_threads.view();
     assert(
-        allocator_perms_wf(k.allocator_4k_map)
-        && container_allocator_wf(
-            k.container_map,
-            k.allocator_4k_map,
-            k.allocator_2m_map,
-            k.allocator_1g_map,
-        )
-        && container_process_wf(k.container_map, k.process_map)
-        && container_thread_wf(k.container_map, k.thread_map)
-        && container_process_allocator_quota_4k_wf(
-            k.container_map,
-            k.process_map,
-            k.thread_map,
-            k.allocator_4k_map,
-        )
-        && process_perms_wf(k.process_map)
-        && thread_perms_wf(k.thread_map)
+        k.allocator_4k_map.spec_index(alloc_ptr_4k)
+            .global_pool.view().view().len() > 0
     ) by {
         reveal(allocator_perms_wf);
         reveal(container_allocator_wf);
@@ -1504,46 +1498,7 @@ pub proof fn lemma_scan_fail_pool_nonempty(
         reveal(container_process_allocator_quota_4k_wf);
         reveal(process_perms_wf);
         reveal(thread_perms_wf);
-    };
-    let owned_processes = k.container_map.spec_index(container_ptr).view().owned_processes.view();
-    let owned_threads = k.container_map.spec_index(container_ptr).view_user_ghost().owned_threads.view();
-    let caches = k.allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches;
-    assert(
-        k.allocator_4k_map.spec_index(alloc_ptr_4k)
-            .global_pool.view().view().len() > 0
-    ) by {
-        assert(k.allocator_4k_map.dom().contains(alloc_ptr_4k)) by {
-            reveal(container_allocator_wf);
-        };
-        assert(k.thread_map.dom().contains(thread_ptr)) by {
-            reveal(container_thread_wf);
-        };
-        assert forall|j: int| #![trigger caches.view().spec_index(j)]
-            0 <= j < caches.view().len()
-            implies {
-                &&& caches.view().spec_index(j) == caches.spec_index(j as usize).value
-                &&& caches.view().spec_index(j).view().linked_list.view().len() == 0
-            } by {
-                reveal(allocator_perms_wf);
-                reveal(container_allocator_wf);
-                lemma_usize_int(j);
-                caches.lemma_view_index(j as usize);
-            };
-        lemma_cache_len_fold_all_zero(caches.view());
-        assert forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_4k(k.process_map.spec_index(p))]
-            owned_processes.contains(p)
-            implies process_effective_quota_4k(k.process_map.spec_index(p)) >= 0 by {
-            reveal(container_process_wf);
-        };
         lemma_process_effective_quota_4k_fold_nonneg(owned_processes, k.process_map);
-        assert forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(k.thread_map.spec_index(t))]
-            owned_threads.contains(t)
-            implies thread_effective_quota_4k(k.thread_map.spec_index(t)) >= 0 by {
-            reveal(container_thread_wf);
-            reveal(thread_perms_wf);
-        };
         lemma_thread_effective_quota_4k_fold_ge_member(
             owned_threads, k.thread_map, thread_ptr,
         );
@@ -1559,13 +1514,6 @@ pub proof fn lemma_scan_fail_pool_nonempty(
             k.container_map.spec_index(container_ptr)
                 .view_rodata().view().depth as int,
         );
-        reveal(allocator_perms_wf);
-        reveal(container_allocator_wf);
-        reveal(container_process_wf);
-        reveal(container_thread_wf);
-        reveal(container_process_allocator_quota_4k_wf);
-        reveal(process_perms_wf);
-        reveal(thread_perms_wf);
     };
 }
 

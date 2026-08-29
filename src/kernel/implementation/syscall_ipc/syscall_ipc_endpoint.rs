@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 
 use crate::*;
 use super::syscall_ipc_queue::{
@@ -144,8 +143,14 @@ pub(super) fn ipc_copy_endpoint_reference(
 {
     proof {
         assert({
-            &&& kernel.thread_map.perms_wf()
-            &&& kernel.endpoint_map.perms_wf()
+            &&& kernel.thread_map.view().spec_index(receiver_thread_ptr)
+                .is_init()
+            &&& kernel.thread_map.view().spec_index(receiver_thread_ptr).addr()
+                == receiver_thread_ptr
+            &&& kernel.endpoint_map.view().spec_index(payload_endpoint_ptr)
+                .is_init()
+            &&& kernel.endpoint_map.view().spec_index(payload_endpoint_ptr).addr()
+                == payload_endpoint_ptr
             &&& kernel.thread_map.spec_index(receiver_thread_ptr).view()
                 .endpoint_descriptors.wf()
             &&& kernel.endpoint_map.spec_index(payload_endpoint_ptr).inv()
@@ -154,14 +159,15 @@ pub(super) fn ipc_copy_endpoint_reference(
             reveal(endpoint_perms_wf);
             reveal(endpoints_inv);
         };
-        assert(!kernel.endpoint_map.spec_index(payload_endpoint_ptr).view()
-            .owning_threads.view().contains(
-                (receiver_thread_ptr, target_endpoint_index),
-            )) by {
+        assert({
+            &&& !kernel.endpoint_map.spec_index(payload_endpoint_ptr).view()
+                .owning_threads.view().contains(
+                    (receiver_thread_ptr, target_endpoint_index),
+                )
+            &&& kernel.endpoint_map.spec_index(payload_endpoint_ptr).view()
+                .rf_counter < usize::MAX
+        }) by {
             reveal(thread_endpoint_ref_counter_wf);
-        };
-        assert(kernel.endpoint_map.spec_index(payload_endpoint_ptr).view()
-            .rf_counter < usize::MAX) by {
             endpoint_ref_counter_bounded(&*kernel, payload_endpoint_ptr);
         };
     }
@@ -204,55 +210,42 @@ pub(super) fn ipc_copy_endpoint_reference(
             reveal(KernelK::default_pagetable_wf);
         };
         assert(kernel.memory_management_inv()) by {
-            assert(thread_pages_wf(kernel.thread_map, kernel.page_array)) by {
-                reveal(thread_pages_wf);
-            };
-            assert(thread_staged_pages_wf(
-                kernel.thread_map, kernel.page_array,
-            )) by {
-                thread_staged_pages_4k_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-                thread_staged_pages_2m_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-                thread_staged_pages_1g_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-            };
-            assert(endpoint_pages_wf(
-                kernel.endpoint_map, kernel.page_array,
-            )) by {
-                reveal(endpoint_pages_wf);
-            };
-            assert(container_process_allocator_quota_wf(
-                kernel.container_map, kernel.process_map, kernel.thread_map,
-                kernel.allocator_4k_map, kernel.allocator_2m_map,
-                kernel.allocator_1g_map,
-            )) by {
-                reveal(thread_quota_4k_fields_unchanged);
-                reveal(thread_quota_2m_fields_unchanged);
-                reveal(thread_quota_1g_fields_unchanged);
-                container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields_forall();
-                container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields_forall();
-                container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields_forall();
-            };
+            thread_endpoint_no_change_imply_memory_management_inv(
+                *old(kernel),
+                *kernel,
+            );
         };
         assert(kernel.process_management_inv()) by {
-            reveal(KernelK::process_management_inv);
-            thread_endpoint_reference_added_from_single_update(
-                old(kernel).thread_map, kernel.thread_map,
-                receiver_thread_ptr, payload_endpoint_ptr,
+            assert(thread_endpoint_reference_added(
+                old(kernel).thread_map,
+                kernel.thread_map,
+                receiver_thread_ptr,
+                payload_endpoint_ptr,
                 target_endpoint_index,
-            );
-            endpoint_reference_added_from_single_update(
-                old(kernel).endpoint_map, kernel.endpoint_map,
-                receiver_thread_ptr, payload_endpoint_ptr,
+            )) by {
+                thread_endpoint_reference_added_from_single_update(
+                    old(kernel).thread_map,
+                    kernel.thread_map,
+                    receiver_thread_ptr,
+                    payload_endpoint_ptr,
+                    target_endpoint_index,
+                );
+            };
+            assert(endpoint_reference_added(
+                old(kernel).endpoint_map,
+                kernel.endpoint_map,
+                receiver_thread_ptr,
+                payload_endpoint_ptr,
                 target_endpoint_index,
-            );
+            )) by {
+                endpoint_reference_added_from_single_update(
+                    old(kernel).endpoint_map,
+                    kernel.endpoint_map,
+                    receiver_thread_ptr,
+                    payload_endpoint_ptr,
+                    target_endpoint_index,
+                );
+            };
             assert(thread_caller_callee_wf(kernel.thread_map)) by {
                 reveal(thread_endpoint_reference_added);
                 reveal(thread_caller_callee_wf);
@@ -273,8 +266,6 @@ pub(super) fn ipc_copy_endpoint_reference(
             assert(thread_endpoint_queue_wf(
                 kernel.thread_map, kernel.endpoint_map,
             )) by {
-                reveal(thread_endpoint_queue_fields_unchanged);
-                reveal(endpoint_queue_fields_unchanged);
                 thread_endpoint_queue_wf_preserved_for_queue_fields(
                     old(kernel).thread_map, kernel.thread_map,
                     old(kernel).endpoint_map, kernel.endpoint_map,
@@ -283,14 +274,10 @@ pub(super) fn ipc_copy_endpoint_reference(
             assert(container_thread_endpoint_wf(
                 kernel.container_map, kernel.thread_map, kernel.endpoint_map,
             )) by {
-                reveal(endpoint_owning_container_fields_unchanged);
-                container_thread_endpoint_wf_preserved_on_reference_add(
-                    kernel.container_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).endpoint_map, kernel.endpoint_map,
-                    receiver_thread_ptr, payload_endpoint_ptr,
-                    target_endpoint_index,
-                );
+                reveal(container_thread_endpoint_wf);
+                reveal(thread_endpoint_reference_added);
+                reveal(thread_endpoint_ref_counter_wf);
+                reveal(container_endpoint_wf);
             };
             assert(container_thread_scheduler_wf(
                 kernel.container_map, kernel.thread_map, kernel.scheduler_map,
@@ -317,22 +304,17 @@ pub(super) fn ipc_copy_endpoint_reference(
                 reveal(thread_cpu_wf);
             };
         };
-        assert(kernel.endpoint_map.lock_id_by_key(payload_endpoint_ptr)
-            == old(kernel).endpoint_map.lock_id_by_key(payload_endpoint_ptr)) by {
-            lock_id_fields_eq_imply_eq();
-        };
-        assert(kernel.thread_map.lock_id_by_key(receiver_thread_ptr)
-            == old(kernel).thread_map.lock_id_by_key(receiver_thread_ptr)) by {
-            lock_id_fields_eq_imply_eq();
-        };
-        assert(lock_id_aligned(kernel, lctx)) by {
+        assert({
+            &&& lock_id_aligned(kernel, lctx)
+            &&& kernel.thread_map.lock_id_by_key(receiver_thread_ptr)
+                == old(kernel).thread_map.lock_id_by_key(receiver_thread_ptr)
+            &&& kernel.endpoint_map.lock_id_by_key(payload_endpoint_ptr)
+                == old(kernel).endpoint_map.lock_id_by_key(payload_endpoint_ptr)
+        }) by {
             reveal(lock_id_aligned);
-        };
-        assert(kernel_k_to_kernel_u(*kernel)
-            == kernel_k_to_kernel_u(*old(kernel))) by {
-            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                old(kernel), kernel,
-            );
+            reveal(thread_perms_wf);
+            reveal(endpoint_perms_wf);
+            lock_id_fields_eq_imply_eq();
         };
     }
 }
@@ -481,9 +463,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-        final(kernel).thread_map.perms_wf(),
-        final(kernel).endpoint_map.perms_wf(),
-        final(kernel).container_map.perms_wf(),
         final(kernel).process_map.dom().contains(process_ptr),
         final(kernel).thread_map.dom().contains(current_thread_ptr),
         final(kernel).thread_map.spec_index(current_thread_ptr).is_init(),
@@ -642,62 +621,10 @@ pub(super) fn ipc_begin_endpoint_transfer(
             reveal(KernelK::default_pagetable_wf);
         };
         assert(kernel.memory_management_inv()) by {
-            assert({
-                &&& thread_quota_4k_fields_unchanged(
-                    old(kernel).thread_map, kernel.thread_map)
-                &&& thread_quota_2m_fields_unchanged(
-                    old(kernel).thread_map, kernel.thread_map)
-                &&& thread_quota_1g_fields_unchanged(
-                    old(kernel).thread_map, kernel.thread_map)
-            }) by {
-                reveal(thread_quota_4k_fields_unchanged);
-                reveal(thread_quota_2m_fields_unchanged);
-                reveal(thread_quota_1g_fields_unchanged);
-            };
-            assert({
-                &&& thread_pages_wf(kernel.thread_map, kernel.page_array)
-                &&& endpoint_pages_wf(kernel.endpoint_map, kernel.page_array)
-            }) by {
-                reveal(thread_pages_wf);
-                reveal(endpoint_pages_wf);
-            };
-            assert(thread_staged_pages_wf(
-                kernel.thread_map, kernel.page_array,
-            )) by {
-                thread_staged_pages_4k_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-                thread_staged_pages_2m_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-                thread_staged_pages_1g_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-            };
-            assert(container_process_allocator_quota_wf(
-                kernel.container_map, kernel.process_map, kernel.thread_map,
-                kernel.allocator_4k_map, kernel.allocator_2m_map,
-                kernel.allocator_1g_map,
-            )) by {
-                container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
-                    kernel.container_map, kernel.process_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    kernel.allocator_4k_map,
-                );
-                container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
-                    kernel.container_map, kernel.process_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    kernel.allocator_2m_map,
-                );
-                container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
-                    kernel.container_map, kernel.process_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    kernel.allocator_1g_map,
-                );
-            };
+            thread_endpoint_no_change_imply_memory_management_inv(
+                *old(kernel),
+                *kernel,
+            );
         };
         assert(kernel.process_management_inv()) by {
             assert({
@@ -797,10 +724,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
             reveal(container_cpu_wf);
             reveal(tlb_wf_spec);
             reveal(lock_id_aligned);
-            reveal(cpu_objects_unlocked_except);
-            reveal(process_objects_unlocked_except);
-            reveal(thread_objects_unlocked_except);
-            reveal(endpoint_objects_unlocked_except);
         };
     }
 
@@ -809,57 +732,17 @@ pub(super) fn ipc_begin_endpoint_transfer(
         Tracked(channel_endpoint_lock_perm),
     );
     proof {
-        assert({
-            &&& endpoint_objects_unlocked(
-                kernel.endpoint_map, lctx.thread_id())
-            &&& kernel_k_to_kernel_u(*kernel)
-                == kernel_k_to_kernel_u(*old(kernel))
-        }) by {
-            reveal(endpoint_objects_unlocked_except);
-            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                old(kernel), kernel,
-            );
-        };
         kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
         assert({
-            &&& kernel.thread_map.spec_index(source_thread_ptr).view()
-                .endpoint_descriptors.wf()
-            &&& kernel.thread_map.spec_index(source_thread_ptr).view()
-                .endpoint_descriptors.view().spec_index(
-                    source_endpoint_index as int) == Some(payload_endpoint_ptr)
-        }) by {
-            reveal(thread_perms_wf);
-        };
-        assert(
-            kernel.thread_map.perms_wf()
-                && kernel.endpoint_map.perms_wf()
-                && kernel.container_map.perms_wf()
-        ) by {
-            reveal(thread_perms_wf);
-            reveal(endpoint_perms_wf);
-            reveal(container_perms_wf);
-        };
-        assert({
-            &&& kernel.process_map.dom().contains(process_ptr)
-            &&& kernel.thread_map.dom().contains(current_thread_ptr)
             &&& kernel.thread_map.spec_index(current_thread_ptr).is_init()
-            &&& kernel.thread_map.dom().contains(peer_thread_ptr)
             &&& kernel.thread_map.spec_index(peer_thread_ptr).is_init()
-            &&& kernel.thread_map.spec_index(source_thread_ptr).view()
-                .endpoint_descriptors.wf()
-        }) by {
-            reveal(thread_perms_wf);
-        };
-        assert(kernel.endpoint_map.dom().contains(
-            payload_endpoint_ptr,
-        )) by {
-            reveal(thread_endpoint_ref_counter_wf);
-        };
-        assert({
+            &&& kernel.endpoint_map.dom().contains(payload_endpoint_ptr)
             &&& kernel.endpoint_map.spec_index(payload_endpoint_ptr).is_init()
             &&& kernel.endpoint_map.lock_id_by_key(
                 payload_endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
         }) by {
+            reveal(thread_perms_wf);
+            reveal(thread_endpoint_ref_counter_wf);
             reveal(endpoint_perms_wf);
             reveal(endpoints_inv);
         };
@@ -1060,81 +943,21 @@ pub(super) fn ipc_finish_endpoint_transit(
             reveal(KernelK::default_pagetable_wf);
         };
         assert(kernel.memory_management_inv()) by {
-            assert(thread_quota_4k_fields_unchanged(
-                old(kernel).thread_map, kernel.thread_map,
-            )) by {
-                reveal(thread_quota_4k_fields_unchanged);
-            };
-            assert(thread_quota_2m_fields_unchanged(
-                old(kernel).thread_map, kernel.thread_map,
-            )) by {
-                reveal(thread_quota_2m_fields_unchanged);
-            };
-            assert(thread_quota_1g_fields_unchanged(
-                old(kernel).thread_map, kernel.thread_map,
-            )) by {
-                reveal(thread_quota_1g_fields_unchanged);
-            };
-            assert(thread_pages_wf(
-                kernel.thread_map, kernel.page_array,
-            )) by {
-                reveal(thread_pages_wf);
-            };
-            assert(thread_staged_pages_wf(
-                kernel.thread_map, kernel.page_array,
-            )) by {
-                thread_staged_pages_4k_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-                thread_staged_pages_2m_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-                thread_staged_pages_1g_wf_preserved_for_eq(
-                    old(kernel).thread_map, kernel.thread_map,
-                    old(kernel).page_array, kernel.page_array,
-                );
-            };
-            assert(endpoint_pages_wf(
-                kernel.endpoint_map, kernel.page_array,
-            )) by {
-                reveal(endpoint_pages_wf);
-            };
-            assert(container_process_allocator_quota_wf(
-                kernel.container_map, kernel.process_map, kernel.thread_map,
-                kernel.allocator_4k_map, kernel.allocator_2m_map,
-                kernel.allocator_1g_map,
-            )) by {
-                container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
-                    kernel.container_map, kernel.process_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    kernel.allocator_4k_map,
-                );
-                container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
-                    kernel.container_map, kernel.process_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    kernel.allocator_2m_map,
-                );
-                container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
-                    kernel.container_map, kernel.process_map,
-                    old(kernel).thread_map, kernel.thread_map,
-                    kernel.allocator_1g_map,
-                );
-            };
+            thread_endpoint_no_change_imply_memory_management_inv(
+                *old(kernel),
+                *kernel,
+            );
         };
         assert(kernel.process_management_inv()) by {
-            assert(container_endpoint_wf(
-                kernel.container_map, kernel.endpoint_map,
-            )) by {
+            assert({
+                &&& container_endpoint_wf(
+                    kernel.container_map, kernel.endpoint_map)
+                &&& thread_endpoint_ref_counter_wf(
+                    kernel.thread_map, kernel.endpoint_map)
+                &&& thread_caller_callee_wf(kernel.thread_map)
+            }) by {
                 reveal(container_endpoint_wf);
-            };
-            assert(thread_endpoint_ref_counter_wf(
-                kernel.thread_map, kernel.endpoint_map,
-            )) by {
                 reveal(thread_endpoint_ref_counter_wf);
-            };
-            assert(thread_caller_callee_wf(kernel.thread_map)) by {
                 reveal(thread_caller_callee_wf);
             };
             assert(thread_endpoint_queue_wf(
@@ -1151,24 +974,18 @@ pub(super) fn ipc_finish_endpoint_transit(
             )) by {
                 reveal(container_thread_endpoint_wf);
             };
-            assert(container_scheduler_wf(
-                kernel.container_map, kernel.scheduler_map,
-            )) by {
+            assert({
+                &&& container_scheduler_wf(
+                    kernel.container_map, kernel.scheduler_map)
+                &&& container_thread_wf(
+                    kernel.container_map, kernel.thread_map)
+                &&& process_thread_wf(
+                    kernel.process_map, kernel.thread_map)
+                &&& thread_cpu_wf(kernel.thread_map, kernel.cpu_array)
+            }) by {
                 reveal(container_scheduler_wf);
-            };
-            assert(container_thread_wf(
-                kernel.container_map, kernel.thread_map,
-            )) by {
                 reveal(container_thread_wf);
-            };
-            assert(process_thread_wf(
-                kernel.process_map, kernel.thread_map,
-            )) by {
                 reveal(process_thread_wf);
-            };
-            assert(thread_cpu_wf(
-                kernel.thread_map, kernel.cpu_array,
-            )) by {
                 reveal(thread_cpu_wf);
             };
             assert(container_thread_scheduler_wf(
@@ -1217,11 +1034,6 @@ pub(super) fn ipc_finish_endpoint_transit(
             reveal(container_cpu_wf);
             reveal(tlb_wf_spec);
             reveal(lock_id_aligned);
-            reveal(cpu_objects_unlocked_except);
-            reveal(process_objects_unlocked_except);
-            reveal(thread_objects_unlocked_except);
-            reveal(endpoint_objects_unlocked_except);
-            reveal(scheduler_objects_unlocked_except);
         };
     }
 
@@ -1247,20 +1059,6 @@ pub(super) fn ipc_finish_endpoint_transit(
         cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm),
     );
     proof {
-        assert({
-            &&& kernel.all_objects_unlocked(&*lctx)
-            &&& kernel_k_to_kernel_u(*kernel)
-                == kernel_k_to_kernel_u(*old(kernel))
-        }) by {
-            reveal(cpu_objects_unlocked_except);
-            reveal(process_objects_unlocked_except);
-            reveal(thread_objects_unlocked_except);
-            reveal(endpoint_objects_unlocked_except);
-            reveal(scheduler_objects_unlocked_except);
-            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                old(kernel), kernel,
-            );
-        };
         steps.end_kernel_step(&*kernel, &*lctx);
     }
     result
@@ -1499,15 +1297,12 @@ pub(super) fn ipc_rendezvous_endpoint(
     );
 
     proof {
-        assert(
-            !kernel.endpoint_map.spec_index(payload_endpoint_ptr)
+        assert({
+            &&& !kernel.endpoint_map.spec_index(payload_endpoint_ptr)
                 .locked_by_thread(lctx.thread_id())
-        ) by {
-            reveal(endpoint_objects_unlocked);
-        };
-        assert(lctx.lock_id_acyclic(
-            kernel.endpoint_map.lock_id_by_key(payload_endpoint_ptr),
-        )) by {
+            &&& lctx.lock_id_acyclic(
+                kernel.endpoint_map.lock_id_by_key(payload_endpoint_ptr))
+        }) by {
             reveal(process_perms_wf);
             reveal(thread_perms_wf);
             reveal(endpoint_perms_wf);
@@ -1519,10 +1314,7 @@ pub(super) fn ipc_rendezvous_endpoint(
     proof {
         assert({
             &&& kernel.endpoint_map.perms_wf()
-            &&& kernel.endpoint_map.spec_index(payload_endpoint_ptr).is_init()
             &&& kernel.thread_map.perms_wf()
-            &&& kernel.thread_map.spec_index(current_thread_ptr).is_init()
-            &&& kernel.thread_map.spec_index(peer_thread_ptr).is_init()
         }) by {
             reveal(endpoint_perms_wf);
             reveal(thread_perms_wf);
@@ -1594,10 +1386,13 @@ pub(super) fn ipc_rendezvous_endpoint(
         peer_thread_ptr, Tracked(&peer_thread_lock_perm),
     ).owning_container;
     proof {
-        assert(
-            kernel.container_map.perms_wf()
-                && kernel.container_map.dom().contains(peer_container_ptr)
-        ) by {
+        assert({
+            &&& kernel.container_map.dom().contains(peer_container_ptr)
+            &&& kernel.container_map.view().spec_index(peer_container_ptr)
+                .is_init()
+            &&& kernel.container_map.view().spec_index(peer_container_ptr)
+                .addr() == peer_container_ptr
+        }) by {
             reveal(container_perms_wf);
             reveal(container_thread_wf);
         };
@@ -1615,7 +1410,6 @@ pub(super) fn ipc_rendezvous_endpoint(
             reveal(container_thread_wf);
             reveal(container_scheduler_wf);
             reveal(scheduler_perms_wf);
-            reveal(scheduler_objects_unlocked);
             reveal(process_perms_wf);
             reveal(thread_perms_wf);
             reveal(endpoint_perms_wf);
@@ -1625,64 +1419,17 @@ pub(super) fn ipc_rendezvous_endpoint(
         peer_scheduler_ptr, Tracked(&mut *lctx),
     );
     proof {
-        assert_sets_equal!(lctx.lock_id_set() == set![
-            (kernel.cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id)),
-            (kernel.process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr)),
-            (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                KernelObjId::Thread(current_thread_ptr)),
-            (kernel.endpoint_map.lock_id_by_key(payload_endpoint_ptr),
-                KernelObjId::Endpoint(payload_endpoint_ptr)),
-            (kernel.thread_map.lock_id_by_key(peer_thread_ptr),
-                KernelObjId::Thread(peer_thread_ptr)),
-            (kernel.scheduler_map.lock_id_by_key(peer_scheduler_ptr),
-                KernelObjId::Scheduler(peer_scheduler_ptr)),
-        ], held => {});
         assert({
+            &&& kernel.container_map.dom().contains(peer_container_ptr)
             &&& kernel.container_map.spec_index(peer_container_ptr)
                 .view_rodata().view().scheduler == peer_scheduler_ptr
             &&& kernel.scheduler_map.spec_index(peer_scheduler_ptr).view()
                 .owning_container == peer_container_ptr
             &&& !kernel.scheduler_map.spec_index(peer_scheduler_ptr).view()
                 .queue.view().contains(peer_thread_ptr)
-            &&& cpu_objects_unlocked_except(
-                kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-            &&& page_objects_unlocked(
-                kernel.page_array, lctx.thread_id())
-            &&& container_objects_unlocked(
-                kernel.container_map, lctx.thread_id())
-            &&& process_objects_unlocked_except(
-                kernel.process_map, lctx.thread_id(), set![process_ptr])
-            &&& thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![current_thread_ptr, peer_thread_ptr])
-            &&& endpoint_objects_unlocked_except(
-                kernel.endpoint_map, lctx.thread_id(),
-                set![payload_endpoint_ptr])
-            &&& pagetable_objects_unlocked(
-                kernel.pagetable_map, lctx.thread_id())
-            &&& iommu_table_objects_unlocked(
-                kernel.iommu_table_map, lctx.thread_id())
-            &&& scheduler_objects_unlocked_except(
-                kernel.scheduler_map, lctx.thread_id(),
-                set![peer_scheduler_ptr])
-            &&& pcid_allocator_objects_unlocked(
-                kernel.pcid_allocator_map, lctx.thread_id())
-            &&& allocator_objects_unlocked(
-                kernel.allocator_4k_map, lctx.thread_id())
-            &&& allocator_objects_unlocked(
-                kernel.allocator_2m_map, lctx.thread_id())
-            &&& allocator_objects_unlocked(
-                kernel.allocator_1g_map, lctx.thread_id())
         }) by {
             reveal(container_scheduler_wf);
             reveal(container_thread_scheduler_wf);
-            reveal(cpu_objects_unlocked_except);
-            reveal(process_objects_unlocked_except);
-            reveal(thread_objects_unlocked_except);
-            reveal(endpoint_objects_unlocked_except);
-            reveal(scheduler_objects_unlocked_except);
         };
     }
     ipc_finish_endpoint_transit(

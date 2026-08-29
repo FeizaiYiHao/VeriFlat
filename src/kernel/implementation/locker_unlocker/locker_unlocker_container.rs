@@ -115,155 +115,16 @@ impl KernelK {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        assert(container_page_owner_wf(
-                            self.container_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_process_page_pagetable_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.pagetable_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_process_page_pagetable_wf);
-                            reveal(container_process_wf);
-                            reveal(process_pagetable_match);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_pages_wf(
-                            self.page_array,
-                            self.container_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_pages_wf);
-                        };
-                        assert(container_process_allocator_quota_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_4k_map,
-                            self.allocator_2m_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_4k_wf);
-                            reveal(container_process_allocator_quota_2m_wf);
-                            reveal(container_process_allocator_quota_1g_wf);
-                        };
-                        assert(container_allocator_wf(
-                            self.container_map,
-                            self.allocator_4k_map,
-                            self.allocator_2m_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_wf);
-                        };
-                        assert(container_allocator_free_4k_page_wf(
-                            self.allocator_4k_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_free_4k_page_wf);
-                            reveal(container_allocator_wf);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_allocator_free_2m_page_wf(
-                            self.allocator_2m_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_free_2m_page_wf);
-                            reveal(container_allocator_wf);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_allocator_free_1g_page_wf(
-                            self.allocator_1g_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_free_1g_page_wf);
-                            reveal(container_allocator_wf);
-                            reveal(container_page_owner_wf);
-                        };
+                        container_no_change_imply_memory_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(self.process_management_inv()) by {
-                        assert(container_pcid_allocator_wf(self.container_map, self.pcid_allocator_map)) by { lemma_no_change_imply_container_pcid_allocator_wf_forall(); };
-                        assert(process_pcid_allocator_wf(self.container_map, self.process_map, self.pcid_allocator_map)) by { lemma_no_change_imply_process_pcid_allocator_wf_for_container_fields_forall(); };
-                        assert(container_tree_wf(
-                            self.root_container,
-                            self.container_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            container_no_change_to_tree_fields_imply_wf(old(self).root_container, old(self).container_map, self.container_map);
-                        };
-                        assert(container_process_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_process_wf);
-                        };
-                        assert(per_container_process_tree_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(per_container_process_tree_wf);
-                        };
-                        assert(container_cpu_wf(
-                            self.container_map,
-                            self.cpu_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_cpu_wf);
-                        };
-                        assert(container_thread_endpoint_wf(
-                            self.container_map,
-                            self.thread_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_endpoint_wf);
-                            reveal(thread_endpoint_ref_counter_wf);
-                            reveal(thread_endpoint_queue_wf);
-                            reveal(container_thread_endpoint_wf);
-                        };
-                        assert(container_thread_scheduler_wf(
-                            self.container_map,
-                            self.thread_map,
-                            self.scheduler_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                            reveal(container_scheduler_wf);
-                            reveal(container_thread_scheduler_wf);
-                        };
-                        assert(container_endpoint_wf(
-                            self.container_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_endpoint_wf);
-                        };
-                        assert(container_scheduler_wf(
-                            self.container_map,
-                            self.scheduler_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_scheduler_wf);
-                        };
-                        assert(container_thread_wf(
-                            self.container_map,
-                            self.thread_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                        };
+                        container_no_change_imply_process_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(cpu_dirty_map_wf(
                         self.container_map,
@@ -272,23 +133,14 @@ impl KernelK {
                         self.cpu_tlb,
                         self.pagetable_map,
                     )) by {
-                        reveal(container_invariant_fields_unchanged);
-                        reveal(cpu_dirty_map_contains_container_processes);
-                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-                        reveal(cpu_dirty_map_proc_pcid_match);
-                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-                        reveal(container_cpu_wf);
+                        container_no_change_imply_cpu_dirty_map_wf(
+                            *old(self),
+                            *self,
+                        );
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(container_objects_unlocked(
-                    old(self).container_map, old(lctx).thread_id(),
-                ) ==> container_objects_unlocked_except(
-                    self.container_map, lctx.thread_id(), set![container_ptr],
-                )) by {
-                    reveal(container_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -311,7 +163,6 @@ impl KernelK {
         ///  * Every other `KernelK` field is byte-equal pre/post.
         ///  * the held-lock ledger loses the exact container pair
         ///    entry (encapsulated by `unlock_ensures`).
-        #[verifier::spinoff_prover]
         pub fn wunlock_container(
             &mut self,
             container_ptr: RwLockContainerPtr,
@@ -432,155 +283,16 @@ impl KernelK {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        assert(container_page_owner_wf(
-                            self.container_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_process_page_pagetable_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.pagetable_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_process_page_pagetable_wf);
-                            reveal(container_process_wf);
-                            reveal(process_pagetable_match);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_pages_wf(
-                            self.page_array,
-                            self.container_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_pages_wf);
-                        };
-                        assert(container_process_allocator_quota_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_4k_map,
-                            self.allocator_2m_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_4k_wf);
-                            reveal(container_process_allocator_quota_2m_wf);
-                            reveal(container_process_allocator_quota_1g_wf);
-                        };
-                        assert(container_allocator_wf(
-                            self.container_map,
-                            self.allocator_4k_map,
-                            self.allocator_2m_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_wf);
-                        };
-                        assert(container_allocator_free_4k_page_wf(
-                            self.allocator_4k_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_free_4k_page_wf);
-                            reveal(container_allocator_wf);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_allocator_free_2m_page_wf(
-                            self.allocator_2m_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_free_2m_page_wf);
-                            reveal(container_allocator_wf);
-                            reveal(container_page_owner_wf);
-                        };
-                        assert(container_allocator_free_1g_page_wf(
-                            self.allocator_1g_map,
-                            self.page_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_allocator_free_1g_page_wf);
-                            reveal(container_allocator_wf);
-                            reveal(container_page_owner_wf);
-                        };
+                        container_no_change_imply_memory_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(self.process_management_inv()) by {
-                        assert(container_pcid_allocator_wf(self.container_map, self.pcid_allocator_map)) by { lemma_no_change_imply_container_pcid_allocator_wf_forall(); };
-                        assert(process_pcid_allocator_wf(self.container_map, self.process_map, self.pcid_allocator_map)) by { lemma_no_change_imply_process_pcid_allocator_wf_for_container_fields_forall(); };
-                        assert(container_tree_wf(
-                            self.root_container,
-                            self.container_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            container_no_change_to_tree_fields_imply_wf(old(self).root_container, old(self).container_map, self.container_map);
-                        };
-                        assert(container_process_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_process_wf);
-                        };
-                        assert(per_container_process_tree_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(per_container_process_tree_wf);
-                        };
-                        assert(container_cpu_wf(
-                            self.container_map,
-                            self.cpu_array,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_cpu_wf);
-                        };
-                        assert(container_thread_endpoint_wf(
-                            self.container_map,
-                            self.thread_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_endpoint_wf);
-                            reveal(thread_endpoint_ref_counter_wf);
-                            reveal(thread_endpoint_queue_wf);
-                            reveal(container_thread_endpoint_wf);
-                        };
-                        assert(container_thread_scheduler_wf(
-                            self.container_map,
-                            self.thread_map,
-                            self.scheduler_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                            reveal(container_scheduler_wf);
-                            reveal(container_thread_scheduler_wf);
-                        };
-                        assert(container_endpoint_wf(
-                            self.container_map,
-                            self.endpoint_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_endpoint_wf);
-                        };
-                        assert(container_scheduler_wf(
-                            self.container_map,
-                            self.scheduler_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_scheduler_wf);
-                        };
-                        assert(container_thread_wf(
-                            self.container_map,
-                            self.thread_map,
-                        )) by {
-                            reveal(container_invariant_fields_unchanged);
-                            reveal(container_thread_wf);
-                        };
+                        container_no_change_imply_process_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(cpu_dirty_map_wf(
                         self.container_map,
@@ -589,23 +301,14 @@ impl KernelK {
                         self.cpu_tlb,
                         self.pagetable_map,
                     )) by {
-                        reveal(container_invariant_fields_unchanged);
-                        reveal(cpu_dirty_map_contains_container_processes);
-                        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-                        reveal(cpu_dirty_map_proc_pcid_match);
-                        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-                        reveal(container_cpu_wf);
+                        container_no_change_imply_cpu_dirty_map_wf(
+                            *old(self),
+                            *self,
+                        );
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(container_objects_unlocked_except(
-                    old(self).container_map, old(lctx).thread_id(), set![container_ptr],
-                ) ==> container_objects_unlocked(
-                    self.container_map, lctx.thread_id(),
-                )) by {
-                    reveal(container_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

@@ -16,6 +16,9 @@ pub mod kernel_inv_thread_lock_op;
 pub mod kernel_inv_allocator_4k_lock_op;
 pub mod kernel_inv_scheduler_lock_op;
 pub mod kernel_inv_endpoint_lock_op;
+pub mod kernel_inv_pagetable_lock_op;
+pub mod kernel_inv_page_lock_op;
+pub mod thread_endpoint_memory_fields_eq;
 pub mod invariant_fields_eq;
 pub mod thread_process_management_fields_eq;
 
@@ -37,5 +40,8 @@ pub use kernel_inv_thread_lock_op::*;
 pub use kernel_inv_allocator_4k_lock_op::*;
 pub use kernel_inv_scheduler_lock_op::*;
 pub use kernel_inv_endpoint_lock_op::*;
+pub use kernel_inv_pagetable_lock_op::*;
+pub use kernel_inv_page_lock_op::*;
+pub use thread_endpoint_memory_fields_eq::*;
 pub use invariant_fields_eq::*;
 pub use thread_process_management_fields_eq::*;

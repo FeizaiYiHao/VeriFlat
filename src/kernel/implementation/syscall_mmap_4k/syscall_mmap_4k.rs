@@ -1,11 +1,13 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 
 use crate::*;
 
-use super::mmap_4k_map_range::mmap_4k_build_and_map_leaf_range;
+use super::mmap_4k_map_range::mmap_4k_map_leaf_range;
 use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
-use super::syscall_mmap_4k_spec::mmap_4k_syscall_range_mapped;
+use super::syscall_mmap_4k_spec::{
+    mmap_4k_lock_scope,
+    mmap_4k_syscall_range_mapped,
+};
 
 verus! {
 
@@ -234,61 +236,32 @@ verus! {
             reveal(process_pagetable_match);
         };
 
-        assert(lctx.lock_id_acyclic(
-            kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
-        )) by {
-            reveal(thread_cpu_wf);
-            reveal(thread_perms_wf);
-            reveal(lock_id_aligned);
-            reveal(pagetable_perms_wf);
-        };
         let Tracked(pagetable_lock_perm) = kernel.wlock_pagetable(
             pagetable_ptr,
             Tracked(&mut *lctx),
         );
         proof {
-            assert_sets_equal!(lctx.lock_id_set() == set![
-                (kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-                (kernel.container_map.lock_id_by_key(container_ptr),
-                    KernelObjId::Container(container_ptr)),
-                (kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
-                (kernel.thread_map.lock_id_by_key(thread_ptr),
-                    KernelObjId::Thread(thread_ptr)),
-                (kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
-                    KernelObjId::PageTable(pagetable_ptr)),
-            ], held_lock => {});
-            assert(mmap_4k_held_context(
-                kernel,
-                &*lctx,
-                alloc_ptr_4k,
-                thread_ptr,
-                process_ptr,
-                container_ptr,
-                cpu_id,
-                pagetable_ptr,
-                &thread_lock_perm,
-                &pagetable_lock_perm,
-            )) by {
+            assert({
+                &&& mmap_4k_held_context(
+                    kernel,
+                    &*lctx,
+                    alloc_ptr_4k,
+                    thread_ptr,
+                    process_ptr,
+                    container_ptr,
+                    cpu_id,
+                    pagetable_ptr,
+                    &thread_lock_perm,
+                    &pagetable_lock_perm,
+                )
+                &&& mmap_4k_allocation_ready(kernel, &*lctx)
+            }) by {
                 reveal(cpu_array_wf);
                 reveal(container_perms_wf);
                 reveal(process_perms_wf);
                 reveal(thread_perms_wf);
                 reveal(pagetable_perms_wf);
                 reveal(container_allocator_wf);
-            };
-            assert(mmap_4k_allocation_ready(kernel, &*lctx)) by {
-                assert(thread_lock_perm.ordering_lock_id().major
-                    == THREAD_LOCK_MAJOR) by {
-                    reveal(thread_cpu_wf);
-                    reveal(thread_perms_wf);
-                };
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(process_perms_wf);
-                reveal(thread_perms_wf);
-                reveal(pagetable_perms_wf);
             };
         }
 
@@ -310,7 +283,7 @@ verus! {
                     assert(spec_va2index(va_range.start).0
                         == spec_v2l4index(va_range.start)) by (bit_vector);
                 };
-                let build = mmap_4k_build_and_map_leaf_range(kernel,
+                mmap_4k_map_leaf_range(kernel,
                     &va_range,
                     alloc_ptr_4k,
                     thread_ptr,
@@ -323,26 +296,16 @@ verus! {
                     Tracked(&thread_lock_perm),
                     Tracked(&pagetable_lock_perm),
                 );
-                match build {
-                    Mmap4kStructureBuild::Ready => {
-                        proof {
-                            assert(mmap_4k_syscall_range_mapped(
-                                kernel.pagetable_map.spec_index(pagetable_ptr).view(),
-                                va,
-                                range,
-                            )) by {
-                                va_range.va_range_lemma();
-                            };
-                        }
-                        result = RetValueType::Success;
-                    },
-                    Mmap4kStructureBuild::NoQuota => {
-                        result = RetValueType::ErrorNoQuota;
-                    },
-                    Mmap4kStructureBuild::InUse => {
-                        result = RetValueType::ErrorVaInUse;
-                    },
+                proof {
+                    assert(mmap_4k_syscall_range_mapped(
+                        kernel.pagetable_map.spec_index(pagetable_ptr).view(),
+                        va,
+                        range,
+                    )) by {
+                        va_range.va_range_lemma();
+                    };
                 }
+                result = RetValueType::Success;
             },
             Mmap4kPrecheck::NoQuota => {
                 result = RetValueType::ErrorNoQuota;
@@ -381,16 +344,6 @@ verus! {
             Tracked(cpu_lock_perm),
         );
         proof {
-            assert_sets_equal!(
-                lctx.lock_id_set() == Set::<HeldLock>::empty(), held_lock => {}
-            );
-            assert(kernel.all_objects_unlocked(&*lctx)) by {
-                reveal(pagetable_objects_unlocked_except);
-                reveal(thread_objects_unlocked_except);
-                reveal(process_objects_unlocked_except);
-                reveal(container_objects_unlocked_except);
-                reveal(cpu_objects_unlocked_except);
-            };
             steps.end_kernel_step(&*kernel, &*lctx);
         }
         result

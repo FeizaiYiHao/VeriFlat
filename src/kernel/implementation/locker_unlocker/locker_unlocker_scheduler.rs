@@ -112,7 +112,6 @@ impl KernelK {
                             self.container_map,
                             self.scheduler_map,
                         )) by {
-                            reveal(scheduler_invariant_fields_unchanged);
                             reveal(container_scheduler_wf);
                         };
                         assert(container_thread_scheduler_wf(
@@ -120,7 +119,6 @@ impl KernelK {
                             self.thread_map,
                             self.scheduler_map,
                         )) by {
-                            reveal(scheduler_invariant_fields_unchanged);
                             reveal(container_thread_wf);
                             reveal(container_scheduler_wf);
                             reveal(container_thread_scheduler_wf);
@@ -129,13 +127,6 @@ impl KernelK {
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(scheduler_objects_unlocked(
-                    old(self).scheduler_map, old(lctx).thread_id(),
-                ) ==> scheduler_objects_unlocked_except(
-                    self.scheduler_map, lctx.thread_id(), set![scheduler_ptr],
-                )) by {
-                    reveal(scheduler_objects_unlocked_except);
                 };
             }
             ret
@@ -241,16 +232,6 @@ impl KernelK {
             }
             self.scheduler_map.wunlock(scheduler_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
-                assert(scheduler_objects_unlocked_except(
-                    old(self).scheduler_map,
-                    old(lctx).thread_id(),
-                    set![scheduler_ptr],
-                ) ==> scheduler_objects_unlocked(
-                    self.scheduler_map,
-                    lctx.thread_id(),
-                )) by {
-                    reveal(scheduler_objects_unlocked_except);
-                };
                     assert(scheduler_perms_wf(
                         self.scheduler_map,
                     )) by {
@@ -274,7 +255,6 @@ impl KernelK {
                             self.container_map,
                             self.scheduler_map,
                         )) by {
-                            reveal(scheduler_invariant_fields_unchanged);
                             reveal(container_scheduler_wf);
                         };
                         assert(container_thread_scheduler_wf(
@@ -282,7 +262,6 @@ impl KernelK {
                             self.thread_map,
                             self.scheduler_map,
                         )) by {
-                            reveal(scheduler_invariant_fields_unchanged);
                             reveal(container_thread_wf);
                             reveal(container_scheduler_wf);
                             reveal(container_thread_scheduler_wf);

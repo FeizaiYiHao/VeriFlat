@@ -34,11 +34,21 @@ this file or live code, this file and live code win.
   change, or unrelated framing contract.
 - An executable operation's preconditions must be limited to facts required by
   its own safety and semantics or by a direct callee.  Do not retain a
-  precondition merely to prove an unrelated or removable postcondition.
+  precondition merely to prove an unrelated or removable postcondition.  A fact
+  already implied by the operation's invariant or boundary state should
+  normally be derived in an existing scoped entry proof rather than imposed on
+  every caller.  Common examples are a current object being `Some`, map-domain
+  membership, and a target not being held by the caller.  Do not force that
+  migration when it creates a new proof stage or regresses same-scope
+  verification: an exact safety/callee fact may remain as a measured
+  normalization boundary.
 - Operation postconditions must describe the result, exact mutation,
   permission/lock-ledger transition, invariant/phase/snapshot, stable public
-  primitive semantics, or a fact consumed by a live caller.  Remove redundant
-  field-by-field framing and facts with no semantic or caller use.
+  primitive semantics, or a fact consumed by a live caller.  Avoid broad
+  field-by-field framing with no semantic or caller use.  A direct,
+  non-quantified `old == new` framing postcondition is not a style violation by
+  itself and need not be removed solely for terseness or a speculative SMT
+  benefit; retain it when it keeps the producer contract explicit.
 - Delete implementation, spec, and proof functions after confirming that they
   have no live caller or consumer.  A public syscall or an explicitly intended
   public kernel primitive is not dead merely because it currently has no
@@ -135,22 +145,56 @@ this file or live code, this file and live code win.
   reveal or a genuinely necessary trigger bridge, delete the assertion.
 - `assert(condition) by { reveal(opaque_predicate); }` is the normal accepted
   form.  Reveal only the predicates needed by that assertion.
-- Open specs do not need `reveal`.  A reveal of an open spec is dead proof and
-  must be removed.
-- Do not use function-scope/bare `reveal(...)` when a scoped
-  `assert(...) by { reveal(...); }` can own it.  A reveal must not pollute later
-  proof obligations.
+- Do not retain `reveal(open_spec)` merely to make an open definition visible.
+  Openness alone, however, does not prove that a scoped assertion is dead:
+  nested invariant facts and `recommends` may still need that assertion as an
+  explicit instantiation/normalization bridge.  Test deletion of the entire
+  assertion.  If deletion fails and no narrower opaque producer is available,
+  retain the scoped reveal form; never replace it with an empty `by {}`.
+- Do not use function-scope/bare `reveal(...)` in an executable function or a
+  multi-stage proof when a scoped `assert(...) by { reveal(...); }` can own it.
+  A reveal must not pollute later proof obligations.  A single-stage `proof fn`
+  may reveal directly when those reveals discharge only its declared ensures
+  and there is no later sibling obligation to pollute.
 - Do not introduce `assert forall`.  It leaks a quantified fact and its trigger
   into the remaining solver context.  Fix the producer's trigger or explicit
   postcondition instead.  The only exception is an already-established
-  fold/linked-list proof pattern that the user has explicitly approved.
+  fold/linked-list proof pattern that the user has explicitly approved.  When
+  auditing an existing unapproved `assert forall`, delete it and verify first.
+  If its body supplied only necessary reveals, move only those reveals into the
+  scoped assertion that consumes the fact; otherwise report the missing trigger
+  or producer fact.
+- The generic 4K effective-quota fold producers
+  `lemma_{process,thread}_effective_quota_4k_fold_{sum_eq,change_by}_forall`
+  in `allocator_quota_fold.rs` are an explicitly approved fold pattern.  Their
+  quantified source/target-fold triggers are deliberate: keep their calls
+  inside the scoped assertion that consumes the fold result, and do not replace
+  them with an ownership-specific repository wrapper solely to eliminate the
+  quantified producer.  This approval does not extend to wrappers that package
+  an entire repository invariant or unrelated transition facts.
+- The three 4K/2M/1G per-container conservation assertions inside
+  `container_process_allocator_quota_wf_preserved_on_thread_add` are an
+  explicitly approved transition-local fold closure.  Keep each quantified
+  bridge inside the one scoped assertion rebuilding allocator-quota WF until
+  the fold producers expose the corresponding post-state aggregate directly.
+  This is not approval for unrelated operation-level `assert forall` bridges.
 - Do not introduce proof-only ghost captures/snapshots.  An old dynamic lock id
   captured because a real transition changes that id is allowed only when its
   contract consumes the value.
 - Do not make bare lemma calls that seed the surrounding SMT context.  Put a
   genuinely reusable narrow lemma inside the specific assertion that consumes
   it.  Never add a global wrapper lemma for one function or a lemma that merely
-  packages an entire invariant proof.
+  packages an entire invariant proof.  A single-stage `proof fn` may directly
+  call a narrower reusable lemma when that call directly discharges its declared
+  ensures and does not seed any later proof obligation.
+- The quantified lift inside
+  `lemma_no_change_imply_memory_management_inv_for_page_fields_forall` is a
+  measured exception to the proof-body `assert forall` ban.  It binds an
+  arbitrary pre/post pair and delegates to the reusable leaf-preservation
+  proof; directly revealing all memory-management leaves exceeds the
+  kernel-core rlimit.  Keep the assertion local to that single-stage producer.
+  This exception does not authorize new wrappers around other whole-kernel
+  invariants.
 - A missing generic algebra lemma over standard `Set`, `Seq`, or `Map` types may
   be added by following the repository's existing generic lemma patterns.  Ask
   the user before adding any new lemma specialized to a repository-defined type;
@@ -173,10 +217,23 @@ this file or live code, this file and live code win.
   that exact trigger change.
 - Do not add unnecessary proof.  Once verification is green, delete each new
   assert, reveal, lemma call, and ghost value one at a time and retain only what
-  fails without it.
+  fails without it.  Establish a snapshot, ownership, or framing fact once
+  before a region of pure reads; do not repeat it in each immediately following
+  branch.  Branch-local closure remains appropriate after different state
+  transitions.
+- Current acceptance rules apply to every existing proof selected for cleanup
+  or modification.  Age and a green verification result are not exemptions.
+  Preserve an explicitly user-approved fold, linked-list, TCB, or measured
+  prover exception unless the user asks to revisit it.
 
 ## Proof design
 
+- Use `syscall_alloc_quota_4k` as the syscall-level reference for proof
+  locality, control-flow clarity, and proof ownership.  Derive related entry
+  facts together, keep lock/check/error control flow executable, and centralize
+  mutation plus affected-invariant reconstruction when that materially
+  simplifies the caller.  This is not a mandatory stage count, helper split, or
+  requirement that every syscall have a commit helper.
 - Prefer direct, explicit facts over chains such as
   `map key -> id set -> major bound -> fresh`.
 - Prove local operation facts from direct preconditions, operation
@@ -193,10 +250,66 @@ this file or live code, this file and live code win.
   postconditions: exact lock-set changes, target lock state, dynamic lock-id
   stability/change, and unchanged kernel fields.  Callers should not reopen
   implementation specs to rediscover these facts.
+- For a single-key map mutation that already exposes `unchanged_except`, do
+  not repeat map-wide quantified postconditions merely to frame fields on all
+  entries.  State stable fields of the changed entry directly; other entries
+  follow from `unchanged_except`.  If a live caller needs an element-wise
+  consequence of the changed entry's sequence or map update, quantify only over
+  that entry's elements and keep both pre- and post-state positive triggers.
+  Retain an outer-map key quantifier only after a deletion experiment shows it
+  is needed.
+- Keep separate positive post- and pre-state `spec_index` triggers on
+  `LockedMap::unchanged_except`, `UnLockedMap::unchanged_except`, and both
+  array `*_unchanged_except` predicates.  Consumers instantiate these relations
+  from either state independently.  A joint trigger is not equivalent: it
+  requires both terms at once and breaks framing proofs.  Pre-only breaks
+  kernel-core; family-wide post-only passes kernel-core but breaks the
+  downstream new-thread proof.  Domain-membership/`index_valid` triggers are
+  inconsistent across the family and produced no material wall/SMT/rlimit
+  benefit.  Revisit only with paired focused and full-workspace measurements;
+  never infer family robustness from a kernel-core-only green run.
+- TODO(user-design): `LockedMap::unchanged_except` currently frames the
+  exposed `RwLock` value but not the raw `PointsTo::lock_id()`.  Until the
+  shared spec design is reviewed with the user, retain a narrow additional
+  raw-lock-id postcondition where a live caller consumes it; do not infer that
+  raw-id equality from `unchanged_except` or broaden the common spec locally.
+- When a loop's caller consumes only an aggregate fold consequence of
+  per-element results, maintain that aggregate over the processed prefix and
+  expose the final scalar fold as a postcondition.  Do not export a quantified
+  element-wise bridge solely to satisfy a fold lemma at the caller.
 - For lock acyclicity, quantify directly over the held pair set and compare the
   `.0` lock-id component.
 - Keep invariant reveals scoped and minimal.  Re-establish only invariant
   conjuncts whose actual inputs changed.
+- Do not make a spec opaque merely because it groups existing narrower
+  predicates.  A wrapper whose body is only a conjunction of named predicates
+  should normally remain open, so callers do not need to reveal the wrapper
+  merely to reach those existing leaves.  Retain opacity only when paired
+  focused/full measurements show material SMT pollution, or when the wrapper
+  is an intentional stable abstraction boundary.  When opening such a wrapper,
+  remove its now-redundant reveals one at a time and remeasure.
+- A syntactic conjunction wrapper may still be a necessary opaque boundary when
+  opening it recursively exposes several open map-wide quantified leaves.
+  Measure the recursive expansion, not only the wrapper body; in particular,
+  do not classify a kernel-wide unlocked-except aggregator as cheap merely
+  because each object-family predicate has a separate name.
+- Treat map-wide quantified framing predicates, including
+  `*_objects_unlocked_except` and quantified `*_unchanged` relations, as
+  quantified producers rather than pure conjunction wrappers.  Keep them
+  opaque by default and instantiate them with scoped reveals.  Test a
+  representative predicate before any family-wide opacity change, and retain
+  opacity when opening destabilizes an unrelated proof or materially increases
+  SMT work.
+- Treat `*_perms_wf` predicates that combine a map or array permission
+  invariant with its object invariants as intentional high-frequency stable
+  abstraction boundaries.  Keep them opaque and do not include them in generic
+  conjunction-wrapper opening audits; opening them materially pollutes the
+  global SMT environment and can destabilize unrelated proofs.
+- Keeping an outer `*_perms_wf` wrapper opaque does not require its nested
+  component predicates to be opaque.  Prefer a nested component open when it is
+  primarily reached through the opaque outer boundary, because this removes
+  redundant inner reveals without globally unfolding the wrapper.  Measure its
+  independent direct consumers and retain inner opacity only for real pollution.
 - For an opaque `wf` predicate with `recommends`, establish the recommended
   facts before consuming it and inspect which dependent opaque `wf` predicates
   the proof actually needs.  Reveal those dependencies inside the same scoped
@@ -208,7 +321,14 @@ this file or live code, this file and live code win.
   coherent modules; do not fragment equations.
 - When several necessary `assert ... by` facts establish one transition stage,
   consolidate compatible facts into a single scoped proof block near the start
-  of that stage.  Avoid scattering repeated reveals across the implementation.
+  of that stage only when focused and full measurements remain effectively
+  flat.  Avoid scattering repeated reveals, but do not merge independently
+  solvable ground assertions merely to reduce line count: a larger combined
+  query can reduce prover parallelism and materially increase total SMT CPU.
+- Preserve an established reveal order inside an expensive proof stage unless
+  a paired measurement justifies changing it.  Reveal order can change AIR/SMT
+  shape and rlimit even when the revealed set and logical meaning are identical;
+  mechanical cleanup must restore both membership and order.
 - Prefer an existing narrow no-change/WF-preservation lemma when it exactly
   matches the operation's producer contract.  If a legacy lemma is too broad or
   violates these rules, mark the callsite `TODO` and report it rather than
@@ -216,6 +336,40 @@ this file or live code, this file and live code win.
 - Do not hide a difficult callsite proof inside a new lemma.  If a proof cannot
   close using the intended reveals and existing narrow reusable lemmas, report
   the exact obligation and measured cost to the user.
+- Remove a single-callee forwarding function when its body adds no executable
+  behavior and its contract only repeats or weakens the callee contract.  Wire
+  its sole caller to the real operation and delete result variants made
+  unreachable by the real contract.  Preserve a wrapper that is an intended
+  public primitive or a genuine semantic/crate boundary.
+
+## Proof audit signals
+
+- Repeated full-ledger extensionality proofs, repeated decomposition and
+  reassembly of global framing predicates, a specialized proof helper with one
+  textual consumer, and a pre-existing `#[verifier::spinoff_prover]` are audit
+  signals, not automatic violations.  Do not reject a proof by macro name,
+  helper call count, or predicate name alone.
+- Remove a signaled proof item one at a time and run the smallest relevant
+  verification.  If removal fails, classify the obligation before editing:
+  retain a narrow proof for a genuine local mathematical fact; improve a
+  producer/consumer contract when the proof only normalizes mismatched shapes;
+  or preserve an explicitly approved reusable abstraction.  Evaluate removal
+  of a prover annotation with both wall time and rlimit.
+- An object-family-specific `*_objects_unlocked_except(..., exceptions)`
+  contract is accepted exact framing when a caller cannot enumerate which
+  objects of that family are held.  Do not classify it as a broad framing
+  workaround merely because it summarizes a whole object family.
+- When a consumer needs only such an object-family lock scope, prove that scope
+  directly instead of first publishing an extensional equality for the entire
+  held-lock ledger.  Exact ledger extensionality remains appropriate when the
+  ledger itself is the operation result, such as the final empty set after all
+  unlocks, or when paired measurements show that the scoped equality materially
+  improves verification performance.
+- A quantified operation postcondition that says every held object is
+  unchanged, such as the held-object framing in `kernel_step_boundary`, is
+  distinct from a proof-body `assert forall` and is accepted when it improves
+  verification performance, or when it makes the contract or callers simpler
+  without a measured performance regression.
 
 ## Build architecture
 
@@ -292,7 +446,10 @@ this file or live code, this file and live code win.
 - Treat a verification taking more than roughly 50 seconds as suspicious and
   diagnose it rather than normalizing it.
 - Use both wall time and rlimit when evaluating proof cost.  Rlimit alone does
-  not establish that a proof is slow.
+  not establish that a proof is slow.  A small rlimit increase is acceptable
+  when SMT and wall time remain effectively flat and the resulting proof is
+  materially simpler or more readable; do not retain proof scaffolding solely
+  to minimize rlimit.
 - Performance reports include Rust, VIR, verification, SMT, wall, and rlimit.
   Compare runs only under the same Cargo cache/invalidation scope and thread
   configuration; identify cache-only/no-op workspace runs instead of reporting
@@ -302,6 +459,22 @@ this file or live code, this file and live code win.
 - To localize cost, temporarily cut individual assertions or the postcondition
   with `assume(false)` only when the user has authorized that diagnostic, then
   restore the real proof immediately.
+- To localize cumulative SMT cost inside one large verification bucket, place a
+  temporary `assume(false)` at successive semantic stage boundaries and run the
+  same focused command at each boundary. Treat each result as the cost of the
+  prefix before that boundary; compare SMT time and rlimit under the same cache
+  and thread scope. Keep only one cutoff at a time and remove it immediately
+  after its measurement.
+- To debug an opaque `xxx_wf` whose proof or `recommends` is unclear,
+  temporarily assert its inline conjunction instead of the wrapper. Use
+  Verus's unmet-`recommends` diagnostics to identify the dependent opaque facts
+  and the minimal reveals that make those recommendations hold. Record
+  generally required dependency reveals in `xxx_wf`'s own `recommends` path;
+  do not leave the expanded diagnostic assertion in the finished proof.
+- If an inline `xxx_wf` conjunction is still too large to diagnose, assert its
+  conjuncts in small groups or one at a time to locate the first failing or
+  expensive component. These partial assertions are diagnostic scaffolding:
+  remove them after fixing the producer, trigger, or scoped reveal.
 - Before handoff, run `git diff --check` and scan changed files for bare asserts,
   empty `by {}`, `assert forall`, loose reveals, `assume`, dead ghost snapshots,
   duplicate reveals, and newly added wrapper/framing lemmas.

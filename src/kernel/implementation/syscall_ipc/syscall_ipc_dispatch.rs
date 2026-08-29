@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 use crate::*;
 use super::syscall_ipc_transition::{
     ipc_block_current, ipc_schedule_waiting_peer_and_finish,
@@ -14,7 +13,6 @@ use super::syscall_ipc_pages::{
 
 verus! {
 
-    #[verifier::spinoff_prover]
     pub(super) fn syscall_ipc_ordinary(
         kernel: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -132,20 +130,6 @@ verus! {
             process_ptr, Tracked(&mut *lctx),
         );
         if let (false, _) = process_res {
-            proof {
-                assert(
-                    steps.snap_shot == kernel_k_to_kernel_u(*kernel)
-                    && kernel_objects_unlocked_except(
-                        kernel, lctx.thread_id(), Some(cpu_id),
-                        None, None, None, None,
-                    )
-                ) by {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                        old(kernel), kernel,
-                    );
-                    reveal(kernel_objects_unlocked_except);
-                };
-            }
             release_cpu_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
                 Tracked(cpu_lock_perm),
@@ -186,20 +170,6 @@ verus! {
             current_thread_ptr, Tracked(&mut *lctx),
         );
         if let (false, _) = current_thread_res {
-            proof {
-                assert(
-                    steps.snap_shot == kernel_k_to_kernel_u(*kernel)
-                    && kernel_objects_unlocked_except(
-                        kernel, lctx.thread_id(), Some(cpu_id),
-                        None, Some(process_ptr), None, None,
-                    )
-                ) by {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                        old(kernel), kernel,
-                    );
-                    reveal(kernel_objects_unlocked_except);
-                };
-            }
             release_cpu_and_process_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
                 process_ptr, Tracked(process_lock_perm),
@@ -216,21 +186,6 @@ verus! {
         let endpoint_option =
             *current_thread_ref.endpoint_descriptors.get(endpoint_index);
         if let None = endpoint_option {
-            proof {
-                assert(
-                    steps.snap_shot == kernel_k_to_kernel_u(*kernel)
-                    && kernel_objects_unlocked_except(
-                        kernel, lctx.thread_id(), Some(cpu_id),
-                        None, Some(process_ptr),
-                        Some(current_thread_ptr), None,
-                    )
-                ) by {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                        old(kernel), kernel,
-                    );
-                    reveal(kernel_objects_unlocked_except);
-                };
-            }
             release_cpu_and_process_and_thread_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
                 process_ptr, current_thread_ptr,
@@ -252,19 +207,10 @@ verus! {
                     kernel, lctx.thread_id(), Some(cpu_id),
                     None, Some(process_ptr), Some(current_thread_ptr), None,
                 )
-                &&& steps.snap_shot == kernel_k_to_kernel_u(*kernel)
+                &&& lctx.lock_id_acyclic(
+                    kernel.endpoint_map.lock_id_by_key(endpoint_ptr))
             }) by {
                 reveal(thread_endpoint_ref_counter_wf);
-                reveal(thread_perms_wf);
-                reveal(endpoint_perms_wf);
-                reveal(kernel_objects_unlocked_except);
-                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(
-                    old(kernel), kernel,
-                );
-            };
-            assert(lctx.lock_id_acyclic(
-                kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-            )) by {
                 reveal(process_perms_wf);
                 reveal(thread_perms_wf);
                 reveal(endpoint_perms_wf);
@@ -295,24 +241,6 @@ verus! {
 
         if queue_len == 0 || queue_is_send == waiting_is_send {
             proof {
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (
-                        kernel.cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id),
-                    ),
-                    (
-                        kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr),
-                    ),
-                    (
-                        kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr),
-                    ),
-                    (
-                        kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                        KernelObjId::Endpoint(endpoint_ptr),
-                    ),
-                ], held => {});
                 assert({
                     &&& !kernel.endpoint_map.spec_index(endpoint_ptr).view()
                         .queue.view().contains(current_thread_ptr)
@@ -336,10 +264,6 @@ verus! {
                     &&& allocator_objects_unlocked(kernel.allocator_1g_map, lctx.thread_id())
                 }) by {
                     reveal(thread_endpoint_queue_wf);
-                    reveal(cpu_objects_unlocked_except);
-                    reveal(process_objects_unlocked_except);
-                    reveal(thread_objects_unlocked_except);
-                    reveal(endpoint_objects_unlocked_except);
                 };
             }
             return ipc_block_current(kernel,
@@ -363,24 +287,6 @@ verus! {
         let (_, peer_thread_ptr) = endpoint_ref.queue.peek_head();
 
         proof {
-            assert_sets_equal!(lctx.lock_id_set() == set![
-                (
-                    kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id),
-                ),
-                (
-                    kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr),
-                ),
-                (
-                    kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                    KernelObjId::Thread(current_thread_ptr),
-                ),
-                (
-                    kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                    KernelObjId::Endpoint(endpoint_ptr),
-                ),
-            ], held => {});
             assert({
                 &&& kernel.thread_map.dom().contains(peer_thread_ptr)
                 &&& kernel.thread_map.spec_index(peer_thread_ptr).view()
@@ -399,37 +305,12 @@ verus! {
                 reveal(thread_perms_wf);
                 reveal(endpoint_perms_wf);
                 reveal(thread_endpoint_queue_wf);
-                reveal(thread_objects_unlocked_except);
             };
         }
         let peer_thread_res = kernel.wlock_thread_unless_killed(
             peer_thread_ptr, Tracked(&mut *lctx),
         );
         if let (false, _) = peer_thread_res {
-            proof {
-                assert({
-                    &&& cpu_objects_unlocked_except(
-                        kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                    &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
-                    &&& container_objects_unlocked(kernel.container_map, lctx.thread_id())
-                    &&& process_objects_unlocked_except(
-                        kernel.process_map, lctx.thread_id(), set![process_ptr])
-                    &&& thread_objects_unlocked_except(
-                        kernel.thread_map, lctx.thread_id(), set![current_thread_ptr])
-                    &&& endpoint_objects_unlocked_except(
-                        kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr])
-                    &&& pagetable_objects_unlocked(kernel.pagetable_map, lctx.thread_id())
-                    &&& iommu_table_objects_unlocked(kernel.iommu_table_map, lctx.thread_id())
-                    &&& scheduler_objects_unlocked(kernel.scheduler_map, lctx.thread_id())
-                    &&& pcid_allocator_objects_unlocked(
-                        kernel.pcid_allocator_map, lctx.thread_id())
-                    &&& allocator_objects_unlocked(kernel.allocator_4k_map, lctx.thread_id())
-                    &&& allocator_objects_unlocked(kernel.allocator_2m_map, lctx.thread_id())
-                    &&& allocator_objects_unlocked(kernel.allocator_1g_map, lctx.thread_id())
-                }) by {
-                    reveal(thread_objects_unlocked_except);
-                };
-            }
             return ipc_release_current_endpoint_and_finish(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
                 process_ptr, current_thread_ptr, endpoint_ptr,
@@ -480,42 +361,6 @@ verus! {
             source_thread_ptr, receiver_thread_ptr,
             source_endpoint_index, target_endpoint_index,
         )) = endpoint_match {
-            proof {
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (kernel.cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id)),
-                    (kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr)),
-                    (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr)),
-                    (kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                        KernelObjId::Endpoint(endpoint_ptr)),
-                    (kernel.thread_map.lock_id_by_key(peer_thread_ptr),
-                        KernelObjId::Thread(peer_thread_ptr)),
-                ], held => {});
-                assert({
-                    &&& cpu_objects_unlocked_except(
-                        kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                    &&& page_objects_unlocked(
-                        kernel.page_array, lctx.thread_id())
-                    &&& container_objects_unlocked(
-                        kernel.container_map, lctx.thread_id())
-                    &&& process_objects_unlocked_except(
-                        kernel.process_map, lctx.thread_id(),
-                        set![process_ptr])
-                    &&& thread_objects_unlocked_except(
-                        kernel.thread_map, lctx.thread_id(),
-                        set![current_thread_ptr, peer_thread_ptr])
-                    &&& endpoint_objects_unlocked_except(
-                        kernel.endpoint_map, lctx.thread_id(),
-                        set![endpoint_ptr])
-                }) by {
-                    reveal(cpu_objects_unlocked_except);
-                    reveal(process_objects_unlocked_except);
-                    reveal(thread_objects_unlocked_except);
-                    reveal(endpoint_objects_unlocked_except);
-                };
-            }
             return ipc_rendezvous_endpoint(
                 kernel, Tracked(&mut *lctx), Tracked(&mut *steps),
                 cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
@@ -552,24 +397,6 @@ verus! {
         if let Some((
             source_range, target_range, source_thread, target_thread,
         )) = pages_match {
-            proof {
-                assert({
-                    &&& cpu_objects_unlocked_except(
-                        kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                    &&& process_objects_unlocked_except(
-                        kernel.process_map, lctx.thread_id(), set![process_ptr])
-                    &&& thread_objects_unlocked_except(
-                        kernel.thread_map, lctx.thread_id(),
-                        set![current_thread_ptr, peer_thread_ptr])
-                    &&& endpoint_objects_unlocked_except(
-                        kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr])
-                }) by {
-                    reveal(cpu_objects_unlocked_except);
-                    reveal(process_objects_unlocked_except);
-                    reveal(thread_objects_unlocked_except);
-                    reveal(endpoint_objects_unlocked_except);
-                };
-            }
             return ipc_rendezvous_pages(
                 kernel, &source_range, &target_range,
                 source_thread, target_thread, cpu_id, process_ptr,
@@ -595,40 +422,6 @@ verus! {
             _ => RetValueType::ErrorIpcTypeMismatch,
         };
 
-        proof {
-            assert_sets_equal!(lctx.lock_id_set() == set![
-                (kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-                (kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
-                (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                    KernelObjId::Thread(current_thread_ptr)),
-                (kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                    KernelObjId::Endpoint(endpoint_ptr)),
-                (kernel.thread_map.lock_id_by_key(peer_thread_ptr),
-                    KernelObjId::Thread(peer_thread_ptr)),
-            ], held => {});
-            assert({
-                &&& cpu_objects_unlocked_except(
-                    kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                &&& page_objects_unlocked(
-                    kernel.page_array, lctx.thread_id())
-                &&& container_objects_unlocked(
-                    kernel.container_map, lctx.thread_id())
-                &&& process_objects_unlocked_except(
-                    kernel.process_map, lctx.thread_id(), set![process_ptr])
-                &&& thread_objects_unlocked_except(
-                    kernel.thread_map, lctx.thread_id(),
-                    set![current_thread_ptr, peer_thread_ptr])
-                &&& endpoint_objects_unlocked_except(
-                    kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr])
-            }) by {
-                reveal(cpu_objects_unlocked_except);
-                reveal(process_objects_unlocked_except);
-                reveal(thread_objects_unlocked_except);
-                reveal(endpoint_objects_unlocked_except);
-            };
-        }
         ipc_schedule_waiting_peer_and_finish(
             kernel,
             Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,

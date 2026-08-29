@@ -3,10 +3,6 @@ use crate::*;
 
 verus! {
 
-// TODO(AGENTS): Replace the assert-forall bridges in this module with
-// producer postconditions or triggers local to their consuming assertions.
-// The no-change preservation lemmas themselves are intentionally retained.
-
 /// Installing one freshly initialized page-table page grows exactly one
 /// page-table closure and retags the backing `Page` with that closure's root.
 /// This is the structural counterpart of the nonstructural mmap framing lemma.
@@ -41,93 +37,7 @@ pub proof fn pagetable_pages_wf_preserved_for_page_table_page_insert(
     ensures
         pagetable_pages_wf(post_pagetable_map, post_page_array),
 {
-    assert(pagetable_pages_wf(post_pagetable_map, post_page_array)) by {
-        reveal(pagetable_pages_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
-            page_ptr_roundtrip();
-        };
-        assert forall|page_index: PageIndex|
-            #![trigger post_pagetable_map.dom().contains(page_index2page_ptr(page_index))]
-            index_valid(NUM_PAGES, page_index)
-            && (post_page_array.spec_index(page_index).view().view().state matches
-                PageState::Allocated4k {
-                    state: Allocated4KPageState::AsPageTableRoot,
-                })
-        implies post_pagetable_map.dom().contains(page_index2page_ptr(page_index)) by {
-            if page_index == page_ptr2page_index(page_ptr) {
-            }
-        };
-        assert forall|page_index: PageIndex|
-            #![trigger post_pagetable_map.dom().contains(
-                post_page_array.spec_index(page_index).view().view().state
-                    ->Allocated4k_state->PageTable_pagetable_root)]
-            #![trigger post_pagetable_map.spec_index(
-                post_page_array.spec_index(page_index).view().view().state
-                    ->Allocated4k_state->PageTable_pagetable_root)
-                .view().page_closure().contains(page_index2page_ptr(page_index))]
-            index_valid(NUM_PAGES, page_index)
-            && (post_page_array.spec_index(page_index).view().view().state matches
-                PageState::Allocated4k {
-                    state: Allocated4KPageState::PageTable { pagetable_root },
-                })
-        implies {
-            let root = post_page_array.spec_index(page_index).view().view().state
-                ->Allocated4k_state->PageTable_pagetable_root;
-            &&& post_pagetable_map.dom().contains(root)
-            &&& post_pagetable_map.spec_index(root).view().page_closure()
-                .contains(page_index2page_ptr(page_index))
-        } by {
-            if page_index == page_ptr2page_index(page_ptr) {
-            } else {
-                let root = post_page_array.spec_index(page_index).view().view().state
-                    ->Allocated4k_state->PageTable_pagetable_root;
-                if root == pagetable_ptr {
-                }
-            }
-        };
-        assert forall|pt_ptr: RwLockPageTableRoot|
-            #![trigger post_pagetable_map.dom().contains(pt_ptr)]
-            post_pagetable_map.dom().contains(pt_ptr)
-        implies {
-            let root_page_index = page_ptr2page_index(pt_ptr);
-            &&& page_ptr_valid(pt_ptr)
-            &&& post_page_array.spec_index(root_page_index).view().view().state
-                is Allocated4k
-            &&& post_page_array.spec_index(root_page_index).view().view().state
-                ->Allocated4k_state is AsPageTableRoot
-        } by {
-            if page_ptr2page_index(pt_ptr) == page_ptr2page_index(page_ptr) {
-                assert(page_index2page_ptr(page_ptr2page_index(pt_ptr)) == pt_ptr) by {
-                    page_ptr_roundtrip();
-                };
-            }
-        };
-        assert forall|pt_ptr: RwLockPageTableRoot, table_page: PagePtr|
-            #![trigger post_pagetable_map.spec_index(pt_ptr).view()
-                .page_closure().contains(table_page)]
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().page_closure()
-                .contains(table_page)
-        implies {
-            &&& page_ptr_valid(table_page)
-            &&& post_page_array.spec_index(page_ptr2page_index(table_page)).view()
-                .view().state is Allocated4k
-            &&& post_page_array.spec_index(page_ptr2page_index(table_page)).view()
-                .view().state->Allocated4k_state is PageTable
-            &&& post_page_array.spec_index(page_ptr2page_index(table_page)).view()
-                .view().state->Allocated4k_state->PageTable_pagetable_root == pt_ptr
-        } by {
-            if pt_ptr == pagetable_ptr {
-                if table_page == page_ptr {
-                }
-            }
-            if page_ptr2page_index(table_page) == page_ptr2page_index(page_ptr) {
-                assert(page_index2page_ptr(page_ptr2page_index(table_page)) == table_page) by {
-                    page_ptr_roundtrip();
-                };
-            }
-        };
-    };
+    reveal(pagetable_pages_wf);
 }
 
 /// A page-table structure-only change leaves all abstract mappings untouched;
@@ -164,144 +74,10 @@ pub proof fn page_pagetable_wf_preserved_for_page_table_page_insert(
     ensures
         page_pagetable_wf(post_pagetable_map, post_page_array),
 {
-    assert(page_pagetable_wf(post_pagetable_map, post_page_array)) by {
-        reveal(pagetable_perms_wf);
-        reveal(mapped_4k_page_pagetable_wf);
-        reveal(mapped_2m_page_pagetable_wf);
-        reveal(mapped_1g_page_pagetable_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
-            page_ptr_roundtrip();
-        };
-        assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_page_array.spec_index(page_index).view().view()
-                .mappings().contains((pt_ptr, va))]
-            index_valid(NUM_PAGES, page_index)
-            && post_page_array.spec_index(page_index).view().view().state
-                == PageState::Mapped4k
-            && post_page_array.spec_index(page_index).view().view().mappings()
-                .contains((pt_ptr, va))
-        implies
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
-                .contains_key(va)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
-                .spec_index(va).addr == page_index2page_ptr(page_index) by {
-            if page_index == page_ptr2page_index(page_ptr) {
-            } else if pt_ptr == pagetable_ptr {
-            }
-        };
-        assert forall|pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
-                .contains_key(va)]
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
-                .contains_key(va)
-        implies {
-            let mapped_page = page_ptr2page_index(
-                post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
-                    .spec_index(va).addr,
-            );
-            &&& post_page_array.spec_index(mapped_page).view().view().state
-                == PageState::Mapped4k
-            &&& post_page_array.spec_index(mapped_page).view().view().mappings()
-                .contains((pt_ptr, va))
-        } by {
-            let mapped_page = page_ptr2page_index(
-                post_pagetable_map.spec_index(pt_ptr).view().mapping_4k()
-                    .spec_index(va).addr,
-            );
-            if pt_ptr == pagetable_ptr {
-            }
-            if mapped_page == page_ptr2page_index(page_ptr) {
-            }
-        };
-        assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_page_array.spec_index(page_index).view().view()
-                .mappings().contains((pt_ptr, va))]
-            index_valid(NUM_PAGES, page_index)
-            && post_page_array.spec_index(page_index).view().view().state
-                == PageState::Mapped2m
-            && post_page_array.spec_index(page_index).view().view().mappings()
-                .contains((pt_ptr, va))
-        implies
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_2m()
-                .contains_key(va)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_2m()
-                .spec_index(va).addr == page_index2page_ptr(page_index) by {
-            if page_index == page_ptr2page_index(page_ptr) {
-            } else if pt_ptr == pagetable_ptr {
-            }
-        };
-        assert forall|pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_pagetable_map.spec_index(pt_ptr).view().mapping_2m()
-                .contains_key(va)]
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_2m()
-                .contains_key(va)
-        implies {
-            let mapped_page = page_ptr2page_index(
-                post_pagetable_map.spec_index(pt_ptr).view().mapping_2m()
-                    .spec_index(va).addr,
-            );
-            &&& post_page_array.spec_index(mapped_page).view().view().state
-                == PageState::Mapped2m
-            &&& post_page_array.spec_index(mapped_page).view().view().mappings()
-                .contains((pt_ptr, va))
-        } by {
-            let mapped_page = page_ptr2page_index(
-                post_pagetable_map.spec_index(pt_ptr).view().mapping_2m()
-                    .spec_index(va).addr,
-            );
-            if pt_ptr == pagetable_ptr {
-            }
-            if mapped_page == page_ptr2page_index(page_ptr) {
-            }
-        };
-        assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_page_array.spec_index(page_index).view().view()
-                .mappings().contains((pt_ptr, va))]
-            index_valid(NUM_PAGES, page_index)
-            && post_page_array.spec_index(page_index).view().view().state
-                == PageState::Mapped1g
-            && post_page_array.spec_index(page_index).view().view().mappings()
-                .contains((pt_ptr, va))
-        implies
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_1g()
-                .contains_key(va)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_1g()
-                .spec_index(va).addr == page_index2page_ptr(page_index) by {
-            if page_index == page_ptr2page_index(page_ptr) {
-            } else if pt_ptr == pagetable_ptr {
-            }
-        };
-        assert forall|pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_pagetable_map.spec_index(pt_ptr).view().mapping_1g()
-                .contains_key(va)]
-            post_pagetable_map.dom().contains(pt_ptr)
-            && post_pagetable_map.spec_index(pt_ptr).view().mapping_1g()
-                .contains_key(va)
-        implies {
-            let mapped_page = page_ptr2page_index(
-                post_pagetable_map.spec_index(pt_ptr).view().mapping_1g()
-                    .spec_index(va).addr,
-            );
-            &&& post_page_array.spec_index(mapped_page).view().view().state
-                == PageState::Mapped1g
-            &&& post_page_array.spec_index(mapped_page).view().view().mappings()
-                .contains((pt_ptr, va))
-        } by {
-            let mapped_page = page_ptr2page_index(
-                post_pagetable_map.spec_index(pt_ptr).view().mapping_1g()
-                    .spec_index(va).addr,
-            );
-            if pt_ptr == pagetable_ptr {
-            }
-            if mapped_page == page_ptr2page_index(page_ptr) {
-            }
-        };
-    };
+    reveal(pagetable_perms_wf);
+    reveal(mapped_4k_page_pagetable_wf);
+    reveal(mapped_2m_page_pagetable_wf);
+    reveal(mapped_1g_page_pagetable_wf);
 }
 
 /// The ownership relation reads only mapped pages and the mapping page table's
@@ -347,48 +123,12 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_page_table_page_i
             post_page_array,
         ),
 {
-    assert(container_process_page_pagetable_wf(
-        container_map,
-        process_map,
-        post_pagetable_map,
-        post_page_array,
-    )) by {
-        reveal(container_process_page_pagetable_wf);
-        reveal(mapped_4k_page_pagetable_wf);
-        reveal(mapped_2m_page_pagetable_wf);
-        reveal(mapped_1g_page_pagetable_wf);
-        reveal(process_pagetable_match);
-        reveal(container_page_owner_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
-            page_ptr_roundtrip();
-        };
-        assert forall|page_index: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr|
-            #![trigger post_page_array.spec_index(page_index).view().view()
-                .mappings().contains((pt_ptr, va))]
-            index_valid(NUM_PAGES, page_index)
-            && post_page_array.spec_index(page_index).view().view().is_mapped()
-            && post_page_array.spec_index(page_index).view().view().mappings()
-                .contains((pt_ptr, va))
-        implies {
-            ||| process_map.spec_index(
-                    post_pagetable_map.spec_index(pt_ptr).view().proc_ptr,
-                ).view_rodata().view().owning_container
-                == post_page_array.spec_index(page_index).view().view()
-                    .owning_container
-            ||| container_map.spec_index(
-                    post_page_array.spec_index(page_index).view().view()
-                        .owning_container,
-                ).view().subtree_set.view().contains(
-                    process_map.spec_index(
-                        post_pagetable_map.spec_index(pt_ptr).view().proc_ptr,
-                    ).view_rodata().view().owning_container,
-                )
-        } by {
-            if page_index == page_ptr2page_index(page_ptr) {
-            } else if pt_ptr == pagetable_ptr {
-            }
-        };
-    };
+    reveal(container_process_page_pagetable_wf);
+    reveal(mapped_4k_page_pagetable_wf);
+    reveal(mapped_2m_page_pagetable_wf);
+    reveal(mapped_1g_page_pagetable_wf);
+    reveal(process_pagetable_match);
+    reveal(container_page_owner_wf);
 }
 
 /// Page-table structure is invisible to the abstract TLB relation.  If all
@@ -414,37 +154,7 @@ pub proof fn tlb_wf_spec_preserved_for_pagetable_mappings_unchanged(
     ensures
         tlb_wf_spec(cpu_tlb, post_pagetable_map, cpu_array),
 {
-    assert(tlb_wf_spec(cpu_tlb, post_pagetable_map, cpu_array)) by {
-        reveal(tlb_wf_spec);
-        assert forall|cpu_id: CpuId, pcid: Pcid|
-            #![trigger cpu_tlb.spec_index((cpu_id, pcid))]
-            index_valid(NUM_CPUS, cpu_id)
-            && pcid_valid(pcid)
-            && pcid != KERNEL_DEFAULT_PCID
-            && !cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
-        implies {
-            let dirty_entry = cpu_array.spec_index(cpu_id).view().view()
-                .tlb_dirty_bitmap().spec_index(pcid);
-            &&& dirty_entry is Some
-            &&& post_pagetable_map.dom().contains(
-                dirty_entry.unwrap().pagetable_ptr,
-            )
-            &&& single_cpu_single_pcid_tlb_subset_of_pagetable(
-                cpu_tlb.spec_index((cpu_id, pcid)),
-                post_pagetable_map.spec_index(
-                    dirty_entry.unwrap().pagetable_ptr,
-                ).view(),
-            )
-        } by {
-            let dirty_entry = cpu_array.spec_index(cpu_id).view().view()
-                .tlb_dirty_bitmap().spec_index(pcid);
-            if dirty_entry is Some {
-                let dirty_pagetable = dirty_entry.unwrap().pagetable_ptr;
-                if dirty_pagetable == pagetable_ptr {
-                }
-            }
-        };
-    };
+    reveal(tlb_wf_spec);
 }
 
 /// Retagging one ordinary page as a CPU page-table page cannot affect the
@@ -477,12 +187,7 @@ pub proof fn iommu_table_pages_wf_preserved_for_non_iommu_page_change(
     ensures
         iommu_table_pages_wf(iommu_table_map, post_page_array),
 {
-    assert(iommu_table_pages_wf(iommu_table_map, post_page_array)) by {
-        reveal(iommu_table_pages_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
-            page_ptr_roundtrip();
-        };
-    };
+    reveal(iommu_table_pages_wf);
 }
 
 /// Consume one staged 4K page from exactly one thread.  Quota is deliberately
@@ -515,52 +220,7 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_single_consume(
     ensures
         thread_staged_pages_4k_wf(post_thread_map, post_page_array),
 {
-    assert(thread_staged_pages_4k_wf(post_thread_map, post_page_array)) by {
-        reveal(thread_staged_pages_4k_wf);
-        assert(page_index2page_ptr(page_ptr2page_index(page_ptr)) == page_ptr) by {
-            page_ptr_roundtrip();
-        };
-        assert forall|page_index: PageIndex|
-            #![trigger post_page_array.spec_index(page_index).view().view().state]
-            index_valid(NUM_PAGES, page_index)
-            && post_page_array.spec_index(page_index).view().view().state is Owned4k
-        implies {
-            let owner = post_page_array.spec_index(page_index).view().view().state
-                ->Owned4k_thread_ptr;
-            &&& post_thread_map.dom().contains(owner)
-            &&& post_thread_map.spec_index(owner).view().temp_alloc_cache_4k.view()
-                .contains(page_index2page_ptr(page_index))
-        } by {
-            let owner = post_page_array.spec_index(page_index).view().view().state
-                ->Owned4k_thread_ptr;
-            if page_index == page_ptr2page_index(page_ptr) {
-            } else if owner == thread_ptr {
-                assert(page_index2page_ptr(page_index) != page_ptr) by {
-                    page_index_roundtrip();
-                };
-            }
-        };
-        assert forall|owner: RwLockThreadPtr, staged_page: PagePtr|
-            #![trigger post_thread_map.spec_index(owner).view()
-                .temp_alloc_cache_4k.view().contains(staged_page)]
-            post_thread_map.dom().contains(owner)
-            && post_thread_map.spec_index(owner).view().temp_alloc_cache_4k.view()
-                .contains(staged_page)
-        implies
-            page_ptr_valid(staged_page)
-            && post_page_array.spec_index(page_ptr2page_index(staged_page)).view()
-                .view().state == (PageState::Owned4k { thread_ptr: owner }) by {
-            if owner == thread_ptr {
-            } else if staged_page == page_ptr {
-            }
-            if page_ptr2page_index(staged_page) == page_ptr2page_index(page_ptr) {
-                assert(page_index2page_ptr(page_ptr2page_index(staged_page))
-                    == staged_page) by {
-                    page_ptr_roundtrip();
-                };
-            }
-        };
-    };
+    reveal(thread_staged_pages_4k_wf);
 }
 
 }

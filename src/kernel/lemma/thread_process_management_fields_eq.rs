@@ -9,6 +9,7 @@ pub open spec fn thread_process_management_fields_unchanged(
 ) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& forall|t_ptr: RwLockThreadPtr|
+        #![trigger pre.spec_index(t_ptr)]
         #![trigger post.spec_index(t_ptr)]
         pre.dom().contains(t_ptr) ==>
         {
@@ -52,7 +53,6 @@ pub proof fn thread_invariant_fields_unchanged_implies_process_management_fields
     ensures
         thread_process_management_fields_unchanged(pre, post),
 {
-    reveal(thread_invariant_fields_unchanged);
 }
 
 pub proof fn thread_caller_callee_wf_preserved_for_thread_process_management_fields(

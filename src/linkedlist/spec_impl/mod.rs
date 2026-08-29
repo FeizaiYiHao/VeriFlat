@@ -3,14 +3,6 @@ use std::num::NonZero;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
-use crate::lemma::seq_push_head_lemma;
-use crate::lemma::seq_push_head_unique_lemma;
-use crate::lemma::seq_push_lemma;
-use crate::lemma::seq_push_unique_lemma;
-use crate::lemma::seq_remove_lemma;
-use crate::lemma::seq_remove_lemma_2;
-use crate::lemma::seq_skip_index_of_lemma;
-use crate::lemma::seq_skip_lemma;
 use crate::*;
 
 use super::*;

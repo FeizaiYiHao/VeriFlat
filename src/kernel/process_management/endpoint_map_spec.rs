@@ -10,11 +10,10 @@ verus! {
         endpoints_inv(endpoint_map)
     }
 
-    #[verifier::opaque]
     pub open spec fn endpoints_inv(endpoint_map: EndpointLockedMap) -> bool {
         &&&
         forall|endpoint_p: RwLockEndpointPtr|
-            #![auto]
+            #![trigger endpoint_map.dom().contains(endpoint_p)]
             endpoint_map.dom().contains(endpoint_p)
             ==>
             endpoint_map.spec_index(endpoint_p).inv()

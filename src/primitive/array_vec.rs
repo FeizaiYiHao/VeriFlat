@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 verus! {
-use crate::array::Array;
+use crate::*;
 
 
 

@@ -45,6 +45,8 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         &&&
         old.dom() == self.dom()
         &&&
+        self.dom().contains(key)
+        &&&
         forall|k:usize|
             #![trigger self.spec_index(k)]
             #![trigger old.spec_index(k)]
@@ -125,8 +127,9 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
 
     pub fn borrow_mut<'a>(&'a mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
         requires
-            old(self).perms_wf(),
             old(self).dom().contains(key),
+            old(self).view().spec_index(key).is_init(),
+            old(self).view().spec_index(key).addr() == key,
 
             old(self).spec_index(key).wlocked_by(lctx),
             old(self).spec_index(key).is_init(),
@@ -135,23 +138,9 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             lock_perm.view().thread_id() == lctx.thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
         ensures
-            final(self).perms_wf(),
+            old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
-
-            // Other entries unchanged.
-            forall|k:usize|
-                #![trigger final(self).spec_index(k)]
-                #![trigger old(self).spec_index(k)]
-                old(self).dom().contains(k) && k != key
-                ==>
-                final(self).spec_index(k) == old(self).spec_index(k),
-
-            forall|k: usize|
-                #![trigger old(self).view().spec_index(k)]
-                #![trigger final(self).view().spec_index(k)]
-                old(self).dom().contains(k) && k != key
-                ==> final(self).dom().contains(k)
-                    && final(self).view().spec_index(k) == old(self).view().spec_index(k),
+            final(self).unchanged_except(old(self), key),
 
             // Lock state of `key`'s rwlock is preserved.
             final(self).spec_index(key).is_init(),
@@ -173,8 +162,9 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
 
     pub fn borrow_rodata(&self, key:usize) -> (ret:&ROT)
         requires
-            self.perms_wf(),
             self.dom().contains(key),
+            self.view().spec_index(key).is_init(),
+            self.view().spec_index(key).addr() == key,
         ensures
             ret == self.spec_index(key).view_rodata(),
     {
@@ -225,81 +215,6 @@ HAS_KILL_STATE>{
     {
         self.view().spec_index(key).lock_id()
     }
-
-    /// TCB: register a brand-new object into the map at a fresh key, GROWING the
-    /// domain. Mints a fresh `RwLock<T>` at address `key` holding `value` /
-    /// `rodata` / `kernel_ghost` / `user_ghost`, initialized (`is_init`), not
-    /// being-killed, and WRITE-LOCKED by the calling thread — so the caller can
-    /// immediately `borrow_mut` to finish wiring the object and later `wunlock`
-    /// it. Registers the lock id in the corresponding `lctx` map under `obj_id`, returning
-    /// the `LockPerm` (same shape as `wlock`).
-    ///
-    /// This is the ONLY operation that changes a `LockedMap`'s domain; every
-    /// other method preserves `dom()`. Allocation itself is trusted (there is no
-    /// verified heap allocator); the returned key is assumed to be a fresh,
-    /// otherwise-unused slot address, enforced by `!old(self).dom().contains(key)`.
-    /// The acyclicity precondition uses the same `LockId` (container/process/major
-    /// derived from `value`, minor = `key`) that `wlock` computes, so a
-    /// freshly-inserted-and-locked object obeys global lock ordering exactly like
-    /// an ordinarily-acquired one.
-    #[verifier::external_body]
-    pub fn insert(
-        &mut self,
-        key: usize,
-        value: T,
-        rodata: ROT,
-        Ghost(kernel_ghost): Ghost<KGhostT>,
-        Ghost(user_ghost): Ghost<UGhostT>,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        obj_id: Ghost<KernelObjId>,
-    ) -> (ret: Tracked<LockPerm>)
-        requires
-            old(self).perms_wf(),
-            old(self).dom().contains(key) == false,
-            value.inv(),
-            old(lctx).lock_id_acyclic(LockId{
-                container: rodata.container_depth(),
-                process: rodata.process_depth(),
-                major: value.current_lock_major(),
-                minor: key,
-            }),
-        ensures
-            final(self).perms_wf(),
-            // ---- domain grows by exactly `key`; every prior entry unchanged ----
-            final(self).dom() =~= old(self).dom().insert(key),
-            forall|k:usize|
-                #![auto]
-                old(self).dom().contains(k)
-                ==>
-                final(self).spec_index(k) == old(self).spec_index(k),
-            // ---- the new entry: initialized, write-locked, holds the given payload ----
-            final(self).dom().contains(key),
-            final(self).spec_index(key).is_init(),
-            final(self).spec_index(key).view() == value,
-            final(self).spec_index(key).view_rodata() == rodata,
-            final(self).spec_index(key).view_kernel_ghost() == kernel_ghost,
-            final(self).spec_index(key).view_user_ghost() == user_ghost,
-            final(self).spec_index(key).being_killed() == false,
-            final(self).spec_index(key).locking_thread() == (RwLockState::Write {
-                thread_id: final(lctx).thread_id(),
-                lock_id: ret.view().lock_id(),
-            }),
-            final(self).lock_id_by_key(key) == (LockId{
-                container: rodata.container_depth(),
-                process: rodata.process_depth(),
-                major: value.current_lock_major(),
-                minor: key,
-            }),
-            // ---- the returned write perm ----
-            ret.view().state() is WriteLock,
-            ret.view().thread_id() == final(lctx).thread_id(),
-            // ---- lctx: the new lock id is registered under obj_id ----
-            lock_ensures(old(lctx), final(lctx), value,
-                final(self).lock_id_by_key(key), obj_id.view()),
-    {
-        unimplemented!()
-    }
-
     /// Insert an already-initialized, already-locked entry into the map.
     /// The caller provides the `PointsTo<RwLock<T>>` (from a retype operation)
     /// and the entry is already write-locked. No lctx registration is done here
@@ -314,7 +229,6 @@ HAS_KILL_STATE>{
         Ghost(user_ghost): Ghost<UGhostT>,
     )
         requires
-            old(self).perms_wf(),
             old(self).dom().contains(key) == false,
             perm.is_init(),
             perm.addr() == key,
@@ -325,8 +239,10 @@ HAS_KILL_STATE>{
             perm.value().view_user_ghost() == user_ghost,
             perm.value().being_killed() == false,
         ensures
-            final(self).perms_wf(),
+            old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(key),
+            final(self).view().spec_index(key).is_init(),
+            final(self).view().spec_index(key).addr() == key,
             forall|k:usize|
                 #![auto]
                 old(self).dom().contains(k)

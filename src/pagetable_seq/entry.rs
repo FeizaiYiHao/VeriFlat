@@ -2,12 +2,10 @@ use vstd::prelude::*;
 verus! {
 
 // use vstd::ptr::PointsTo;
-use crate::define::*;
+use crate::*;
 
 // use crate::array::*;
-use crate::util::page_ptr_util_u::*;
 
-// use crate::lemma::lemma_u::*;
 #[derive(Debug)]
 pub struct PageEntryPerm {
     pub present: bool,

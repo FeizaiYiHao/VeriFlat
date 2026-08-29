@@ -9,122 +9,58 @@ use super::mmap_4k_create_entry_install::MissingPageTableLevel;
 use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 
 verus! {
-
-#[derive(Clone, Copy)]
-pub enum Mmap4kStructureBuild {
-    Ready,
-    NoQuota,
-    InUse,
-}
-
-#[derive(Clone, Copy)]
-enum Mmap4kDirectorySlot {
-    Present,
-    Missing,
-    InUse,
-}
-
-    fn mmap_4k_l4_directory_slot<const TABLE_TYPE: PTType>(
+    fn mmap_4k_l4_directory_present<const TABLE_TYPE: PTType>(
         pagetable: &PageTable<TABLE_TYPE>,
         l4i: L4Index,
-    ) -> (ret: Mmap4kDirectorySlot)
+    ) -> (ret: bool)
         requires
             pagetable.wf(),
             pagetable.kernel_l4_end <= l4i && pei_valid(l4i),
         ensures
-            !(ret is InUse),
-            ret is Present ==> pagetable.spec_resolve_mapping_l4(l4i) is Some,
-            ret is Missing ==> pagetable.spec_resolve_mapping_l4(l4i) is None,
+            ret == (pagetable.spec_resolve_mapping_l4(l4i) is Some),
     {
-        if pagetable.get_entry_l4(l4i).is_some() {
-            Mmap4kDirectorySlot::Present
-        } else {
-            Mmap4kDirectorySlot::Missing
-        }
+        pagetable.get_entry_l4(l4i).is_some()
     }
 
-    fn mmap_4k_l3_directory_slot<const TABLE_TYPE: PTType>(
+    fn mmap_4k_l3_directory_present<const TABLE_TYPE: PTType>(
         pagetable: &PageTable<TABLE_TYPE>,
         l4i: L4Index,
         l3i: L3Index,
-    ) -> (ret: Mmap4kDirectorySlot)
+    ) -> (ret: bool)
         requires
             pagetable.wf(),
             pagetable.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
+            pagetable.spec_resolve_mapping_l4(l4i) is Some,
+            pagetable.spec_resolve_mapping_1g_l3(l4i, l3i) is None,
         ensures
-            ret is Present ==>
-                pagetable.spec_resolve_mapping_l3(l4i, l3i) is Some,
-            ret is InUse ==> {
-                ||| pagetable.spec_resolve_mapping_l4(l4i) is None
-                ||| pagetable.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
-            },
-            ret is Missing ==> {
-                &&& pagetable.spec_resolve_mapping_l4(l4i) is Some
-                &&& pagetable.spec_resolve_mapping_l3(l4i, l3i) is None
-                &&& pagetable.spec_resolve_mapping_1g_l3(l4i, l3i) is None
-            },
+            ret == (pagetable.spec_resolve_mapping_l3(l4i, l3i) is Some),
     {
-        let l4_entry = match pagetable.get_entry_l4(l4i) {
-            Some(entry) => entry,
-            None => return Mmap4kDirectorySlot::InUse,
-        };
-        if pagetable.get_entry_l3(l4i, l3i, &l4_entry).is_some() {
-            return Mmap4kDirectorySlot::Present;
-        }
-        if pagetable.get_entry_1g_l3(l4i, l3i, &l4_entry).is_some() {
-            Mmap4kDirectorySlot::InUse
-        } else {
-            Mmap4kDirectorySlot::Missing
-        }
+        let l4_entry = pagetable.get_entry_l4(l4i).unwrap();
+        pagetable.get_entry_l3(l4i, l3i, &l4_entry).is_some()
     }
 
-    fn mmap_4k_l2_directory_slot<const TABLE_TYPE: PTType>(
+    fn mmap_4k_l2_directory_present<const TABLE_TYPE: PTType>(
         pagetable: &PageTable<TABLE_TYPE>,
         l4i: L4Index,
         l3i: L3Index,
         l2i: L2Index,
-    ) -> (ret: Mmap4kDirectorySlot)
+    ) -> (ret: bool)
         requires
             pagetable.wf(),
             pagetable.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
+            pagetable.spec_resolve_mapping_l4(l4i) is Some,
+            pagetable.spec_resolve_mapping_l3(l4i, l3i) is Some,
+            pagetable.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None,
         ensures
-            ret is Present ==>
-                pagetable.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
-            ret is InUse ==> {
-                ||| pagetable.spec_resolve_mapping_l4(l4i) is None
-                ||| pagetable.spec_resolve_mapping_l3(l4i, l3i) is None
-                ||| pagetable.spec_resolve_mapping_2m_l2(
-                    l4i, l3i, l2i,
-                ) is Some
-            },
-            ret is Missing ==> {
-                &&& pagetable.spec_resolve_mapping_l3(l4i, l3i) is Some
-                &&& pagetable.spec_resolve_mapping_l2(l4i, l3i, l2i) is None
-                &&& pagetable.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None
-            },
+            ret == (pagetable.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some),
     {
-        let l4_entry = match pagetable.get_entry_l4(l4i) {
-            Some(entry) => entry,
-            None => return Mmap4kDirectorySlot::InUse,
-        };
-        let l3_entry = match pagetable.get_entry_l3(l4i, l3i, &l4_entry) {
-            Some(entry) => entry,
-            None => return Mmap4kDirectorySlot::InUse,
-        };
-        if pagetable.get_entry_l2(l4i, l3i, l2i, &l3_entry).is_some() {
-            return Mmap4kDirectorySlot::Present;
-        }
-        if pagetable.get_entry_2m_l2(l4i, l3i, l2i, &l3_entry).is_some() {
-            Mmap4kDirectorySlot::InUse
-        } else {
-            Mmap4kDirectorySlot::Missing
+        let l4_entry = pagetable.get_entry_l4(l4i).unwrap();
+        let l3_entry = pagetable.get_entry_l3(l4i, l3i, &l4_entry).unwrap();
+        pagetable.get_entry_l2(l4i, l3i, l2i, &l3_entry).is_some()
     }
-}
-
-
 
     pub fn mmap_4k_build_one_structure(
         kernel: &mut KernelK,
@@ -174,6 +110,8 @@ enum Mmap4kDirectorySlot {
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             mmap_4k_allocation_ready(final(kernel), final(lctx)),
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            final(kernel).thread_map.lock_id_by_key(thread_ptr)
+                == old(kernel).thread_map.lock_id_by_key(thread_ptr),
             forall|t: RwLockThreadPtr|
                 #![trigger old(kernel).thread_map.spec_index(t)]
                 #![trigger final(kernel).thread_map.spec_index(t)]
@@ -291,121 +229,103 @@ enum Mmap4kDirectorySlot {
                 reveal(pagetable_perms_wf);
             };
         }
-        let l4_slot;
+        let l4_present;
         {
             let pagetable = kernel.pagetable_map.borrow(
                 pagetable_ptr, Tracked(pagetable_lock_perm),
             );
-            l4_slot = mmap_4k_l4_directory_slot(pagetable, indices.0);
+            l4_present = mmap_4k_l4_directory_present(pagetable, indices.0);
         }
-        match l4_slot {
-            Mmap4kDirectorySlot::Present => {},
-            Mmap4kDirectorySlot::InUse => {},
-            Mmap4kDirectorySlot::Missing => {
-                assert(thread_effective_quota_4k(
-                    kernel.thread_map.spec_index(thread_ptr),
-                ) >= 1) by {
-                    reveal(thread_perms_wf);
-                };
-                install_one_mmap_4k_directory_page(kernel,
-                    MissingPageTableLevel::L4,
-                    alloc_ptr_4k,
-                    thread_ptr,
-                    process_ptr,
-                    container_ptr,
-                    cpu_id,
-                    pagetable_ptr,
-                    (indices.0, indices.1, indices.2),
-                    Tracked(&mut *lctx),
-                    Tracked(&mut *steps),
-                    Tracked(thread_lock_perm),
-                    Tracked(pagetable_lock_perm),
-                );
-            },
+        if !l4_present {
+            assert(thread_effective_quota_4k(
+                kernel.thread_map.spec_index(thread_ptr),
+            ) >= 1) by {
+                reveal(thread_perms_wf);
+            };
+            install_one_mmap_4k_directory_page(kernel,
+                MissingPageTableLevel::L4,
+                alloc_ptr_4k,
+                thread_ptr,
+                process_ptr,
+                container_ptr,
+                cpu_id,
+                pagetable_ptr,
+                (indices.0, indices.1, indices.2),
+                Tracked(&mut *lctx),
+                Tracked(&mut *steps),
+                Tracked(thread_lock_perm),
+                Tracked(pagetable_lock_perm),
+            );
         }
         proof {
-            assert(
-                kernel.pagetable_map.perms_wf()
-                    && kernel.pagetable_map.spec_index(pagetable_ptr).inv()
-            ) by {
+            assert(kernel.pagetable_map.perms_wf()) by {
                 reveal(pagetable_perms_wf);
             };
         }
-        let l3_slot;
+        let l3_present;
         {
             let pagetable = kernel.pagetable_map.borrow(
                 pagetable_ptr, Tracked(pagetable_lock_perm),
             );
-            l3_slot = mmap_4k_l3_directory_slot(
+            l3_present = mmap_4k_l3_directory_present(
                 pagetable, indices.0, indices.1,
             );
         }
-        match l3_slot {
-            Mmap4kDirectorySlot::Present => {},
-            Mmap4kDirectorySlot::InUse => {},
-            Mmap4kDirectorySlot::Missing => {
-                assert(thread_effective_quota_4k(
-                    kernel.thread_map.spec_index(thread_ptr),
-                ) >= 1) by {
-                    reveal(thread_perms_wf);
-                };
-                install_one_mmap_4k_directory_page(kernel,
-                    MissingPageTableLevel::L3,
-                    alloc_ptr_4k,
-                    thread_ptr,
-                    process_ptr,
-                    container_ptr,
-                    cpu_id,
-                    pagetable_ptr,
-                    (indices.0, indices.1, indices.2),
-                    Tracked(&mut *lctx),
-                    Tracked(&mut *steps),
-                    Tracked(thread_lock_perm),
-                    Tracked(pagetable_lock_perm),
-                );
-            },
+        if !l3_present {
+            assert(thread_effective_quota_4k(
+                kernel.thread_map.spec_index(thread_ptr),
+            ) >= 1) by {
+                reveal(thread_perms_wf);
+            };
+            install_one_mmap_4k_directory_page(kernel,
+                MissingPageTableLevel::L3,
+                alloc_ptr_4k,
+                thread_ptr,
+                process_ptr,
+                container_ptr,
+                cpu_id,
+                pagetable_ptr,
+                (indices.0, indices.1, indices.2),
+                Tracked(&mut *lctx),
+                Tracked(&mut *steps),
+                Tracked(thread_lock_perm),
+                Tracked(pagetable_lock_perm),
+            );
         }
         proof {
-            assert(
-                kernel.pagetable_map.perms_wf()
-                    && kernel.pagetable_map.spec_index(pagetable_ptr).inv()
-            ) by {
+            assert(kernel.pagetable_map.perms_wf()) by {
                 reveal(pagetable_perms_wf);
             };
         }
-        let l2_slot;
+        let l2_present;
         {
             let pagetable = kernel.pagetable_map.borrow(
                 pagetable_ptr, Tracked(pagetable_lock_perm),
             );
-            l2_slot = mmap_4k_l2_directory_slot(
+            l2_present = mmap_4k_l2_directory_present(
                 pagetable, indices.0, indices.1, indices.2,
             );
         }
-        match l2_slot {
-            Mmap4kDirectorySlot::Present => {},
-            Mmap4kDirectorySlot::InUse => {},
-            Mmap4kDirectorySlot::Missing => {
-                assert(thread_effective_quota_4k(
-                    kernel.thread_map.spec_index(thread_ptr),
-                ) >= 1) by {
-                    reveal(thread_perms_wf);
-                };
-                install_one_mmap_4k_directory_page(kernel,
-                    MissingPageTableLevel::L2,
-                    alloc_ptr_4k,
-                    thread_ptr,
-                    process_ptr,
-                    container_ptr,
-                    cpu_id,
-                    pagetable_ptr,
-                    (indices.0, indices.1, indices.2),
-                    Tracked(&mut *lctx),
-                    Tracked(&mut *steps),
-                    Tracked(thread_lock_perm),
-                    Tracked(pagetable_lock_perm),
-                );
-            },
+        if !l2_present {
+            assert(thread_effective_quota_4k(
+                kernel.thread_map.spec_index(thread_ptr),
+            ) >= 1) by {
+                reveal(thread_perms_wf);
+            };
+            install_one_mmap_4k_directory_page(kernel,
+                MissingPageTableLevel::L2,
+                alloc_ptr_4k,
+                thread_ptr,
+                process_ptr,
+                container_ptr,
+                cpu_id,
+                pagetable_ptr,
+                (indices.0, indices.1, indices.2),
+                Tracked(&mut *lctx),
+                Tracked(&mut *steps),
+                Tracked(thread_lock_perm),
+                Tracked(pagetable_lock_perm),
+            );
         }
     }
 

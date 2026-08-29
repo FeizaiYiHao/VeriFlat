@@ -2,15 +2,11 @@ use vstd::prelude::*;
 
 verus! {
 
-use crate::define::*;
+use crate::*;
 use vstd::simple_pptr::*;
-use crate::util::page_ptr_util_u::*;
 use super::entry::*;
 use super::pagemap::*;
 use core::mem::MaybeUninit;
-use crate::primitive::*;
-use crate::lemma::lemma_u::*;
-use crate::locks::*;
 
 fn page_map_set_kernel_entry_range(
     kernel_entries: &Array<usize, KERNEL_MEM_END_L4INDEX>,
@@ -313,7 +309,7 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
             assert(tlbmap.submap_of(old_at_i));
             assert(old_at_i.submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
             assert(tlbmap.submap_of(tlbmap_4k.view().spec_index(cpu_id as int))) by {
-                broadcast use crate::lemma::lemma_u::submap_by_transitivity;
+                broadcast use submap_by_transitivity;
             }
             let tlbseq = ret_map.view().update(cpu_id as int, tlbmap);
             assert(tlbseq.index(cpu_id as int) =~= tlbmap);
