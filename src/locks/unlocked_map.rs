@@ -44,6 +44,8 @@ impl<T> UnLockedMap<usize, T>{
         &&&
         old.dom() == self.dom()
         &&&
+        self.dom().contains(key)
+        &&&
         forall|k:usize|
             #![trigger self.spec_index(k)]
             #![trigger old.spec_index(k)]
@@ -65,20 +67,15 @@ impl<T> UnLockedMap<usize, T>{
 
     pub fn borrow_mut<'a>(&'a mut self, key: usize) -> (ret: &'a mut T)
         requires
-            old(self).perms_wf(),
             old(self).dom().contains(key),
+            old(self).view().spec_index(key).is_init(),
+            old(self).view().spec_index(key).addr() == key,
         ensures
-            final(self).perms_wf(),
+            old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), key),
             *ret == old(self).spec_index(key),
             final(self).spec_index(key) == *final(ret),
-            forall|k:usize|
-                #![trigger final(self).spec_index(k)]
-                #![trigger old(self).spec_index(k)]
-                old(self).dom().contains(k) && k != key
-                ==>
-                final(self).spec_index(k) == old(self).spec_index(k),
     {
         let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
         PPtr::<T>::from_usize(key).borrow_mut(Tracked(perm))

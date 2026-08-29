@@ -70,27 +70,32 @@ impl KernelK {
                 assert(endpoint_invariant_fields_unchanged(old(self).endpoint_map, self.endpoint_map)) by { endpoint_lock_op_preserves_invariant_fields(old(self).endpoint_map, self.endpoint_map, endpoint_ptr); };
                 assert(self.subsystems_inv()) by {
                     reveal(KernelK::default_pagetable_wf);
-                    assert(endpoint_perms_wf(self.endpoint_map)) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); reveal(endpoint_invariant_fields_unchanged); };
+                    assert(endpoint_perms_wf(self.endpoint_map)) by {
+                        lemma_no_change_imply_endpoint_perms_wf_forall();
+                    };
                 };
                 assert(self.memory_management_inv()) by {
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array)) by { reveal(endpoint_invariant_fields_unchanged); reveal(endpoint_pages_wf); };
+                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array)) by {
+                        lemma_no_change_imply_endpoint_pages_wf_forall();
+                    };
                 };
                 assert(self.process_management_inv()) by {
-                    assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by { reveal(endpoint_invariant_fields_unchanged); reveal(container_endpoint_wf); };
-                    assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { reveal(endpoint_invariant_fields_unchanged); reveal(thread_endpoint_ref_counter_wf); };
-                    assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(self.thread_map, old(self).endpoint_map, self.endpoint_map); };
-                    assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields(self.container_map, self.thread_map, old(self).endpoint_map, self.endpoint_map); };
+                    assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_container_endpoint_wf_forall();
+                    };
+                    assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_thread_endpoint_ref_counter_wf_forall();
+                    };
+                    assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_thread_endpoint_queue_wf_forall();
+                    };
+                    assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_container_thread_endpoint_wf_forall();
+                    };
                 };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(endpoint_objects_unlocked(
-                    old(self).endpoint_map, old(lctx).thread_id(),
-                ) ==> endpoint_objects_unlocked_except(
-                    self.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
-                )) by {
-                    reveal(endpoint_objects_unlocked_except);
                 };
             }
             ret
@@ -173,27 +178,32 @@ impl KernelK {
                 assert(endpoint_invariant_fields_unchanged(old(self).endpoint_map, self.endpoint_map)) by { endpoint_lock_op_preserves_invariant_fields(old(self).endpoint_map, self.endpoint_map, endpoint_ptr); };
                 assert(self.subsystems_inv()) by {
                     reveal(KernelK::default_pagetable_wf);
-                    assert(endpoint_perms_wf(self.endpoint_map)) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); reveal(endpoint_invariant_fields_unchanged); };
+                    assert(endpoint_perms_wf(self.endpoint_map)) by {
+                        lemma_no_change_imply_endpoint_perms_wf_forall();
+                    };
                 };
                 assert(self.memory_management_inv()) by {
-                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array)) by { reveal(endpoint_invariant_fields_unchanged); reveal(endpoint_pages_wf); };
+                    assert(endpoint_pages_wf(self.endpoint_map, self.page_array)) by {
+                        lemma_no_change_imply_endpoint_pages_wf_forall();
+                    };
                 };
                 assert(self.process_management_inv()) by {
-                    assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by { reveal(endpoint_invariant_fields_unchanged); reveal(container_endpoint_wf); };
-                    assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { reveal(endpoint_invariant_fields_unchanged); reveal(thread_endpoint_ref_counter_wf); };
-                    assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(self.thread_map, old(self).endpoint_map, self.endpoint_map); };
-                    assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields(self.container_map, self.thread_map, old(self).endpoint_map, self.endpoint_map); };
+                    assert(container_endpoint_wf(self.container_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_container_endpoint_wf_forall();
+                    };
+                    assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_thread_endpoint_ref_counter_wf_forall();
+                    };
+                    assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_thread_endpoint_queue_wf_forall();
+                    };
+                    assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by {
+                        lemma_no_change_imply_container_thread_endpoint_wf_forall();
+                    };
                 };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(endpoint_objects_unlocked_except(
-                    old(self).endpoint_map, old(lctx).thread_id(), set![endpoint_ptr],
-                ) ==> endpoint_objects_unlocked(
-                    self.endpoint_map, lctx.thread_id(),
-                )) by {
-                    reveal(endpoint_objects_unlocked_except);
                 };
             }
         }

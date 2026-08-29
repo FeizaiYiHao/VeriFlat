@@ -3,7 +3,6 @@ use crate::*;
 
 verus! {
 impl KernelK {
-        #[verifier::spinoff_prover]
         pub fn wlock_quota_4k(
             &mut self,
             alloc_ptr_4k: RwLockPageAllocatorPtr,
@@ -50,17 +49,16 @@ impl KernelK {
 
                 // ---- allocator_4k_map: dom unchanged; only the targeted entry's quota lock state changed ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
+                final(self).allocator_4k_map.unchanged_except(
+                    &old(self).allocator_4k_map,
+                    alloc_ptr_4k,
+                ),
                 final(self).allocator_4k_map.perms_wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
-                forall|k: usize|
-                    #![trigger old(self).allocator_4k_map.spec_index(k)]
-                    #![trigger final(self).allocator_4k_map.spec_index(k)]
-                    old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
-                    final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
                 allocator_objects_unlocked(
                     old(self).allocator_4k_map, old(lctx).thread_id(),
                 ) ==> allocator_objects_unlocked_except_quota(
@@ -112,12 +110,6 @@ impl KernelK {
                             alloc_ptr_4k,
                         );
                     };
-                    assert(allocator_quota_value_framed_fields_unchanged(
-                        old(self).allocator_4k_map,
-                        self.allocator_4k_map,
-                    )) by {
-                        reveal(allocator_4k_invariant_fields_unchanged);
-                    };
                     assert(self.subsystems_inv()) by {
                         reveal(KernelK::default_pagetable_wf);
                     };
@@ -136,37 +128,6 @@ impl KernelK {
                             self.thread_map,
                             self.allocator_4k_map,
                         )) by {
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_4k]
-                                self.container_map.dom().contains(c_ptr)
-                            implies {
-                                let alloc_ptr = self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_4k;
-                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
-                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
-                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
-                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
-                            } by {
-                                assert(old(self).allocator_4k_map.dom().contains(
-                                    self.container_map.spec_index(c_ptr)
-                                        .view_rodata().view().allocator_ptr_4k,
-                                )) by {
-                                    reveal(container_allocator_wf);
-                                };
-                                assert(self.allocator_4k_map.spec_index(
-                                    self.container_map.spec_index(c_ptr)
-                                        .view_rodata().view().allocator_ptr_4k,
-                                ).owning_container
-                                    == old(self).allocator_4k_map.spec_index(
-                                        self.container_map.spec_index(c_ptr)
-                                            .view_rodata().view().allocator_ptr_4k,
-                                    ).owning_container) by {
-                                    reveal(allocator_4k_invariant_fields_unchanged);
-                                };
-                                reveal(allocator_4k_invariant_fields_unchanged);
-                            };
-                            reveal(allocator_4k_invariant_fields_unchanged);
                             reveal(container_process_allocator_quota_4k_wf);
                             reveal(container_allocator_wf);
                         };
@@ -187,25 +148,10 @@ impl KernelK {
                             self.allocator_4k_map,
                             self.page_array,
                         )) by {
-                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
-                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
-                                    .cpu_caches.spec_index(cpu_id).view().view()]
-                                self.allocator_4k_map.dom().contains(a_ptr)
-                                    && index_valid(NUM_CPUS, cpu_id)
-                            implies
-                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
-                                    .spec_index(cpu_id).view().view()
-                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
-                                    .spec_index(cpu_id).view().view()
-                            by {
-                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
-                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
-                                    reveal(allocator_4k_invariant_fields_unchanged);
-                                };
-                                reveal(allocator_4k_invariant_fields_unchanged);
-                            };
-                            reveal(allocator_4k_invariant_fields_unchanged);
-                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                            lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
+                                *old(self),
+                                *self,
+                            );
                         };
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
@@ -221,7 +167,6 @@ impl KernelK {
         /// `wlock_quota_4k`; the quota's `view()` is preserved by
         /// `wunlock_ensures`, so the fold conjunct holds via the same set-fold
         /// axioms.
-        #[verifier::spinoff_prover]
         pub fn wunlock_quota_4k(
             &mut self,
             alloc_ptr_4k: RwLockPageAllocatorPtr,
@@ -275,6 +220,10 @@ impl KernelK {
 
                 // ---- allocator_4k_map: dom unchanged; only the targeted entry's quota lock state changed (now unlocked) ----
                 final(self).allocator_4k_map.dom() == old(self).allocator_4k_map.dom(),
+                final(self).allocator_4k_map.unchanged_except(
+                    &old(self).allocator_4k_map,
+                    alloc_ptr_4k,
+                ),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 !final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     .locked_by_thread(final(lctx).thread_id()),
@@ -289,11 +238,6 @@ impl KernelK {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).total_free_pages,
-                forall|k: usize|
-                    #![trigger old(self).allocator_4k_map.spec_index(k)]
-                    #![trigger final(self).allocator_4k_map.spec_index(k)]
-                    old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
-                    final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
 
                 // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
@@ -345,12 +289,6 @@ impl KernelK {
                             alloc_ptr_4k,
                         );
                     };
-                    assert(allocator_quota_value_framed_fields_unchanged(
-                        old(self).allocator_4k_map,
-                        self.allocator_4k_map,
-                    )) by {
-                        reveal(allocator_4k_invariant_fields_unchanged);
-                    };
                     assert(self.subsystems_inv()) by {
                         reveal(KernelK::default_pagetable_wf);
                     };
@@ -369,37 +307,6 @@ impl KernelK {
                             self.thread_map,
                             self.allocator_4k_map,
                         )) by {
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_4k]
-                                self.container_map.dom().contains(c_ptr)
-                            implies {
-                                let alloc_ptr = self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_4k;
-                                &&& self.allocator_4k_map.spec_index(alloc_ptr).quota.view()
-                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).quota.view()
-                                &&& self.allocator_4k_map.spec_index(alloc_ptr).total_free_pages
-                                    == old(self).allocator_4k_map.spec_index(alloc_ptr).total_free_pages
-                            } by {
-                                assert(old(self).allocator_4k_map.dom().contains(
-                                    self.container_map.spec_index(c_ptr)
-                                        .view_rodata().view().allocator_ptr_4k,
-                                )) by {
-                                    reveal(container_allocator_wf);
-                                };
-                                assert(self.allocator_4k_map.spec_index(
-                                    self.container_map.spec_index(c_ptr)
-                                        .view_rodata().view().allocator_ptr_4k,
-                                ).owning_container
-                                    == old(self).allocator_4k_map.spec_index(
-                                        self.container_map.spec_index(c_ptr)
-                                            .view_rodata().view().allocator_ptr_4k,
-                                    ).owning_container) by {
-                                    reveal(allocator_4k_invariant_fields_unchanged);
-                                };
-                                reveal(allocator_4k_invariant_fields_unchanged);
-                            };
-                            reveal(allocator_4k_invariant_fields_unchanged);
                             reveal(container_process_allocator_quota_4k_wf);
                             reveal(container_allocator_wf);
                         };
@@ -420,25 +327,10 @@ impl KernelK {
                             self.allocator_4k_map,
                             self.page_array,
                         )) by {
-                            assert forall|a_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
-                                #![trigger self.allocator_4k_map.spec_index(a_ptr)
-                                    .cpu_caches.spec_index(cpu_id).view().view()]
-                                self.allocator_4k_map.dom().contains(a_ptr)
-                                    && index_valid(NUM_CPUS, cpu_id)
-                            implies
-                                self.allocator_4k_map.spec_index(a_ptr).cpu_caches
-                                    .spec_index(cpu_id).view().view()
-                                == old(self).allocator_4k_map.spec_index(a_ptr).cpu_caches
-                                    .spec_index(cpu_id).view().view()
-                            by {
-                                assert(self.allocator_4k_map.spec_index(a_ptr).owning_container
-                                    == old(self).allocator_4k_map.spec_index(a_ptr).owning_container) by {
-                                    reveal(allocator_4k_invariant_fields_unchanged);
-                                };
-                                reveal(allocator_4k_invariant_fields_unchanged);
-                            };
-                            reveal(allocator_4k_invariant_fields_unchanged);
-                            lemma_no_change_imply_container_allocator_free_4k_page_wf_forall();
+                            lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
+                                *old(self),
+                                *self,
+                            );
                         };
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {

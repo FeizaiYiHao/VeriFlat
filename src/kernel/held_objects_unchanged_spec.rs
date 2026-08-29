@@ -298,8 +298,6 @@ pub proof fn endpoint_objects_unlocked_except_preserved_for_held_unchanged(
             post, lctx.thread_id(), exceptions,
         ),
 {
-    reveal(endpoint_objects_unlocked_except);
-    reveal(held_endpoints_unchanged);
 }
 
 }

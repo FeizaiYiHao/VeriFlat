@@ -6,12 +6,6 @@ use crate::*;
 
 verus! {
 
-// TODO(AGENTS): Replace the two quota-fold assert-forall bridges in this module
-// with a trigger/postcondition on the fold producer. They are the remaining
-// non-local proof steps in these otherwise framed allocator transitions.
-
-
-
     // ================================================================
     // pop_stage_4k_page: cache[cpu_id] + thread are already write-locked and
     // the cache is non-empty. Peek the head, lock the page slot, pop the head,
@@ -19,7 +13,6 @@ verus! {
     // temp_alloc_cache_4k, decrement the allocator's total_free_pages. Leaves
     // page + cache still write-locked; re-establishes inv().
     // ================================================================
-    #[verifier::spinoff_prover]
     pub(super) fn pop_stage_4k_page(
         kernel: &mut KernelK,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
@@ -80,13 +73,12 @@ verus! {
             !old(kernel).thread_map.spec_index(thread_ptr).view()
                 .temp_alloc_cache_4k.view().contains(ret.0),
             final(kernel).allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
+            final(kernel).allocator_4k_map.unchanged_except(
+                &old(kernel).allocator_4k_map,
+                alloc_ptr_4k,
+            ),
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                 == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger final(kernel).allocator_4k_map.spec_index(p)]
-                old(kernel).allocator_4k_map.dom().contains(p) && p != alloc_ptr_4k
-                ==> final(kernel).allocator_4k_map.spec_index(p)
-                    == old(kernel).allocator_4k_map.spec_index(p),
             final(kernel).allocator_2m_map == old(kernel).allocator_2m_map,
             final(kernel).allocator_1g_map == old(kernel).allocator_1g_map,
             final(kernel).page_array.entries_unchanged_except(
@@ -123,13 +115,6 @@ verus! {
                 == old(kernel).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr,
             final(kernel).thread_map.unchanged_except(&old(kernel).thread_map, thread_ptr),
             forall|t: RwLockThreadPtr|
-                #![trigger old(kernel).thread_map.spec_index(t)]
-                #![trigger final(kernel).thread_map.spec_index(t)]
-                t != thread_ptr && old(kernel).thread_map.dom().contains(t)
-                ==> final(kernel).thread_map.dom().contains(t)
-                    && final(kernel).thread_map.lock_id_by_key(t)
-                        == old(kernel).thread_map.lock_id_by_key(t),
-            forall|t: RwLockThreadPtr|
                 #![trigger old(kernel).thread_map.spec_index(t)
                     .locked_by_thread(old(lctx).thread_id())]
                 #![trigger final(kernel).thread_map.spec_index(t)
@@ -140,6 +125,18 @@ verus! {
                 == (final(kernel).thread_map.dom().contains(t)
                     && final(kernel).thread_map.spec_index(t)
                         .locked_by_thread(final(lctx).thread_id())),
+            forall|t: RwLockThreadPtr|
+                #![trigger old(kernel).thread_map.spec_index(t)]
+                #![trigger final(kernel).thread_map.spec_index(t)]
+                t != thread_ptr
+                    && old(kernel).thread_map.dom().contains(t)
+                    && old(kernel).thread_map.spec_index(t)
+                        .locked_by_thread(old(lctx).thread_id())
+                ==> final(kernel).thread_map.dom().contains(t)
+                    && final(kernel).thread_map.spec_index(t)
+                        == old(kernel).thread_map.spec_index(t)
+                    && final(kernel).thread_map.lock_id_by_key(t)
+                        == old(kernel).thread_map.lock_id_by_key(t),
             final(kernel).thread_map.spec_index(thread_ptr).wlocked_by(final(lctx)),
             final(kernel).thread_map.spec_index(thread_ptr)
                 .locked_by_thread(final(lctx).thread_id()),
@@ -218,18 +215,16 @@ verus! {
             reveal(allocator_free_page_ptrs_wf);
         };
         let page_index = page_ptr2page_index(page_ptr);
-        assert(index_valid(NUM_PAGES, page_index)) by {
-            page_ptr_valid_imply_page_index_valid();
-        };
-        assert(
-            old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
+        assert({
+            &&& index_valid(NUM_PAGES, page_index)
+            &&& old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
                 .cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)
-        ) by {
+            &&& lctx.lock_id_acyclic(
+                kernel.page_array.lock_id_by_index(page_index),
+            )
+        }) by {
+            page_ptr_valid_imply_page_index_valid();
             reveal(LinkedList::wf_value_list);
-        };
-        assert(lctx.lock_id_acyclic(
-            kernel.page_array.lock_id_by_index(page_index),
-        )) by {
             reveal(container_allocator_free_4k_page_wf);
             reveal(container_allocator_cpu_cache_free_4k_page_wf);
         };
@@ -289,37 +284,7 @@ verus! {
                 old_page_lock_id,
                 kernel.page_array.lock_id_by_index(page_index),
             );
-            assert(kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
-                .cpu_caches.lock_id_by_index(cpu_id)
-                == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .cpu_caches.lock_id_by_index(cpu_id)
-            ) by {
-                reveal(allocator_perms_wf);
-            };
-            assert(lctx.lock_entry_contains(
-                kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .cpu_caches.lock_id_by_index(cpu_id),
-                KernelObjId::AllocatorCache(
-                    PageSize::SZ4k, alloc_ptr_4k, cpu_id,
-                ),
-            )) by {
-                reveal(lock_id_aligned);
-                lock_id_fields_eq_imply_eq();
-            };
             assert(lock_id_aligned(kernel, &*lctx)) by {
-                assert({
-                    &&& kernel.thread_map.spec_index(thread_ptr).view().state
-                        == old(kernel).thread_map.spec_index(thread_ptr).view().state
-                    &&& kernel.thread_map.spec_index(thread_ptr).view()
-                        .blocking_endpoint_ptr
-                        == old(kernel).thread_map.spec_index(thread_ptr).view()
-                            .blocking_endpoint_ptr
-                    &&& kernel.thread_map.lock_id_by_key(thread_ptr)
-                        == old(kernel).thread_map.lock_id_by_key(thread_ptr)
-                }) by {
-                    reveal(thread_perms_wf);
-                    lock_id_fields_eq_imply_eq();
-                };
                 assert(
                     PAGE_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR
                         && IOMMU_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR
@@ -345,13 +310,6 @@ verus! {
             };
         }
         proof {
-            assert(
-                thread_quota_2m_fields_unchanged(old(kernel).thread_map, kernel.thread_map)
-                && thread_quota_1g_fields_unchanged(old(kernel).thread_map, kernel.thread_map)
-            ) by {
-                reveal(thread_quota_2m_fields_unchanged);
-                reveal(thread_quota_1g_fields_unchanged);
-            };
             // ---- subsystems_inv ----
             assert(kernel.subsystems_inv()) by {
                 reveal(KernelK::default_pagetable_wf);
@@ -385,40 +343,7 @@ verus! {
                     reveal(container_thread_wf);
                     reveal(container_allocator_wf);
                     lemma_thread_effective_quota_4k_fold_change_by_forall(thread_ptr, -1);
-                    assert forall|c_ptr: RwLockContainerPtr|
-                        #![trigger
-                            thread_effective_quota_4k_fold_sum(
-                                kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                                kernel.thread_map,
-                            ),
-                            thread_effective_quota_4k_fold_sum(
-                                kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                                old(kernel).thread_map,
-                            )
-                        ]
-                        (kernel.container_map.dom().contains(c_ptr)
-                        && (forall|t: RwLockThreadPtr|
-                            #![trigger thread_effective_quota_4k(old(kernel).thread_map.spec_index(t))]
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t)
-                                ==> {
-                                    &&& kernel.thread_map.dom().contains(t)
-                                    &&& old(kernel).thread_map.dom().contains(t)
-                                    &&& thread_effective_quota_4k(kernel.thread_map.spec_index(t))
-                                        == thread_effective_quota_4k(old(kernel).thread_map.spec_index(t))
-                                }))
-                        implies thread_effective_quota_4k_fold_sum(
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                            kernel.thread_map,
-                        ) == thread_effective_quota_4k_fold_sum(
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                            old(kernel).thread_map,
-                        ) by {
-                        lemma_thread_effective_quota_4k_fold_sum_eq(
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                            old(kernel).thread_map,
-                            kernel.thread_map,
-                        );
-                    };
+                    lemma_thread_effective_quota_4k_fold_sum_eq_forall();
                     lemma_thread_pending_4k_folds_eq_forall(
                         kernel.container_map,
                         old(kernel).thread_map,
@@ -427,10 +352,18 @@ verus! {
                     lemma_process_effective_quota_4k_fold_sum_eq_forall();
                 };
                 assert(container_process_allocator_quota_2m_wf(kernel.container_map, kernel.process_map, kernel.thread_map, kernel.allocator_2m_map)) by {
-                    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields_forall();
+                    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_2m_map,
+                    );
                 };
                 assert(container_process_allocator_quota_1g_wf(kernel.container_map, kernel.process_map, kernel.thread_map, kernel.allocator_1g_map)) by {
-                    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields_forall();
+                    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_1g_map,
+                    );
                 };
                 assert(container_allocator_wf(kernel.container_map, kernel.allocator_4k_map, kernel.allocator_2m_map, kernel.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
@@ -550,11 +483,6 @@ verus! {
                 process_thread_wf_preserved_for_thread_process_management_fields(kernel.process_map, old(kernel).thread_map, kernel.thread_map);
                 thread_cpu_wf_preserved_for_thread_process_management_fields(old(kernel).thread_map, kernel.thread_map, kernel.cpu_array);
             };
-            assert(allocator_objects_unlocked_except_cache_pool(
-                kernel.allocator_4k_map, alloc_ptr_4k, lctx.thread_id(),
-            )) by {
-                reveal(allocator_objects_unlocked_except_cache_pool);
-            };
         }
         assert(kernel.thread_map.spec_index(thread_ptr).view()
             .stable_allocation_root_equal(
@@ -562,11 +490,6 @@ verus! {
             )) by {
             reveal(Thread::stable_allocation_root_equal);
             reveal(thread_perms_wf);
-        };
-        assert(page_objects_unlocked_except(
-            kernel.page_array, lctx.thread_id(), set![page_index],
-        )) by {
-            reveal(page_objects_unlocked_except);
         };
         (page_ptr, Tracked(page_lock_perm))
     }
@@ -626,13 +549,12 @@ verus! {
             !old(kernel).thread_map.spec_index(thread_ptr).view()
                 .temp_alloc_cache_4k.view().contains(ret.0),
             final(kernel).allocator_4k_map.dom() == old(kernel).allocator_4k_map.dom(),
+            final(kernel).allocator_4k_map.unchanged_except(
+                &old(kernel).allocator_4k_map,
+                alloc_ptr_4k,
+            ),
             final(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                 == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-            forall|p: RwLockPageAllocatorPtr|
-                #![trigger final(kernel).allocator_4k_map.spec_index(p)]
-                old(kernel).allocator_4k_map.dom().contains(p) && p != alloc_ptr_4k
-                ==> final(kernel).allocator_4k_map.spec_index(p)
-                    == old(kernel).allocator_4k_map.spec_index(p),
             final(kernel).allocator_2m_map == old(kernel).allocator_2m_map,
             final(kernel).allocator_1g_map == old(kernel).allocator_1g_map,
             final(kernel).page_array.entries_unchanged_except(
@@ -664,13 +586,6 @@ verus! {
                 == old(kernel).thread_map.spec_index(thread_ptr).view().proc_pagetable_ptr,
             final(kernel).thread_map.unchanged_except(&old(kernel).thread_map, thread_ptr),
             forall|t: RwLockThreadPtr|
-                #![trigger old(kernel).thread_map.spec_index(t)]
-                #![trigger final(kernel).thread_map.spec_index(t)]
-                t != thread_ptr && old(kernel).thread_map.dom().contains(t)
-                ==> final(kernel).thread_map.dom().contains(t)
-                    && final(kernel).thread_map.lock_id_by_key(t)
-                        == old(kernel).thread_map.lock_id_by_key(t),
-            forall|t: RwLockThreadPtr|
                 #![trigger old(kernel).thread_map.spec_index(t)
                     .locked_by_thread(old(lctx).thread_id())]
                 #![trigger final(kernel).thread_map.spec_index(t)
@@ -681,6 +596,18 @@ verus! {
                 == (final(kernel).thread_map.dom().contains(t)
                     && final(kernel).thread_map.spec_index(t)
                         .locked_by_thread(final(lctx).thread_id())),
+            forall|t: RwLockThreadPtr|
+                #![trigger old(kernel).thread_map.spec_index(t)]
+                #![trigger final(kernel).thread_map.spec_index(t)]
+                t != thread_ptr
+                    && old(kernel).thread_map.dom().contains(t)
+                    && old(kernel).thread_map.spec_index(t)
+                        .locked_by_thread(old(lctx).thread_id())
+                ==> final(kernel).thread_map.dom().contains(t)
+                    && final(kernel).thread_map.spec_index(t)
+                        == old(kernel).thread_map.spec_index(t)
+                    && final(kernel).thread_map.lock_id_by_key(t)
+                        == old(kernel).thread_map.lock_id_by_key(t),
             final(kernel).thread_map.spec_index(thread_ptr).wlocked_by(final(lctx)),
             final(kernel).thread_map.spec_index(thread_ptr)
                 .locked_by_thread(final(lctx).thread_id()),
@@ -757,17 +684,10 @@ verus! {
             reveal(allocator_free_page_ptrs_wf);
         };
         let page_index = page_ptr2page_index(page_ptr);
-        assert(index_valid(NUM_PAGES, page_index)) by {
-            page_ptr_valid_imply_page_index_valid();
-        };
-
-        assert(
-            old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
-                .global_pool.view().view().contains(page_ptr)
-        ) by {
-            reveal(LinkedList::wf_value_list);
-        };
         assert({
+            &&& index_valid(NUM_PAGES, page_index)
+            &&& old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
+                .global_pool.view().view().contains(page_ptr)
             &&& kernel.page_array.spec_index(page_index).view().view().state
                 == PageState::Free4k {
                 allocator_ptr: Ghost(alloc_ptr_4k),
@@ -777,6 +697,8 @@ verus! {
                 kernel.page_array.lock_id_by_index(page_index),
             )
         }) by {
+            page_ptr_valid_imply_page_index_valid();
+            reveal(LinkedList::wf_value_list);
             reveal(container_allocator_free_4k_page_wf);
             reveal(container_allocator_global_free_4k_page_wf);
         };
@@ -835,22 +757,6 @@ verus! {
                 old_page_lock_id,
                 kernel.page_array.lock_id_by_index(page_index),
             );
-            assert(kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .global_pool.lock_id()
-                    == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .global_pool.lock_id()
-            ) by {
-                reveal(allocator_perms_wf);
-            };
-            assert(lctx.lock_entry_contains(
-                kernel.allocator_4k_map.spec_index(alloc_ptr_4k)
-                    .global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPoll(
-                    PageSize::SZ4k, alloc_ptr_4k),
-            )) by {
-                reveal(lock_id_aligned);
-                lock_id_fields_eq_imply_eq();
-            };
         }
         // ---- staging delta: page_ptr fresh in temp_alloc_cache_4k ⟹ effective_quota_4k −1 ----
         assert(old(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) == false) by {
@@ -869,13 +775,6 @@ verus! {
             };
         }
         proof {
-            assert(
-                thread_quota_2m_fields_unchanged(old(kernel).thread_map, kernel.thread_map)
-                && thread_quota_1g_fields_unchanged(old(kernel).thread_map, kernel.thread_map)
-            ) by {
-                reveal(thread_quota_2m_fields_unchanged);
-                reveal(thread_quota_1g_fields_unchanged);
-            };
             // ---- subsystems_inv ----
             assert(kernel.subsystems_inv()) by {
                 reveal(KernelK::default_pagetable_wf);
@@ -909,40 +808,7 @@ verus! {
                     reveal(container_thread_wf);
                     reveal(container_allocator_wf);
                     lemma_thread_effective_quota_4k_fold_change_by_forall(thread_ptr, -1);
-                    assert forall|c_ptr: RwLockContainerPtr|
-                        #![trigger
-                            thread_effective_quota_4k_fold_sum(
-                                kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                                kernel.thread_map,
-                            ),
-                            thread_effective_quota_4k_fold_sum(
-                                kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                                old(kernel).thread_map,
-                            )
-                        ]
-                        (kernel.container_map.dom().contains(c_ptr)
-                        && (forall|t: RwLockThreadPtr|
-                            #![trigger thread_effective_quota_4k(old(kernel).thread_map.spec_index(t))]
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t)
-                                ==> {
-                                    &&& kernel.thread_map.dom().contains(t)
-                                    &&& old(kernel).thread_map.dom().contains(t)
-                                    &&& thread_effective_quota_4k(kernel.thread_map.spec_index(t))
-                                        == thread_effective_quota_4k(old(kernel).thread_map.spec_index(t))
-                                }))
-                        implies thread_effective_quota_4k_fold_sum(
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                            kernel.thread_map,
-                        ) == thread_effective_quota_4k_fold_sum(
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                            old(kernel).thread_map,
-                        ) by {
-                        lemma_thread_effective_quota_4k_fold_sum_eq(
-                            kernel.container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
-                            old(kernel).thread_map,
-                            kernel.thread_map,
-                        );
-                    };
+                    lemma_thread_effective_quota_4k_fold_sum_eq_forall();
                     lemma_thread_pending_4k_folds_eq_forall(
                         kernel.container_map,
                         old(kernel).thread_map,
@@ -951,10 +817,18 @@ verus! {
                     lemma_process_effective_quota_4k_fold_sum_eq_forall();
                 };
                 assert(container_process_allocator_quota_2m_wf(kernel.container_map, kernel.process_map, kernel.thread_map, kernel.allocator_2m_map)) by {
-                    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields_forall();
+                    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_2m_map,
+                    );
                 };
                 assert(container_process_allocator_quota_1g_wf(kernel.container_map, kernel.process_map, kernel.thread_map, kernel.allocator_1g_map)) by {
-                    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields_forall();
+                    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_1g_map,
+                    );
                 };
                 assert(container_allocator_wf(kernel.container_map, kernel.allocator_4k_map, kernel.allocator_2m_map, kernel.allocator_1g_map)) by {
                     reveal(container_allocator_wf);
@@ -1084,11 +958,6 @@ verus! {
             )) by {
             reveal(Thread::stable_allocation_root_equal);
             reveal(thread_perms_wf);
-        };
-        assert(page_objects_unlocked_except(
-            kernel.page_array, lctx.thread_id(), set![page_index],
-        )) by {
-            reveal(page_objects_unlocked_except);
         };
         assert(lock_id_aligned(kernel, &*lctx)) by {
             reveal(lock_id_aligned);

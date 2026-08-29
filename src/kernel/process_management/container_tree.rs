@@ -261,25 +261,31 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         ret == container_perms.spec_index(child_ptr).view().uppertree_seq.view().contains(a_ptr),
         ret == container_perms.spec_index(a_ptr).view().subtree_set.view().contains(child_ptr),
 {
-    proof {
+    assert({
+        &&& container_perms.view().spec_index(child_ptr).is_init()
+        &&& container_perms.view().spec_index(child_ptr).addr() == child_ptr
+        &&& container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+            .contains(a_ptr) == container_perms.spec_index(a_ptr).view()
+                .subtree_set.view().contains(child_ptr)
+    }) by {
         reveal(container_perms_wf);
-        reveal(container_root_wf);
-        reveal(container_children_parent_wf);
-        reveal(container_children_depth_wf);
-        reveal(container_subtree_set_wf);
-        reveal(container_uppertree_seq_wf);
         reveal(container_subtree_set_exclusive);
-        reveal(container_tree_fields_wf);
-    }
+    };
     let current_child_ro = container_perms.borrow_rodata(child_ptr);
-    let current_c_ptr_op = current_child_ro.borrow().parent;
     let depth = current_child_ro.borrow().depth;
+    assert({
+        &&& container_perms.spec_index(child_ptr).view().uppertree_seq.view().len()
+            == depth
+        &&& container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+            .no_duplicates()
+    }) by {
+        reveal(container_tree_fields_wf);
+        reveal(container_perms_wf);
+    };
+    assert((depth == 0) == (child_ptr == root_container)) by {
+        reveal(container_root_wf);
+    };
     if depth == 0 {
-        assert(child_ptr == root_container);
-        assert(container_perms.spec_index(root_container).view_rodata().view().depth == 0);
-        assert(container_perms.spec_index(root_container).view().uppertree_seq.view().len() == container_perms.spec_index(root_container).view_rodata().view().depth);
-        assert(container_perms.spec_index(root_container).view().uppertree_seq.view().len() == 0);
-        assert(container_perms.spec_index(root_container).view().uppertree_seq.view().contains(a_ptr) == false);
         return false;
     }
     let mut current_c_ptr = child_ptr;
@@ -294,35 +300,75 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
                 container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(j) != a_ptr
             
     {
-        assert(depth - i >= 0);
-        let current_ro = container_perms.borrow_rodata(current_c_ptr);
-        assert(container_perms.spec_index(current_c_ptr).view_rodata().view().depth == depth - i);
-        assert(current_ro.view().parent is Some);
-        assert(container_perms.spec_index(current_ro.view().parent.unwrap()).view_rodata().view().depth == depth - i - 1);
-        let next_parent_ptr = current_ro.borrow().parent.unwrap();
-        assert(container_perms.spec_index(current_c_ptr).view().uppertree_seq.view().spec_index(depth - i - 1) == next_parent_ptr);
-        assert(next_parent_ptr == container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(depth - i - 1)) by {
-            if i == 0{
-                assert(next_parent_ptr == container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(depth - i - 1));
-            }else{
-                assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().contains(current_c_ptr));
-                assert(container_perms.spec_index(current_c_ptr).view().uppertree_seq.view() == container_perms.spec_index(child_ptr).view().uppertree_seq.view().subrange(0, depth - i));
-                assert(next_parent_ptr == container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(depth - i - 1));
-            }
+        assert({
+            &&& container_perms.view().spec_index(current_c_ptr).is_init()
+            &&& container_perms.view().spec_index(current_c_ptr).addr()
+                == current_c_ptr
+        }) by {
+            reveal(container_perms_wf);
         };
+        let current_ro = container_perms.borrow_rodata(current_c_ptr);
+        assert({
+            &&& current_ro.view().parent is Some
+            &&& current_c_ptr != root_container
+        }) by {
+            reveal(container_root_wf);
+        };
+        let next_parent_ptr = current_ro.borrow().parent.unwrap();
+        if i == 0 {
+            assert(next_parent_ptr == container_perms.spec_index(child_ptr).view()
+                .uppertree_seq.view().spec_index(depth - i - 1)) by {
+                reveal(container_children_depth_wf);
+            };
+        } else {
+            assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+                .contains(current_c_ptr)) by {
+                reveal(container_tree_fields_wf);
+            };
+            assert(container_perms.spec_index(current_c_ptr).view().uppertree_seq.view()
+                == container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+                    .subrange(0, depth - i)) by {
+                reveal(container_uppertree_seq_wf);
+            };
+            assert(next_parent_ptr == container_perms.spec_index(child_ptr).view()
+                .uppertree_seq.view().spec_index(depth - i - 1)) by {
+                reveal(container_children_depth_wf);
+            };
+        }
         if next_parent_ptr == a_ptr {
             return true;
         }
+        assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+            .contains(next_parent_ptr)) by {
+            reveal(container_tree_fields_wf);
+        };
+        assert({
+            &&& container_perms.dom().contains(next_parent_ptr)
+            &&& container_perms.spec_index(next_parent_ptr).view_rodata().view().depth
+                == depth - i - 1
+        }) by {
+            reveal(container_uppertree_seq_wf);
+        };
         current_c_ptr = next_parent_ptr;
     }
-    assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0) == root_container) by {
-        assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().contains((container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0))));
-        assert(container_perms.dom().contains(container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0)));
-        assert(container_perms.spec_index(container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0)).view_rodata().view().depth == 0);
+    assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+        .contains(container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+            .spec_index(0))) by {
+        reveal(container_tree_fields_wf);
+    };
+    assert({
+        &&& container_perms.dom().contains(container_perms.spec_index(child_ptr)
+            .view().uppertree_seq.view().spec_index(0))
+        &&& container_perms.spec_index(container_perms.spec_index(child_ptr).view()
+            .uppertree_seq.view().spec_index(0)).view_rodata().view().depth == 0
+    }) by {
+        reveal(container_uppertree_seq_wf);
+    };
+    assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view()
+        .spec_index(0) == root_container) by {
+        reveal(container_root_wf);
     };
     if root_container == a_ptr{
-        assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().spec_index(0) == a_ptr);
-        assert(container_perms.spec_index(child_ptr).view().uppertree_seq.view().contains(a_ptr));
         return true;
     }
     return false;

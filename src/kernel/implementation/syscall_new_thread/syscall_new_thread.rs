@@ -1,7 +1,4 @@
 use vstd::prelude::*;
-use vstd::calc;
-use vstd::assert_seqs_equal;
-use vstd::assert_sets_equal;
 use crate::*;
 use super::syscall_new_thread_helpers::{
     add_new_thread_to_proc_container_and_scheduler,
@@ -11,7 +8,6 @@ use super::syscall_new_thread_helpers::{
 verus! {
         /// syscall_new_thread: create a new thread in the running process on
         /// `cpu_id`. Lock order: cpu -> process -> current thread -> scheduler.
-        #[verifier::spinoff_prover]
         pub fn syscall_new_thread(
             kernel: &mut KernelK,
             Tracked(lctx): Tracked<&mut LocalContext>,
@@ -84,23 +80,24 @@ verus! {
             let process_ptr = cpu.current_process.unwrap();
             let current_thread_ptr = cpu.current_thread.unwrap();
 
-            proof {
-                assert(kernel.process_map.dom().contains(process_ptr)) by {
-                    reveal(process_cpu_wf);
-                };
-                assert(kernel.process_map.perms_wf()) by {
-                    reveal(process_perms_wf);
-                };
-            }
+            assert({
+                &&& kernel.process_map.dom().contains(process_ptr)
+                &&& kernel.process_map.view().spec_index(process_ptr).is_init()
+                &&& kernel.process_map.view().spec_index(process_ptr).addr() == process_ptr
+            }) by {
+                reveal(process_cpu_wf);
+                reveal(process_perms_wf);
+            };
             let proc_container = kernel.process_map.borrow_rodata(process_ptr).borrow().owning_container;
-            proof {
-                assert(kernel.container_map.dom().contains(proc_container)) by {
-                    reveal(container_process_wf);
-                };
-                assert(kernel.container_map.perms_wf()) by {
-                    reveal(container_perms_wf);
-                };
-            }
+            assert({
+                &&& kernel.container_map.dom().contains(proc_container)
+                &&& kernel.container_map.view().spec_index(proc_container).is_init()
+                &&& kernel.container_map.view().spec_index(proc_container).addr()
+                    == proc_container
+            }) by {
+                reveal(container_process_wf);
+                reveal(container_perms_wf);
+            };
             let scheduler_ptr = kernel.container_map.borrow_rodata(proc_container).borrow().scheduler;
 
             proof {
@@ -113,15 +110,6 @@ verus! {
             }
             let process_res = kernel.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
             if let (false, _) = process_res {
-                proof {
-                    assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                    assert(kernel_objects_unlocked_except(
-                        kernel, lctx.thread_id(), Some(cpu_id),
-                        None, None, None, None,
-                    )) by {
-                        reveal(kernel_objects_unlocked_except);
-                    };
-                }
                 release_cpu_and_finish_syscall(kernel,
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -143,12 +131,10 @@ verus! {
                         == kernel.process_map.spec_index(process_ptr).view_rodata().view().container_depth
                     &&& kernel.thread_map.spec_index(current_thread_ptr).view().process_depth
                         == kernel.process_map.spec_index(process_ptr).view_rodata().view().depth
+                    &&& kernel.thread_map.lock_id_by_key(current_thread_ptr)
+                        .spec_gt(kernel.process_map.lock_id_by_key(process_ptr))
                 }) by {
                     reveal(thread_cpu_wf);
-                    reveal(process_thread_wf);
-                };
-                assert(kernel.thread_map.lock_id_by_key(current_thread_ptr)
-                    .spec_gt(kernel.process_map.lock_id_by_key(process_ptr))) by {
                     reveal(process_thread_wf);
                     reveal(process_perms_wf);
                     reveal(thread_perms_wf);
@@ -158,15 +144,6 @@ verus! {
                 current_thread_ptr, Tracked(&mut *lctx),
             );
             if let (false, _) = thread_res {
-                proof {
-                    assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                    assert(kernel_objects_unlocked_except(
-                        kernel, lctx.thread_id(), Some(cpu_id),
-                        None, Some(process_ptr), None, None,
-                    )) by {
-                        reveal(kernel_objects_unlocked_except);
-                    };
-                }
                 release_cpu_and_process_and_finish_syscall(kernel,
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -183,15 +160,6 @@ verus! {
                 current_thread_ptr, Tracked(&current_thread_lock_perm),
             );
             if thread_ref.quota_4k < 1 {
-                proof {
-                    assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                    assert(kernel_objects_unlocked_except(
-                        kernel, lctx.thread_id(), Some(cpu_id),
-                        None, Some(process_ptr), Some(current_thread_ptr), None,
-                    )) by {
-                        reveal(kernel_objects_unlocked_except);
-                    };
-                }
                 release_cpu_and_process_and_thread_and_finish_syscall(kernel,
                     Tracked(&mut *lctx),
                     Tracked(&mut *steps),
@@ -206,24 +174,21 @@ verus! {
             }
 
             proof {
-                assert(kernel.scheduler_map.dom().contains(scheduler_ptr)) by {
-                    reveal(container_scheduler_wf);
-                };
                 let scheduler_lock_id = kernel.scheduler_map.lock_id_by_key(scheduler_ptr);
-                assert(scheduler_lock_id.major == SCHEDULER_LOCK_MAJOR) by {
+                assert({
+                    &&& kernel.scheduler_map.dom().contains(scheduler_ptr)
+                    &&& scheduler_lock_id.major == SCHEDULER_LOCK_MAJOR
+                    &&& process_lock_perm.ordering_lock_id().major
+                        == PROCESS_LOCK_MAJOR
+                    &&& current_thread_lock_perm.ordering_lock_id().major
+                        == THREAD_LOCK_MAJOR
+                    &&& lctx.lock_id_acyclic(scheduler_lock_id)
+                }) by {
+                    reveal(container_scheduler_wf);
                     reveal(scheduler_perms_wf);
-                };
-                assert(process_lock_perm.ordering_lock_id().major
-                    == PROCESS_LOCK_MAJOR) by {
                     reveal(process_perms_wf);
-                };
-                assert(current_thread_lock_perm.ordering_lock_id().major
-                    == THREAD_LOCK_MAJOR) by {
                     reveal(thread_cpu_wf);
                     reveal(thread_perms_wf);
-                };
-                assert(lctx.lock_id_acyclic(scheduler_lock_id)) by {
-                    reveal(scheduler_perms_wf);
                 };
             }
             let Tracked(scheduler_lock_perm) = kernel.wlock_scheduler(
@@ -241,18 +206,6 @@ verus! {
                     )
                 }) by {
                     reveal(thread_cpu_wf);
-                };
-                assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by {
-                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel);
-                };
-            }
-            proof {
-                assert(kernel_objects_unlocked_except(
-                    kernel, lctx.thread_id(), Some(cpu_id),
-                    Some(scheduler_ptr), Some(process_ptr),
-                    Some(current_thread_ptr), None,
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
                 };
             }
             add_new_thread_to_proc_container_and_scheduler(

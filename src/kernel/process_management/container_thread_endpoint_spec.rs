@@ -34,7 +34,7 @@ verus! {
     #[verifier::opaque]
     pub open spec fn thread_endpoint_queue_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool 
         recommends
-        //     threads_inv(thread_map), @Xiangdong TODO
+            thread_perms_wf(thread_map),
             thread_endpoint_ref_counter_wf(thread_map, endpoint_map)
     {
         &&&
@@ -44,6 +44,8 @@ verus! {
             thread_map.dom().contains(t_ptr)
                 && thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
             ==>
+            endpoint_map.dom().contains(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap())
+            &&
             endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.view().contains(t_ptr)
             &&
             endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.map().dom().contains(thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr())

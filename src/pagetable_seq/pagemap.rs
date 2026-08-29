@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 verus! {
-use crate::primitive::array::*;
-use crate::util::page_ptr_util_u::*;
+use crate::*;
 use super::entry::*;
 
 /// Concrete page-table page.

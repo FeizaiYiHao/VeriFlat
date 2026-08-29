@@ -12,7 +12,6 @@ impl KernelK {
         /// so each process's `process_effective_quota_*` is unchanged ==> the
         /// folded sum is unchanged).
         ///
-        #[verifier::spinoff_prover]
         pub fn wlock_process_unless_killed(
             &mut self,
             process_ptr: RwLockProcessPtr,
@@ -125,196 +124,20 @@ impl KernelK {
                             process_ptr,
                         );
                     };
-                    assert(process_quota_4k_framed_fields_unchanged(
-                        old(self).process_map,
-                        self.process_map,
-                    )) by {
-                        reveal(process_invariant_fields_unchanged);
-                    };
                     assert(self.subsystems_inv()) by {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        assert(container_process_page_pagetable_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.pagetable_map,
-                            self.page_array,
-                        )) by {
-                            lemma_no_change_imply_container_process_page_pagetable_wf_forall();
-                        };
-                        assert(process_pages_wf(
-                            self.page_array,
-                            self.process_map,
-                        )) by {
-                            lemma_no_change_imply_process_pages_wf_forall();
-                        };
-                        assert(container_process_allocator_quota_4k_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_4k_map,
-                        )) by {
-                            reveal(process_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_4k_wf);
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_4k]
-                                self.container_map.dom().contains(c_ptr)
-                            implies
-                                self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().fold(
-                                        0,
-                                        |sum: int, p_ptr: RwLockProcessPtr|
-                                            sum + process_effective_quota_4k(
-                                                self.process_map.spec_index(p_ptr),
-                                            ),
-                                    )
-                                    == old(self).container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view().fold(
-                                            0,
-                                            |sum: int, p_ptr: RwLockProcessPtr|
-                                                sum + process_effective_quota_4k(
-                                                    old(self).process_map.spec_index(p_ptr),
-                                                ),
-                                        )
-                            by {
-                                assert(self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().subset_of(
-                                        old(self).process_map.dom(),
-                                    )) by {
-                                    reveal(container_process_wf);
-                                };
-                                lemma_process_effective_quota_4k_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view(),
-                                    old(self).process_map,
-                                    self.process_map,
-                                );
-                            };
-                        };
-                        assert(container_process_allocator_quota_2m_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_2m_map,
-                        )) by {
-                            reveal(process_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_2m_wf);
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_2m]
-                                self.container_map.dom().contains(c_ptr)
-                            implies
-                                self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().fold(
-                                        0,
-                                        |sum: int, p_ptr: RwLockProcessPtr|
-                                            sum + process_effective_quota_2m(
-                                                self.process_map.spec_index(p_ptr),
-                                            ),
-                                    )
-                                    == old(self).container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view().fold(
-                                            0,
-                                            |sum: int, p_ptr: RwLockProcessPtr|
-                                                sum + process_effective_quota_2m(
-                                                    old(self).process_map.spec_index(p_ptr),
-                                                ),
-                                        )
-                            by {
-                                assert(self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().subset_of(
-                                        old(self).process_map.dom(),
-                                    )) by {
-                                    reveal(container_process_wf);
-                                };
-                                lemma_process_effective_quota_2m_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view(),
-                                    old(self).process_map,
-                                    self.process_map,
-                                );
-                            };
-                        };
-                        assert(container_process_allocator_quota_1g_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            reveal(process_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_1g_wf);
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_1g]
-                                self.container_map.dom().contains(c_ptr)
-                            implies
-                                self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().fold(
-                                        0,
-                                        |sum: int, p_ptr: RwLockProcessPtr|
-                                            sum + process_effective_quota_1g(
-                                                self.process_map.spec_index(p_ptr),
-                                            ),
-                                    )
-                                    == old(self).container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view().fold(
-                                            0,
-                                            |sum: int, p_ptr: RwLockProcessPtr|
-                                                sum + process_effective_quota_1g(
-                                                    old(self).process_map.spec_index(p_ptr),
-                                                ),
-                                        )
-                            by {
-                                assert(self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().subset_of(
-                                        old(self).process_map.dom(),
-                                    )) by {
-                                    reveal(container_process_wf);
-                                };
-                                lemma_process_effective_quota_1g_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view(),
-                                    old(self).process_map,
-                                    self.process_map,
-                                );
-                            };
-                        };
-                        assert(process_pagetable_match(
-                            self.process_map,
-                            self.pagetable_map,
-                        )) by {
-                            lemma_no_change_imply_process_pagetable_match_forall();
-                        };
-                        assert(process_iommu_table_match(self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_process_iommu_table_match_forall(); };
+                        process_no_change_imply_memory_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(self.process_management_inv()) by {
-                        assert(process_pcid_allocator_wf(self.container_map, self.process_map, self.pcid_allocator_map)) by { lemma_no_change_imply_process_pcid_allocator_wf_forall(); };
-                        assert(container_process_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            lemma_no_change_imply_container_process_wf_forall();
-                        };
-                        assert(per_container_process_tree_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            lemma_no_change_imply_per_container_process_tree_wf_forall();
-                        };
-                        assert(process_cpu_wf(
-                            self.process_map,
-                            self.cpu_array,
-                        )) by {
-                            lemma_no_change_imply_process_cpu_wf_forall();
-                        };
-                        assert(process_thread_wf(
-                            self.process_map,
-                            self.thread_map,
-                        )) by {
-                            lemma_no_change_imply_process_thread_wf_forall();
-                        };
+                        process_no_change_imply_process_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(iommu_root_table_process_wf(&self.iommu_root_table, self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
                     assert(process_pci_function_ownership_wf(&self.iommu_root_table, self.process_map)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
@@ -332,20 +155,6 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id(),
-                ) ==> process_objects_unlocked_except(
-                    self.process_map, lctx.thread_id(), set![process_ptr],
-                )) by {
-                    reveal(process_objects_unlocked_except);
-                };
-                assert(process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id(),
-                ) && !res.0 ==> process_objects_unlocked(
-                    self.process_map, lctx.thread_id(),
-                )) by {
-                    reveal(process_objects_unlocked_except);
-                };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
@@ -357,7 +166,6 @@ impl KernelK {
         /// Wraps `LockedMap::wunlock` for `process_map` and re-establishes
         /// `inv()` immediately afterwards. Unlocking has no killed-branch — the
         /// caller already holds the write lock, so this is unconditional.
-        #[verifier::spinoff_prover]
         pub fn wunlock_process(
             &mut self,
             process_ptr: RwLockProcessPtr,
@@ -474,196 +282,20 @@ impl KernelK {
                             process_ptr,
                         );
                     };
-                    assert(process_quota_4k_framed_fields_unchanged(
-                        old(self).process_map,
-                        self.process_map,
-                    )) by {
-                        reveal(process_invariant_fields_unchanged);
-                    };
                     assert(self.subsystems_inv()) by {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        assert(container_process_page_pagetable_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.pagetable_map,
-                            self.page_array,
-                        )) by {
-                            lemma_no_change_imply_container_process_page_pagetable_wf_forall();
-                        };
-                        assert(process_pages_wf(
-                            self.page_array,
-                            self.process_map,
-                        )) by {
-                            lemma_no_change_imply_process_pages_wf_forall();
-                        };
-                        assert(container_process_allocator_quota_4k_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_4k_map,
-                        )) by {
-                            reveal(process_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_4k_wf);
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_4k]
-                                self.container_map.dom().contains(c_ptr)
-                            implies
-                                self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().fold(
-                                        0,
-                                        |sum: int, p_ptr: RwLockProcessPtr|
-                                            sum + process_effective_quota_4k(
-                                                self.process_map.spec_index(p_ptr),
-                                            ),
-                                    )
-                                    == old(self).container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view().fold(
-                                            0,
-                                            |sum: int, p_ptr: RwLockProcessPtr|
-                                                sum + process_effective_quota_4k(
-                                                    old(self).process_map.spec_index(p_ptr),
-                                                ),
-                                        )
-                            by {
-                                assert(self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().subset_of(
-                                        old(self).process_map.dom(),
-                                    )) by {
-                                    reveal(container_process_wf);
-                                };
-                                lemma_process_effective_quota_4k_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view(),
-                                    old(self).process_map,
-                                    self.process_map,
-                                );
-                            };
-                        };
-                        assert(container_process_allocator_quota_2m_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_2m_map,
-                        )) by {
-                            reveal(process_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_2m_wf);
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_2m]
-                                self.container_map.dom().contains(c_ptr)
-                            implies
-                                self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().fold(
-                                        0,
-                                        |sum: int, p_ptr: RwLockProcessPtr|
-                                            sum + process_effective_quota_2m(
-                                                self.process_map.spec_index(p_ptr),
-                                            ),
-                                    )
-                                    == old(self).container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view().fold(
-                                            0,
-                                            |sum: int, p_ptr: RwLockProcessPtr|
-                                                sum + process_effective_quota_2m(
-                                                    old(self).process_map.spec_index(p_ptr),
-                                                ),
-                                        )
-                            by {
-                                assert(self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().subset_of(
-                                        old(self).process_map.dom(),
-                                    )) by {
-                                    reveal(container_process_wf);
-                                };
-                                lemma_process_effective_quota_2m_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view(),
-                                    old(self).process_map,
-                                    self.process_map,
-                                );
-                            };
-                        };
-                        assert(container_process_allocator_quota_1g_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            reveal(process_invariant_fields_unchanged);
-                            reveal(container_process_allocator_quota_1g_wf);
-                            assert forall|c_ptr: RwLockContainerPtr|
-                                #![trigger self.container_map.spec_index(c_ptr)
-                                    .view_rodata().view().allocator_ptr_1g]
-                                self.container_map.dom().contains(c_ptr)
-                            implies
-                                self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().fold(
-                                        0,
-                                        |sum: int, p_ptr: RwLockProcessPtr|
-                                            sum + process_effective_quota_1g(
-                                                self.process_map.spec_index(p_ptr),
-                                            ),
-                                    )
-                                    == old(self).container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view().fold(
-                                            0,
-                                            |sum: int, p_ptr: RwLockProcessPtr|
-                                                sum + process_effective_quota_1g(
-                                                    old(self).process_map.spec_index(p_ptr),
-                                                ),
-                                        )
-                            by {
-                                assert(self.container_map.spec_index(c_ptr).view()
-                                    .owned_processes.view().subset_of(
-                                        old(self).process_map.dom(),
-                                    )) by {
-                                    reveal(container_process_wf);
-                                };
-                                lemma_process_effective_quota_1g_fold_eq(
-                                    self.container_map.spec_index(c_ptr).view()
-                                        .owned_processes.view(),
-                                    old(self).process_map,
-                                    self.process_map,
-                                );
-                            };
-                        };
-                        assert(process_pagetable_match(
-                            self.process_map,
-                            self.pagetable_map,
-                        )) by {
-                            lemma_no_change_imply_process_pagetable_match_forall();
-                        };
-                        assert(process_iommu_table_match(self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_process_iommu_table_match_forall(); };
+                        process_no_change_imply_memory_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(self.process_management_inv()) by {
-                        assert(process_pcid_allocator_wf(self.container_map, self.process_map, self.pcid_allocator_map)) by { lemma_no_change_imply_process_pcid_allocator_wf_forall(); };
-                        assert(container_process_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            lemma_no_change_imply_container_process_wf_forall();
-                        };
-                        assert(per_container_process_tree_wf(
-                            self.container_map,
-                            self.process_map,
-                        )) by {
-                            lemma_no_change_imply_per_container_process_tree_wf_forall();
-                        };
-                        assert(process_cpu_wf(
-                            self.process_map,
-                            self.cpu_array,
-                        )) by {
-                            lemma_no_change_imply_process_cpu_wf_forall();
-                        };
-                        assert(process_thread_wf(
-                            self.process_map,
-                            self.thread_map,
-                        )) by {
-                            lemma_no_change_imply_process_thread_wf_forall();
-                        };
+                        process_no_change_imply_process_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(iommu_root_table_process_wf(&self.iommu_root_table, self.process_map, self.iommu_table_map)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
                     assert(process_pci_function_ownership_wf(&self.iommu_root_table, self.process_map)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
@@ -680,13 +312,6 @@ impl KernelK {
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(process_objects_unlocked_except(
-                    old(self).process_map, old(lctx).thread_id(), set![process_ptr],
-                ) ==> process_objects_unlocked(
-                    self.process_map, lctx.thread_id(),
-                )) by {
-                    reveal(process_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

@@ -103,22 +103,12 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
     ensures
         container_allocator_free_4k_page_wf(post.allocator_4k_map, post.page_array),
 {
-    assert(container_allocator_global_free_4k_page_wf(
-        post.allocator_4k_map, post.page_array,
-    )) by {
-        reveal(container_allocator_free_4k_page_wf);
-        reveal(container_allocator_global_free_4k_page_wf);
-    };
-    assert(container_allocator_cpu_cache_free_4k_page_wf(
-        post.allocator_4k_map, post.page_array,
-    )) by {
-        reveal(container_allocator_free_4k_page_wf);
-        reveal(container_allocator_cpu_cache_free_4k_page_wf);
-    };
     assert(container_allocator_free_4k_page_wf(
         post.allocator_4k_map, post.page_array,
     )) by {
         reveal(container_allocator_free_4k_page_wf);
+        reveal(container_allocator_global_free_4k_page_wf);
+        reveal(container_allocator_cpu_cache_free_4k_page_wf);
     };
 }
 
@@ -166,37 +156,9 @@ pub proof fn lemma_no_change_imply_container_allocator_free_4k_page_wf_forall()
                     post.page_array,
                 ),
 {
-    assert forall|pre: KernelK, post: KernelK|
-        #![auto]
-        container_allocator_free_4k_page_wf(
-            pre.allocator_4k_map,
-            pre.page_array,
-        )
-        && post.page_array == pre.page_array
-        && post.allocator_4k_map.dom() == pre.allocator_4k_map.dom()
-        && (forall|a: RwLockPageAllocatorPtr| #![auto]
-            post.allocator_4k_map.dom().contains(a) ==>
-                post.allocator_4k_map.spec_index(a).owning_container
-                    == pre.allocator_4k_map.spec_index(a).owning_container
-                && post.allocator_4k_map.spec_index(a).global_pool.view()
-                    == pre.allocator_4k_map.spec_index(a).global_pool.view())
-        && (forall|a: RwLockPageAllocatorPtr, i: CpuId| #![auto]
-            post.allocator_4k_map.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
-                post.allocator_4k_map.spec_index(a).cpu_caches
-                    .spec_index(i).view().view()
-                == pre.allocator_4k_map.spec_index(a).cpu_caches
-                    .spec_index(i).view().view())
-    implies
-        container_allocator_free_4k_page_wf(
-            post.allocator_4k_map,
-            post.page_array,
-        )
-    by {
-        lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
-            pre,
-            post,
-        );
-    };
+    reveal(container_allocator_free_4k_page_wf);
+    reveal(container_allocator_global_free_4k_page_wf);
+    reveal(container_allocator_cpu_cache_free_4k_page_wf);
 }
 
 }

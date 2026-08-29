@@ -3,14 +3,11 @@ use core::marker::ConstParamTy;
 use std::usize;
 verus! {
 
-use crate::define::*;
-use crate::locks::*;
+use crate::*;
 use vstd::simple_pptr::*;
-use crate::util::page_ptr_util_u::*;
 use super::pagemap_util_t::*;
 use super::entry::*;
 use super::pagemap::*;
-use crate::lemma::lemma_u::*;
 
 /// Mapping keys are CPU virtual addresses for ordinary page tables and IOVAs
 /// for VT-d second-level tables.  In particular, an IOMMU mapping may use L4

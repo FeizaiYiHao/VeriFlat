@@ -90,10 +90,19 @@ impl KernelK {
                 Ghost(KernelObjId::PageTable(pagetable_ptr)),
             );
             proof {
+                assert(pagetable_invariant_fields_unchanged(
+                    old(self).pagetable_map,
+                    self.pagetable_map,
+                )) by {
+                    pagetable_lock_op_preserves_invariant_fields(
+                        old(self).pagetable_map,
+                        self.pagetable_map,
+                        pagetable_ptr,
+                    );
+                };
                 assert(self.subsystems_inv()) by {
                     assert(pagetable_perms_wf(self.pagetable_map)) by {
-                        reveal(pagetable_perms_wf);
-
+                        lemma_no_change_imply_pagetable_perms_wf_forall();
                     };
                     reveal(KernelK::default_pagetable_wf);
                 };
@@ -101,14 +110,14 @@ impl KernelK {
                     assert(process_pagetable_match(
                         self.process_map,
                         self.pagetable_map,
-                    )) by { reveal(process_pagetable_match); };
+                    )) by {
+                        lemma_no_change_imply_process_pagetable_match_for_pagetable_fields_forall();
+                    };
                     assert(page_pagetable_wf(
                         self.pagetable_map,
                         self.page_array,
                     )) by {
-                        reveal(mapped_4k_page_pagetable_wf);
-                        reveal(mapped_2m_page_pagetable_wf);
-                        reveal(mapped_1g_page_pagetable_wf);
+                        lemma_no_change_imply_page_pagetable_wf_for_pagetable_fields_forall();
                     };
                     assert(container_process_page_pagetable_wf(
                         self.container_map,
@@ -116,17 +125,14 @@ impl KernelK {
                         self.pagetable_map,
                         self.page_array,
                     )) by {
-                        reveal(container_process_page_pagetable_wf);
-                        reveal(process_pagetable_match);
-                        reveal(container_page_owner_wf);
-                        reveal(mapped_4k_page_pagetable_wf);
-                        reveal(mapped_2m_page_pagetable_wf);
-                        reveal(mapped_1g_page_pagetable_wf);
+                        lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall();
                     };
                     assert(pagetable_pages_wf(
                         self.pagetable_map,
                         self.page_array,
-                    )) by { reveal(pagetable_pages_wf); };
+                    )) by {
+                        lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall();
+                    };
                 };
                 assert(cpu_dirty_map_wf(
                     self.container_map,
@@ -134,22 +140,19 @@ impl KernelK {
                     self.cpu_array,
                     self.cpu_tlb,
                     self.pagetable_map,
-                )) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+                )) by {
+                    lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall();
+                };
                 assert(tlb_wf_spec(
                     self.cpu_tlb,
                     self.pagetable_map,
                     self.cpu_array,
-                )) by { reveal(tlb_wf_spec); };
+                )) by {
+                    lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall();
+                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(pagetable_objects_unlocked(
-                    old(self).pagetable_map, old(lctx).thread_id(),
-                ) ==> pagetable_objects_unlocked_except(
-                    self.pagetable_map, lctx.thread_id(), set![pagetable_ptr],
-                )) by {
-                    reveal(pagetable_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -255,10 +258,19 @@ impl KernelK {
                 Ghost(KernelObjId::PageTable(pagetable_ptr)),
             );
             proof {
+                assert(pagetable_invariant_fields_unchanged(
+                    old(self).pagetable_map,
+                    self.pagetable_map,
+                )) by {
+                    pagetable_lock_op_preserves_invariant_fields(
+                        old(self).pagetable_map,
+                        self.pagetable_map,
+                        pagetable_ptr,
+                    );
+                };
                 assert(self.subsystems_inv()) by {
                     assert(pagetable_perms_wf(self.pagetable_map)) by {
-                        reveal(pagetable_perms_wf);
-
+                        lemma_no_change_imply_pagetable_perms_wf_forall();
                     };
                     reveal(KernelK::default_pagetable_wf);
                 };
@@ -266,14 +278,14 @@ impl KernelK {
                     assert(process_pagetable_match(
                         self.process_map,
                         self.pagetable_map,
-                    )) by { reveal(process_pagetable_match); };
+                    )) by {
+                        lemma_no_change_imply_process_pagetable_match_for_pagetable_fields_forall();
+                    };
                     assert(page_pagetable_wf(
                         self.pagetable_map,
                         self.page_array,
                     )) by {
-                        reveal(mapped_4k_page_pagetable_wf);
-                        reveal(mapped_2m_page_pagetable_wf);
-                        reveal(mapped_1g_page_pagetable_wf);
+                        lemma_no_change_imply_page_pagetable_wf_for_pagetable_fields_forall();
                     };
                     assert(container_process_page_pagetable_wf(
                         self.container_map,
@@ -281,17 +293,14 @@ impl KernelK {
                         self.pagetable_map,
                         self.page_array,
                     )) by {
-                        reveal(container_process_page_pagetable_wf);
-                        reveal(process_pagetable_match);
-                        reveal(container_page_owner_wf);
-                        reveal(mapped_4k_page_pagetable_wf);
-                        reveal(mapped_2m_page_pagetable_wf);
-                        reveal(mapped_1g_page_pagetable_wf);
+                        lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall();
                     };
                     assert(pagetable_pages_wf(
                         self.pagetable_map,
                         self.page_array,
-                    )) by { reveal(pagetable_pages_wf); };
+                    )) by {
+                        lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall();
+                    };
                 };
                 assert(cpu_dirty_map_wf(
                     self.container_map,
@@ -299,22 +308,19 @@ impl KernelK {
                     self.cpu_array,
                     self.cpu_tlb,
                     self.pagetable_map,
-                )) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+                )) by {
+                    lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall();
+                };
                 assert(tlb_wf_spec(
                     self.cpu_tlb,
                     self.pagetable_map,
                     self.cpu_array,
-                )) by { reveal(tlb_wf_spec); };
+                )) by {
+                    lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall();
+                };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(pagetable_objects_unlocked_except(
-                    old(self).pagetable_map, old(lctx).thread_id(), set![pagetable_ptr],
-                ) ==> pagetable_objects_unlocked(
-                    self.pagetable_map, lctx.thread_id(),
-                )) by {
-                    reveal(pagetable_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

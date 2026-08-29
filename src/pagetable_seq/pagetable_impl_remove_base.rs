@@ -2,15 +2,12 @@ use vstd::prelude::*;
 verus! {
 
 use super::pagemap_util_t::*;
-use crate::util::page_ptr_util_u::*;
+use crate::*;
 use super::pagetable_spec::*;
 use super::pagemap::*;
 use super::entry::*;
-use crate::define::*;
-use crate::locks::*;
 use vstd::simple_pptr::*;
 use vstd::assert_sets_equal;
-use crate::lemma::lemma_u::*;
 
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     /// First half of 4K unmap: make future page walks miss while retaining the

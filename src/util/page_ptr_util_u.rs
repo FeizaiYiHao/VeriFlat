@@ -1,8 +1,7 @@
 use vstd::prelude::*;
 verus! {
 
-use crate::define::*;
-use crate::lemma::lemma_t::*;
+use crate::*;
 
 /// Page Entry Index valid
 pub open spec fn pei_valid(index: usize) -> bool {

@@ -3,7 +3,6 @@ use crate::*;
 
 verus! {
 impl KernelK {
-        #[verifier::spinoff_prover]
         pub fn wlock_thread_unless_killed(
             &mut self,
             thread_ptr: RwLockThreadPtr,
@@ -108,66 +107,20 @@ impl KernelK {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        assert(container_process_allocator_quota_4k_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_4k_map,
-                        )) by {
-                            container_process_allocator_quota_4k_wf_preserved_for_thread_fields_forall();
-                        };
-                        assert(container_process_allocator_quota_2m_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_2m_map,
-                        )) by {
-                            container_process_allocator_quota_2m_wf_preserved_for_thread_fields_forall();
-                        };
-                        assert(container_process_allocator_quota_1g_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            container_process_allocator_quota_1g_wf_preserved_for_thread_fields_forall();
-                        };
-                        assert(thread_pages_wf(self.thread_map, self.page_array)) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_pages_wf);
-                        };
-                        assert(thread_staged_pages_wf(self.thread_map, self.page_array)) by {
-                            lemma_no_change_imply_thread_staged_pages_wf_forall();
-                        };
+                        thread_no_change_imply_memory_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(self.process_management_inv()) by {
-                        thread_invariant_fields_unchanged_implies_process_management_fields(old(self).thread_map, self.thread_map);
-                        assert(thread_caller_callee_wf(self.thread_map)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map); };
-                        assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
-                        assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
-                        assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.endpoint_map); };
-                        assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.scheduler_map); };
-                        assert(container_thread_wf(self.container_map, self.thread_map)) by { container_thread_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map); };
-                        assert(process_thread_wf(self.process_map, self.thread_map)) by { process_thread_wf_preserved_for_thread_process_management_fields(self.process_map, old(self).thread_map, self.thread_map); };
-                        assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.cpu_array); };
+                        thread_no_change_imply_process_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(thread_objects_unlocked(
-                    old(self).thread_map, old(lctx).thread_id(),
-                ) ==> thread_objects_unlocked_except(
-                    self.thread_map, lctx.thread_id(), set![thread_ptr],
-                )) by {
-                    reveal(thread_objects_unlocked_except);
-                };
-                assert(thread_objects_unlocked(
-                    old(self).thread_map, old(lctx).thread_id(),
-                ) && !res.0 ==> thread_objects_unlocked(
-                    self.thread_map, lctx.thread_id(),
-                )) by {
-                    reveal(thread_objects_unlocked_except);
                 };
                 if res.0 {
                     assert(
@@ -200,7 +153,6 @@ impl KernelK {
         /// before releasing the write lock, because once unlocked the global
         /// invariant `thread_free_quota_pending_empty_unless_wlocked` demands it.
         /// A freshly-created thread satisfies this (its pendings are all zero).
-        #[verifier::spinoff_prover]
         pub fn wunlock_thread(
             &mut self,
             thread_ptr: RwLockThreadPtr,
@@ -341,65 +293,20 @@ impl KernelK {
                         reveal(KernelK::default_pagetable_wf);
                     };
                     assert(self.memory_management_inv()) by {
-                        assert(container_process_allocator_quota_4k_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_4k_map,
-                        )) by {
-                            container_process_allocator_quota_4k_wf_preserved_for_thread_fields_forall();
-                        };
-                        assert(container_process_allocator_quota_2m_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_2m_map,
-                        )) by {
-                            container_process_allocator_quota_2m_wf_preserved_for_thread_fields_forall();
-                        };
-                        assert(container_process_allocator_quota_1g_wf(
-                            self.container_map,
-                            self.process_map,
-                            self.thread_map,
-                            self.allocator_1g_map,
-                        )) by {
-                            container_process_allocator_quota_1g_wf_preserved_for_thread_fields_forall();
-                        };
-                        assert(thread_pages_wf(
-                            self.thread_map,
-                            self.page_array,
-                        )) by {
-                            reveal(thread_invariant_fields_unchanged);
-                            reveal(thread_pages_wf);
-                        };
-                        assert(thread_staged_pages_wf(
-                            self.thread_map,
-                            self.page_array,
-                        )) by {
-                            lemma_no_change_imply_thread_staged_pages_wf_forall();
-                        };
+                        thread_no_change_imply_memory_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                     assert(self.process_management_inv()) by {
-                        thread_invariant_fields_unchanged_implies_process_management_fields(old(self).thread_map, self.thread_map);
-                        assert(thread_caller_callee_wf(self.thread_map)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map); };
-                        assert(thread_endpoint_ref_counter_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
-                        assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.endpoint_map); };
-                        assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.endpoint_map); };
-                        assert(container_thread_scheduler_wf(self.container_map, self.thread_map, self.scheduler_map)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map, self.scheduler_map); };
-                        assert(container_thread_wf(self.container_map, self.thread_map)) by { container_thread_wf_preserved_for_thread_process_management_fields(self.container_map, old(self).thread_map, self.thread_map); };
-                        assert(process_thread_wf(self.process_map, self.thread_map)) by { process_thread_wf_preserved_for_thread_process_management_fields(self.process_map, old(self).thread_map, self.thread_map); };
-                        assert(thread_cpu_wf(self.thread_map, self.cpu_array)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(self).thread_map, self.thread_map, self.cpu_array); };
+                        thread_no_change_imply_process_management_inv(
+                            *old(self),
+                            *self,
+                        );
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
 
-                };
-                assert(thread_objects_unlocked_except(
-                    old(self).thread_map, old(lctx).thread_id(), set![thread_ptr],
-                ) ==> thread_objects_unlocked(
-                    self.thread_map, lctx.thread_id(),
-                )) by {
-                    reveal(thread_objects_unlocked_except);
                 };
             }
         }

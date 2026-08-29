@@ -246,17 +246,6 @@ use crate::*;
                 assert(pagetable_pages_wf(
                     kernel.pagetable_map, kernel.page_array,
                 )) by {
-                    assert({
-                        &&& kernel.pagetable_map.unchanged_except(
-                            &old(kernel).pagetable_map, pagetable_ptr,
-                        )
-                        &&& kernel.pagetable_map.spec_index(pagetable_ptr).view()
-                            .page_closure()
-                            == old(kernel).pagetable_map.spec_index(pagetable_ptr)
-                                .view().page_closure()
-                    }) by {
-                        reveal(pagetable_pages_wf);
-                    };
                     reveal(pagetable_pages_wf);
                 };
                 assert(iommu_table_pages_wf(kernel.iommu_table_map, kernel.page_array)) by { reveal(iommu_table_pages_wf); };
@@ -271,27 +260,24 @@ use crate::*;
                 assert(process_pagetable_match(
                     kernel.process_map, kernel.pagetable_map,
                 )) by {
-                    assert({
-                        &&& kernel.process_map == old(kernel).process_map
-                        &&& kernel.pagetable_map.unchanged_except(
-                            &old(kernel).pagetable_map, pagetable_ptr,
-                        )
-                        &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().proc_ptr
-                            == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().proc_ptr
-                        &&& kernel.pagetable_map.spec_index(pagetable_ptr).view().pcid
-                            == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().pcid
-                    }) by {
-                        reveal(process_pagetable_match);
-                    };
                     reveal(process_pagetable_match);
                 };
                 assert(container_process_allocator_quota_wf(kernel.container_map, kernel.process_map, kernel.thread_map, kernel.allocator_4k_map, kernel.allocator_2m_map, kernel.allocator_1g_map)) by {
-                    reveal(thread_quota_4k_fields_unchanged);
-                    reveal(thread_quota_2m_fields_unchanged);
-                    reveal(thread_quota_1g_fields_unchanged);
-                    container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields_forall();
-                    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields_forall();
-                    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields_forall();
+                    container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_4k_map,
+                    );
+                    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_2m_map,
+                    );
+                    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
+                        kernel.container_map, kernel.process_map,
+                        old(kernel).thread_map, kernel.thread_map,
+                        kernel.allocator_1g_map,
+                    );
                 };
                 assert(container_allocator_free_4k_page_wf(kernel.allocator_4k_map, kernel.page_array)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(kernel.allocator_4k_map, old(kernel).page_array, kernel.page_array, page_index); };
                 assert(container_allocator_free_2m_page_wf(kernel.allocator_2m_map, kernel.page_array)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(kernel.allocator_2m_map, old(kernel).page_array, kernel.page_array, page_index); };

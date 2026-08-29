@@ -301,6 +301,7 @@ verus! {
                 lock_id_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
+                final(lctx).kernel_view_locking_state() is Acquire,
                 // LocalContext is thread-local: the phase flips to Acquire,
                 // while its identity and exact held-lock set stay put.
                 final(lctx).thread_id() == old(lctx).thread_id(),
@@ -483,7 +484,6 @@ verus! {
                     ==> allocator_objects_unlocked(
                         final(self).allocator_1g_map, final(lctx).thread_id()),
                 lock_id_aligned(final(self), final(lctx)),
-                final(lctx).kernel_view_locking_state() is Acquire,
                 // Record this thread's completed section before refreshing the
                 // snapshot to the post-interleaving projection.
                 final(steps).steps == record_user_view_change(

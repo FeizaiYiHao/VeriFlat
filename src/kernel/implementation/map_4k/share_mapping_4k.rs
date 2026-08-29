@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 use crate::*;
 
 verus! {
@@ -340,7 +339,6 @@ pub fn share_mapping_4k_source_precheck(
         kernel.inv(),
         source_range.wf(),
         kernel.pagetable_map.dom().contains(source_pagetable),
-        kernel.pagetable_map.spec_index(source_pagetable).view().wf(),
         kernel.pagetable_map.spec_index(source_pagetable).view().kernel_l4_end
             <= spec_va2index(source_range.start).0,
         kernel.pagetable_map.spec_index(source_pagetable).locked_by(lctx),
@@ -362,6 +360,7 @@ pub fn share_mapping_4k_source_precheck(
         assert({
             &&& kernel.pagetable_map.perms_wf()
             &&& kernel.pagetable_map.spec_index(source_pagetable).is_init()
+            &&& kernel.pagetable_map.spec_index(source_pagetable).view().wf()
         }) by {
             reveal(pagetable_perms_wf);
         };
@@ -447,6 +446,8 @@ fn share_one_mapping_4k(
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        final(kernel).thread_map.lock_id_by_key(target_thread)
+            == old(kernel).thread_map.lock_id_by_key(target_thread),
         final(kernel).cpu_array.spec_index(cpu_id).view()
             == old(kernel).cpu_array.spec_index(cpu_id).view(),
         final(lctx).lock_entry_contains(
@@ -546,7 +547,9 @@ fn share_one_mapping_4k(
             &&& kernel.pagetable_map.perms_wf()
             &&& kernel.pagetable_map.spec_index(source_pagetable).inv()
             &&& kernel.pagetable_map.spec_index(target_pagetable).inv()
-        }) by { reveal(pagetable_perms_wf); };
+        }) by {
+            reveal(pagetable_perms_wf);
+        };
     }
     let target_indices = va2index(target_va);
     proof {
@@ -605,23 +608,19 @@ fn share_one_mapping_4k(
     }
 
     proof {
-        assert(index_valid(NUM_PAGES, page_index)) by {
+        assert({
+            &&& index_valid(NUM_PAGES, page_index)
+            &&& kernel.page_array.spec_index(page_index).view().view().state
+                is Mapped4k
+            &&& !kernel.page_array.spec_index(page_index).view()
+                .locked_by_thread(lctx.thread_id())
+            &&& kernel.page_array.lock_id_by_index(page_index).major
+                == MAPPED_PAGE_LOCK_MAJOR
+            &&& lctx.lock_id_acyclic(
+                kernel.page_array.lock_id_by_index(page_index))
+        }) by {
             page_ptr_valid_imply_page_index_valid();
-        };
-        assert(kernel.page_array.spec_index(page_index).view().view().state
-            is Mapped4k) by {
             reveal(mapped_4k_page_pagetable_wf);
-        };
-        assert(!kernel.page_array.spec_index(page_index).view()
-            .locked_by_thread(lctx.thread_id())) by {
-            reveal(page_objects_unlocked);
-        };
-        assert(kernel.page_array.lock_id_by_index(page_index).major
-            == MAPPED_PAGE_LOCK_MAJOR) by {
-            reveal(page_array_wf);
-        };
-        assert(lctx.lock_id_acyclic(
-            kernel.page_array.lock_id_by_index(page_index))) by {
             reveal(page_array_wf);
         };
     }
@@ -636,12 +635,13 @@ fn share_one_mapping_4k(
         }) by {
             reveal(page_array_wf);
         };
-        assert(!kernel.page_array.spec_index(page_index).view().view()
-            .mappings().contains((target_pagetable, target_va))) by {
+        assert({
+            &&& !kernel.page_array.spec_index(page_index).view().view()
+                .mappings().contains((target_pagetable, target_va))
+            &&& kernel.page_array.spec_index(page_index).view().view().ref_count
+                < usize::MAX
+        }) by {
             reveal(mapped_4k_page_pagetable_wf);
-        };
-        assert(kernel.page_array.spec_index(page_index).view().view().ref_count
-            < usize::MAX) by {
             mapped_4k_page_ref_count_lt_usize_max(
                 kernel.pagetable_map, kernel.page_array, page_index,
             );
@@ -793,17 +793,6 @@ fn share_one_mapping_4k(
             assert(pagetable_pages_wf(
                 kernel.pagetable_map, kernel.page_array,
             )) by {
-                assert({
-                    &&& kernel.pagetable_map.unchanged_except(
-                        &old(kernel).pagetable_map, target_pagetable,
-                    )
-                    &&& kernel.pagetable_map.spec_index(target_pagetable)
-                        .view().page_closure()
-                        == old(kernel).pagetable_map
-                            .spec_index(target_pagetable).view().page_closure()
-                }) by {
-                    reveal(pagetable_pages_wf);
-                };
                 reveal(pagetable_pages_wf);
             };
             assert(iommu_table_pages_wf(
@@ -851,22 +840,6 @@ fn share_one_mapping_4k(
             assert(process_pagetable_match(
                 kernel.process_map, kernel.pagetable_map,
             )) by {
-                assert({
-                    &&& kernel.process_map == old(kernel).process_map
-                    &&& kernel.pagetable_map.unchanged_except(
-                        &old(kernel).pagetable_map, target_pagetable,
-                    )
-                    &&& kernel.pagetable_map.spec_index(target_pagetable)
-                        .view().proc_ptr
-                        == old(kernel).pagetable_map
-                            .spec_index(target_pagetable).view().proc_ptr
-                    &&& kernel.pagetable_map.spec_index(target_pagetable)
-                        .view().pcid
-                        == old(kernel).pagetable_map
-                            .spec_index(target_pagetable).view().pcid
-                }) by {
-                    reveal(process_pagetable_match);
-                };
                 reveal(process_pagetable_match);
             };
             assert(container_allocator_free_4k_page_wf(
@@ -942,11 +915,6 @@ fn share_one_mapping_4k(
                 reveal(process_pagetable_match);
             };
         };
-        assert(page_objects_unlocked_except(
-            kernel.page_array, lctx.thread_id(), set![page_index],
-        )) by {
-            reveal(page_objects_unlocked_except);
-        };
     }
     kernel.wunlock_page(
         page_index,
@@ -954,56 +922,7 @@ fn share_one_mapping_4k(
         Tracked(page_lock_perm),
     );
     proof {
-        assert(lctx.lock_entry_contains(
-            kernel.thread_map.lock_id_by_key(source_thread),
-            KernelObjId::Thread(source_thread),
-        )) by {
-            lock_id_fields_eq_imply_eq();
-        };
-        assert(lctx.lock_entry_contains(
-            kernel.thread_map.lock_id_by_key(target_thread),
-            KernelObjId::Thread(target_thread),
-        )) by {
-            lock_id_fields_eq_imply_eq();
-        };
-        assert(lctx.lock_entry_contains(
-            kernel.pagetable_map.lock_id_by_key(source_pagetable),
-            KernelObjId::PageTable(source_pagetable),
-        )) by {
-            lock_id_fields_eq_imply_eq();
-        };
-        assert(lctx.lock_entry_contains(
-            kernel.pagetable_map.lock_id_by_key(target_pagetable),
-            KernelObjId::PageTable(target_pagetable),
-        )) by {
-            lock_id_fields_eq_imply_eq();
-        };
-        assert(thread_objects_unlocked_except(
-            kernel.thread_map, lctx.thread_id(),
-            set![source_thread, target_thread],
-        )) by {
-            reveal(thread_objects_unlocked_except);
-        };
-        assert(kernel.pagetable_map.unchanged_except(
-            &old(kernel).pagetable_map, target_pagetable,
-        )) by {
-            reveal(pagetable_perms_wf);
-        };
-        assert(pagetable_objects_unlocked_except(
-            kernel.pagetable_map, lctx.thread_id(),
-            set![source_pagetable, target_pagetable],
-        )) by {
-            reveal(pagetable_objects_unlocked_except);
-        };
         kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
-        assert(share_mapping_4k_held_context(
-            kernel, &*lctx, source_thread, target_thread,
-            source_pagetable, target_pagetable, source_thread_lock_perm,
-            target_thread_lock_perm, source_pagetable_lock_perm,
-            target_pagetable_lock_perm,
-        )) by {
-            lock_id_fields_eq_imply_eq();
-        };
         assert({
             &&& kernel.container_map.dom().contains(target_container)
             &&& kernel.container_map.spec_index(target_container).view_rodata()
@@ -1027,25 +946,6 @@ fn share_one_mapping_4k(
                 )
         }) by {
             reveal(mapped_4k_page_pagetable_wf);
-        };
-        assert(mmap_4k_allocation_ready(kernel, &*lctx)) by {
-            reveal(mmap_4k_allocation_ready);
-            reveal(mmap_4k_no_page_locks);
-            reveal(allocator_objects_unlocked);
-        };
-        assert(thread_objects_unlocked_except(
-            kernel.thread_map, lctx.thread_id(),
-            set![source_thread, target_thread],
-        )) by {
-            reveal(thread_objects_unlocked_except);
-            reveal(held_threads_unchanged);
-        };
-        assert(pagetable_objects_unlocked_except(
-            kernel.pagetable_map, lctx.thread_id(),
-            set![source_pagetable, target_pagetable],
-        )) by {
-            reveal(pagetable_objects_unlocked_except);
-            reveal(held_pagetables_unchanged);
         };
     }
 }
@@ -1088,7 +988,6 @@ pub fn share_mapping_4k_source_owner_precheck(
             KernelObjId::Cpu(cpu_id),
         ),
         source_range.wf(),
-        old(kernel).pagetable_map.spec_index(source_pagetable).view().wf(),
         old(kernel).pagetable_map.spec_index(source_pagetable).view()
             .kernel_l4_end
             <= spec_va2index(source_range.start).0,
@@ -1184,8 +1083,11 @@ pub fn share_mapping_4k_source_owner_precheck(
         assert({
             &&& kernel.thread_map.perms_wf()
             &&& kernel.thread_map.spec_index(target_thread).inv()
+            &&& kernel.pagetable_map.perms_wf()
+            &&& kernel.pagetable_map.spec_index(source_pagetable).view().wf()
         }) by {
             reveal(thread_perms_wf);
+            reveal(pagetable_perms_wf);
         };
     }
     let target_container;
@@ -1338,24 +1240,18 @@ pub fn share_mapping_4k_source_owner_precheck(
                     .spec_index(source_pagetable).view().mapping_4k()
                     .spec_index(source_va)
                 &&& page_ptr_valid(page_ptr)
+                &&& index_valid(NUM_PAGES, page_index)
+                &&& !kernel.page_array.spec_index(page_index).view()
+                    .locked_by_thread(lctx.thread_id())
+                &&& kernel.page_array.lock_id_by_index(page_index).major
+                    == MAPPED_PAGE_LOCK_MAJOR
+                &&& lctx.lock_id_acyclic(
+                    kernel.page_array.lock_id_by_index(page_index))
             }) by {
                 reveal(PageTable::wf_mapping_4k);
                 seq_index_lemma::<VAddr>();
                 source_range.va_range_lemma();
-            };
-            assert(index_valid(NUM_PAGES, page_index)) by {
                 page_ptr_valid_imply_page_index_valid();
-            };
-            assert(!kernel.page_array.spec_index(page_index).view()
-                .locked_by_thread(lctx.thread_id())) by {
-                reveal(page_objects_unlocked);
-            };
-            assert(kernel.page_array.lock_id_by_index(page_index).major
-                == MAPPED_PAGE_LOCK_MAJOR) by {
-                reveal(page_array_wf);
-            };
-            assert(lctx.lock_id_acyclic(
-                kernel.page_array.lock_id_by_index(page_index))) by {
                 reveal(page_array_wf);
             };
         }
@@ -1416,126 +1312,7 @@ pub fn share_mapping_4k_source_owner_precheck(
             Tracked(page_lock_perm),
         );
         proof {
-            assert(lctx.lock_entry_contains(
-                kernel.thread_map.lock_id_by_key(source_thread),
-                KernelObjId::Thread(source_thread),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(lctx.lock_entry_contains(
-                kernel.thread_map.lock_id_by_key(target_thread),
-                KernelObjId::Thread(target_thread),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(lctx.lock_entry_contains(
-                kernel.pagetable_map.lock_id_by_key(source_pagetable),
-                KernelObjId::PageTable(source_pagetable),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(lctx.lock_entry_contains(
-                kernel.pagetable_map.lock_id_by_key(target_pagetable),
-                KernelObjId::PageTable(target_pagetable),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![source_thread, target_thread],
-            )) by {
-                reveal(thread_objects_unlocked_except);
-            };
-            assert(pagetable_objects_unlocked_except(
-                kernel.pagetable_map, lctx.thread_id(),
-                set![source_pagetable, target_pagetable],
-            )) by {
-                reveal(pagetable_objects_unlocked_except);
-            };
             kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
-            assert({
-                &&& held_containers_unchanged(
-                    old(kernel).container_map, kernel.container_map, old(lctx),
-                )
-                &&& held_processes_unchanged(
-                    old(kernel).process_map, kernel.process_map, old(lctx),
-                )
-                &&& held_endpoints_unchanged(
-                    old(kernel).endpoint_map, kernel.endpoint_map, old(lctx),
-                )
-                &&& held_schedulers_unchanged(
-                    old(kernel).scheduler_map, kernel.scheduler_map, old(lctx),
-                )
-                &&& held_pcid_allocators_unchanged(
-                    old(kernel).pcid_allocator_map,
-                    kernel.pcid_allocator_map,
-                    old(lctx),
-                )
-                &&& held_iommu_tables_unchanged(
-                    old(kernel).iommu_table_map,
-                    kernel.iommu_table_map,
-                    old(lctx),
-                )
-                &&& held_cpus_unchanged(
-                    old(kernel).cpu_array, kernel.cpu_array, old(lctx),
-                )
-                &&& (allocator_objects_unlocked(
-                    old(kernel).allocator_2m_map, old(lctx).thread_id(),
-                ) ==> allocator_objects_unlocked(
-                    kernel.allocator_2m_map, lctx.thread_id(),
-                ))
-                &&& (allocator_objects_unlocked(
-                    old(kernel).allocator_1g_map, old(lctx).thread_id(),
-                ) ==> allocator_objects_unlocked(
-                    kernel.allocator_1g_map, lctx.thread_id(),
-                ))
-            }) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert({
-                &&& kernel.cpu_array.spec_index(cpu_id).view()
-                    == old(kernel).cpu_array.spec_index(cpu_id).view()
-                &&& kernel.cpu_array.spec_index(cpu_id).view()
-                    .wlocked_by(&*lctx)
-                &&& kernel.cpu_array.lock_id_by_index(cpu_id)
-                    == old(kernel).cpu_array.lock_id_by_index(cpu_id)
-                &&& lctx.lock_entry_contains(
-                    kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id),
-                )
-            }) by {
-                reveal(held_cpus_unchanged);
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(share_mapping_4k_held_context(
-                kernel, &*lctx, source_thread, target_thread,
-                source_pagetable, target_pagetable,
-                source_thread_lock_perm, target_thread_lock_perm,
-                source_pagetable_lock_perm, target_pagetable_lock_perm,
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![source_thread, target_thread],
-            )) by {
-                reveal(thread_objects_unlocked_except);
-                reveal(held_threads_unchanged);
-            };
-            assert(pagetable_objects_unlocked_except(
-                kernel.pagetable_map, lctx.thread_id(),
-                set![source_pagetable, target_pagetable],
-            )) by {
-                reveal(pagetable_objects_unlocked_except);
-                reveal(held_pagetables_unchanged);
-            };
-            assert(mmap_4k_allocation_ready(old(kernel), old(lctx)) ==>
-                mmap_4k_allocation_ready(kernel, &*lctx)) by {
-                reveal(mmap_4k_allocation_ready);
-                reveal(mmap_4k_no_page_locks);
-                reveal(page_objects_unlocked);
-                reveal(allocator_objects_unlocked);
-            };
             assert(share_mapping_4k_source_range_present(
                 kernel, source_pagetable, source_range,
             )) by {
@@ -1910,7 +1687,6 @@ pub fn share_mapping_4k(
                 target_range,
                 (i + 1) as int,
             )) by {
-                broadcast use vstd::map::group_map_lemmas;
                 seq_index_lemma::<VAddr>();
                 target_range.va_range_lemma();
             };
@@ -1980,7 +1756,6 @@ pub fn share_mapping_4k_build_and_share(
         source_range.len == target_range.len,
         source_range.len > 0,
         source_range.len <= usize::MAX / 3usize,
-        old(kernel).pagetable_map.spec_index(source_pagetable).view().wf(),
         old(kernel).pagetable_map.spec_index(source_pagetable).view()
             .kernel_l4_end <= spec_v2l4index(source_range.start),
         share_mapping_4k_source_range_present(
@@ -1994,7 +1769,6 @@ pub fn share_mapping_4k_build_and_share(
             .free_quota_pending_clean(),
         old(kernel).thread_map.spec_index(target_thread).view().quota_4k
             >= 3 * target_range.len,
-        old(kernel).pagetable_map.spec_index(target_pagetable).view().wf(),
         old(kernel).pagetable_map.spec_index(target_pagetable).view().kernel_l4_end
             <= spec_v2l4index(target_range.start),
         old(kernel).pagetable_map.spec_index(target_pagetable).view()
@@ -2061,6 +1835,8 @@ pub fn share_mapping_4k_build_and_share(
             == old(steps).steps.len() + source_range.len,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
         final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        final(kernel).thread_map.lock_id_by_key(target_thread)
+            == old(kernel).thread_map.lock_id_by_key(target_thread),
         final(kernel).pagetable_map.spec_index(source_pagetable).view()
             == old(kernel).pagetable_map.spec_index(source_pagetable).view(),
         final(kernel).thread_map.spec_index(source_thread).view()
@@ -2111,6 +1887,8 @@ pub fn share_mapping_4k_build_and_share(
     let target_range_start = target_range.start;
     proof {
         assert({
+            &&& kernel.pagetable_map.spec_index(source_pagetable).view().wf()
+            &&& kernel.pagetable_map.spec_index(target_pagetable).view().wf()
             &&& kernel.pagetable_map.spec_index(target_pagetable).view()
                 .wf_mapping_1g()
             &&& kernel.pagetable_map.spec_index(target_pagetable).view()
@@ -2197,6 +1975,8 @@ pub fn share_mapping_4k_build_and_share(
             steps.steps.len() == old(steps).steps.len() + i,
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.lock_id_set() == old(lctx).lock_id_set(),
+            kernel.thread_map.lock_id_by_key(target_thread)
+                == old(kernel).thread_map.lock_id_by_key(target_thread),
             old(kernel).thread_map.dom().contains(source_thread),
             old(kernel).thread_map.dom().contains(target_thread),
             old(kernel).pagetable_map.dom().contains(source_pagetable),
@@ -2286,6 +2066,7 @@ pub fn share_mapping_4k_build_and_share(
                 &&& spec_va_4k_valid(target_range_start)
                 &&& spec_va_4k_valid(target_va)
                 &&& target_range_start <= target_va
+                &&& va_4k_valid(target_va)
             }) by {
                 target_range.va_range_lemma();
             };
@@ -2296,9 +2077,6 @@ pub fn share_mapping_4k_build_and_share(
                     spec_va_4k_valid(target_va),
                     target_range_start <= target_va,
             ;
-            assert(va_4k_valid(target_va)) by {
-                target_range.va_range_lemma();
-            };
             assert(kernel.pagetable_map.spec_index(target_pagetable).view()
                 .kernel_l4_end <= spec_v2l4index(target_va)) by {
                 target_range.va_range_lemma();
@@ -2338,29 +2116,31 @@ pub fn share_mapping_4k_build_and_share(
             }) by {
                 reveal(pagetable_perms_wf);
             };
-            assert(kernel.pagetable_map.spec_index(target_pagetable).view()
-                .spec_resolve_mapping_1g_l3(
-                    spec_v2l4index(target_va), spec_v2l3index(target_va),
-                ) is None) by {
+            assert({
+                &&& kernel.pagetable_map.spec_index(target_pagetable).view()
+                    .spec_resolve_mapping_1g_l3(
+                        spec_v2l4index(target_va), spec_v2l3index(target_va),
+                    ) is None
+                &&& kernel.pagetable_map.spec_index(target_pagetable).view()
+                    .spec_resolve_mapping_2m_l2(
+                        spec_v2l4index(target_va), spec_v2l3index(target_va),
+                        spec_v2l2index(target_va),
+                    ) is None
+            }) by {
                 reveal(PageTable::wf_mapping_1g);
-            };
-            assert(kernel.pagetable_map.spec_index(target_pagetable).view()
-                .spec_resolve_mapping_2m_l2(
-                    spec_v2l4index(target_va), spec_v2l3index(target_va),
-                    spec_v2l2index(target_va),
-                ) is None) by {
                 reveal(PageTable::wf_mapping_2m);
             };
-            assert(!kernel.pagetable_map.spec_index(target_pagetable).view()
-                .mapping_4k().dom().contains(target_va)) by {
+            assert({
+                &&& !kernel.pagetable_map.spec_index(target_pagetable).view()
+                    .mapping_4k().dom().contains(target_va)
+                &&& kernel.pagetable_map.spec_index(target_pagetable).view()
+                    .spec_resolve_mapping_4k_l1(
+                        spec_v2l4index(target_va), spec_v2l3index(target_va),
+                        spec_v2l2index(target_va), spec_v2l1index(target_va),
+                    ) is None
+            }) by {
                 target_range.va_range_lemma();
                 seq_index_lemma::<VAddr>();
-            };
-            assert(kernel.pagetable_map.spec_index(target_pagetable).view()
-                .spec_resolve_mapping_4k_l1(
-                    spec_v2l4index(target_va), spec_v2l3index(target_va),
-                    spec_v2l2index(target_va), spec_v2l1index(target_va),
-                ) is None) by {
                 reveal(PageTable::wf_mapping_4k);
                 spec_va_4k_index_roundtrip();
             };
@@ -2381,18 +2161,6 @@ pub fn share_mapping_4k_build_and_share(
             Tracked(target_pagetable_lock_perm),
         );
         proof {
-            assert(thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![source_thread, target_thread],
-            )) by {
-                reveal(thread_objects_unlocked_except);
-            };
-            assert(pagetable_objects_unlocked_except(
-                kernel.pagetable_map, lctx.thread_id(),
-                set![source_pagetable, target_pagetable],
-            )) by {
-                reveal(pagetable_objects_unlocked_except);
-            };
             assert(share_mapping_4k_held_context(
                 kernel, &*lctx, source_thread, target_thread,
                 source_pagetable, target_pagetable,
@@ -2401,7 +2169,6 @@ pub fn share_mapping_4k_build_and_share(
             )) by {
                 reveal(process_thread_wf);
                 reveal(process_pagetable_match);
-                lock_id_fields_eq_imply_eq();
             };
             assert(share_mapping_4k_source_range_present(
                 kernel, source_pagetable, source_range,
@@ -2459,38 +2226,6 @@ pub fn share_mapping_4k_build_and_share(
             Tracked(target_pagetable_lock_perm),
         );
         proof {
-            assert({
-                &&& kernel.cpu_array.spec_index(cpu_id).view()
-                    .wlocked_by(&*lctx)
-                &&& kernel.cpu_array.spec_index(cpu_id).view()
-                    .being_killed() == false
-            }) by {
-                reveal(held_cpus_unchanged);
-            };
-            assert(lctx.lock_entry_contains(
-                kernel.cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id),
-            )) by {
-                reveal(held_cpus_unchanged);
-                lock_id_fields_eq_imply_eq();
-            };
-            assert({
-                &&& kernel.container_map.dom().contains(target_container)
-                &&& kernel.container_map.spec_index(target_container)
-                    .view_rodata().view().allocator_ptr_4k == target_allocator
-                &&& kernel.allocator_4k_map.dom().contains(target_allocator)
-            }) by {
-                reveal(container_allocator_wf);
-                reveal(container_thread_wf);
-            };
-            assert({
-                &&& kernel.process_map.dom().contains(target_process)
-                &&& kernel.process_map.spec_index(target_process)
-                    .view_rodata().view().owning_container == target_container
-            }) by {
-                reveal(container_thread_wf);
-                reveal(process_thread_wf);
-            };
             assert(mmap_4k_held_context(
                 kernel, &*lctx, target_allocator, target_thread,
                 target_process, target_container, cpu_id, target_pagetable,
@@ -2500,8 +2235,6 @@ pub fn share_mapping_4k_build_and_share(
                 reveal(container_thread_wf);
                 reveal(process_thread_wf);
                 reveal(process_pagetable_match);
-                reveal(held_cpus_unchanged);
-                lock_id_fields_eq_imply_eq();
             };
             assert(share_mapping_4k_source_range_present(
                 kernel, source_pagetable, source_range,
@@ -2522,59 +2255,6 @@ pub fn share_mapping_4k_build_and_share(
                 .wf()) by {
                 reveal(pagetable_perms_wf);
             };
-            assert(held_containers_unchanged(
-                old(kernel).container_map, kernel.container_map, old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(held_processes_unchanged(
-                old(kernel).process_map, kernel.process_map, old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(held_endpoints_unchanged(
-                old(kernel).endpoint_map, kernel.endpoint_map, old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(held_schedulers_unchanged(
-                old(kernel).scheduler_map, kernel.scheduler_map, old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(held_pcid_allocators_unchanged(
-                old(kernel).pcid_allocator_map,
-                kernel.pcid_allocator_map,
-                old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(held_iommu_tables_unchanged(
-                old(kernel).iommu_table_map,
-                kernel.iommu_table_map,
-                old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(held_cpus_unchanged(
-                old(kernel).cpu_array, kernel.cpu_array, old(lctx),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(allocator_objects_unlocked(
-                old(kernel).allocator_2m_map, old(lctx).thread_id(),
-            ) ==> allocator_objects_unlocked(
-                kernel.allocator_2m_map, lctx.thread_id(),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            assert(allocator_objects_unlocked(
-                old(kernel).allocator_1g_map, old(lctx).thread_id(),
-            ) ==> allocator_objects_unlocked(
-                kernel.allocator_1g_map, lctx.thread_id(),
-            )) by {
-                lock_id_fields_eq_imply_eq();
-            };
             assert(kernel.pagetable_map.spec_index(target_pagetable).view()
                 .mapping_4k()
                 == share_mapping_4k_target_map_after(
@@ -2594,7 +2274,6 @@ pub fn share_mapping_4k_build_and_share(
                 target_range,
                 (i + 1) as int,
             )) by {
-                broadcast use vstd::map::group_map_lemmas;
                 seq_index_lemma::<VAddr>();
                 target_range.va_range_lemma();
             };

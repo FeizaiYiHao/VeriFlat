@@ -138,14 +138,6 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(cpu_objects_unlocked(
-                    old(self).cpu_array, old(lctx).thread_id(),
-                ) ==> cpu_objects_unlocked_except(
-                    self.cpu_array, lctx.thread_id(), set![cpu_id],
-                )) by {
-
-                    reveal(cpu_objects_unlocked_except);
-                };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
 
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -308,14 +300,6 @@ impl KernelK {
 
                     reveal(lock_id_aligned);
 
-                };
-                assert(cpu_objects_unlocked_except(
-                    old(self).cpu_array, old(lctx).thread_id(), set![cpu_id],
-                ) ==> cpu_objects_unlocked(
-                    self.cpu_array, lctx.thread_id(),
-                )) by {
-
-                    reveal(cpu_objects_unlocked_except);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
 

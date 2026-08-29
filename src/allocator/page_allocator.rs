@@ -226,15 +226,16 @@ impl PageAllocator{
         let ghost old_caches = self.cpu_caches;
         let ret = self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
         proof {
-            assert forall|i: usize| index_valid(NUM_CPUS, i)
-                implies #[trigger] old_caches.view().spec_index(i as int).view().linked_list.len()
-                    == self.cpu_caches.view().spec_index(i as int).view().linked_list.len()
-            by {
-                if i != cpu_id {
-                    assert(self.cpu_caches.spec_index(i) === old_caches.spec_index(i));
-                }
+            assert(self.total_free_pages_wf()) by {
+                assert forall|i: usize| index_valid(NUM_CPUS, i)
+                    implies #[trigger] old_caches.view().spec_index(i as int).view().linked_list.len()
+                        == self.cpu_caches.view().spec_index(i as int).view().linked_list.len()
+                by {
+                    old_caches.lemma_view_index(i);
+                    self.cpu_caches.lemma_view_index(i);
+                };
+                lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
             };
-            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
         }
         ret
     }
@@ -280,15 +281,16 @@ impl PageAllocator{
         let ghost old_caches = self.cpu_caches;
         self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
         proof {
-            assert forall|i: usize| index_valid(NUM_CPUS, i)
-                implies #[trigger] old_caches.view().spec_index(i as int).view().linked_list.len()
-                    == self.cpu_caches.view().spec_index(i as int).view().linked_list.len()
-            by {
-                if i != cpu_id {
-                    assert(self.cpu_caches.spec_index(i) === old_caches.spec_index(i));
-                }
+            assert(self.total_free_pages_wf()) by {
+                assert forall|i: usize| index_valid(NUM_CPUS, i)
+                    implies #[trigger] old_caches.view().spec_index(i as int).view().linked_list.len()
+                        == self.cpu_caches.view().spec_index(i as int).view().linked_list.len()
+                by {
+                    old_caches.lemma_view_index(i);
+                    self.cpu_caches.lemma_view_index(i);
+                };
+                lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
             };
-            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
         }
     }
 
@@ -584,297 +586,5 @@ impl PageAllocator{
         (node_addr, page_ptr)
     }
 }
-
-/*
-impl PageAllocator{
-    /// Acquire the inner `global_pool` write lock. Mirrors `wlock_quota`;
-    /// builds `KernelObjId::AllocatorGlobalPoll`. The lock id is inferred
-    /// from the global pool's traits.
-    pub fn wlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
-        requires
-            old(self).wf(),
-            wlock_requires(old(self).global_pool, old(lctx)),
-            old(lctx).lock_id_acyclic(LockId{
-                container: old(self).global_pool@.container_depth(),
-                process: old(self).global_pool@.process_depth(),
-                major: old(self).global_pool@.current_lock_major(),
-                minor: old(self).global_pool@.lock_minor(),
-            }),
-            !old(lctx).lock_obj_contains(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
-        ensures
-            final(self).wf(),
-            wlock_ensures(old(self).global_pool, final(self).global_pool, LockId{
-                container: old(self).global_pool@.container_depth(),
-                process: old(self).global_pool@.process_depth(),
-                major: old(self).global_pool@.current_lock_major(),
-                minor: old(self).global_pool@.lock_minor(),
-            }, final(lctx), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self).global_pool.view(), LockId{
-                container: old(self).global_pool@.container_depth(),
-                process: old(self).global_pool@.process_depth(),
-                major: old(self).global_pool@.current_lock_major(),
-                minor: old(self).global_pool@.lock_minor(),
-            }, KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
-            // Other fields untouched.
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
-    {
-        let lock_id = Ghost(LockId{
-            container: self.global_pool@.container_depth(),
-            process: self.global_pool@.process_depth(),
-            major: self.global_pool@.current_lock_major(),
-            minor: self.global_pool@.lock_minor(),
-        });
-        self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
-    }
-
-    /// Release the inner `global_pool` write lock. Mirrors `wunlock_quota`.
-    pub fn wunlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
-        requires
-            old(self).wf(),
-            old(self).global_pool.wlocked_by(old(lctx)),
-            old(self).global_pool.inv(),
-
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == old(lctx).thread_id(),
-            lock_perm@.lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
-
-            old(lctx).lock_entry_contains(
-                old(self).global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)),
-        ensures
-            final(self).wf(),
-            wunlock_ensures(old(self).global_pool, final(self).global_pool),
-            unlock_ensures(
-                old(lctx),
-                final(lctx),
-                final(self).global_pool.view(),
-                lock_perm@.lock_id(),
-                KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@),
-                lock_perm@.ordering_lock_id(),
-            ),
-            // Other fields untouched.
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
-    {
-        self.global_pool.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size@, alloc_ptr@)))
-    }
-
-    /// Acquire the per-cpu `cpu_caches[cpu_id]` write lock. Builds
-    /// `KernelObjId::AllocatorCache`. The lock id is inferred from the
-    /// array element's traits.
-    pub fn wlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
-        requires
-            old(self).wf(),
-            index_valid(NUM_CPUS, cpu_id),
-            wlock_requires(old(self).cpu_caches[cpu_id]@, old(lctx)),
-            old(lctx).lock_id_acyclic(LockId{
-                container: old(self).cpu_caches[cpu_id].container_depth(),
-                process: old(self).cpu_caches[cpu_id].process_depth(),
-                major: old(self).cpu_caches[cpu_id]@@.current_lock_major(),
-                minor: old(self).cpu_caches[cpu_id].lock_minor(),
-            }),
-            !old(lctx).lock_obj_contains(
-                KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
-        ensures
-            final(self).wf(),
-            wlock_ensures(old(self).cpu_caches[cpu_id]@, final(self).cpu_caches[cpu_id]@, LockId{
-                container: old(self).cpu_caches[cpu_id].container_depth(),
-                process: old(self).cpu_caches[cpu_id].process_depth(),
-                major: old(self).cpu_caches[cpu_id]@@.current_lock_major(),
-                minor: old(self).cpu_caches[cpu_id].lock_minor(),
-            }, final(lctx), ret@),
-            lock_ensures(old(lctx), final(lctx), final(self).cpu_caches[cpu_id]@@, LockId{
-                container: old(self).cpu_caches[cpu_id].container_depth(),
-                process: old(self).cpu_caches[cpu_id].process_depth(),
-                major: old(self).cpu_caches[cpu_id]@@.current_lock_major(),
-                minor: old(self).cpu_caches[cpu_id].lock_minor(),
-            }, KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
-            // Other fields untouched.
-            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
-    {
-        let ghost old_caches = self.cpu_caches;
-        let ret = self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)));
-        proof {
-            // total_free_pages_wf: the fold over cache lengths is preserved.
-            // wlock only moves cpu_caches[cpu_id]'s lock state; its payload
-            // view() (hence linked_list.len()) is preserved (wlock_ensures),
-            // and every other slot is unchanged (unchanged_except).
-            old_caches.lemma_view_len();
-            self.cpu_caches.lemma_view_len();
-            assert forall|i: int| 0 <= i < old_caches.view().len()
-                implies #[trigger] old_caches.view()[i].view().linked_list.len()
-                    == self.cpu_caches.view()[i].view().linked_list.len()
-            by {
-                if i != cpu_id as int {
-                    assert(self.cpu_caches[i as usize] === old_caches[i as usize]);
-                }
-            };
-            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
-        }
-        ret
-    }
-
-    /// Release the per-cpu `cpu_caches[cpu_id]` write lock.
-    ///
-    /// `total_free_pages_wf` folds over live cache lengths, and `wunlock`
-    /// preserves the cache's payload `view()` (only lock state changes), so
-    /// the fold — and thus `wf()` — is preserved across unlock with no
-    /// caller-side length-consistency obligation.
-    pub fn wunlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
-        requires
-            old(self).wf(),
-            index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches[cpu_id]@.wlocked_by(old(lctx)),
-            old(self).cpu_caches[cpu_id]@.being_killed() == false,
-
-            lock_perm@.state() is WriteLock,
-            lock_perm@.thread_id() == old(lctx).thread_id(),
-            lock_perm@.lock_id() == old(self).cpu_caches[cpu_id]@.locking_thread()->Write_lock_id,
-
-            old(lctx).lock_entry_contains(
-                old(self).cpu_caches[cpu_id].lock_id(),
-                KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)),
-        ensures
-            final(self).wf(),
-            wunlock_ensures(old(self).cpu_caches[cpu_id]@, final(self).cpu_caches[cpu_id]@),
-            unlock_ensures(
-                old(lctx),
-                final(lctx),
-                final(self).cpu_caches[cpu_id]@@,
-                lock_perm@.lock_id(),
-                KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id),
-                lock_perm@.ordering_lock_id(),
-            ),
-            // Other fields untouched.
-            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
-    {
-        let ghost old_caches = self.cpu_caches;
-        self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size@, alloc_ptr@, cpu_id)));
-        proof {
-            // total_free_pages_wf: fold preserved — wunlock keeps the payload
-            // view() (wunlock_ensures) and every other slot (unchanged_except).
-            old_caches.lemma_view_len();
-            self.cpu_caches.lemma_view_len();
-            assert forall|i: int| 0 <= i < old_caches.view().len()
-                implies #[trigger] old_caches.view()[i].view().linked_list.len()
-                    == self.cpu_caches.view()[i].view().linked_list.len()
-            by {
-                if i != cpu_id as int {
-                    assert(self.cpu_caches[i as usize] === old_caches[i as usize]);
-                }
-            };
-            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
-        }
-    }
-
-    // pub fn try_allocate_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, quota: usize, cpu_id: CpuId) -> (ret :bool)
-    //     requires
-    //         old(self).wf(),
-    //         old(self).cpu_caches_unlocked(),
-    //         old(self).global_pool_unlocked(),
-    //         // old(self).quota_unlocked(),
-    //         old(self).local_quota_clean(cpu_id),
-    //         index_valid(NUM_CPUS, cpu_id),
-    //         old(lctx).thread_id() == cpu_id,
-
-    //         wlock_requires(old(self).cpu_caches.spec_index(cpu_id).view(), old(lctx)),
-    //         // wlock_requires(old(self).quota, old(lctx)),
-    //         wlock_requires(old(self).global_pool, old(lctx)),
-
-    //         old(lctx).kernel_view_locking_state() is Acquire,
-
-    //         old(lctx).lock_id_acyclic(LockId{
-    //             container: old(self).quota.view().container_depth(),
-    //             process: old(self).quota.view().process_depth(),
-    //             major: old(self).quota.view().lock_major_1(),
-    //             minor: old(self).quota.view().lock_minor(),
-    //         }),
-    //     ensures
-    //         lctx.kernel_view_locking_state() is Release,
-    //         ret == (old(self).quota.view().view() >= quota),
-    //         ret == false ==> {
-    //             &&&
-    //             self.wf()
-    //             &&&
-    //             self.cpu_caches_unlocked()
-    //             &&&
-    //             self.global_pool_unlocked()
-    //             &&&
-    //             self.quota_unlocked()
-    //             &&&
-    //             self.cpu_caches == old(self).cpu_caches
-    //             &&&
-    //             self.global_pool == old(self).global_pool
-    //             &&&
-    //             self.quota.view() == old(self).quota.view()
-    //         },
-
-    // {
-    //     let quota_lock_perm = self.quota.wlock(Tracked(lctx), Ghost(
-    //         LockId{
-    //             container: old(self).quota.view().container_depth(),
-    //             process: old(self).quota.view().process_depth(),
-    //             major: QUOTA_MAJOR,
-    //             minor: old(self).quota.view().lock_minor(),
-    //         }
-    //     ));
-
-    //     let mut old_quota = self.quota.take(Tracked(lctx), Tracked(&quota_lock_perm));
-        
-    //     let ret = old_quota.value >= quota;
-    //     if !ret {
-    //         self.quota.put(Tracked(lctx), Tracked(&quota_lock_perm), old_quota);
-    //         self.quota.wunlock(Tracked(lctx), quota_lock_perm);
-    //         return ret;
-    //     }
-    //     old_quota.value = old_quota.value - quota;
-
-    //     let cpu_cache_perm = self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(LockId{
-    //             container: old(self).quota.view().container_depth(),
-    //             process: old(self).quota.view().process_depth(),
-    //             major: ALLOCATOR_CACHE_MAJOR,
-    //             minor: cpu_id,
-    //         }));
-
-    //     let mut cpu_cache = self.cpu_caches.take(cpu_id, Tracked(lctx), Tracked(&cpu_cache_perm));
-    //     cpu_cache.local_quota = quota;
-    //     proof {
-    //         self.differential@ = self.differential@.update(cpu_id as int,cpu_cache.linked_list.len() - quota);
-    //     }
-    //     self.cpu_caches.put(cpu_id, Tracked(lctx), Tracked(&cpu_cache_perm), cpu_cache);
-    //     self.cpu_caches.wunlock(cpu_id, Tracked(lctx), cpu_cache_perm);
-    //     self.quota.put(Tracked(lctx), Tracked(&quota_lock_perm), old_quota);
-        
-    //     assert(self.wf()) by {
-    //         assert(self.cpu_caches.inv());
-    //         assert(self.global_pool.inv());
-    //         assert(self.quota.inv());
-    //         assert(self.cpu_caches_wf());
-    //         assert(self.internal_lock_id_wf());
-    //         assert(self.differential_wf());
-    //         assert(self.total_free_pages_wf()) by {
-    //             seq_fold_update_lemma()
-    //         };
-    //         assert(self.differential@.len() == NUM_CPUS);
-    //     };
-    //     self.quota.wunlock(Tracked(lctx), quota_lock_perm);
-    //     assert(self.wf());
-    //     true
-    // }
-}
-*/
 
 }

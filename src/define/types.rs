@@ -9,7 +9,6 @@ use crate::*;
 // -------------------- Begin of New Types --------------------
 // -------------------- End of New Types ----------------------
 
-// use crate::trap::Registers;
 // -------------------- Begin of Types --------------------
 // pub type ThreadPtr = usize;
 

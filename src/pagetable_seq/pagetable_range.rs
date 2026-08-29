@@ -4,8 +4,7 @@ verus! {
 
 use super::entry::*;
 use super::pagetable_spec::*;
-use crate::define::*;
-use crate::util::page_ptr_util_u::*;
+use crate::*;
 
 pub open spec fn spec_l2_index_path_le(
     lhs: (L2Index, L1Index),

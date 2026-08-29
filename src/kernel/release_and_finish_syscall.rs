@@ -1,11 +1,7 @@
 use vstd::prelude::*;
-use vstd::calc;
-use vstd::assert_seqs_equal;
-use vstd::assert_sets_equal;
 use crate::*;
 verus! {
 
-    #[verifier::opaque]
     pub open spec fn kernel_objects_unlocked_except(
         kernel: &KernelK,
         thread_id: LockThreadId,
@@ -92,20 +88,9 @@ verus! {
     {
         let tracked cpu_lock_perm = cpu_lock_perm.get();
 
-        proof {
-            assert(
-                cpu_objects_unlocked_except(
-                    kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-            ) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-        }
         kernel.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
         proof {
-            assert(kernel.all_objects_unlocked(&*lctx)) by {
-                reveal(kernel_objects_unlocked_except);
-            };
             assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel);
             };
@@ -164,23 +149,10 @@ verus! {
     {
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
-        proof {
-            assert(
-                cpu_objects_unlocked_except(
-                    kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                && process_objects_unlocked_except(
-                    kernel.process_map, lctx.thread_id(), set![process_ptr])
-            ) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-        }
         kernel.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         kernel.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
         proof {
-            assert(kernel.all_objects_unlocked(&*lctx)) by {
-                reveal(kernel_objects_unlocked_except);
-            };
             assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel);
             };
@@ -259,27 +231,12 @@ verus! {
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
-        proof {
-            assert(
-                cpu_objects_unlocked_except(
-                    kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                && process_objects_unlocked_except(
-                    kernel.process_map, lctx.thread_id(), set![process_ptr])
-                && thread_objects_unlocked_except(
-                    kernel.thread_map, lctx.thread_id(), set![thread_ptr])
-            ) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-        }
         kernel.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         kernel.wunlock_process(
             process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm),
         );
         kernel.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(kernel.all_objects_unlocked(&*lctx)) by {
-                reveal(kernel_objects_unlocked_except);
-            };
             assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel);
             };

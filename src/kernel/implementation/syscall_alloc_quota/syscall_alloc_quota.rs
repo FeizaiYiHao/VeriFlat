@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
 use crate::*;
 use super::syscall_alloc_quota_helpers::{
     commit_alloc_quota_4k,

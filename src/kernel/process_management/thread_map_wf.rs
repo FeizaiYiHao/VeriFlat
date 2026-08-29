@@ -18,7 +18,7 @@ verus! {
     pub open spec fn threads_inv(thread_map: ThreadLockedMap) -> bool{
         &&&
         forall|thread_p:RwLockThreadPtr|
-            #![auto]
+            #![trigger thread_map.dom().contains(thread_p)]
             thread_map.dom().contains(thread_p)
             ==>
             thread_map.spec_index(thread_p).inv()

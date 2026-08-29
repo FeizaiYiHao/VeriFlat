@@ -43,30 +43,13 @@ pub(super) fn ipc_block_thread_on_endpoint(
             == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed()
             == old(thread_map).spec_index(thread_ptr).being_killed(),
-        forall|t_ptr: RwLockThreadPtr|
-            #![trigger final(thread_map).spec_index(t_ptr)]
-            old(thread_map).dom().contains(t_ptr) ==> {
-                &&& final(thread_map).spec_index(t_ptr).view()
-                    .ipc_framed_fields_equal(
-                        &old(thread_map).spec_index(t_ptr).view())
-                &&& final(thread_map).spec_index(t_ptr).view().caller
-                    == old(thread_map).spec_index(t_ptr).view().caller
-                &&& final(thread_map).spec_index(t_ptr).view().callee
-                    == old(thread_map).spec_index(t_ptr).view().callee
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view().state
-                        == old(thread_map).spec_index(t_ptr).view().state
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view()
-                        .blocking_endpoint_ptr
-                        == old(thread_map).spec_index(t_ptr).view()
-                            .blocking_endpoint_ptr
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view()
-                        .endpoint_linkedlist_node
-                        == old(thread_map).spec_index(t_ptr).view()
-                            .endpoint_linkedlist_node
-            },
+        final(thread_map).spec_index(thread_ptr).view()
+            .ipc_framed_fields_equal(
+                &old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().caller
+            == old(thread_map).spec_index(thread_ptr).view().caller,
+        final(thread_map).spec_index(thread_ptr).view().callee
+            == old(thread_map).spec_index(thread_ptr).view().callee,
         final(thread_map).spec_index(thread_ptr).view().state
             == waiting_state,
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr
@@ -144,16 +127,12 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
             == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
         final(endpoint_map).lock_id_by_key(endpoint_ptr)
             == old(endpoint_map).lock_id_by_key(endpoint_ptr),
-        forall|e_ptr: RwLockEndpointPtr|
-            #![trigger final(endpoint_map).spec_index(e_ptr)]
-            old(endpoint_map).dom().contains(e_ptr) ==> {
-                &&& final(endpoint_map).spec_index(e_ptr).view().rf_counter
-                    == old(endpoint_map).spec_index(e_ptr).view().rf_counter
-                &&& final(endpoint_map).spec_index(e_ptr).view().owning_threads
-                    == old(endpoint_map).spec_index(e_ptr).view().owning_threads
-                &&& final(endpoint_map).spec_index(e_ptr).view().owning_container
-                    == old(endpoint_map).spec_index(e_ptr).view().owning_container
-            },
+        final(endpoint_map).spec_index(endpoint_ptr).view().rf_counter
+            == old(endpoint_map).spec_index(endpoint_ptr).view().rf_counter,
+        final(endpoint_map).spec_index(endpoint_ptr).view().owning_threads
+            == old(endpoint_map).spec_index(endpoint_ptr).view().owning_threads,
+        final(endpoint_map).spec_index(endpoint_ptr).view().owning_container
+            == old(endpoint_map).spec_index(endpoint_ptr).view().owning_container,
         final(endpoint_map).spec_index(endpoint_ptr).view().queue.view()
             == old(endpoint_map).spec_index(endpoint_ptr).view().queue.view()
                 .push(thread_ptr),
@@ -236,30 +215,13 @@ pub(super) fn ipc_schedule_endpoint_waiter(
             == old(thread_map).spec_index(current_thread_ptr),
         final(thread_map).lock_id_by_key(current_thread_ptr)
             == old(thread_map).lock_id_by_key(current_thread_ptr),
-        forall|t_ptr: RwLockThreadPtr|
-            #![trigger final(thread_map).spec_index(t_ptr)]
-            old(thread_map).dom().contains(t_ptr) ==> {
-                &&& final(thread_map).spec_index(t_ptr).view()
-                    .ipc_framed_fields_equal(
-                        &old(thread_map).spec_index(t_ptr).view())
-                &&& final(thread_map).spec_index(t_ptr).view().caller
-                    == old(thread_map).spec_index(t_ptr).view().caller
-                &&& final(thread_map).spec_index(t_ptr).view().callee
-                    == old(thread_map).spec_index(t_ptr).view().callee
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view().state
-                        == old(thread_map).spec_index(t_ptr).view().state
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view()
-                        .blocking_endpoint_ptr
-                        == old(thread_map).spec_index(t_ptr).view()
-                            .blocking_endpoint_ptr
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view()
-                        .endpoint_linkedlist_node
-                        == old(thread_map).spec_index(t_ptr).view()
-                            .endpoint_linkedlist_node
-            },
+        final(thread_map).spec_index(thread_ptr).view()
+            .ipc_framed_fields_equal(
+                &old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().caller
+            == old(thread_map).spec_index(thread_ptr).view().caller,
+        final(thread_map).spec_index(thread_ptr).view().callee
+            == old(thread_map).spec_index(thread_ptr).view().callee,
         final(thread_map).spec_index(thread_ptr).view().state is SCHEDULED,
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr
             is None,
@@ -349,30 +311,13 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
             == old(thread_map).spec_index(current_thread_ptr),
         final(thread_map).lock_id_by_key(current_thread_ptr)
             == old(thread_map).lock_id_by_key(current_thread_ptr),
-        forall|t_ptr: RwLockThreadPtr|
-            #![trigger final(thread_map).spec_index(t_ptr)]
-            old(thread_map).dom().contains(t_ptr) ==> {
-                &&& final(thread_map).spec_index(t_ptr).view()
-                    .ipc_framed_fields_equal(
-                        &old(thread_map).spec_index(t_ptr).view())
-                &&& final(thread_map).spec_index(t_ptr).view().caller
-                    == old(thread_map).spec_index(t_ptr).view().caller
-                &&& final(thread_map).spec_index(t_ptr).view().callee
-                    == old(thread_map).spec_index(t_ptr).view().callee
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view().state
-                        == old(thread_map).spec_index(t_ptr).view().state
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view()
-                        .blocking_endpoint_ptr
-                        == old(thread_map).spec_index(t_ptr).view()
-                            .blocking_endpoint_ptr
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view()
-                        .endpoint_linkedlist_node
-                        == old(thread_map).spec_index(t_ptr).view()
-                            .endpoint_linkedlist_node
-            },
+        final(thread_map).spec_index(thread_ptr).view()
+            .ipc_framed_fields_equal(
+                &old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().caller
+            == old(thread_map).spec_index(thread_ptr).view().caller,
+        final(thread_map).spec_index(thread_ptr).view().callee
+            == old(thread_map).spec_index(thread_ptr).view().callee,
         final(thread_map).spec_index(thread_ptr).view().state
             is IPC_ENDPOINT_TRANSIT,
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr
@@ -452,20 +397,13 @@ pub(super) fn ipc_schedule_endpoint_transit(
             == old(thread_map).spec_index(current_thread_ptr),
         final(thread_map).lock_id_by_key(current_thread_ptr)
             == old(thread_map).lock_id_by_key(current_thread_ptr),
-        forall|t_ptr: RwLockThreadPtr|
-            #![trigger final(thread_map).spec_index(t_ptr)]
-            old(thread_map).dom().contains(t_ptr) ==> {
-                &&& final(thread_map).spec_index(t_ptr).view()
-                    .ipc_framed_fields_equal(
-                        &old(thread_map).spec_index(t_ptr).view())
-                &&& final(thread_map).spec_index(t_ptr).view().caller
-                    == old(thread_map).spec_index(t_ptr).view().caller
-                &&& final(thread_map).spec_index(t_ptr).view().callee
-                    == old(thread_map).spec_index(t_ptr).view().callee
-                &&& t_ptr != thread_ptr ==>
-                    final(thread_map).spec_index(t_ptr).view().state
-                        == old(thread_map).spec_index(t_ptr).view().state
-            },
+        final(thread_map).spec_index(thread_ptr).view()
+            .ipc_framed_fields_equal(
+                &old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().caller
+            == old(thread_map).spec_index(thread_ptr).view().caller,
+        final(thread_map).spec_index(thread_ptr).view().callee
+            == old(thread_map).spec_index(thread_ptr).view().callee,
         final(thread_map).spec_index(thread_ptr).view().state is SCHEDULED,
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr
             is None,
@@ -544,16 +482,12 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
             == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
         final(endpoint_map).lock_id_by_key(endpoint_ptr)
             == old(endpoint_map).lock_id_by_key(endpoint_ptr),
-        forall|e_ptr: RwLockEndpointPtr|
-            #![trigger final(endpoint_map).spec_index(e_ptr)]
-            old(endpoint_map).dom().contains(e_ptr) ==> {
-                &&& final(endpoint_map).spec_index(e_ptr).view().rf_counter
-                    == old(endpoint_map).spec_index(e_ptr).view().rf_counter
-                &&& final(endpoint_map).spec_index(e_ptr).view().owning_threads
-                    == old(endpoint_map).spec_index(e_ptr).view().owning_threads
-                &&& final(endpoint_map).spec_index(e_ptr).view().owning_container
-                    == old(endpoint_map).spec_index(e_ptr).view().owning_container
-            },
+        final(endpoint_map).spec_index(endpoint_ptr).view().rf_counter
+            == old(endpoint_map).spec_index(endpoint_ptr).view().rf_counter,
+        final(endpoint_map).spec_index(endpoint_ptr).view().owning_threads
+            == old(endpoint_map).spec_index(endpoint_ptr).view().owning_threads,
+        final(endpoint_map).spec_index(endpoint_ptr).view().owning_container
+            == old(endpoint_map).spec_index(endpoint_ptr).view().owning_container,
         final(endpoint_map).spec_index(endpoint_ptr).view().queue.view()
             == old(endpoint_map).spec_index(endpoint_ptr).view().queue.view()
                 .skip(1),
@@ -571,36 +505,39 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
             .spec_index(ret.0) == thread_ptr,
         !final(endpoint_map).spec_index(endpoint_ptr).view()
             .queue.view().contains(thread_ptr),
-        forall|e_ptr: RwLockEndpointPtr, t_ptr: RwLockThreadPtr|
-            #![trigger final(endpoint_map).spec_index(e_ptr).view()
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger old(endpoint_map).spec_index(endpoint_ptr).view()
                 .queue.view().contains(t_ptr)]
-            old(endpoint_map).dom().contains(e_ptr)
-                && old(endpoint_map).spec_index(e_ptr).view()
-                    .queue.view().contains(t_ptr)
+            #![trigger final(endpoint_map).spec_index(endpoint_ptr).view()
+                .queue.view().contains(t_ptr)]
+            old(endpoint_map).spec_index(endpoint_ptr).view()
+                .queue.view().contains(t_ptr)
                 && t_ptr != thread_ptr
-            ==> final(endpoint_map).spec_index(e_ptr).view()
+            ==> final(endpoint_map).spec_index(endpoint_ptr).view()
                     .queue.view().contains(t_ptr),
-        forall|e_ptr: RwLockEndpointPtr, t_ptr: RwLockThreadPtr|
-            #![trigger final(endpoint_map).spec_index(e_ptr).view()
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger old(endpoint_map).spec_index(endpoint_ptr).view()
                 .queue.view().contains(t_ptr)]
-            old(endpoint_map).dom().contains(e_ptr)
-                && final(endpoint_map).spec_index(e_ptr).view()
-                    .queue.view().contains(t_ptr)
-            ==> old(endpoint_map).spec_index(e_ptr).view()
+            #![trigger final(endpoint_map).spec_index(endpoint_ptr).view()
+                .queue.view().contains(t_ptr)]
+            final(endpoint_map).spec_index(endpoint_ptr).view()
+                .queue.view().contains(t_ptr)
+            ==> old(endpoint_map).spec_index(endpoint_ptr).view()
                     .queue.view().contains(t_ptr),
-        forall|e_ptr: RwLockEndpointPtr, node_addr: usize|
-            #![trigger final(endpoint_map).spec_index(e_ptr).view()
+        forall|node_addr: usize|
+            #![trigger old(endpoint_map).spec_index(endpoint_ptr).view()
                 .queue.map().dom().contains(node_addr)]
-            old(endpoint_map).dom().contains(e_ptr)
-                && old(endpoint_map).spec_index(e_ptr).view()
-                    .queue.map().dom().contains(node_addr)
+            #![trigger final(endpoint_map).spec_index(endpoint_ptr).view()
+                .queue.map().dom().contains(node_addr)]
+            old(endpoint_map).spec_index(endpoint_ptr).view()
+                .queue.map().dom().contains(node_addr)
                 && node_addr != ret.0
             ==> {
-                &&& final(endpoint_map).spec_index(e_ptr).view()
+                &&& final(endpoint_map).spec_index(endpoint_ptr).view()
                     .queue.map().dom().contains(node_addr)
-                &&& final(endpoint_map).spec_index(e_ptr).view()
+                &&& final(endpoint_map).spec_index(endpoint_ptr).view()
                     .queue.map().spec_index(node_addr)
-                    == old(endpoint_map).spec_index(e_ptr).view()
+                    == old(endpoint_map).spec_index(endpoint_ptr).view()
                         .queue.map().spec_index(node_addr)
             },
 {
@@ -660,12 +597,8 @@ pub(super) fn ipc_enqueue_scheduled_thread(
             == old(scheduler_map).spec_index(scheduler_ptr).locking_thread(),
         final(scheduler_map).lock_id_by_key(scheduler_ptr)
             == old(scheduler_map).lock_id_by_key(scheduler_ptr),
-        forall|s_ptr: RwLockSchedulerPtr|
-            #![trigger final(scheduler_map).spec_index(s_ptr)]
-            old(scheduler_map).dom().contains(s_ptr) ==>
-                final(scheduler_map).spec_index(s_ptr).view().owning_container
-                    == old(scheduler_map).spec_index(s_ptr).view()
-                        .owning_container,
+        final(scheduler_map).spec_index(scheduler_ptr).view().owning_container
+            == old(scheduler_map).spec_index(scheduler_ptr).view().owning_container,
         final(scheduler_map).spec_index(scheduler_ptr).view().queue.view()
             == old(scheduler_map).spec_index(scheduler_ptr).view().queue.view()
                 .push(thread_ptr),
@@ -674,26 +607,28 @@ pub(super) fn ipc_enqueue_scheduled_thread(
                 .insert(node_addr, thread_ptr),
         !old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().dom()
             .contains(node_addr),
-        forall|s_ptr: RwLockSchedulerPtr, t_ptr: RwLockThreadPtr|
-            #![trigger final(scheduler_map).spec_index(s_ptr).view()
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger old(scheduler_map).spec_index(scheduler_ptr).view()
                 .queue.view().contains(t_ptr)]
-            old(scheduler_map).dom().contains(s_ptr)
-                && old(scheduler_map).spec_index(s_ptr).view()
-                    .queue.view().contains(t_ptr)
-            ==> final(scheduler_map).spec_index(s_ptr).view()
+            #![trigger final(scheduler_map).spec_index(scheduler_ptr).view()
+                .queue.view().contains(t_ptr)]
+            old(scheduler_map).spec_index(scheduler_ptr).view()
+                .queue.view().contains(t_ptr)
+            ==> final(scheduler_map).spec_index(scheduler_ptr).view()
                     .queue.view().contains(t_ptr),
-        forall|s_ptr: RwLockSchedulerPtr, old_node_addr: usize|
-            #![trigger final(scheduler_map).spec_index(s_ptr).view()
+        forall|old_node_addr: usize|
+            #![trigger old(scheduler_map).spec_index(scheduler_ptr).view()
                 .queue.map().dom().contains(old_node_addr)]
-            old(scheduler_map).dom().contains(s_ptr)
-                && old(scheduler_map).spec_index(s_ptr).view()
-                    .queue.map().dom().contains(old_node_addr)
+            #![trigger final(scheduler_map).spec_index(scheduler_ptr).view()
+                .queue.map().dom().contains(old_node_addr)]
+            old(scheduler_map).spec_index(scheduler_ptr).view()
+                .queue.map().dom().contains(old_node_addr)
             ==> {
-                &&& final(scheduler_map).spec_index(s_ptr).view()
+                &&& final(scheduler_map).spec_index(scheduler_ptr).view()
                     .queue.map().dom().contains(old_node_addr)
-                &&& final(scheduler_map).spec_index(s_ptr).view()
+                &&& final(scheduler_map).spec_index(scheduler_ptr).view()
                     .queue.map().spec_index(old_node_addr)
-                    == old(scheduler_map).spec_index(s_ptr).view()
+                    == old(scheduler_map).spec_index(scheduler_ptr).view()
                         .queue.map().spec_index(old_node_addr)
             },
 {

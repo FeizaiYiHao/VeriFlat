@@ -5,8 +5,7 @@ use crate::*;
 verus! {
 
 /// Result of the two checks that precede PageTable construction for mmap(4K).
-#[derive(Clone, Copy)]
-pub enum Mmap4kPrecheck {
+pub(super) enum Mmap4kPrecheck {
     Ready,
     NoQuota,
     Invalid,
