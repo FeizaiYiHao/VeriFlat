@@ -9,16 +9,12 @@ pub open spec fn held_containers_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|c: RwLockContainerPtr|
-        #![trigger pre.spec_index(c)]
-        #![trigger post.spec_index(c)]
-        {
-            let pre_held = pre.dom().contains(c)
-                && pre.spec_index(c).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(c)
-                && post.spec_index(c).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(c) == pre.lock_id_by_key(c)
-            &&& pre_held ==> post.spec_index(c) == pre.spec_index(c)
+        #![trigger lctx.container_lock_set().contains(c)]
+        lctx.container_lock_set().contains(c) ==> {
+            &&& pre.dom().contains(c)
+            &&& post.dom().contains(c)
+            &&& post.lock_id_by_key(c) == pre.lock_id_by_key(c)
+            &&& post.spec_index(c) == pre.spec_index(c)
         }
 }
 
@@ -28,16 +24,12 @@ pub open spec fn held_processes_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|p: RwLockProcessPtr|
-        #![trigger pre.spec_index(p)]
-        #![trigger post.spec_index(p)]
-        {
-            let pre_held = pre.dom().contains(p)
-                && pre.spec_index(p).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(p)
-                && post.spec_index(p).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(p) == pre.lock_id_by_key(p)
-            &&& pre_held ==> post.spec_index(p) == pre.spec_index(p)
+        #![trigger lctx.process_lock_set().contains(p)]
+        lctx.process_lock_set().contains(p) ==> {
+            &&& pre.dom().contains(p)
+            &&& post.dom().contains(p)
+            &&& post.lock_id_by_key(p) == pre.lock_id_by_key(p)
+            &&& post.spec_index(p) == pre.spec_index(p)
         }
 }
 
@@ -73,12 +65,10 @@ pub open spec fn held_process_owning_containers_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|p: RwLockProcessPtr|
-        #![trigger pre_processes.spec_index(p)]
-        #![trigger post_processes.spec_index(p)]
-        pre_processes.dom().contains(p)
-            && pre_processes.spec_index(p).locked_by_thread(lctx.thread_id())
-        ==> {
+        #![trigger lctx.process_lock_set().contains(p)]
+        lctx.process_lock_set().contains(p) ==> {
             let c = pre_processes.spec_index(p).view_rodata().view().owning_container;
+            &&& pre_processes.dom().contains(p)
             &&& post_processes.dom().contains(p)
             &&& pre_containers.dom().contains(c)
             &&& post_containers.dom().contains(c)
@@ -93,16 +83,12 @@ pub open spec fn held_threads_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|t: RwLockThreadPtr|
-        #![trigger pre.spec_index(t)]
-        #![trigger post.spec_index(t)]
-        {
-            let pre_held = pre.dom().contains(t)
-                && pre.spec_index(t).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(t)
-                && post.spec_index(t).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(t) == pre.lock_id_by_key(t)
-            &&& pre_held ==> post.spec_index(t) == pre.spec_index(t)
+        #![trigger lctx.thread_lock_set().contains(t)]
+        lctx.thread_lock_set().contains(t) ==> {
+            &&& pre.dom().contains(t)
+            &&& post.dom().contains(t)
+            &&& post.lock_id_by_key(t) == pre.lock_id_by_key(t)
+            &&& post.spec_index(t) == pre.spec_index(t)
         }
 }
 
@@ -112,16 +98,12 @@ pub open spec fn held_endpoints_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|e: RwLockEndpointPtr|
-        #![trigger pre.spec_index(e)]
-        #![trigger post.spec_index(e)]
-        {
-            let pre_held = pre.dom().contains(e)
-                && pre.spec_index(e).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(e)
-                && post.spec_index(e).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(e) == pre.lock_id_by_key(e)
-            &&& pre_held ==> post.spec_index(e) == pre.spec_index(e)
+        #![trigger lctx.endpoint_lock_set().contains(e)]
+        lctx.endpoint_lock_set().contains(e) ==> {
+            &&& pre.dom().contains(e)
+            &&& post.dom().contains(e)
+            &&& post.lock_id_by_key(e) == pre.lock_id_by_key(e)
+            &&& post.spec_index(e) == pre.spec_index(e)
         }
 }
 
@@ -131,16 +113,12 @@ pub open spec fn held_schedulers_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|s: RwLockSchedulerPtr|
-        #![trigger pre.spec_index(s)]
-        #![trigger post.spec_index(s)]
-        {
-            let pre_held = pre.dom().contains(s)
-                && pre.spec_index(s).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(s)
-                && post.spec_index(s).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(s) == pre.lock_id_by_key(s)
-            &&& pre_held ==> post.spec_index(s) == pre.spec_index(s)
+        #![trigger lctx.scheduler_lock_set().contains(s)]
+        lctx.scheduler_lock_set().contains(s) ==> {
+            &&& pre.dom().contains(s)
+            &&& post.dom().contains(s)
+            &&& post.lock_id_by_key(s) == pre.lock_id_by_key(s)
+            &&& post.spec_index(s) == pre.spec_index(s)
         }
 }
 
@@ -150,16 +128,12 @@ pub open spec fn held_pcid_allocators_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|p: RwLockPcidAllocatorPtr|
-        #![trigger pre.spec_index(p)]
-        #![trigger post.spec_index(p)]
-        {
-            let pre_held = pre.dom().contains(p)
-                && pre.spec_index(p).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(p)
-                && post.spec_index(p).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(p) == pre.lock_id_by_key(p)
-            &&& pre_held ==> post.spec_index(p) == pre.spec_index(p)
+        #![trigger lctx.pcid_allocator_lock_set().contains(p)]
+        lctx.pcid_allocator_lock_set().contains(p) ==> {
+            &&& pre.dom().contains(p)
+            &&& post.dom().contains(p)
+            &&& post.lock_id_by_key(p) == pre.lock_id_by_key(p)
+            &&& post.spec_index(p) == pre.spec_index(p)
         }
 }
 
@@ -169,16 +143,12 @@ pub open spec fn held_pagetables_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|pt: RwLockPageTableRoot|
-        #![trigger pre.spec_index(pt)]
-        #![trigger post.spec_index(pt)]
-        {
-            let pre_held = pre.dom().contains(pt)
-                && pre.spec_index(pt).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(pt)
-                && post.spec_index(pt).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(pt) == pre.lock_id_by_key(pt)
-            &&& pre_held ==> post.spec_index(pt) == pre.spec_index(pt)
+        #![trigger lctx.pagetable_lock_set().contains(pt)]
+        lctx.pagetable_lock_set().contains(pt) ==> {
+            &&& pre.dom().contains(pt)
+            &&& post.dom().contains(pt)
+            &&& post.lock_id_by_key(pt) == pre.lock_id_by_key(pt)
+            &&& post.spec_index(pt) == pre.spec_index(pt)
         }
 }
 
@@ -188,16 +158,12 @@ pub open spec fn held_iommu_tables_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|pt: RwLockPageTableRoot|
-        #![trigger pre.spec_index(pt)]
-        #![trigger post.spec_index(pt)]
-        {
-            let pre_held = pre.dom().contains(pt)
-                && pre.spec_index(pt).locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(pt)
-                && post.spec_index(pt).locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.lock_id_by_key(pt) == pre.lock_id_by_key(pt)
-            &&& pre_held ==> post.spec_index(pt) == pre.spec_index(pt)
+        #![trigger lctx.iommu_table_lock_set().contains(pt)]
+        lctx.iommu_table_lock_set().contains(pt) ==> {
+            &&& pre.dom().contains(pt)
+            &&& post.dom().contains(pt)
+            &&& post.lock_id_by_key(pt) == pre.lock_id_by_key(pt)
+            &&& post.spec_index(pt) == pre.spec_index(pt)
         }
 }
 
@@ -207,15 +173,10 @@ pub open spec fn held_pages_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|i: PageIndex|
-        #![trigger pre.spec_index(i)]
-        #![trigger post.spec_index(i)]
-        {
-            let pre_held = index_valid(NUM_PAGES, i)
-                && pre.spec_index(i).view().locked_by_thread(lctx.thread_id());
-            let post_held = index_valid(NUM_PAGES, i)
-                && post.spec_index(i).view().locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.spec_index(i).view() == pre.spec_index(i).view()
+        #![trigger lctx.page_lock_set().contains(i)]
+        lctx.page_lock_set().contains(i) ==> {
+            &&& index_valid(NUM_PAGES, i)
+            &&& post.spec_index(i).view() == pre.spec_index(i).view()
         }
 }
 
@@ -225,81 +186,42 @@ pub open spec fn held_cpus_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|c: CpuId|
-        #![trigger pre.spec_index(c)]
-        #![trigger post.spec_index(c)]
-        {
-            let pre_held = index_valid(NUM_CPUS, c)
-                && pre.spec_index(c).view().locked_by_thread(lctx.thread_id());
-            let post_held = index_valid(NUM_CPUS, c)
-                && post.spec_index(c).view().locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.spec_index(c).view() == pre.spec_index(c).view()
+        #![trigger lctx.cpu_lock_set().contains(c)]
+        lctx.cpu_lock_set().contains(c) ==> {
+            &&& index_valid(NUM_CPUS, c)
+            &&& post.spec_index(c).view() == pre.spec_index(c).view()
         }
 }
 
 pub open spec fn held_allocator_objects_unchanged(
     pre: PageAllocatorUnLockedMap,
     post: PageAllocatorUnLockedMap,
+    page_size: PageSize,
     lctx: &LocalContext,
 ) -> bool {
     &&& (forall|p: RwLockPageAllocatorPtr|
-        #![trigger pre.spec_index(p)]
-        #![trigger post.spec_index(p)]
-        {
-            let pre_held = pre.dom().contains(p)
-                && pre.spec_index(p).quota.locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(p)
-                && post.spec_index(p).quota.locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.spec_index(p).quota == pre.spec_index(p).quota
+        #![trigger lctx.allocator_quota_lock_set().contains((page_size, p))]
+        lctx.allocator_quota_lock_set().contains((page_size, p)) ==> {
+            &&& pre.dom().contains(p)
+            &&& post.dom().contains(p)
+            &&& post.spec_index(p).quota == pre.spec_index(p).quota
         })
     &&& (forall|p: RwLockPageAllocatorPtr|
-        #![trigger pre.spec_index(p)]
-        #![trigger post.spec_index(p)]
-        {
-            let pre_held = pre.dom().contains(p)
-                && pre.spec_index(p).global_pool.locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(p)
-                && post.spec_index(p).global_pool.locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.spec_index(p).global_pool == pre.spec_index(p).global_pool
+        #![trigger lctx.allocator_global_pool_lock_set().contains((page_size, p))]
+        lctx.allocator_global_pool_lock_set().contains((page_size, p)) ==> {
+            &&& pre.dom().contains(p)
+            &&& post.dom().contains(p)
+            &&& post.spec_index(p).global_pool == pre.spec_index(p).global_pool
         })
     &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
-        #![trigger pre.spec_index(p).cpu_caches.spec_index(c)]
-        #![trigger post.spec_index(p).cpu_caches.spec_index(c)]
-        {
-            let pre_held = pre.dom().contains(p)
-                && index_valid(NUM_CPUS, c)
-                && pre.spec_index(p).cpu_caches.spec_index(c).view()
-                    .locked_by_thread(lctx.thread_id());
-            let post_held = post.dom().contains(p)
-                && index_valid(NUM_CPUS, c)
-                && post.spec_index(p).cpu_caches.spec_index(c).view()
-                    .locked_by_thread(lctx.thread_id());
-            &&& pre_held == post_held
-            &&& pre_held ==> post.spec_index(p).cpu_caches.spec_index(c).view()
+        #![trigger lctx.allocator_cache_lock_set().contains((page_size, p, c))]
+        lctx.allocator_cache_lock_set().contains((page_size, p, c)) ==> {
+            &&& pre.dom().contains(p)
+            &&& post.dom().contains(p)
+            &&& index_valid(NUM_CPUS, c)
+            &&& post.spec_index(p).cpu_caches.spec_index(c).view()
                 == pre.spec_index(p).cpu_caches.spec_index(c).view()
         })
-}
-
-pub proof fn endpoint_objects_unlocked_except_preserved_for_held_unchanged(
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-    lctx: &LocalContext,
-    exceptions: Set<RwLockEndpointPtr>,
-)
-    requires
-        endpoint_objects_unlocked_except(
-            pre, lctx.thread_id(), exceptions,
-        ),
-        held_endpoints_unchanged(pre, post, lctx),
-    ensures
-        endpoint_objects_unlocked_except(
-            post, lctx.thread_id(), exceptions,
-        ),
-{
-    reveal(endpoint_objects_unlocked_except);
-    reveal(held_endpoints_unchanged);
 }
 
 }

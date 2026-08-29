@@ -81,14 +81,38 @@ verus! {
                 old(kernel).thread_map.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
                 old(kernel).thread_map.spec_index(current_thread_ptr).view().quota_4k >= 1,
                 old(kernel).thread_map.lock_id_by_key(current_thread_ptr).major == THREAD_LOCK_MAJOR,
-                kernel_objects_unlocked_except(
-                    old(kernel), old(lctx).thread_id(), Some(cpu_id),
-                    Some(scheduler_ptr), Some(process_ptr),
-                    Some(current_thread_ptr), None),
+                old(lctx).page_lock_set().is_empty(),
+                old(lctx).cpu_lock_set() =~= set![cpu_id],
+                old(lctx).container_lock_set().is_empty(),
+                old(lctx).process_lock_set() =~= set![process_ptr],
+                old(lctx).thread_lock_set() =~= set![current_thread_ptr],
+                old(lctx).endpoint_lock_set().is_empty(),
+                old(lctx).scheduler_lock_set() =~= set![scheduler_ptr],
+                old(lctx).pcid_allocator_lock_set().is_empty(),
+                old(lctx).pagetable_lock_set().is_empty(),
+                old(lctx).iommu_table_lock_set().is_empty(),
+                old(lctx).allocator_quota_lock_set().is_empty(),
+                old(lctx).allocator_cache_lock_set().is_empty(),
+                old(lctx).allocator_global_pool_lock_set().is_empty(),
                 lock_id_aligned(old(kernel), old(lctx)),
+                typed_lock_sets_aligned(old(kernel), old(lctx)),
             ensures
                 lock_id_aligned(final(kernel), final(lctx)),
+                typed_lock_sets_aligned(final(kernel), final(lctx)),
                 final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+                final(lctx).page_lock_set().is_empty(),
+                final(lctx).cpu_lock_set().is_empty(),
+                final(lctx).container_lock_set().is_empty(),
+                final(lctx).process_lock_set().is_empty(),
+                final(lctx).thread_lock_set().is_empty(),
+                final(lctx).endpoint_lock_set().is_empty(),
+                final(lctx).scheduler_lock_set().is_empty(),
+                final(lctx).pcid_allocator_lock_set().is_empty(),
+                final(lctx).pagetable_lock_set().is_empty(),
+                final(lctx).iommu_table_lock_set().is_empty(),
+                final(lctx).allocator_quota_lock_set().is_empty(),
+                final(lctx).allocator_cache_lock_set().is_empty(),
+                final(lctx).allocator_global_pool_lock_set().is_empty(),
                 !final(kernel).cpu_array.spec_index(cpu_id).view()
                     .locked_by_thread(final(lctx).thread_id()),
                 !final(kernel).scheduler_map.spec_index(scheduler_ptr)
@@ -97,7 +121,6 @@ verus! {
                     .locked_by_thread(final(lctx).thread_id()),
                 !final(kernel).thread_map.spec_index(current_thread_ptr)
                     .locked_by_thread(final(lctx).thread_id()),
-                final(kernel).all_objects_unlocked(final(lctx)),
                 final(steps).steps.len() == old(steps).steps.len() + 1,
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(kernel)),
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
@@ -180,23 +203,21 @@ verus! {
                 assert(kernel.container_map.perms_wf()) by {
                     reveal(container_perms_wf);
                 };
-            }
-            proof {
-                assert(
-                    cpu_objects_unlocked_except(
-                        kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                    && scheduler_objects_unlocked_except(
-                        kernel.scheduler_map, lctx.thread_id(), set![scheduler_ptr])
-                    && process_objects_unlocked_except(
-                        kernel.process_map, lctx.thread_id(), set![process_ptr])
-                    && thread_objects_unlocked_except(
-                        kernel.thread_map, lctx.thread_id(), set![current_thread_ptr])
-                    && page_objects_unlocked(
-                        kernel.page_array, lctx.thread_id())
-                    && allocator_objects_unlocked(
-                        kernel.allocator_4k_map, lctx.thread_id())
-                ) by {
-                    reveal(kernel_objects_unlocked_except);
+                assert(lctx.holds_no_typed_allocator_locks(
+                    PageSize::SZ4k)) by {
+                    reveal(LocalContext::holds_no_typed_allocator_locks);
+                };
+                assert(lctx.cpu_lock_set().contains(cpu_id)) by {
+                    reveal(typed_lock_sets_aligned);
+                };
+                assert(lctx.process_lock_set().contains(process_ptr)) by {
+                    reveal(typed_lock_sets_aligned);
+                };
+                assert(lctx.thread_lock_set().contains(current_thread_ptr)) by {
+                    reveal(typed_lock_sets_aligned);
+                };
+                assert(lctx.scheduler_lock_set().contains(scheduler_ptr)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
 
@@ -207,46 +228,19 @@ verus! {
             let page_index = page_ptr2page_index(page_ptr);
 
             proof {
-                assert(scheduler_objects_unlocked_except(
-                    kernel.scheduler_map, lctx.thread_id(), set![scheduler_ptr],
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                    reveal(scheduler_objects_unlocked_except);
+                assert(kernel.process_map.dom().contains(process_ptr)
+                    && kernel.process_map.lock_id_by_key(process_ptr)
+                        == old(kernel).process_map.lock_id_by_key(process_ptr)) by {
+                    reveal(held_processes_unchanged);
                 };
-                assert(container_objects_unlocked(
-                    kernel.container_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
+                assert(kernel.scheduler_map.dom().contains(scheduler_ptr)
+                    && kernel.scheduler_map.lock_id_by_key(scheduler_ptr)
+                        == old(kernel).scheduler_map.lock_id_by_key(scheduler_ptr)) by {
+                    reveal(held_schedulers_unchanged);
                 };
-                assert(endpoint_objects_unlocked(
-                    kernel.endpoint_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
-                assert(pagetable_objects_unlocked(
-                    kernel.pagetable_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
-                assert(iommu_table_objects_unlocked(
-                    kernel.iommu_table_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
-                assert(pcid_allocator_objects_unlocked(
-                    kernel.pcid_allocator_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
-                assert(allocator_objects_unlocked(
-                    kernel.allocator_2m_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
-                assert(allocator_objects_unlocked(
-                    kernel.allocator_1g_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
+                assert(kernel.cpu_array.spec_index(cpu_id).view()
+                    == old(kernel).cpu_array.spec_index(cpu_id).view()) by {
+                    reveal(held_cpus_unchanged);
                 };
                 assert_sets_equal!(lctx.lock_id_set() == set![
                     (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
@@ -281,11 +275,6 @@ verus! {
             );
 
             proof {
-                assert(container_objects_unlocked(
-                    kernel.container_map, lctx.thread_id(),
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
                 assert(kernel.thread_map.lock_id_by_key(new_thread_ptr)
                     != kernel.thread_map.lock_id_by_key(current_thread_ptr)) by {
                     reveal(thread_perms_wf);
@@ -307,11 +296,6 @@ verus! {
             }
             kernel.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm));
             proof {
-                assert(thread_objects_unlocked_except(
-                    kernel.thread_map, lctx.thread_id(), set![current_thread_ptr],
-                )) by {
-                    reveal(thread_objects_unlocked_except);
-                };
                 assert_sets_equal!(lctx.lock_id_set() == set![
                     (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
                     (kernel.page_array.lock_id_by_index(page_index),
@@ -329,13 +313,6 @@ verus! {
             kernel.wunlock_thread(
                 current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm),
             );
-            proof {
-                assert(thread_objects_unlocked(
-                    kernel.thread_map, lctx.thread_id(),
-                )) by {
-                    reveal(thread_objects_unlocked_except);
-                };
-            }
             kernel.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
             kernel.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
@@ -344,10 +321,6 @@ verus! {
                     lctx.lock_id_set() == Set::<HeldLock>::empty(),
                     lock_id => {}
                 );
-                assert(kernel.all_objects_unlocked(&*lctx)) by {
-                    reveal(cpu_objects_unlocked_except);
-                    reveal(process_objects_unlocked_except);
-                };
                 steps.end_kernel_step(&*kernel, &*lctx);
                 assert(kernel_u_new_thread_changed(
                     steps.steps.last().old_u,
@@ -425,6 +398,7 @@ verus! {
                     .wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Release,
                 lock_id_aligned(old(kernel), old(lctx)),
+                typed_lock_sets_aligned(old(kernel), old(lctx)),
             ensures
                 final(kernel).inv(),
                 ret.0 == page_ptr,
@@ -484,6 +458,7 @@ verus! {
                     .wlocked_by(final(lctx)),
                 page_lock_perm.lock_id() == final(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
                 lock_id_aligned(final(kernel), final(lctx)),
+                typed_lock_sets_aligned(final(kernel), final(lctx)),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state()
                     == old(lctx).kernel_view_locking_state(),
@@ -527,42 +502,8 @@ verus! {
                             KernelObjId::Page(page_ptr2page_index(page_ptr))))
                         .insert((final(kernel).thread_map.lock_id_by_key(page_ptr),
                             KernelObjId::Thread(page_ptr))),
-                scheduler_objects_unlocked_except(
-                    old(kernel).scheduler_map,
-                    old(lctx).thread_id(),
-                    set![scheduler_ptr],
-                ) ==> scheduler_objects_unlocked_except(
-                    final(kernel).scheduler_map,
-                    final(lctx).thread_id(),
-                    set![scheduler_ptr],
-                ),
-                process_objects_unlocked_except(
-                    old(kernel).process_map,
-                    old(lctx).thread_id(),
-                    set![process_ptr],
-                ) ==> process_objects_unlocked_except(
-                    final(kernel).process_map,
-                    final(lctx).thread_id(),
-                    set![process_ptr],
-                ),
-                page_objects_unlocked_except(
-                    old(kernel).page_array,
-                    old(lctx).thread_id(),
-                    set![page_ptr2page_index(page_ptr)],
-                ) ==> page_objects_unlocked_except(
-                    final(kernel).page_array,
-                    final(lctx).thread_id(),
-                    set![page_ptr2page_index(page_ptr)],
-                ),
-                thread_objects_unlocked_except(
-                    old(kernel).thread_map,
-                    old(lctx).thread_id(),
-                    set![staging_thread_ptr],
-                ) ==> thread_objects_unlocked_except(
-                    final(kernel).thread_map,
-                    final(lctx).thread_id(),
-                    set![staging_thread_ptr, page_ptr],
-                ),
+                typed_lock_sets_inserted(
+                    old(lctx), final(lctx), KernelObjId::Thread(page_ptr)),
         {
             proof {
                 assert(
@@ -702,6 +643,9 @@ verus! {
                 assert(lock_id_aligned(kernel, &*lctx)) by {
                     reveal(lock_id_aligned);
                 };
+                assert(typed_lock_sets_aligned(kernel, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
+                };
             }
 
             let (Tracked(thread_rwlock_perm), Tracked(thread_perm)) = retype_page_perm_to_thread(
@@ -741,16 +685,9 @@ verus! {
                 };
                 let uppers = old(kernel).container_map
                     .spec_index(container_ptr).view().uppertree_seq.view();
-                assert forall|i: int|
-                    0 <= i < uppers.len()
-                    implies kernel.container_map.dom().contains(
-                        uppers.spec_index(i),
-                    ) by {
-                    uppers.lemma_index_contains(i);
-                    reveal(container_uppertree_seq_wf);
-                }
                 add_thread_to_container_sets(
-                    &mut kernel.container_map, container_ptr, page_ptr,
+                    &mut kernel.container_map, kernel.root_container,
+                    container_ptr, page_ptr,
                     uppers,
                 );
             }
@@ -1003,7 +940,14 @@ verus! {
                         reveal(container_thread_endpoint_wf);
                     };
                     assert(container_thread_wf(kernel.container_map, kernel.thread_map)) by {
-                        container_thread_wf_preserved_on_thread_add(old(kernel).container_map, kernel.container_map, old(kernel).thread_map, kernel.thread_map, container_ptr, page_ptr, old(kernel).container_map.spec_index(container_ptr).view().uppertree_seq.view());
+                        container_thread_wf_preserved_on_thread_add(
+                            old(kernel).root_container,
+                            old(kernel).container_map, kernel.container_map,
+                            old(kernel).thread_map, kernel.thread_map,
+                            container_ptr, page_ptr,
+                            old(kernel).container_map.spec_index(container_ptr)
+                                .view().uppertree_seq.view(),
+                        );
                     };
                     assert(container_thread_scheduler_wf(kernel.container_map, kernel.thread_map, kernel.scheduler_map)) by {
                         reveal(container_thread_scheduler_wf);
@@ -1055,6 +999,9 @@ verus! {
                 );
                 assert(lock_id_aligned(&*kernel, &*lctx)) by {
                     reveal(lock_id_aligned);
+                };
+                assert(typed_lock_sets_aligned(&*kernel, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel.inv()) by {
                     assert(iommu_root_table_process_wf(
@@ -1142,50 +1089,6 @@ verus! {
                             KernelObjId::Thread(page_ptr))),
                     held => {}
                 );
-                assert(scheduler_objects_unlocked_except(
-                    old(kernel).scheduler_map,
-                    old(lctx).thread_id(),
-                    set![scheduler_ptr],
-                ) ==> scheduler_objects_unlocked_except(
-                    kernel.scheduler_map,
-                    lctx.thread_id(),
-                    set![scheduler_ptr],
-                )) by {
-                    reveal(scheduler_objects_unlocked_except);
-                };
-                assert(process_objects_unlocked_except(
-                    old(kernel).process_map,
-                    old(lctx).thread_id(),
-                    set![process_ptr],
-                ) ==> process_objects_unlocked_except(
-                    kernel.process_map,
-                    lctx.thread_id(),
-                    set![process_ptr],
-                )) by {
-                    reveal(process_objects_unlocked_except);
-                };
-                assert(page_objects_unlocked_except(
-                    old(kernel).page_array,
-                    old(lctx).thread_id(),
-                    set![page_ptr2page_index(page_ptr)],
-                ) ==> page_objects_unlocked_except(
-                    kernel.page_array,
-                    lctx.thread_id(),
-                    set![page_ptr2page_index(page_ptr)],
-                )) by {
-                    reveal(page_objects_unlocked_except);
-                };
-                assert(thread_objects_unlocked_except(
-                    old(kernel).thread_map,
-                    old(lctx).thread_id(),
-                    set![staging_thread_ptr],
-                ) ==> thread_objects_unlocked_except(
-                    kernel.thread_map,
-                    lctx.thread_id(),
-                    set![staging_thread_ptr, page_ptr],
-                )) by {
-                    reveal(thread_objects_unlocked_except);
-                };
             }
             (page_ptr, Tracked(thread_perm))
         }
@@ -1229,6 +1132,7 @@ verus! {
     /// Add t_ptr to dc's owned_threads + ancestors' owned_indirect_threads.
     pub proof fn add_thread_to_container_sets(
         tracked container_map: &mut ContainerLockedMap,
+        root_container: RwLockContainerPtr,
         dc: RwLockContainerPtr,
         t_ptr: RwLockThreadPtr,
         uppers: Seq<RwLockContainerPtr>,
@@ -1236,7 +1140,8 @@ verus! {
         requires
             old(container_map).perms_wf(),
             old(container_map).dom().contains(dc),
-            forall|i: int| #![auto] 0 <= i < uppers.len() ==> old(container_map).dom().contains(uppers.spec_index(i)),
+            container_uppertree_seq_wf(root_container, *old(container_map)),
+            uppers == old(container_map).spec_index(dc).view().uppertree_seq.view(),
             uppers.no_duplicates(),
             !uppers.contains(dc),
         ensures
@@ -1252,6 +1157,7 @@ verus! {
                     && final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
                     && final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed(),
     {
+        reveal(container_uppertree_seq_wf);
         container_map.update_user_ghost(dc, ContainerGhostU { owned_threads: Ghost(container_map.spec_index(dc).view_user_ghost().owned_threads.view().insert(t_ptr)) });
         add_thread_to_ancestor_sets(container_map, dc, t_ptr, uppers);
     }
@@ -1265,7 +1171,9 @@ verus! {
     )
         requires
             old(container_map).perms_wf(),
-            forall|i: int| #![auto] 0 <= i < uppers.len() ==> old(container_map).dom().contains(uppers.spec_index(i)),
+            forall|c: RwLockContainerPtr|
+                #![trigger uppers.contains(c)]
+                uppers.contains(c) ==> old(container_map).dom().contains(c),
             uppers.no_duplicates(),
         ensures
             final(container_map).perms_wf(),
@@ -1295,6 +1203,10 @@ verus! {
     {
         if uppers.len() > 0 {
             let c0 = uppers.spec_index(0);
+            assert(uppers.contains(c0)) by {
+                uppers.lemma_index_contains(0);
+            };
+            seq_drop_first_contains_iff_forall(uppers);
             container_map.update_kernel_ghost(c0, ContainerGhostK { owned_indirect_threads: Ghost(container_map.spec_index(c0).view_kernel_ghost().owned_indirect_threads.view().insert(t_ptr)) });
             add_thread_to_ancestor_sets(container_map, dc, t_ptr, uppers.drop_first());
             assert(!uppers.drop_first().contains(c0)) by {
@@ -1302,38 +1214,12 @@ verus! {
                     let k = choose|k: int| 0 <= k < uppers.drop_first().len() && uppers.drop_first().spec_index(k) == c0;
                 }
             };
-            assert forall|c: RwLockContainerPtr| #![auto] uppers.contains(c) implies c == c0 || uppers.drop_first().contains(c) by {
-                if c != c0 {
-                    let i = choose|i: int| 0 <= i < uppers.len() && uppers.spec_index(i) == c;
-                    if i == 0 {
-                        assert(c == c0) by {
-                            calc! {
-                                (==)
-                                c; {}
-                                uppers.spec_index(i); {}
-                                uppers.spec_index(0); {}
-                                c0;
-                            }
-                        };
-                    }
-                    assert(uppers.drop_first().spec_index(i - 1) == c) by {
-                        calc! {
-                            (==)
-                            uppers.drop_first().spec_index(i - 1); {}
-                            uppers.spec_index(i); {}
-                            c;
-                        }
-                    };
-                }
-            };
-            assert forall|c: RwLockContainerPtr| #![auto] uppers.drop_first().contains(c) implies uppers.contains(c) by {
-                let k = choose|k: int| 0 <= k < uppers.drop_first().len() && uppers.drop_first().spec_index(k) == c;
-            };
         }
     }
 
     /// Re-establish container_thread_wf after adding a thread.
     pub proof fn container_thread_wf_preserved_on_thread_add(
+        root_container: RwLockContainerPtr,
         pre_cm: ContainerLockedMap,
         post_cm: ContainerLockedMap,
         pre_tm: ThreadLockedMap,
@@ -1364,7 +1250,8 @@ verus! {
                 && post_cm.spec_index(c).view() == pre_cm.spec_index(c).view(),
             // The fresh thread is consistent with its direct container dc and ancestors.
             pre_cm.dom().contains(dc),
-            forall|i: int| #![auto] 0 <= i < uppers.len() ==> pre_cm.dom().contains(uppers.spec_index(i)),
+            container_uppertree_seq_wf(root_container, pre_cm),
+            uppers == pre_cm.spec_index(dc).view().uppertree_seq.view(),
             post_tm.spec_index(t_ptr).view().owning_container == dc,
             post_tm.spec_index(t_ptr).view().container_depth == post_cm.spec_index(dc).view_rodata().view().depth,
             post_tm.spec_index(t_ptr).view().upper_container_seq == post_cm.spec_index(dc).view().uppertree_seq,
@@ -1373,6 +1260,7 @@ verus! {
             container_thread_wf(post_cm, post_tm),
     {
         assert(container_thread_wf(post_cm, post_tm)) by {
+            reveal(container_uppertree_seq_wf);
             reveal(container_thread_wf);
         };
     }

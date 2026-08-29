@@ -42,31 +42,42 @@ verus! {
             },
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
-            old(kernel).cpu_array.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
-            {
-                let process_ptr = old(kernel).cpu_array.spec_index(cpu_id).view().view().current_process->Some_0;
-                let container_ptr = old(kernel).process_map.spec_index(process_ptr)
-                    .view_rodata().view().owning_container;
-                let scheduler_ptr = old(kernel).container_map.spec_index(container_ptr)
-                    .view_rodata().view().scheduler;
-                &&& old(kernel).cpu_array.spec_index(cpu_id).view().view().current_process is Some
-                &&& old(kernel).cpu_array.spec_index(cpu_id).view().view().current_thread is Some
-                &&& old(kernel).process_map.dom().contains(process_ptr)
-                &&& old(kernel).container_map.dom().contains(container_ptr)
-                &&& old(kernel).scheduler_map.dom().contains(scheduler_ptr)
-                &&& old(kernel).process_map.spec_index(process_ptr).locked_by(old(lctx)) == false
-                &&& old(kernel).scheduler_map.spec_index(scheduler_ptr).locked_by(old(lctx)) == false
-            },
+            old(lctx).page_lock_set().is_empty(),
+            old(lctx).cpu_lock_set().is_empty(),
+            old(lctx).container_lock_set().is_empty(),
+            old(lctx).process_lock_set().is_empty(),
+            old(lctx).thread_lock_set().is_empty(),
+            old(lctx).endpoint_lock_set().is_empty(),
+            old(lctx).scheduler_lock_set().is_empty(),
+            old(lctx).pcid_allocator_lock_set().is_empty(),
+            old(lctx).pagetable_lock_set().is_empty(),
+            old(lctx).iommu_table_lock_set().is_empty(),
+            old(lctx).allocator_quota_lock_set().is_empty(),
+            old(lctx).allocator_cache_lock_set().is_empty(),
+            old(lctx).allocator_global_pool_lock_set().is_empty(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             lock_id_aligned(old(kernel), old(lctx)),
-            old(kernel).all_objects_unlocked(old(lctx)),
+            typed_lock_sets_aligned(old(kernel), old(lctx)),
         ensures
             final(steps).steps.len() <= 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_sets_aligned(final(kernel), final(lctx)),
             final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
-            final(kernel).all_objects_unlocked(final(lctx)),
+            final(lctx).page_lock_set().is_empty(),
+            final(lctx).cpu_lock_set().is_empty(),
+            final(lctx).container_lock_set().is_empty(),
+            final(lctx).process_lock_set().is_empty(),
+            final(lctx).thread_lock_set().is_empty(),
+            final(lctx).endpoint_lock_set().is_empty(),
+            final(lctx).scheduler_lock_set().is_empty(),
+            final(lctx).pcid_allocator_lock_set().is_empty(),
+            final(lctx).pagetable_lock_set().is_empty(),
+            final(lctx).iommu_table_lock_set().is_empty(),
+            final(lctx).allocator_quota_lock_set().is_empty(),
+            final(lctx).allocator_cache_lock_set().is_empty(),
+            final(lctx).allocator_global_pool_lock_set().is_empty(),
             !(ret is Success) ==> final(steps).steps.len() == 0,
             ret is Success ==> {
                 let process_ptr = old(kernel).cpu_array.spec_index(cpu_id)
@@ -93,8 +104,15 @@ verus! {
                     kernel.cpu_array.spec_index(cpu_id).view().view()
                         .current_thread->Some_0
                 ).view().state == (ThreadState::RUNNING { cpu_id })
-            ) by { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
+            ) by {
+                reveal(cpu_array_wf);
+                reveal(process_cpu_wf);
+                reveal(thread_cpu_wf);
+            };
         }
+        assert(!lctx.cpu_lock_set().contains(cpu_id)) by {
+            vstd::set::lemma_set_empty(cpu_id);
+        };
         let Tracked(cpu_lock_perm) = kernel.wlock_cpu(cpu_id, Tracked(&mut *lctx));
         let cpu = kernel.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
         let process_ptr = cpu.current_process.unwrap();
@@ -116,10 +134,6 @@ verus! {
         proof {
             assert(kernel.process_map.lock_id_by_key(process_ptr).major
                 == PROCESS_LOCK_MAJOR) by { reveal(process_perms_wf); };
-            assert(
-                kernel.process_map.dom().contains(process_ptr)
-                && kernel.process_map.spec_index(process_ptr).locked_by(&*lctx) == false
-            ) by { reveal(process_cpu_wf); };
             assert(kernel.process_map.lock_id_by_key(process_ptr)
                 .spec_gt(kernel.cpu_array.lock_id_by_index(cpu_id))) by {
                 reveal(container_cpu_wf);
@@ -133,12 +147,6 @@ verus! {
         if let (false, _) = process_res {
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                assert(kernel_objects_unlocked_except(
-                    kernel, lctx.thread_id(), Some(cpu_id),
-                    None, None, None, None
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
             }
             release_cpu_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
@@ -169,12 +177,6 @@ verus! {
         if let (false, _) = thread_res {
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                assert(kernel_objects_unlocked_except(
-                    kernel, lctx.thread_id(), Some(cpu_id),
-                    None, Some(process_ptr), None, None
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
             }
             release_cpu_and_process_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
@@ -195,13 +197,6 @@ verus! {
         if let None = endpoint_option {
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                assert(kernel_objects_unlocked_except(
-                    kernel, lctx.thread_id(), Some(cpu_id),
-                    None, Some(process_ptr),
-                    Some(current_thread_ptr), None
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
             }
             release_cpu_and_process_and_thread_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
@@ -215,13 +210,6 @@ verus! {
         if thread_ref.quota_4k < 1 {
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*kernel)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
-                assert(kernel_objects_unlocked_except(
-                    kernel, lctx.thread_id(), Some(cpu_id),
-                    None, Some(process_ptr),
-                    Some(current_thread_ptr), None
-                )) by {
-                    reveal(kernel_objects_unlocked_except);
-                };
             }
             release_cpu_and_process_and_thread_and_finish_syscall(kernel,
                 Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
@@ -295,15 +283,6 @@ verus! {
             scheduler_ptr, Tracked(&mut *lctx),
         );
 
-        proof {
-            assert(kernel_objects_unlocked_except(
-                kernel, lctx.thread_id(), Some(cpu_id),
-                Some(scheduler_ptr), Some(process_ptr),
-                Some(current_thread_ptr), Some(endpoint_ptr)
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-        }
         add_new_thread_with_endpoint(
             kernel,
             Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr,

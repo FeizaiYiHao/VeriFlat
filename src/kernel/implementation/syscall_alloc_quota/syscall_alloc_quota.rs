@@ -14,16 +14,42 @@ verus! {
                 old(kernel).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
-                old(kernel).all_objects_unlocked(old(lctx)),
+                old(lctx).page_lock_set().is_empty(),
+                old(lctx).cpu_lock_set().is_empty(),
+                old(lctx).container_lock_set().is_empty(),
+                old(lctx).process_lock_set().is_empty(),
+                old(lctx).thread_lock_set().is_empty(),
+                old(lctx).endpoint_lock_set().is_empty(),
+                old(lctx).scheduler_lock_set().is_empty(),
+                old(lctx).pcid_allocator_lock_set().is_empty(),
+                old(lctx).pagetable_lock_set().is_empty(),
+                old(lctx).iommu_table_lock_set().is_empty(),
+                old(lctx).allocator_quota_lock_set().is_empty(),
+                old(lctx).allocator_cache_lock_set().is_empty(),
+                old(lctx).allocator_global_pool_lock_set().is_empty(),
                 old(steps).steps.len() == 0,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
                 lock_id_aligned(old(kernel), old(lctx)),
+                typed_lock_sets_aligned(old(kernel), old(lctx)),
             ensures
                 final(steps).steps.len() <= 1,
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-                final(kernel).all_objects_unlocked(final(lctx)),
                 lock_id_aligned(final(kernel), final(lctx)),
+                typed_lock_sets_aligned(final(kernel), final(lctx)),
                 final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+                final(lctx).page_lock_set().is_empty(),
+                final(lctx).cpu_lock_set().is_empty(),
+                final(lctx).container_lock_set().is_empty(),
+                final(lctx).process_lock_set().is_empty(),
+                final(lctx).thread_lock_set().is_empty(),
+                final(lctx).endpoint_lock_set().is_empty(),
+                final(lctx).scheduler_lock_set().is_empty(),
+                final(lctx).pcid_allocator_lock_set().is_empty(),
+                final(lctx).pagetable_lock_set().is_empty(),
+                final(lctx).iommu_table_lock_set().is_empty(),
+                final(lctx).allocator_quota_lock_set().is_empty(),
+                final(lctx).allocator_cache_lock_set().is_empty(),
+                final(lctx).allocator_global_pool_lock_set().is_empty(),
                 ret is Success
                     || ret is ErrorContainerKilled
                     || ret is ErrorContainerQuotaInsufficient
@@ -71,6 +97,9 @@ verus! {
                 reveal(process_cpu_wf);
                 reveal(container_process_wf);
             };
+            assert(!lctx.cpu_lock_set().contains(cpu_id)) by {
+                vstd::set::lemma_set_empty(cpu_id);
+            };
 
             let Tracked(cpu_lock_perm) = kernel.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = kernel.cpu_array.borrow(cpu_id, Tracked(&cpu_lock_perm));
@@ -104,7 +133,6 @@ verus! {
                 reveal(allocator_perms_wf);
                 reveal(container_allocator_wf);
             };
-
             let Tracked(quota_lock_perm) = kernel.wlock_quota_4k(alloc_ptr_4k, Tracked(lctx));
 
             let quota_ref = kernel.allocator_4k_map.borrow_quota(

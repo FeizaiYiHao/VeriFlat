@@ -15,11 +15,8 @@ impl KernelK {
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 index_valid(NUM_CPUS, cache_cpu),
-                wlock_requires(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches.spec_index(cache_cpu).view(),
-                    old(lctx),
-                ),
+                !old(lctx).allocator_cache_lock_set().contains(
+                    (PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{
                     container: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(),
@@ -28,6 +25,7 @@ impl KernelK {
                     minor: old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor(),
                 }),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -35,6 +33,7 @@ impl KernelK {
 
                 // ---- Every held lock still matches lctx (cache now locked) ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
                 forall|thread_ptr: RwLockThreadPtr|
                     #![trigger old(self).thread_map.spec_index(thread_ptr)
                         .locked_by_thread(old(lctx).thread_id())]
@@ -134,6 +133,12 @@ impl KernelK {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                     .cpu_caches.spec_index(cache_cpu).view()
                     .locked_by_thread(final(lctx).thread_id()),
+                typed_lock_sets_inserted(
+                    old(lctx), final(lctx),
+                    KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
+                final(lctx).allocator_cache_lock_set().contains(
+                    (PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
                     (
                         final(self).allocator_4k_map.spec_index(alloc_ptr_4k)
@@ -152,6 +157,13 @@ impl KernelK {
                     }
                 ) by {
                     reveal(allocator_perms_wf);
+                };
+                assert(wlock_requires(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches.spec_index(cache_cpu).view(),
+                    old(lctx),
+                )) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
             let ret = self.allocator_4k_map.wlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
@@ -272,6 +284,9 @@ impl KernelK {
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
                 };
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
+                };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
@@ -298,13 +313,8 @@ impl KernelK {
                         .cpu_caches.spec_index(cache_cpu).view().locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
                     .cpu_caches.spec_index(cache_cpu).view().wlocked_by(old(lctx)),
-                old(lctx).lock_entry_contains(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .cpu_caches.lock_id_by_index(cache_cpu),
-                    KernelObjId::AllocatorCache(
-                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
-                    )),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -312,6 +322,7 @@ impl KernelK {
 
                 // ---- Every held lock still matches lctx (cache now released) ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
                 forall|thread_ptr: RwLockThreadPtr|
                     #![trigger old(self).thread_map.spec_index(thread_ptr)
                         .locked_by_thread(old(lctx).thread_id())]
@@ -414,6 +425,12 @@ impl KernelK {
                     old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
                     final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
                 ),
+                typed_lock_sets_removed(
+                    old(lctx), final(lctx),
+                    KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
+                !final(lctx).allocator_cache_lock_set().contains(
+                    (PageSize::SZ4k, alloc_ptr_4k, cache_cpu)),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
                     (
                         old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
@@ -443,6 +460,15 @@ impl KernelK {
                     }
                 ) by {
                     reveal(allocator_perms_wf);
+                };
+                assert(old(lctx).lock_entry_contains(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .cpu_caches.lock_id_by_index(cache_cpu),
+                    KernelObjId::AllocatorCache(
+                        PageSize::SZ4k, alloc_ptr_4k, cache_cpu,
+                    ),
+                )) by {
+                    reveal(lock_id_aligned);
                 };
             }
             self.allocator_4k_map.wunlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
@@ -562,6 +588,9 @@ impl KernelK {
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
+                };
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

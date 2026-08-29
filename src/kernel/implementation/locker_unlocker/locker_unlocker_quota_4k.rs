@@ -13,13 +13,12 @@ impl KernelK {
                 old(self).inv(),
                 old(self).allocator_4k_map.dom().contains(alloc_ptr_4k),
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
-                wlock_requires(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
-                    old(lctx),
-                ),
+                !old(lctx).allocator_quota_lock_set().contains(
+                    (PageSize::SZ4k, alloc_ptr_4k)),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id()),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -28,6 +27,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's quota lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -61,13 +61,11 @@ impl KernelK {
                     #![trigger final(self).allocator_4k_map.spec_index(k)]
                     old(self).allocator_4k_map.dom().contains(k) && k != alloc_ptr_4k ==>
                     final(self).allocator_4k_map.spec_index(k) == old(self).allocator_4k_map.spec_index(k),
-                allocator_objects_unlocked(
-                    old(self).allocator_4k_map, old(lctx).thread_id(),
-                ) ==> allocator_objects_unlocked_except_quota(
-                    final(self).allocator_4k_map,
-                    final(lctx).thread_id(),
-                    alloc_ptr_4k,
-                ),
+                typed_lock_sets_inserted(
+                    old(lctx), final(lctx),
+                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
+                final(lctx).allocator_quota_lock_set().contains(
+                    (PageSize::SZ4k, alloc_ptr_4k)),
 
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
@@ -92,6 +90,12 @@ impl KernelK {
             proof {
                 assert(old(self).allocator_4k_map.perms_wf()) by {
                     reveal(allocator_perms_wf);
+                };
+                assert(wlock_requires(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota,
+                    old(lctx),
+                )) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
             let ret = self.allocator_4k_map.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
@@ -211,6 +215,9 @@ impl KernelK {
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
                 };
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
+                };
             }
             ret
         }
@@ -240,11 +247,8 @@ impl KernelK {
                         .locking_thread()->Write_lock_id,
                 old(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     .wlocked_by(old(lctx)),
-                old(lctx).lock_entry_contains(
-                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
-                        .quota.lock_id(),
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -253,6 +257,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only allocator_4k_map's quota lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -278,13 +283,11 @@ impl KernelK {
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).wf(),
                 !final(self).allocator_4k_map.spec_index(alloc_ptr_4k).quota
                     .locked_by_thread(final(lctx).thread_id()),
-                allocator_objects_unlocked_except_quota(
-                    old(self).allocator_4k_map,
-                    old(lctx).thread_id(),
-                    alloc_ptr_4k,
-                ) ==> allocator_objects_unlocked(
-                    final(self).allocator_4k_map, final(lctx).thread_id(),
-                ),
+                typed_lock_sets_removed(
+                    old(lctx), final(lctx),
+                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
+                !final(lctx).allocator_quota_lock_set().contains(
+                    (PageSize::SZ4k, alloc_ptr_4k)),
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container == old(self).allocator_4k_map.spec_index(alloc_ptr_4k).owning_container,
@@ -325,6 +328,13 @@ impl KernelK {
             proof {
                 assert(old(self).allocator_4k_map.perms_wf()) by {
                     reveal(allocator_perms_wf);
+                };
+                assert(old(lctx).lock_entry_contains(
+                    old(self).allocator_4k_map.spec_index(alloc_ptr_4k)
+                        .quota.lock_id(),
+                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k),
+                )) by {
+                    reveal(lock_id_aligned);
                 };
             }
             self.allocator_4k_map.wunlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
@@ -443,6 +453,9 @@ impl KernelK {
                     };
                 assert(lock_id_aligned(self, &*lctx)) by {
                     reveal(lock_id_aligned);
+                };
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
         }

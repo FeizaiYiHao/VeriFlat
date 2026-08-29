@@ -20,6 +20,19 @@ pub tracked struct LCtxtState {
 pub tracked struct LocalContext {
     thread_id: LockThreadId,
     lock_id_set: Set<HeldLock>,
+    page_lock_set: Set<PageIndex>,
+    cpu_lock_set: Set<CpuId>,
+    container_lock_set: Set<RwLockContainerPtr>,
+    process_lock_set: Set<RwLockProcessPtr>,
+    thread_lock_set: Set<RwLockThreadPtr>,
+    endpoint_lock_set: Set<RwLockEndpointPtr>,
+    scheduler_lock_set: Set<RwLockSchedulerPtr>,
+    pcid_allocator_lock_set: Set<RwLockPcidAllocatorPtr>,
+    pagetable_lock_set: Set<RwLockPageTableRoot>,
+    iommu_table_lock_set: Set<RwLockPageTableRoot>,
+    allocator_quota_lock_set: Set<(PageSize, RwLockPageAllocatorPtr)>,
+    allocator_cache_lock_set: Set<(PageSize, RwLockPageAllocatorPtr, CpuId)>,
+    allocator_global_pool_lock_set: Set<(PageSize, RwLockPageAllocatorPtr)>,
     state: LCtxtState,
 }
 
@@ -30,6 +43,64 @@ impl LocalContext {
 
     pub closed spec fn lock_id_set(&self) -> Set<HeldLock> {
         self.lock_id_set
+    }
+
+    pub closed spec fn page_lock_set(&self) -> Set<PageIndex> {
+        self.page_lock_set
+    }
+
+    pub closed spec fn cpu_lock_set(&self) -> Set<CpuId> {
+        self.cpu_lock_set
+    }
+
+    pub closed spec fn container_lock_set(&self) -> Set<RwLockContainerPtr> {
+        self.container_lock_set
+    }
+
+    pub closed spec fn process_lock_set(&self) -> Set<RwLockProcessPtr> {
+        self.process_lock_set
+    }
+
+    pub closed spec fn thread_lock_set(&self) -> Set<RwLockThreadPtr> {
+        self.thread_lock_set
+    }
+
+    pub closed spec fn endpoint_lock_set(&self) -> Set<RwLockEndpointPtr> {
+        self.endpoint_lock_set
+    }
+
+    pub closed spec fn scheduler_lock_set(&self) -> Set<RwLockSchedulerPtr> {
+        self.scheduler_lock_set
+    }
+
+    pub closed spec fn pcid_allocator_lock_set(&self) -> Set<RwLockPcidAllocatorPtr> {
+        self.pcid_allocator_lock_set
+    }
+
+    pub closed spec fn pagetable_lock_set(&self) -> Set<RwLockPageTableRoot> {
+        self.pagetable_lock_set
+    }
+
+    pub closed spec fn iommu_table_lock_set(&self) -> Set<RwLockPageTableRoot> {
+        self.iommu_table_lock_set
+    }
+
+    pub closed spec fn allocator_quota_lock_set(
+        &self,
+    ) -> Set<(PageSize, RwLockPageAllocatorPtr)> {
+        self.allocator_quota_lock_set
+    }
+
+    pub closed spec fn allocator_cache_lock_set(
+        &self,
+    ) -> Set<(PageSize, RwLockPageAllocatorPtr, CpuId)> {
+        self.allocator_cache_lock_set
+    }
+
+    pub closed spec fn allocator_global_pool_lock_set(
+        &self,
+    ) -> Set<(PageSize, RwLockPageAllocatorPtr)> {
+        self.allocator_global_pool_lock_set
     }
 
     pub open spec fn held_lock_id_set(&self) -> Set<HeldLock> {
@@ -83,6 +154,22 @@ impl LocalContext {
             }
     }
 
+    #[verifier::opaque]
+    pub open spec fn holds_no_typed_allocator_locks(
+        &self,
+        page_size: PageSize,
+    ) -> bool {
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allocator_quota_lock_set().contains((page_size, ptr))]
+            !self.allocator_quota_lock_set().contains((page_size, ptr)))
+        &&& (forall|ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+            #![trigger self.allocator_cache_lock_set().contains((page_size, ptr, cpu_id))]
+            !self.allocator_cache_lock_set().contains((page_size, ptr, cpu_id)))
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allocator_global_pool_lock_set().contains((page_size, ptr))]
+            !self.allocator_global_pool_lock_set().contains((page_size, ptr)))
+    }
+
     pub proof fn lemma_lock_id_eq_imply_acyclic_eq(&self)
         ensures
             forall|lock_id1: LockId, lock_id2: LockId|
@@ -107,6 +194,7 @@ impl LocalContext {
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() is Release,
             final(self).lock_id_set() == old(self).lock_id_set(),
+            typed_lock_sets_unchanged(old(self), final(self)),
     {
         unimplemented!()
     }
@@ -138,8 +226,152 @@ impl LocalContext {
                     == old(self).lock_entry_contains(held.0, held.1),
             final(self).kernel_view_locking_state()
                 == old(self).kernel_view_locking_state(),
+            typed_lock_sets_unchanged(old(self), final(self)),
     {
         unimplemented!()
+    }
+}
+
+pub open spec fn typed_lock_sets_unchanged(
+    old: &LocalContext,
+    new: &LocalContext,
+) -> bool {
+    &&& new.page_lock_set() == old.page_lock_set()
+    &&& new.cpu_lock_set() == old.cpu_lock_set()
+    &&& new.container_lock_set() == old.container_lock_set()
+    &&& new.process_lock_set() == old.process_lock_set()
+    &&& new.thread_lock_set() == old.thread_lock_set()
+    &&& new.endpoint_lock_set() == old.endpoint_lock_set()
+    &&& new.scheduler_lock_set() == old.scheduler_lock_set()
+    &&& new.pcid_allocator_lock_set() == old.pcid_allocator_lock_set()
+    &&& new.pagetable_lock_set() == old.pagetable_lock_set()
+    &&& new.iommu_table_lock_set() == old.iommu_table_lock_set()
+    &&& new.allocator_quota_lock_set() == old.allocator_quota_lock_set()
+    &&& new.allocator_cache_lock_set() == old.allocator_cache_lock_set()
+    &&& new.allocator_global_pool_lock_set() == old.allocator_global_pool_lock_set()
+}
+
+pub open spec fn typed_lock_sets_inserted(
+    old: &LocalContext,
+    new: &LocalContext,
+    obj_id: KernelObjId,
+) -> bool {
+    &&& new.page_lock_set() == match obj_id {
+        KernelObjId::Page(index) => old.page_lock_set().insert(index),
+        _ => old.page_lock_set(),
+    }
+    &&& new.cpu_lock_set() == match obj_id {
+        KernelObjId::Cpu(cpu_id) => old.cpu_lock_set().insert(cpu_id),
+        _ => old.cpu_lock_set(),
+    }
+    &&& new.container_lock_set() == match obj_id {
+        KernelObjId::Container(ptr) => old.container_lock_set().insert(ptr),
+        _ => old.container_lock_set(),
+    }
+    &&& new.process_lock_set() == match obj_id {
+        KernelObjId::Process(ptr) => old.process_lock_set().insert(ptr),
+        _ => old.process_lock_set(),
+    }
+    &&& new.thread_lock_set() == match obj_id {
+        KernelObjId::Thread(ptr) => old.thread_lock_set().insert(ptr),
+        _ => old.thread_lock_set(),
+    }
+    &&& new.endpoint_lock_set() == match obj_id {
+        KernelObjId::Endpoint(ptr) => old.endpoint_lock_set().insert(ptr),
+        _ => old.endpoint_lock_set(),
+    }
+    &&& new.scheduler_lock_set() == match obj_id {
+        KernelObjId::Scheduler(ptr) => old.scheduler_lock_set().insert(ptr),
+        _ => old.scheduler_lock_set(),
+    }
+    &&& new.pcid_allocator_lock_set() == match obj_id {
+        KernelObjId::PcidAllocator(ptr) => old.pcid_allocator_lock_set().insert(ptr),
+        _ => old.pcid_allocator_lock_set(),
+    }
+    &&& new.pagetable_lock_set() == match obj_id {
+        KernelObjId::PageTable(ptr) => old.pagetable_lock_set().insert(ptr),
+        _ => old.pagetable_lock_set(),
+    }
+    &&& new.iommu_table_lock_set() == match obj_id {
+        KernelObjId::IommuTable(ptr) => old.iommu_table_lock_set().insert(ptr),
+        _ => old.iommu_table_lock_set(),
+    }
+    &&& new.allocator_quota_lock_set() == match obj_id {
+        KernelObjId::AllocatorQuota(size, ptr) =>
+            old.allocator_quota_lock_set().insert((size, ptr)),
+        _ => old.allocator_quota_lock_set(),
+    }
+    &&& new.allocator_cache_lock_set() == match obj_id {
+        KernelObjId::AllocatorCache(size, ptr, cpu_id) =>
+            old.allocator_cache_lock_set().insert((size, ptr, cpu_id)),
+        _ => old.allocator_cache_lock_set(),
+    }
+    &&& new.allocator_global_pool_lock_set() == match obj_id {
+        KernelObjId::AllocatorGlobalPoll(size, ptr) =>
+            old.allocator_global_pool_lock_set().insert((size, ptr)),
+        _ => old.allocator_global_pool_lock_set(),
+    }
+}
+
+pub open spec fn typed_lock_sets_removed(
+    old: &LocalContext,
+    new: &LocalContext,
+    obj_id: KernelObjId,
+) -> bool {
+    &&& new.page_lock_set() == match obj_id {
+        KernelObjId::Page(index) => old.page_lock_set().remove(index),
+        _ => old.page_lock_set(),
+    }
+    &&& new.cpu_lock_set() == match obj_id {
+        KernelObjId::Cpu(cpu_id) => old.cpu_lock_set().remove(cpu_id),
+        _ => old.cpu_lock_set(),
+    }
+    &&& new.container_lock_set() == match obj_id {
+        KernelObjId::Container(ptr) => old.container_lock_set().remove(ptr),
+        _ => old.container_lock_set(),
+    }
+    &&& new.process_lock_set() == match obj_id {
+        KernelObjId::Process(ptr) => old.process_lock_set().remove(ptr),
+        _ => old.process_lock_set(),
+    }
+    &&& new.thread_lock_set() == match obj_id {
+        KernelObjId::Thread(ptr) => old.thread_lock_set().remove(ptr),
+        _ => old.thread_lock_set(),
+    }
+    &&& new.endpoint_lock_set() == match obj_id {
+        KernelObjId::Endpoint(ptr) => old.endpoint_lock_set().remove(ptr),
+        _ => old.endpoint_lock_set(),
+    }
+    &&& new.scheduler_lock_set() == match obj_id {
+        KernelObjId::Scheduler(ptr) => old.scheduler_lock_set().remove(ptr),
+        _ => old.scheduler_lock_set(),
+    }
+    &&& new.pcid_allocator_lock_set() == match obj_id {
+        KernelObjId::PcidAllocator(ptr) => old.pcid_allocator_lock_set().remove(ptr),
+        _ => old.pcid_allocator_lock_set(),
+    }
+    &&& new.pagetable_lock_set() == match obj_id {
+        KernelObjId::PageTable(ptr) => old.pagetable_lock_set().remove(ptr),
+        _ => old.pagetable_lock_set(),
+    }
+    &&& new.iommu_table_lock_set() == match obj_id {
+        KernelObjId::IommuTable(ptr) => old.iommu_table_lock_set().remove(ptr),
+        _ => old.iommu_table_lock_set(),
+    }
+    &&& new.allocator_quota_lock_set() == match obj_id {
+        KernelObjId::AllocatorQuota(size, ptr) =>
+            old.allocator_quota_lock_set().remove((size, ptr)),
+        _ => old.allocator_quota_lock_set(),
+    }
+    &&& new.allocator_cache_lock_set() == match obj_id {
+        KernelObjId::AllocatorCache(size, ptr, cpu_id) =>
+            old.allocator_cache_lock_set().remove((size, ptr, cpu_id)),
+        _ => old.allocator_cache_lock_set(),
+    }
+    &&& new.allocator_global_pool_lock_set() == match obj_id {
+        KernelObjId::AllocatorGlobalPoll(size, ptr) =>
+            old.allocator_global_pool_lock_set().remove((size, ptr)),
+        _ => old.allocator_global_pool_lock_set(),
     }
 }
 
@@ -153,6 +385,7 @@ pub open spec fn lock_ensures<T>(
     &&& new.thread_id() == old.thread_id()
     &&& new.kernel_view_locking_state() is Acquire
     &&& new.lock_id_set() == old.lock_id_set().insert((lock_id, obj_id))
+    &&& typed_lock_sets_inserted(old, new, obj_id)
 }
 
 pub open spec fn unlock_ensures<T>(
@@ -170,6 +403,7 @@ pub open spec fn unlock_ensures<T>(
         ==> new.kernel_view_locking_state() is Release
     &&& new.lock_id_set() == old.lock_id_set().remove((lock_id, obj_id))
     &&& !new.lock_id_set().contains((lock_id, obj_id))
+    &&& typed_lock_sets_removed(old, new, obj_id)
     &&& forall|held: HeldLock|
         #![trigger new.lock_entry_contains(held.0, held.1)]
         held.1 != obj_id

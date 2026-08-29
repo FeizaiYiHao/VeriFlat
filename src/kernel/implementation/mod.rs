@@ -4,12 +4,6 @@ pub mod syscall_alloc_quota;
 pub mod syscall_new_thread;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_thread_with_endpoint;
-#[cfg(not(feature = "split-crates"))]
-pub mod syscall_mmap_4k;
-#[cfg(not(feature = "split-crates"))]
-pub mod syscall_ipc;
 pub mod locker_unlocker;
-#[cfg(not(feature = "split-crates"))]
-pub mod map_4k;
 #[cfg(not(feature = "split-crates"))]
 pub mod allocate_free_4k_page;

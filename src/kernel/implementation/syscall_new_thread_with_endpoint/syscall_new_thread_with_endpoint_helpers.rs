@@ -117,14 +117,38 @@ verus! {
             old(kernel).thread_map.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(kernel).thread_map.spec_index(current_thread_ptr).view().quota_4k >= 1,
             old(kernel).thread_map.lock_id_by_key(current_thread_ptr).major == THREAD_LOCK_MAJOR,
-            kernel_objects_unlocked_except(
-                old(kernel), old(lctx).thread_id(), Some(cpu_id),
-                Some(scheduler_ptr), Some(process_ptr),
-                Some(current_thread_ptr), Some(endpoint_ptr)),
+            old(lctx).page_lock_set().is_empty(),
+            old(lctx).cpu_lock_set() =~= set![cpu_id],
+            old(lctx).container_lock_set().is_empty(),
+            old(lctx).process_lock_set() =~= set![process_ptr],
+            old(lctx).thread_lock_set() =~= set![current_thread_ptr],
+            old(lctx).endpoint_lock_set() =~= set![endpoint_ptr],
+            old(lctx).scheduler_lock_set() =~= set![scheduler_ptr],
+            old(lctx).pcid_allocator_lock_set().is_empty(),
+            old(lctx).pagetable_lock_set().is_empty(),
+            old(lctx).iommu_table_lock_set().is_empty(),
+            old(lctx).allocator_quota_lock_set().is_empty(),
+            old(lctx).allocator_cache_lock_set().is_empty(),
+            old(lctx).allocator_global_pool_lock_set().is_empty(),
             lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_sets_aligned(old(kernel), old(lctx)),
         ensures
             lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_sets_aligned(final(kernel), final(lctx)),
             final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).page_lock_set().is_empty(),
+            final(lctx).cpu_lock_set().is_empty(),
+            final(lctx).container_lock_set().is_empty(),
+            final(lctx).process_lock_set().is_empty(),
+            final(lctx).thread_lock_set().is_empty(),
+            final(lctx).endpoint_lock_set().is_empty(),
+            final(lctx).scheduler_lock_set().is_empty(),
+            final(lctx).pcid_allocator_lock_set().is_empty(),
+            final(lctx).pagetable_lock_set().is_empty(),
+            final(lctx).iommu_table_lock_set().is_empty(),
+            final(lctx).allocator_quota_lock_set().is_empty(),
+            final(lctx).allocator_cache_lock_set().is_empty(),
+            final(lctx).allocator_global_pool_lock_set().is_empty(),
             !final(kernel).cpu_array.spec_index(cpu_id).view()
                 .locked_by_thread(final(lctx).thread_id()),
             !final(kernel).scheduler_map.spec_index(scheduler_ptr)
@@ -135,7 +159,6 @@ verus! {
                 .locked_by_thread(final(lctx).thread_id()),
             !final(kernel).endpoint_map.spec_index(endpoint_ptr)
                 .locked_by_thread(final(lctx).thread_id()),
-            final(kernel).all_objects_unlocked(final(lctx)),
             final(steps).steps.len() == old(steps).steps.len() + 1,
             final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(kernel)),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
@@ -181,23 +204,23 @@ verus! {
             assert(kernel.container_map.perms_wf()) by { reveal(container_perms_wf); };
         }
         proof {
-            assert(
-                cpu_objects_unlocked_except(
-                    kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                && scheduler_objects_unlocked_except(
-                    kernel.scheduler_map, lctx.thread_id(), set![scheduler_ptr])
-                && process_objects_unlocked_except(
-                    kernel.process_map, lctx.thread_id(), set![process_ptr])
-                && thread_objects_unlocked_except(
-                    kernel.thread_map, lctx.thread_id(), set![current_thread_ptr])
-                && endpoint_objects_unlocked_except(
-                    kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr])
-                && page_objects_unlocked(
-                    kernel.page_array, lctx.thread_id())
-                && allocator_objects_unlocked(
-                    kernel.allocator_4k_map, lctx.thread_id())
-            ) by {
-                reveal(kernel_objects_unlocked_except);
+            assert(lctx.holds_no_typed_allocator_locks(PageSize::SZ4k)) by {
+                reveal(LocalContext::holds_no_typed_allocator_locks);
+            };
+            assert(lctx.cpu_lock_set().contains(cpu_id)) by {
+                reveal(typed_lock_sets_aligned);
+            };
+            assert(lctx.process_lock_set().contains(process_ptr)) by {
+                reveal(typed_lock_sets_aligned);
+            };
+            assert(lctx.thread_lock_set().contains(current_thread_ptr)) by {
+                reveal(typed_lock_sets_aligned);
+            };
+            assert(lctx.endpoint_lock_set().contains(endpoint_ptr)) by {
+                reveal(typed_lock_sets_aligned);
+            };
+            assert(lctx.scheduler_lock_set().contains(scheduler_ptr)) by {
+                reveal(typed_lock_sets_aligned);
             };
         }
 
@@ -209,67 +232,24 @@ verus! {
         let page_index = page_ptr2page_index(page_ptr);
 
         proof {
-            assert(thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![current_thread_ptr],
-            )) by {
-                reveal(thread_objects_unlocked_except);
+            assert(kernel.process_map.dom().contains(process_ptr)
+                && kernel.process_map.lock_id_by_key(process_ptr)
+                    == old(kernel).process_map.lock_id_by_key(process_ptr)) by {
+                reveal(held_processes_unchanged);
             };
-            assert(cpu_objects_unlocked_except(
-                kernel.cpu_array, lctx.thread_id(), set![cpu_id],
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-                reveal(cpu_objects_unlocked_except);
+            assert(kernel.endpoint_map.dom().contains(endpoint_ptr)
+                && kernel.endpoint_map.lock_id_by_key(endpoint_ptr)
+                    == old(kernel).endpoint_map.lock_id_by_key(endpoint_ptr)) by {
+                reveal(held_endpoints_unchanged);
             };
-            assert(scheduler_objects_unlocked_except(
-                kernel.scheduler_map, lctx.thread_id(), set![scheduler_ptr],
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-                reveal(scheduler_objects_unlocked_except);
+            assert(kernel.scheduler_map.dom().contains(scheduler_ptr)
+                && kernel.scheduler_map.lock_id_by_key(scheduler_ptr)
+                    == old(kernel).scheduler_map.lock_id_by_key(scheduler_ptr)) by {
+                reveal(held_schedulers_unchanged);
             };
-            assert(process_objects_unlocked_except(
-                kernel.process_map, lctx.thread_id(), set![process_ptr],
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-                reveal(process_objects_unlocked_except);
-            };
-            assert(endpoint_objects_unlocked_except(
-                kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
-            )) by {
-                endpoint_objects_unlocked_except_preserved_for_held_unchanged(
-                    old(kernel).endpoint_map, kernel.endpoint_map, &*lctx,
-                    set![endpoint_ptr],
-                );
-            };
-            assert(container_objects_unlocked(
-                kernel.container_map, lctx.thread_id(),
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-            assert(pagetable_objects_unlocked(
-                kernel.pagetable_map, lctx.thread_id(),
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-            assert(iommu_table_objects_unlocked(
-                kernel.iommu_table_map, lctx.thread_id(),
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-            assert(pcid_allocator_objects_unlocked(
-                kernel.pcid_allocator_map, lctx.thread_id(),
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-            assert(allocator_objects_unlocked(
-                kernel.allocator_2m_map, lctx.thread_id(),
-            )) by {
-                reveal(kernel_objects_unlocked_except);
-            };
-            assert(allocator_objects_unlocked(
-                kernel.allocator_1g_map, lctx.thread_id(),
-            )) by {
-                reveal(kernel_objects_unlocked_except);
+            assert(kernel.cpu_array.spec_index(cpu_id).view()
+                == old(kernel).cpu_array.spec_index(cpu_id).view()) by {
+                reveal(held_cpus_unchanged);
             };
             assert_sets_equal!(lctx.lock_id_set() == set![
                 (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
@@ -382,10 +362,6 @@ verus! {
                 lctx.lock_id_set() == Set::<HeldLock>::empty(),
                 held => {}
             );
-            assert(kernel.all_objects_unlocked(&*lctx)) by {
-                reveal(cpu_objects_unlocked_except);
-                reveal(process_objects_unlocked_except);
-            };
             assert(kernel_u_new_thread_changed(
                 steps.snap_shot,
                 kernel_k_to_kernel_u(*kernel),
@@ -476,18 +452,8 @@ verus! {
                 (old(kernel).thread_map.lock_id_by_key(thread_ptr),
                     KernelObjId::Thread(thread_ptr)),
             ],
-            old(lctx).lock_entry_contains(
-                old(kernel).thread_map.lock_id_by_key(thread_ptr),
-                KernelObjId::Thread(thread_ptr)),
-            old(lctx).lock_entry_contains(
-                old(kernel).endpoint_map.lock_id_by_key(endpoint_ptr),
-                KernelObjId::Endpoint(endpoint_ptr)),
             lock_id_aligned(old(kernel), old(lctx)),
-            thread_objects_unlocked_except(
-                old(kernel).thread_map, old(lctx).thread_id(),
-                set![current_thread_ptr, thread_ptr]),
-            endpoint_objects_unlocked_except(
-                old(kernel).endpoint_map, old(lctx).thread_id(), set![endpoint_ptr]),
+            typed_lock_sets_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(kernel).thread_map.spec_index(thread_ptr).view()
@@ -557,11 +523,26 @@ verus! {
                 (current_thread_lock_id.view(), KernelObjId::Thread(current_thread_ptr)),
             ],
             lock_id_aligned(final(kernel), final(lctx)),
-            thread_objects_unlocked_except(
-                final(kernel).thread_map, final(lctx).thread_id(),
-                set![current_thread_ptr]),
-            endpoint_objects_unlocked(
-                final(kernel).endpoint_map, final(lctx).thread_id()),
+            typed_lock_sets_aligned(final(kernel), final(lctx)),
+            final(lctx).page_lock_set() == old(lctx).page_lock_set(),
+            final(lctx).cpu_lock_set() == old(lctx).cpu_lock_set(),
+            final(lctx).container_lock_set() == old(lctx).container_lock_set(),
+            final(lctx).process_lock_set() == old(lctx).process_lock_set(),
+            final(lctx).thread_lock_set()
+                == old(lctx).thread_lock_set().remove(thread_ptr),
+            final(lctx).endpoint_lock_set()
+                == old(lctx).endpoint_lock_set().remove(endpoint_ptr),
+            final(lctx).scheduler_lock_set() == old(lctx).scheduler_lock_set(),
+            final(lctx).pcid_allocator_lock_set()
+                == old(lctx).pcid_allocator_lock_set(),
+            final(lctx).pagetable_lock_set() == old(lctx).pagetable_lock_set(),
+            final(lctx).iommu_table_lock_set() == old(lctx).iommu_table_lock_set(),
+            final(lctx).allocator_quota_lock_set()
+                == old(lctx).allocator_quota_lock_set(),
+            final(lctx).allocator_cache_lock_set()
+                == old(lctx).allocator_cache_lock_set(),
+            final(lctx).allocator_global_pool_lock_set()
+                == old(lctx).allocator_global_pool_lock_set(),
             kernel_k_to_kernel_u(*final(kernel)) == kernel_k_to_kernel_u(*old(kernel)),
     {
         proof {
@@ -682,6 +663,9 @@ verus! {
             assert(lock_id_aligned(kernel, &*lctx)) by {
                 reveal(lock_id_aligned);
             };
+            assert(typed_lock_sets_aligned(kernel, &*lctx)) by {
+                reveal(typed_lock_sets_aligned);
+            };
             assert(kernel_k_to_kernel_u(*kernel) == kernel_k_to_kernel_u(*old(kernel))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(kernel), kernel); };
             assert(kernel.endpoint_map.lock_id_by_key(endpoint_ptr)
                 == old(kernel).endpoint_map.lock_id_by_key(endpoint_ptr)) by { lock_id_fields_eq_imply_eq(); };
@@ -698,39 +682,11 @@ verus! {
                 (old(kernel).thread_map.lock_id_by_key(thread_ptr),
                     KernelObjId::Thread(thread_ptr)),
             ], held => {});
-            assert(thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![current_thread_ptr, thread_ptr],
-            )) by {
-                thread_endpoint_reference_added_from_single_update(
-                    old(kernel).thread_map, kernel.thread_map, thread_ptr, endpoint_ptr, 0);
-                reveal(thread_endpoint_reference_added);
-                reveal(thread_objects_unlocked_except);
-            };
-            assert(endpoint_objects_unlocked_except(
-                kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
-            )) by {
-                endpoint_reference_added_from_single_update(
-                    old(kernel).endpoint_map, kernel.endpoint_map,
-                    thread_ptr, endpoint_ptr, 0);
-                reveal(endpoint_reference_added);
-                reveal(endpoint_objects_unlocked_except);
-            };
         }
         kernel.wunlock_thread(
             thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm),
         );
         proof {
-            assert(thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(), set![current_thread_ptr],
-            )) by {
-                reveal(thread_objects_unlocked_except);
-            };
-            assert(endpoint_objects_unlocked_except(
-                kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr],
-            )) by {
-                reveal(endpoint_objects_unlocked_except);
-            };
             assert_sets_equal!(lctx.lock_id_set() == set![
                 (old(kernel).cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
                 (old(kernel).page_array.lock_id_by_index(page_index), KernelObjId::Page(page_index)),

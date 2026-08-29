@@ -11,10 +11,11 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).container_map.dom().contains(container_ptr),
-                !old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
+                !old(lctx).container_lock_set().contains(container_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).container_map.lock_id_by_key(container_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -24,6 +25,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only container_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -48,11 +50,6 @@ impl KernelK {
                 // ---- (success) or nothing at all (failure) changed.
                 final(self).container_map.unchanged_except(&old(self).container_map, container_ptr),
                 final(self).container_map.perms_wf(),
-                container_objects_unlocked(
-                    old(self).container_map, old(lctx).thread_id(),
-                ) ==> container_objects_unlocked_except(
-                    final(self).container_map, final(lctx).thread_id(), set![container_ptr]),
-
                 // ---- LocalContext phase preservation ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -64,6 +61,8 @@ impl KernelK {
                     &&& final(self).container_map.spec_index(container_ptr) == old(self).container_map.spec_index(container_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
+                    &&& typed_lock_sets_unchanged(old(lctx), final(lctx))
+                    &&& !final(lctx).container_lock_set().contains(container_ptr)
                 },
 
                 // ---- Success: container locked by us, perm returned ----
@@ -84,11 +83,20 @@ impl KernelK {
                             KernelObjId::Container(container_ptr),
                         ),
                     )
+                    &&& typed_lock_sets_inserted(
+                        old(lctx), final(lctx),
+                        KernelObjId::Container(container_ptr),
+                    )
+                    &&& final(lctx).container_lock_set().contains(container_ptr)
                 },
         {
             proof {
                 assert(old(self).container_map.perms_wf()) by {
                     reveal(container_perms_wf);
+                };
+                assert(!old(self).container_map.spec_index(container_ptr)
+                    .wlocked_by(old(lctx))) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
             let res = self.container_map.wlock_unless_killed(
@@ -283,12 +291,8 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(container_objects_unlocked(
-                    old(self).container_map, old(lctx).thread_id(),
-                ) ==> container_objects_unlocked_except(
-                    self.container_map, lctx.thread_id(), set![container_ptr],
-                )) by {
-                    reveal(container_objects_unlocked_except);
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -328,10 +332,8 @@ impl KernelK {
                     == old(self).container_map.spec_index(container_ptr)
                         .locking_thread()->Write_lock_id,
                 old(self).container_map.spec_index(container_ptr).wlocked_by(old(lctx)),
-                old(lctx).lock_entry_contains(
-                    old(self).container_map.lock_id_by_key(container_ptr),
-                    KernelObjId::Container(container_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -341,6 +343,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only container_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -371,10 +374,11 @@ impl KernelK {
                     old(self).container_map.spec_index(container_ptr),
                     final(self).container_map.spec_index(container_ptr),
                 ),
-                container_objects_unlocked_except(
-                    old(self).container_map, old(lctx).thread_id(), set![container_ptr],
-                ) ==> container_objects_unlocked(
-                    final(self).container_map, final(lctx).thread_id()),
+                typed_lock_sets_removed(
+                    old(lctx), final(lctx),
+                    KernelObjId::Container(container_ptr),
+                ),
+                !final(lctx).container_lock_set().contains(container_ptr),
 
                 // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
@@ -400,6 +404,12 @@ impl KernelK {
                     &&& old(self).container_map.spec_index(container_ptr).inv()
                 }) by {
                     reveal(container_perms_wf);
+                };
+                assert(old(lctx).lock_entry_contains(
+                    old(self).container_map.lock_id_by_key(container_ptr),
+                    KernelObjId::Container(container_ptr),
+                )) by {
+                    reveal(lock_id_aligned);
                 };
             }
             self.container_map.wunlock(
@@ -600,12 +610,8 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(container_objects_unlocked_except(
-                    old(self).container_map, old(lctx).thread_id(), set![container_ptr],
-                ) ==> container_objects_unlocked(
-                    self.container_map, lctx.thread_id(),
-                )) by {
-                    reveal(container_objects_unlocked_except);
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

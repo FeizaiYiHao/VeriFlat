@@ -94,14 +94,30 @@ verus! {
                     KernelObjId::Process(process_ptr),
                 ),
             ],
+            old(lctx).page_lock_set().is_empty(),
+            old(lctx).cpu_lock_set() =~= set![cpu_id],
+            old(lctx).container_lock_set() =~= set![container_ptr],
+            old(lctx).process_lock_set() =~= set![process_ptr],
+            old(lctx).thread_lock_set().is_empty(),
+            old(lctx).endpoint_lock_set().is_empty(),
+            old(lctx).scheduler_lock_set().is_empty(),
+            old(lctx).pcid_allocator_lock_set().is_empty(),
+            old(lctx).pagetable_lock_set().is_empty(),
+            old(lctx).iommu_table_lock_set().is_empty(),
+            old(lctx).allocator_quota_lock_set() =~=
+                set![(PageSize::SZ4k, alloc_ptr_4k)],
+            old(lctx).allocator_cache_lock_set().is_empty(),
+            old(lctx).allocator_global_pool_lock_set().is_empty(),
             old(kernel).container_map.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
             old(kernel).container_map.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             alloc_amount <= usize::MAX - old(kernel).process_map.spec_index(process_ptr).view().quota_4k,
             old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k).quota.view().value >= alloc_amount,
             lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_sets_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_sets_aligned(final(kernel), final(lctx)),
             final(kernel).pagetable_map     == old(kernel).pagetable_map,
             final(kernel).iommu_table_map     == old(kernel).iommu_table_map,
             final(kernel).iommu_root_table     == old(kernel).iommu_root_table,
@@ -130,6 +146,19 @@ verus! {
                 final(kernel).allocator_4k_map.spec_index(k) == old(kernel).allocator_4k_map.spec_index(k),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).page_lock_set().is_empty(),
+            final(lctx).cpu_lock_set().is_empty(),
+            final(lctx).container_lock_set().is_empty(),
+            final(lctx).process_lock_set().is_empty(),
+            final(lctx).thread_lock_set().is_empty(),
+            final(lctx).endpoint_lock_set().is_empty(),
+            final(lctx).scheduler_lock_set().is_empty(),
+            final(lctx).pcid_allocator_lock_set().is_empty(),
+            final(lctx).pagetable_lock_set().is_empty(),
+            final(lctx).iommu_table_lock_set().is_empty(),
+            final(lctx).allocator_quota_lock_set().is_empty(),
+            final(lctx).allocator_cache_lock_set().is_empty(),
+            final(lctx).allocator_global_pool_lock_set().is_empty(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             alloc_amount == 0 ==> final(steps).steps == old(steps).steps,
             alloc_amount > 0 ==> {
@@ -227,24 +256,15 @@ verus! {
                 &&& kernel.allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id()
                     == old(kernel).allocator_4k_map.spec_index(alloc_ptr_4k)
                         .quota.lock_id()
-                &&& lctx.lock_entry_contains(
-                    kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id))
-                &&& lctx.lock_entry_contains(
-                    kernel.container_map.lock_id_by_key(container_ptr),
-                    KernelObjId::Container(container_ptr))
-                &&& lctx.lock_entry_contains(
-                    kernel.allocator_4k_map.spec_index(alloc_ptr_4k).quota.lock_id(),
-                    KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k))
-                &&& lctx.lock_entry_contains(
-                    kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr))
             }) by {
                 lock_id_fields_eq_imply_eq();
             };
             assert(lock_id_aligned(&*kernel, &*lctx)) by {
                 reveal(lock_id_aligned);
                 lock_id_fields_eq_imply_eq();
+            };
+            assert(typed_lock_sets_aligned(&*kernel, &*lctx)) by {
+                reveal(typed_lock_sets_aligned);
             };
         }
         kernel.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);

@@ -45,6 +45,32 @@ pub proof fn set_insert_remove_absent_lemma<A>(s: Set<A>, a: A)
     );
 }
 
+pub broadcast proof fn seq_drop_first_contains_iff<A>(s: Seq<A>, a: A)
+    requires
+        s.len() > 0,
+    ensures
+        #[trigger] s.contains(a)
+            == (a == s.spec_index(0) || #[trigger] s.drop_first().contains(a)),
+{
+    broadcast use vstd::seq_lib::lemma_seq_contains;
+    vstd::seq_lib::lemma_seq_skip_contains(s, 1, a);
+}
+
+pub proof fn seq_drop_first_contains_iff_forall<A>(s: Seq<A>)
+    requires
+        s.len() > 0,
+    ensures
+        forall|a: A|
+            #![trigger s.contains(a)]
+            s.contains(a)
+                == (a == s.spec_index(0) || s.drop_first().contains(a)),
+        forall|a: A|
+            #![trigger s.drop_first().contains(a)]
+            s.drop_first().contains(a) ==> s.contains(a),
+{
+    broadcast use seq_drop_first_contains_iff;
+}
+
 
 pub proof fn seq_push_lemma<A>()
     ensures

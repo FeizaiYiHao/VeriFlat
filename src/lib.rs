@@ -30,7 +30,6 @@ pub use pagetable_seq::*;
 pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_basd::allocate_free_4k_page;
-pub use kernel::implementation::map_4k::*;
 
 verus! {
 global size_of usize == 8;

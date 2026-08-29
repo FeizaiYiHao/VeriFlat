@@ -12,10 +12,10 @@ impl KernelK {
                 old(self).inv(),
                 index_valid(NUM_CPUS, cpu_id),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                !old(self).cpu_array.spec_index(cpu_id).view()
-                    .locked_by_thread(old(lctx).thread_id()),
+                !old(lctx).cpu_lock_set().contains(cpu_id),
                 old(lctx).lock_id_acyclic(old(self).cpu_array.lock_id_by_index(cpu_id)),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -24,6 +24,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -47,9 +48,9 @@ impl KernelK {
                 // ---- cpu_array: only the targeted slot's lock state changed ----
                 final(self).cpu_array.unchanged_except(&old(self).cpu_array, cpu_id),
                 final(self).cpu_array.inv(),
-                cpu_objects_unlocked(old(self).cpu_array, old(lctx).thread_id())
-                    ==> cpu_objects_unlocked_except(
-                        final(self).cpu_array, final(lctx).thread_id(), set![cpu_id]),
+                typed_lock_sets_inserted(
+                    old(lctx), final(lctx), KernelObjId::Cpu(cpu_id)),
+                final(lctx).cpu_lock_set().contains(cpu_id),
 
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
@@ -73,6 +74,10 @@ impl KernelK {
             proof {
                 assert(old(self).cpu_array.inv()) by {
                     reveal(cpu_array_wf);
+                };
+                assert(!old(self).cpu_array.spec_index(cpu_id).view()
+                    .locked_by_thread(old(lctx).thread_id())) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
             let ret = self.cpu_array.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
@@ -138,13 +143,8 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(cpu_objects_unlocked(
-                    old(self).cpu_array, old(lctx).thread_id(),
-                ) ==> cpu_objects_unlocked_except(
-                    self.cpu_array, lctx.thread_id(), set![cpu_id],
-                )) by {
-
-                    reveal(cpu_objects_unlocked_except);
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
 
@@ -170,6 +170,7 @@ impl KernelK {
                 lock_perm.view().lock_id()
                     == old(self).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -179,6 +180,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -210,10 +212,9 @@ impl KernelK {
                     old(self).cpu_array.spec_index(cpu_id).view(),
                     final(self).cpu_array.spec_index(cpu_id).view(),
                 ),
-                cpu_objects_unlocked_except(
-                    old(self).cpu_array, old(lctx).thread_id(), set![cpu_id],
-                ) ==> cpu_objects_unlocked(
-                    final(self).cpu_array, final(lctx).thread_id()),
+                typed_lock_sets_removed(
+                    old(lctx), final(lctx), KernelObjId::Cpu(cpu_id)),
+                !final(lctx).cpu_lock_set().contains(cpu_id),
 
                 // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
@@ -309,13 +310,8 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(cpu_objects_unlocked_except(
-                    old(self).cpu_array, old(lctx).thread_id(), set![cpu_id],
-                ) ==> cpu_objects_unlocked(
-                    self.cpu_array, lctx.thread_id(),
-                )) by {
-
-                    reveal(cpu_objects_unlocked_except);
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
 

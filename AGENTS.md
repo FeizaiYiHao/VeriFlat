@@ -46,9 +46,17 @@ this file or live code, this file and live code win.
 
 ## Current lock model
 
-- `LocalContext` contains one held-lock ledger:
-  `Set<(LockId, KernelObjId)>` (`Set<HeldLock>`).  Do not reintroduce typed lock
-  maps, a parallel object set, or a scalar-only lock-id set.
+- This experimental branch intentionally uses two independent held-lock
+  representations in `LocalContext`:
+  - `Set<(LockId, KernelObjId)>` (`Set<HeldLock>`) is the reverse ledger of
+    every held kernel lock and its current dynamic ordering id.
+  - One typed key set for each lockable object family is the forward ledger of
+    which objects of that family are held.  Pages use `PageIndex`, CPUs use
+    `CpuId`, allocator sets include `PageSize`, and the allocator-cache set also
+    includes its cache `CpuId`.
+- Do not add a direct equality, projection, or bridge invariant between the
+  reverse ledger and the typed sets.  Each representation aligns independently
+  with the real kernel lock state.
 - `lock_id_aligned(k, lctx)` is the exact object-sensitive mirror:
 
   ```text
@@ -59,13 +67,21 @@ this file or live code, this file and live code win.
       && id is that object's current dynamic lock id
   ```
 
-- Acquisition requires directly that the target is not already locked by the
-  current thread and inserts exactly `(current_id, obj)`. Unlock removes exactly
-  `(current_id, obj)`. A dynamic-id change replaces the old pair with the new
-  pair during the release-and-finish-syscall transition. Do not reintroduce a
-  separate lock-entry freshness predicate; acyclicity already excludes the
-  exact pair, while real target lock state is the operation's actual local
-  precondition.
+- Each typed-set alignment has the exact form
+  `set.contains(key) <==> object exists && object locked_by_thread(lctx)`;
+  map-backed families use map membership for existence, arrays use index
+  validity, and allocator keys include the additional size/cache components
+  needed to locate the physical lock.  Read and write ownership share the same
+  typed set.
+- For every acquisition, typed-set nonmembership is the caller-facing
+  target-freshness fact: combine it with `typed_lock_sets_aligned` to establish
+  that the real target is not already locked by the current thread.  The lock
+  primitive retains that direct physical precondition, inserts exactly
+  `(current_id, obj)` into the reverse ledger, and inserts exactly the typed
+  object key into the corresponding forward set.  Unlock removes both exact
+  entries.  A dynamic-id change replaces only the reverse-ledger pair; every
+  typed set is unchanged.  Do not add a separate lock-entry freshness
+  predicate.
 - A `Thread` always retains `owning_container`, `owning_proc`,
   `container_depth`, and `process_depth`; blocking does not erase ownership
   metadata.  Its dynamic lock id is state-dependent:
@@ -83,15 +99,17 @@ this file or live code, this file and live code win.
   IPC topology.  Ordinary send/receive rendezvous may cross container and
   process depths.  Do not add a same-depth or same-container restriction to
   ordinary IPC.
-- `LocalContext` has no separate `wf()` predicate.  Its only ghost state is the
-  thread id, phase, and held-lock ledger; consistency with kernel lock state is
-  expressed exclusively by `lock_id_aligned` at the kernel layer.
-- At `kernel_step_boundary`, the pair set is exactly unchanged, held-object
-  state and rodata are explicitly framed, and final alignment is explicit.
-- `all_objects_unlocked` means the thread holds neither a read nor a write lock
-  on any kernel object, and is an externally tracked lock-state fact. Preserve it
-  directly through operation contracts and boundary framing.  Do not derive it
-  by expanding an empty pair set through global `lock_id_aligned`.
+- `LocalContext` has no separate `wf()` predicate.  Consistency with kernel
+  lock state is expressed by `lock_id_aligned` for the reverse ledger and by
+  `typed_lock_sets_aligned` for the forward sets.
+- At `kernel_step_boundary`, both representations are exactly unchanged.  The
+  forward typed sets determine the exact range of held objects whose state is
+  framed; the reverse ledger is not used to enumerate that range.  Both final
+  alignment predicates remain explicit.
+- Replace `*_objects_unlocked_except` in the enabled experiment with direct
+  typed-set equalities/subsets and exact set changes.  Express total absence of
+  held locks as an empty reverse ledger.  Preserve independent object-state
+  framing when it is semantically required.
 
 ## Current syscall semantics
 
@@ -218,6 +236,12 @@ this file or live code, this file and live code win.
   the exact obligation and measured cost to the user.
 
 ## Build architecture
+
+- This experimental branch intentionally narrows both builds to kernel core,
+  4K page allocation, `syscall_alloc_quota`, `syscall_new_thread`, and
+  `syscall_new_thread_with_endpoint`.  Mapping, mmap, IPC, and other syscall
+  sources stay in the tree but are excluded from Cargo workspace membership and
+  monolith module declarations while this lock-model experiment is measured.
 
 - Preserve the permanent dual build:
   - `src/lib.rs` is the monolithic Verus crate.

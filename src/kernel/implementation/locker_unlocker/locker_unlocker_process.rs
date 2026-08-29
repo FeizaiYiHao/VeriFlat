@@ -21,10 +21,11 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).process_map.dom().contains(process_ptr),
-                !old(self).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
+                !old(lctx).process_lock_set().contains(process_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).process_map.lock_id_by_key(process_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -34,6 +35,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only process_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -58,15 +60,6 @@ impl KernelK {
                 // ---- (success) or nothing at all (failure) changed.
                 final(self).process_map.unchanged_except(&old(self).process_map, process_ptr),
                 final(self).process_map.perms_wf(),
-                process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id(),
-                ) ==> process_objects_unlocked_except(
-                    final(self).process_map, final(lctx).thread_id(), set![process_ptr]),
-                process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id(),
-                ) && !ret.0 ==> process_objects_unlocked(
-                    final(self).process_map, final(lctx).thread_id()),
-
                 // ---- LocalContext phase preservation ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -78,6 +71,8 @@ impl KernelK {
                     &&& final(self).process_map.spec_index(process_ptr) == old(self).process_map.spec_index(process_ptr)
                     &&& ret.1 is None
                     &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set()
+                    &&& typed_lock_sets_unchanged(old(lctx), final(lctx))
+                    &&& !final(lctx).process_lock_set().contains(process_ptr)
                 },
 
                 // ---- Success: process locked by us, perm returned ----
@@ -98,11 +93,20 @@ impl KernelK {
                             KernelObjId::Process(process_ptr),
                         ),
                     )
+                    &&& typed_lock_sets_inserted(
+                        old(lctx), final(lctx),
+                        KernelObjId::Process(process_ptr),
+                    )
+                    &&& final(lctx).process_lock_set().contains(process_ptr)
                 },
         {
             proof {
                 assert(old(self).process_map.perms_wf()) by {
                     reveal(process_perms_wf);
+                };
+                assert(!old(self).process_map.spec_index(process_ptr)
+                    .wlocked_by(old(lctx))) by {
+                    reveal(typed_lock_sets_aligned);
                 };
             }
             let res = self.process_map.wlock_unless_killed(
@@ -332,19 +336,8 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id(),
-                ) ==> process_objects_unlocked_except(
-                    self.process_map, lctx.thread_id(), set![process_ptr],
-                )) by {
-                    reveal(process_objects_unlocked_except);
-                };
-                assert(process_objects_unlocked(
-                    old(self).process_map, old(lctx).thread_id(),
-                ) && !res.0 ==> process_objects_unlocked(
-                    self.process_map, lctx.thread_id(),
-                )) by {
-                    reveal(process_objects_unlocked_except);
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -375,10 +368,8 @@ impl KernelK {
                 lock_perm.view().lock_id()
                     == old(self).process_map.spec_index(process_ptr)
                         .locking_thread()->Write_lock_id,
-                old(lctx).lock_entry_contains(
-                    old(self).process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
                 lock_id_aligned(old(self), old(lctx)),
+                typed_lock_sets_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -388,6 +379,7 @@ impl KernelK {
 
                 // ---- Dynamic lock ids remain aligned ----
                 lock_id_aligned(final(self), final(lctx)),
+                typed_lock_sets_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only process_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -419,10 +411,11 @@ impl KernelK {
                     old(self).process_map.spec_index(process_ptr),
                     final(self).process_map.spec_index(process_ptr),
                 ),
-                process_objects_unlocked_except(
-                    old(self).process_map, old(lctx).thread_id(), set![process_ptr],
-                ) ==> process_objects_unlocked(
-                    final(self).process_map, final(lctx).thread_id()),
+                typed_lock_sets_removed(
+                    old(lctx), final(lctx),
+                    KernelObjId::Process(process_ptr),
+                ),
+                !final(lctx).process_lock_set().contains(process_ptr),
 
                 // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
@@ -448,6 +441,12 @@ impl KernelK {
                     &&& old(self).process_map.spec_index(process_ptr).inv()
                 }) by {
                     reveal(process_perms_wf);
+                };
+                assert(old(lctx).lock_entry_contains(
+                    old(self).process_map.lock_id_by_key(process_ptr),
+                    KernelObjId::Process(process_ptr),
+                )) by {
+                    reveal(lock_id_aligned);
                 };
             }
             self.process_map.wunlock(
@@ -681,12 +680,8 @@ impl KernelK {
                     reveal(lock_id_aligned);
 
                 };
-                assert(process_objects_unlocked_except(
-                    old(self).process_map, old(lctx).thread_id(), set![process_ptr],
-                ) ==> process_objects_unlocked(
-                    self.process_map, lctx.thread_id(),
-                )) by {
-                    reveal(process_objects_unlocked_except);
+                assert(typed_lock_sets_aligned(self, &*lctx)) by {
+                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
