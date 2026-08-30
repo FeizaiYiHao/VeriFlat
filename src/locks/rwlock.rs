@@ -490,12 +490,12 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_entry_contains(LockId {
+            old(lctx).lock_id_set().contains((LockId {
                 container: old(self).view().container_depth(),
                 process: old(self).view().process_depth(),
                 major: old(self).view().current_lock_major(),
                 minor: old(self).view().lock_minor(),
-            }, obj_id.view()),
+            }, obj_id.view())),
         ensures
             wunlock_ensures(*old(self), *final(self)),
             unlock_ensures(
@@ -571,8 +571,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_entry_contains(
-                lock_id.view(), obj_id.view()),
+            old(lctx).lock_id_set().contains((
+                lock_id.view(), obj_id.view())),
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),

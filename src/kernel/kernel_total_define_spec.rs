@@ -48,19 +48,19 @@ impl KernelSteps {
     #[verifier::external_body]
     pub proof fn end_kernel_step(
         tracked &mut self,
-        kernel_k: &KernelK,
+        krnl: &KernelK,
         tracked lctx: &LocalContext,
     )
         requires
-            kernel_k.inv(),
+            krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
         ensures
             final(self).steps == record_user_view_change(
                 old(self).steps,
                 old(self).snap_shot,
-                kernel_k_to_kernel_u(*kernel_k),
+                kernel_k_to_kernel_u(*krnl),
             ),
-            final(self).snap_shot == kernel_k_to_kernel_u(*kernel_k),
+            final(self).snap_shot == kernel_k_to_kernel_u(*krnl),
     {
         unimplemented!()
     }

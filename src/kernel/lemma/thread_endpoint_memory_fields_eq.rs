@@ -11,67 +11,67 @@ pub open spec fn thread_endpoint_memory_management_fields_unchanged(
     pre: KernelK,
     post: KernelK,
 ) -> bool {
-    &&& post.pagetable_map == pre.pagetable_map
-    &&& post.iommu_table_map == pre.iommu_table_map
-    &&& post.page_array == pre.page_array
-    &&& post.container_map == pre.container_map
-    &&& post.pcid_allocator_map == pre.pcid_allocator_map
-    &&& post.process_map == pre.process_map
-    &&& post.allocator_4k_map == pre.allocator_4k_map
-    &&& post.allocator_2m_map == pre.allocator_2m_map
-    &&& post.allocator_1g_map == pre.allocator_1g_map
-    &&& post.thread_map.dom() =~= pre.thread_map.dom()
-    &&& post.endpoint_map.dom() =~= pre.endpoint_map.dom()
+    &&& post.pt_mp == pre.pt_mp
+    &&& post.it_mp == pre.it_mp
+    &&& post.pg_arr == pre.pg_arr
+    &&& post.ctn_mp == pre.ctn_mp
+    &&& post.pcid_allc_mp == pre.pcid_allc_mp
+    &&& post.prc_mp == pre.prc_mp
+    &&& post.allc_4k_mp == pre.allc_4k_mp
+    &&& post.allc_2m_mp == pre.allc_2m_mp
+    &&& post.allc_1g_mp == pre.allc_1g_mp
+    &&& post.thr_mp.dom() =~= pre.thr_mp.dom()
+    &&& post.ep_mp.dom() =~= pre.ep_mp.dom()
     &&& forall|thread_ptr: RwLockThreadPtr|
-        #![trigger pre.thread_map.spec_index(thread_ptr)]
-        #![trigger post.thread_map.spec_index(thread_ptr)]
-        pre.thread_map.dom().contains(thread_ptr) ==>
+        #![trigger pre.thr_mp.spec_index(thread_ptr)]
+        #![trigger post.thr_mp.spec_index(thread_ptr)]
+        pre.thr_mp.dom().contains(thread_ptr) ==>
         {
             &&& thread_effective_quota_4k(
-                post.thread_map.spec_index(thread_ptr),
+                post.thr_mp.spec_index(thread_ptr),
             ) == thread_effective_quota_4k(
-                pre.thread_map.spec_index(thread_ptr),
+                pre.thr_mp.spec_index(thread_ptr),
             )
             &&& thread_effective_quota_2m(
-                post.thread_map.spec_index(thread_ptr),
+                post.thr_mp.spec_index(thread_ptr),
             ) == thread_effective_quota_2m(
-                pre.thread_map.spec_index(thread_ptr),
+                pre.thr_mp.spec_index(thread_ptr),
             )
             &&& thread_effective_quota_1g(
-                post.thread_map.spec_index(thread_ptr),
+                post.thr_mp.spec_index(thread_ptr),
             ) == thread_effective_quota_1g(
-                pre.thread_map.spec_index(thread_ptr),
+                pre.thr_mp.spec_index(thread_ptr),
             )
-            &&& post.thread_map.spec_index(thread_ptr).view()
+            &&& post.thr_mp.spec_index(thread_ptr).view()
                 .direct_free_quota_pending_4k
-                == pre.thread_map.spec_index(thread_ptr).view()
+                == pre.thr_mp.spec_index(thread_ptr).view()
                     .direct_free_quota_pending_4k
-            &&& post.thread_map.spec_index(thread_ptr).view()
+            &&& post.thr_mp.spec_index(thread_ptr).view()
                 .indirect_free_quota_pending_4k
-                == pre.thread_map.spec_index(thread_ptr).view()
+                == pre.thr_mp.spec_index(thread_ptr).view()
                     .indirect_free_quota_pending_4k
-            &&& post.thread_map.spec_index(thread_ptr).view()
+            &&& post.thr_mp.spec_index(thread_ptr).view()
                 .direct_free_quota_pending_2m
-                == pre.thread_map.spec_index(thread_ptr).view()
+                == pre.thr_mp.spec_index(thread_ptr).view()
                     .direct_free_quota_pending_2m
-            &&& post.thread_map.spec_index(thread_ptr).view()
+            &&& post.thr_mp.spec_index(thread_ptr).view()
                 .indirect_free_quota_pending_2m
-                == pre.thread_map.spec_index(thread_ptr).view()
+                == pre.thr_mp.spec_index(thread_ptr).view()
                     .indirect_free_quota_pending_2m
-            &&& post.thread_map.spec_index(thread_ptr).view()
+            &&& post.thr_mp.spec_index(thread_ptr).view()
                 .direct_free_quota_pending_1g
-                == pre.thread_map.spec_index(thread_ptr).view()
+                == pre.thr_mp.spec_index(thread_ptr).view()
                     .direct_free_quota_pending_1g
-            &&& post.thread_map.spec_index(thread_ptr).view()
+            &&& post.thr_mp.spec_index(thread_ptr).view()
                 .indirect_free_quota_pending_1g
-                == pre.thread_map.spec_index(thread_ptr).view()
+                == pre.thr_mp.spec_index(thread_ptr).view()
                     .indirect_free_quota_pending_1g
-            &&& post.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k
-                == pre.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k
-            &&& post.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
-                == pre.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m
-            &&& post.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
-                == pre.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g
+            &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k
+                == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k
+            &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m
+                == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m
+            &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g
+                == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g
         }
 }
 
@@ -81,65 +81,65 @@ pub proof fn thread_endpoint_no_change_imply_memory_management_inv(
 )
     requires
         pre.memory_management_inv(),
-        container_thread_wf(pre.container_map, pre.thread_map),
+        container_thread_wf(pre.ctn_mp, pre.thr_mp),
         thread_endpoint_memory_management_fields_unchanged(pre, post),
     ensures
         post.memory_management_inv(),
 {
-    assert(thread_pages_wf(post.thread_map, post.page_array)) by {
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_pages_wf);
     };
-    assert(endpoint_pages_wf(post.endpoint_map, post.page_array)) by {
+    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by {
         reveal(endpoint_pages_wf);
     };
-    assert(thread_staged_pages_wf(post.thread_map, post.page_array)) by {
+    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
         thread_staged_pages_4k_wf_preserved_for_eq(
-            pre.thread_map,
-            post.thread_map,
-            pre.page_array,
-            post.page_array,
+            pre.thr_mp,
+            post.thr_mp,
+            pre.pg_arr,
+            post.pg_arr,
         );
         thread_staged_pages_2m_wf_preserved_for_eq(
-            pre.thread_map,
-            post.thread_map,
-            pre.page_array,
-            post.page_array,
+            pre.thr_mp,
+            post.thr_mp,
+            pre.pg_arr,
+            post.pg_arr,
         );
         thread_staged_pages_1g_wf_preserved_for_eq(
-            pre.thread_map,
-            post.thread_map,
-            pre.page_array,
-            post.page_array,
+            pre.thr_mp,
+            post.thr_mp,
+            pre.pg_arr,
+            post.pg_arr,
         );
     };
     assert(container_process_allocator_quota_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_4k_map,
-        post.allocator_2m_map,
-        post.allocator_1g_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_4k_mp,
+        post.allc_2m_mp,
+        post.allc_1g_mp,
     )) by {
         container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
-            post.container_map,
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
-            post.allocator_4k_map,
+            post.ctn_mp,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.allc_4k_mp,
         );
         container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
-            post.container_map,
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
-            post.allocator_2m_map,
+            post.ctn_mp,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.allc_2m_mp,
         );
         container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
-            post.container_map,
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
-            post.allocator_1g_map,
+            post.ctn_mp,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.allc_1g_mp,
         );
     };
 }

@@ -48,3 +48,6 @@ tmp.rs
 # and the id used to detect a session change. Transient, not source.
 .claude/.session-edits
 .claude/.session-id
+
+# Codex session-scoped style-gate snapshots.
+.codex/.style-gate/

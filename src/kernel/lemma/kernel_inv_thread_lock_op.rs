@@ -92,23 +92,23 @@ pub open spec fn thread_lock_kernel_context_unchanged(
     pre: KernelK,
     post: KernelK,
 ) -> bool {
-    &&& post.pagetable_map == pre.pagetable_map
-    &&& post.iommu_table_map == pre.iommu_table_map
-    &&& post.iommu_root_table == pre.iommu_root_table
-    &&& post.page_array == pre.page_array
-    &&& post.cpu_array == pre.cpu_array
-    &&& post.container_map == pre.container_map
-    &&& post.scheduler_map == pre.scheduler_map
-    &&& post.pcid_allocator_map == pre.pcid_allocator_map
-    &&& post.process_map == pre.process_map
-    &&& post.endpoint_map == pre.endpoint_map
-    &&& post.allocator_4k_map == pre.allocator_4k_map
-    &&& post.allocator_2m_map == pre.allocator_2m_map
-    &&& post.allocator_1g_map == pre.allocator_1g_map
+    &&& post.pt_mp == pre.pt_mp
+    &&& post.it_mp == pre.it_mp
+    &&& post.irt == pre.irt
+    &&& post.pg_arr == pre.pg_arr
+    &&& post.cpu_arr == pre.cpu_arr
+    &&& post.ctn_mp == pre.ctn_mp
+    &&& post.sched_mp == pre.sched_mp
+    &&& post.pcid_allc_mp == pre.pcid_allc_mp
+    &&& post.prc_mp == pre.prc_mp
+    &&& post.ep_mp == pre.ep_mp
+    &&& post.allc_4k_mp == pre.allc_4k_mp
+    &&& post.allc_2m_mp == pre.allc_2m_mp
+    &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
-    &&& post.root_container == pre.root_container
-    &&& post.default_pagetable == pre.default_pagetable
+    &&& post.rt_ctn == pre.rt_ctn
+    &&& post.dflt_pt == pre.dflt_pt
 }
 
 /// Memory preservation needs the source container/thread ownership leaf, not
@@ -119,58 +119,58 @@ pub proof fn thread_no_change_imply_memory_management_inv(
 )
     requires
         pre.memory_management_inv(),
-        container_thread_wf(pre.container_map, pre.thread_map),
-        thread_invariant_fields_unchanged(pre.thread_map, post.thread_map),
+        container_thread_wf(pre.ctn_mp, pre.thr_mp),
+        thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
         thread_lock_kernel_context_unchanged(pre, post),
     ensures
         post.memory_management_inv(),
 {
     assert(container_process_allocator_quota_4k_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_4k_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_4k_mp,
     )) by {
         container_process_allocator_quota_4k_wf_preserved_for_thread_fields(
-            post.container_map,
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
-            post.allocator_4k_map,
+            post.ctn_mp,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.allc_4k_mp,
         );
     };
     assert(container_process_allocator_quota_2m_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_2m_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_2m_mp,
     )) by {
         container_process_allocator_quota_2m_wf_preserved_for_thread_fields(
-            post.container_map,
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
-            post.allocator_2m_map,
+            post.ctn_mp,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.allc_2m_mp,
         );
     };
     assert(container_process_allocator_quota_1g_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_1g_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_1g_mp,
     )) by {
         container_process_allocator_quota_1g_wf_preserved_for_thread_fields(
-            post.container_map,
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
-            post.allocator_1g_map,
+            post.ctn_mp,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.allc_1g_mp,
         );
     };
-    assert(thread_pages_wf(post.thread_map, post.page_array)) by {
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_pages_wf);
     };
-    assert(thread_staged_pages_wf(post.thread_map, post.page_array)) by {
+    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
         lemma_no_change_imply_thread_staged_pages_wf_forall();
     };
 }
@@ -181,81 +181,81 @@ pub proof fn thread_no_change_imply_process_management_inv(
 )
     requires
         pre.process_management_inv(),
-        thread_invariant_fields_unchanged(pre.thread_map, post.thread_map),
+        thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
         thread_lock_kernel_context_unchanged(pre, post),
     ensures
         post.process_management_inv(),
 {
     thread_invariant_fields_unchanged_implies_process_management_fields(
-        pre.thread_map,
-        post.thread_map,
+        pre.thr_mp,
+        post.thr_mp,
     );
-    assert(thread_caller_callee_wf(post.thread_map)) by {
+    assert(thread_caller_callee_wf(post.thr_mp)) by {
         thread_caller_callee_wf_preserved_for_thread_process_management_fields(
-            pre.thread_map,
-            post.thread_map,
+            pre.thr_mp,
+            post.thr_mp,
         );
     };
     assert(thread_endpoint_ref_counter_wf(
-        post.thread_map,
-        post.endpoint_map,
+        post.thr_mp,
+        post.ep_mp,
     )) by {
         thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(
-            pre.thread_map,
-            post.thread_map,
-            post.endpoint_map,
+            pre.thr_mp,
+            post.thr_mp,
+            post.ep_mp,
         );
     };
-    assert(thread_endpoint_queue_wf(post.thread_map, post.endpoint_map)) by {
+    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by {
         thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(
-            pre.thread_map,
-            post.thread_map,
-            post.endpoint_map,
+            pre.thr_mp,
+            post.thr_mp,
+            post.ep_mp,
         );
     };
     assert(container_thread_endpoint_wf(
-        post.container_map,
-        post.thread_map,
-        post.endpoint_map,
+        post.ctn_mp,
+        post.thr_mp,
+        post.ep_mp,
     )) by {
         container_thread_endpoint_wf_preserved_for_thread_process_management_fields(
-            post.container_map,
-            pre.thread_map,
-            post.thread_map,
-            post.endpoint_map,
+            post.ctn_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.ep_mp,
         );
     };
     assert(container_thread_scheduler_wf(
-        post.container_map,
-        post.thread_map,
-        post.scheduler_map,
+        post.ctn_mp,
+        post.thr_mp,
+        post.sched_mp,
     )) by {
         container_thread_scheduler_wf_preserved_for_thread_process_management_fields(
-            post.container_map,
-            pre.thread_map,
-            post.thread_map,
-            post.scheduler_map,
+            post.ctn_mp,
+            pre.thr_mp,
+            post.thr_mp,
+            post.sched_mp,
         );
     };
-    assert(container_thread_wf(post.container_map, post.thread_map)) by {
+    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by {
         container_thread_wf_preserved_for_thread_process_management_fields(
-            post.container_map,
-            pre.thread_map,
-            post.thread_map,
+            post.ctn_mp,
+            pre.thr_mp,
+            post.thr_mp,
         );
     };
-    assert(process_thread_wf(post.process_map, post.thread_map)) by {
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
         process_thread_wf_preserved_for_thread_process_management_fields(
-            post.process_map,
-            pre.thread_map,
-            post.thread_map,
+            post.prc_mp,
+            pre.thr_mp,
+            post.thr_mp,
         );
     };
-    assert(thread_cpu_wf(post.thread_map, post.cpu_array)) by {
+    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by {
         thread_cpu_wf_preserved_for_thread_process_management_fields(
-            pre.thread_map,
-            post.thread_map,
-            post.cpu_array,
+            pre.thr_mp,
+            post.thr_mp,
+            post.cpu_arr,
         );
     };
 }

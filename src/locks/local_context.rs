@@ -40,18 +40,9 @@ impl LocalContext {
         self.state.kernel_view_locking_state
     }
 
-    pub open spec fn lock_entry_contains(
-        &self,
-        lock_id: LockId,
-        obj_id: KernelObjId,
-    ) -> bool {
-        self.lock_id_set().contains((lock_id, obj_id))
-    }
-
     pub open spec fn lock_obj_contains(&self, obj_id: KernelObjId) -> bool {
-        exists|lock_id: LockId| self.lock_entry_contains(lock_id, obj_id)
+        exists|lock_id: LockId| self.lock_id_set().contains((lock_id, obj_id))
     }
-
 
     /// `lock_id` is strictly greater than every held id.
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
@@ -123,21 +114,14 @@ impl LocalContext {
             old(self).kernel_view_locking_state() is Release,
             old(self).lock_id_set().contains((old_lock_id, obj_id)),
         ensures
-            final(self).lock_id_set()
-                == old(self).lock_id_set()
-                    .remove((old_lock_id, obj_id))
-                    .insert((new_lock_id, obj_id)),
+            final(self).lock_id_set() == old(self).lock_id_set().remove((old_lock_id, obj_id)).insert((new_lock_id, obj_id)),
             final(self).thread_id() == old(self).thread_id(),
             final(self).lock_id_set().contains((new_lock_id, obj_id)),
-            old_lock_id != new_lock_id ==>
-                !final(self).lock_id_set().contains((old_lock_id, obj_id)),
+            old_lock_id != new_lock_id ==> !final(self).lock_id_set().contains((old_lock_id, obj_id)),
             forall|held: HeldLock|
-                #![trigger final(self).lock_entry_contains(held.0, held.1)]
-                held.1 != obj_id
-                ==> final(self).lock_entry_contains(held.0, held.1)
-                    == old(self).lock_entry_contains(held.0, held.1),
-            final(self).kernel_view_locking_state()
-                == old(self).kernel_view_locking_state(),
+                #![trigger final(self).lock_id_set().contains((held.0, held.1))]
+                held.1 != obj_id ==> final(self).lock_id_set().contains((held.0, held.1)) == old(self).lock_id_set().contains((held.0, held.1)),
+            final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
     {
         unimplemented!()
     }
@@ -164,17 +148,13 @@ pub open spec fn unlock_ensures<T>(
     lock_id: LockId,
 ) -> bool {
     &&& new.thread_id() == old.thread_id()
-    &&& old.kernel_view_locking_state() is Acquire
-        ==> new.kernel_view_locking_state() is Release
-    &&& old.kernel_view_locking_state() is Release
-        ==> new.kernel_view_locking_state() is Release
+    &&& old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
+    &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
     &&& new.lock_id_set() == old.lock_id_set().remove((lock_id, obj_id))
     &&& !new.lock_id_set().contains((lock_id, obj_id))
     &&& forall|held: HeldLock|
-        #![trigger new.lock_entry_contains(held.0, held.1)]
-        held.1 != obj_id
-        ==> new.lock_entry_contains(held.0, held.1)
-            == old.lock_entry_contains(held.0, held.1)
+        #![trigger new.lock_id_set().contains((held.0, held.1))]
+        held.1 != obj_id ==> new.lock_id_set().contains((held.0, held.1)) == old.lock_id_set().contains((held.0, held.1))
 }
 
 }

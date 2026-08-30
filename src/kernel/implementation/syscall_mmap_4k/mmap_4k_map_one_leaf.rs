@@ -5,12 +5,11 @@ use super::syscall_mmap_4k_spec::mmap_4k_lock_scope;
 
 verus! {
 
-
     /// Allocate and publish one 4K leaf after its directory walk is prepared.
     /// The physical leaf is published with both present bits set, then the
-    /// completed user-visible mapping is recorded as exactly one kernel step.
+    /// completed user-visible mapping is recorded as exactly one krnl step.
     pub(super) fn map_one_mmap_4k_page(
-        kernel: &mut KernelK,
+        krnl: &mut KernelK,
         alloc_ptr_4k: RwLockPageAllocatorPtr,
         thread_ptr: RwLockThreadPtr,
         process_ptr: RwLockProcessPtr,
@@ -24,267 +23,91 @@ verus! {
         Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
     )
         requires
-            mmap_4k_held_context(
-                old(kernel), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
-                container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
-                pagetable_lock_perm,
-            ),
-            old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
-            mmap_4k_allocation_ready(old(kernel), old(lctx)),
-            old(kernel).container_map.spec_index(container_ptr)
-                .locked_by_thread(old(lctx).thread_id()),
-            old(kernel).process_map.spec_index(process_ptr)
-                .locked_by_thread(old(lctx).thread_id()),
-            old(lctx).lock_entry_contains(
-                old(kernel).container_map.lock_id_by_key(container_ptr),
-                KernelObjId::Container(container_ptr),
-            ),
-            old(lctx).lock_entry_contains(
-                old(kernel).process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr),
-            ),
+            mmap_4k_held_context(old(krnl), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm),
+            old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+            mmap_4k_allocation_ready(old(krnl), old(lctx)),
+            old(krnl).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()),
+            old(krnl).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id()),
+            old(lctx).lock_id_set().contains((old(krnl).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))),
+            old(lctx).lock_id_set().contains((old(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))),
             va_4k_valid(va),
-            old(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                <= spec_va2index(va).0,
+            old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0,
             pei_valid(spec_va2index(va).0),
             pei_valid(spec_va2index(va).1),
             pei_valid(spec_va2index(va).2),
             pei_valid(spec_va2index(va).3),
-            old(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-            old(kernel).thread_map.spec_index(thread_ptr).view()
-                .free_quota_pending_clean(),
-            thread_effective_quota_4k(
-                old(kernel).thread_map.spec_index(thread_ptr),
-            ) >= 1,
-            old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .mapping_4k().dom().contains(va) == false,
-            old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .spec_resolve_mapping_l2(
-                    spec_va2index(va).0,
-                    spec_va2index(va).1,
-                    spec_va2index(va).2,
-                ) is Some,
+            old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+            old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+            thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) >= 1,
+            old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va) == false,
+            old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
         ensures
-            mmap_4k_held_context(
-                final(kernel), final(lctx), alloc_ptr_4k, thread_ptr, process_ptr,
-                container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
-                pagetable_lock_perm,
-            ),
+            mmap_4k_held_context(final(krnl), final(lctx), alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm),
             final(steps).steps.len() == old(steps).steps.len() + 1,
-            final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-            mmap_4k_allocation_ready(final(kernel), final(lctx)),
-            mmap_4k_lock_scope(
-                old(kernel), old(lctx), cpu_id, container_ptr, process_ptr,
-                thread_ptr, pagetable_ptr,
-            ) ==> mmap_4k_lock_scope(
-                final(kernel), final(lctx), cpu_id, container_ptr, process_ptr,
-                thread_ptr, pagetable_ptr,
-            ),
+            final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
+            mmap_4k_allocation_ready(final(krnl), final(lctx)),
+            mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr) ==> mmap_4k_lock_scope(final(krnl), final(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr),
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-            final(lctx).lock_entry_contains(
-                final(kernel).container_map.lock_id_by_key(container_ptr),
-                KernelObjId::Container(container_ptr),
-            ),
-            final(lctx).lock_entry_contains(
-                final(kernel).process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr),
-            ),
-            final(kernel).thread_map.spec_index(thread_ptr).view().temp_alloc_clean(),
-            final(kernel).thread_map.spec_index(thread_ptr).view()
-                .free_quota_pending_clean(),
-            final(kernel).thread_map.spec_index(thread_ptr).view().quota_4k
-                == old(kernel).thread_map.spec_index(thread_ptr).view().quota_4k - 1,
-            final(kernel).process_map.spec_index(process_ptr)
-                == old(kernel).process_map.spec_index(process_ptr),
-            final(kernel).container_map.spec_index(container_ptr)
-                == old(kernel).container_map.spec_index(container_ptr),
-            final(kernel).cpu_array.spec_index(cpu_id).view()
-                == old(kernel).cpu_array.spec_index(cpu_id).view(),
-            held_containers_unchanged(
-                old(kernel).container_map, final(kernel).container_map, old(lctx),
-            ),
-            held_processes_unchanged(
-                old(kernel).process_map, final(kernel).process_map, old(lctx),
-            ),
-            held_endpoints_unchanged(
-                old(kernel).endpoint_map, final(kernel).endpoint_map, old(lctx),
-            ),
-            held_schedulers_unchanged(
-                old(kernel).scheduler_map, final(kernel).scheduler_map, old(lctx),
-            ),
-            held_pcid_allocators_unchanged(
-                old(kernel).pcid_allocator_map, final(kernel).pcid_allocator_map,
-                old(lctx),
-            ),
-            held_iommu_tables_unchanged(
-                old(kernel).iommu_table_map, final(kernel).iommu_table_map,
-                old(lctx),
-            ),
-            held_cpus_unchanged(
-                old(kernel).cpu_array, final(kernel).cpu_array, old(lctx),
-            ),
-            thread_objects_unlocked_except(
-                old(kernel).thread_map, old(lctx).thread_id(), set![thread_ptr],
-            ) ==> thread_objects_unlocked_except(
-                final(kernel).thread_map, final(lctx).thread_id(), set![thread_ptr],
-            ),
-            pagetable_objects_unlocked_except(
-                old(kernel).pagetable_map, old(lctx).thread_id(), set![pagetable_ptr],
-            ) ==> pagetable_objects_unlocked_except(
-                final(kernel).pagetable_map, final(lctx).thread_id(), set![pagetable_ptr],
-            ),
-            allocator_objects_unlocked(
-                old(kernel).allocator_2m_map, old(lctx).thread_id(),
-            ) ==> allocator_objects_unlocked(
-                final(kernel).allocator_2m_map, final(lctx).thread_id(),
-            ),
-            allocator_objects_unlocked(
-                old(kernel).allocator_1g_map, old(lctx).thread_id(),
-            ) ==> allocator_objects_unlocked(
-                final(kernel).allocator_1g_map, final(lctx).thread_id(),
-            ),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().wf(),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_4k()
-                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                    .mapping_4k().insert(
-                        va,
-                        final(kernel).pagetable_map.spec_index(pagetable_ptr)
-                            .view().mapping_4k().spec_index(va),
-                    ),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m()
-                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_2m(),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g()
-                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().mapping_1g(),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end
-                == old(kernel).pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end,
+            final(lctx).lock_id_set().contains((final(krnl).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))),
+            final(lctx).lock_id_set().contains((final(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))),
+            final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+            final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+            final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 1,
+            final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
+            final(krnl).ctn_mp.spec_index(container_ptr) == old(krnl).ctn_mp.spec_index(container_ptr),
+            final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+            held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+            held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
+            held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
+            held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+            held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
+            held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
+            thread_objects_unlocked_except(old(krnl).thr_mp, old(lctx).thread_id(), set![thread_ptr]) ==> thread_objects_unlocked_except(final(krnl).thr_mp, final(lctx).thread_id(), set![thread_ptr]),
+            pagetable_objects_unlocked_except(old(krnl).pt_mp, old(lctx).thread_id(), set![pagetable_ptr]) ==> pagetable_objects_unlocked_except(final(krnl).pt_mp, final(lctx).thread_id(), set![pagetable_ptr]),
+            allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
+            allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_1g_mp, final(lctx).thread_id()),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().insert(va, final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va)),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger final(kernel).pagetable_map.spec_index(pagetable_ptr)
+                #![trigger final(krnl).pt_mp.spec_index(pagetable_ptr)
                     .view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                final(krnl).pt_mp.spec_index(pagetable_ptr).view()
                     .kernel_l4_end <= l4i && pei_valid(l4i)
                     && pei_valid(l3i)
                     && pei_valid(l2i)
-                ==> final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                ==> final(krnl).pt_mp.spec_index(pagetable_ptr).view()
                         .spec_resolve_mapping_l2(l4i, l3i, l2i)
-                    == old(kernel).pagetable_map.spec_index(pagetable_ptr).view()
+                    == old(krnl).pt_mp.spec_index(pagetable_ptr).view()
                         .spec_resolve_mapping_l2(l4i, l3i, l2i),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .mapping_4k().dom().contains(va),
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .mapping_4k().spec_index(va).present,
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .mapping_4k().spec_index(va).write,
-            !final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .mapping_4k().spec_index(va).execute_disable,
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .spec_resolve_mapping_4k_l1(
-                    spec_va2index(va).0,
-                    spec_va2index(va).1,
-                    spec_va2index(va).2,
-                    spec_va2index(va).3,
-                ) is Some,
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .spec_resolve_mapping_4k_l1(
-                    spec_va2index(va).0,
-                    spec_va2index(va).1,
-                    spec_va2index(va).2,
-                    spec_va2index(va).3,
-                )->0.perm.present,
-            final(kernel).pagetable_map.spec_index(pagetable_ptr).view()
-                .spec_resolve_mapping_4k_l1(
-                    spec_va2index(va).0,
-                    spec_va2index(va).1,
-                    spec_va2index(va).2,
-                    spec_va2index(va).3,
-                )->0.perm.kernel_present,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).present,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).write,
+            !final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).execute_disable,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3) is Some,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3)->0.perm.present,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3)->0.perm.kernel_present,
     {
-        let (page_ptr, Tracked(page_lock_perm)) = stage_mmap_4k_page(kernel,
-            alloc_ptr_4k,
-            thread_ptr,
-            process_ptr,
-            container_ptr,
-            cpu_id,
-            pagetable_ptr,
-            Tracked(&mut *lctx),
-            Tracked(&mut *steps),
-            Tracked(thread_lock_perm),
-            Tracked(pagetable_lock_perm),
-        );
-        map_owned_4k_page(kernel,
-            page_ptr,
-            thread_ptr,
-            pagetable_ptr,
-            va,
-            true,
-            false,
-            Tracked(&mut *lctx),
-            Tracked(&page_lock_perm),
-            Tracked(thread_lock_perm),
-            Tracked(pagetable_lock_perm),
-        );
-        kernel.wunlock_page(
-            page_ptr2page_index(page_ptr),
-            Tracked(&mut *lctx),
-            Tracked(page_lock_perm),
-        );
+        let (page_ptr, Tracked(page_lock_perm)) = stage_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+        map_owned_4k_page(krnl, page_ptr, thread_ptr, pagetable_ptr, va, true, false, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+        krnl.wunlock_page(page_ptr2page_index(page_ptr), Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
             assert({
-                &&& lctx.lock_entry_contains(
-                    kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id),
-                )
-                &&& lctx.lock_entry_contains(
-                    kernel.container_map.lock_id_by_key(container_ptr),
-                    KernelObjId::Container(container_ptr),
-                )
-                &&& lctx.lock_entry_contains(
-                    kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr),
-                )
-                &&& lctx.lock_entry_contains(
-                    kernel.thread_map.lock_id_by_key(thread_ptr),
-                    KernelObjId::Thread(thread_ptr),
-                )
-                &&& lctx.lock_entry_contains(
-                    kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
-                    KernelObjId::PageTable(pagetable_ptr),
-                )
-            }) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            kernel.kernel_step_boundary(&mut *lctx, &mut *steps);
-            assert(
-                kernel.pagetable_map.spec_index(pagetable_ptr).view().wf()
-            ) by {
-                reveal(pagetable_perms_wf);
-            };
-            assert(mmap_4k_held_context(
-                kernel,
-                &*lctx,
-                alloc_ptr_4k,
-                thread_ptr,
-                process_ptr,
-                container_ptr,
-                cpu_id,
-                pagetable_ptr,
-                thread_lock_perm,
-                pagetable_lock_perm,
-            )) by {
-                reveal(cpu_array_wf);
-                reveal(container_thread_wf);
-                reveal(container_allocator_wf);
-                reveal(container_process_wf);
-                reveal(process_thread_wf);
-                reveal(thread_perms_wf);
-                reveal(pagetable_perms_wf);
-            };
-            if mmap_4k_lock_scope(
-                old(kernel), old(lctx), cpu_id, container_ptr, process_ptr,
-                thread_ptr, pagetable_ptr,
-            ) {
+                &&& lctx.lock_id_set().contains((krnl.cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)))
+                &&& lctx.lock_id_set().contains((krnl.ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr)))
+                &&& lctx.lock_id_set().contains((krnl.prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)))
+                &&& lctx.lock_id_set().contains((krnl.thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr)))
+                &&& lctx.lock_id_set().contains((krnl.pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr)))
+            }) by { lock_id_fields_eq_imply_eq(); };
+            krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
+            assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
+            assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm)) by { reveal(cpu_array_wf); reveal(container_thread_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(process_thread_wf); reveal(thread_perms_wf); reveal(pagetable_perms_wf); };
+            if mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr) {
             }
         }
     }
-
 
 } // verus!

@@ -86,25 +86,25 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
     post: KernelK,
 )
     requires
-        container_allocator_free_4k_page_wf(pre.allocator_4k_map, pre.page_array),
-        post.page_array == pre.page_array,
-        post.allocator_4k_map.dom() == pre.allocator_4k_map.dom(),
+        container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr),
+        post.pg_arr == pre.pg_arr,
+        post.allc_4k_mp.dom() == pre.allc_4k_mp.dom(),
         forall|a: RwLockPageAllocatorPtr|
-            #![trigger post.allocator_4k_map.spec_index(a).owning_container]
-            #![trigger post.allocator_4k_map.spec_index(a).global_pool.view()]
-            post.allocator_4k_map.dom().contains(a) ==>
-                post.allocator_4k_map.spec_index(a).owning_container == pre.allocator_4k_map.spec_index(a).owning_container
-                && post.allocator_4k_map.spec_index(a).global_pool.view() == pre.allocator_4k_map.spec_index(a).global_pool.view(),
+            #![trigger post.allc_4k_mp.spec_index(a).owning_container]
+            #![trigger post.allc_4k_mp.spec_index(a).global_pool.view()]
+            post.allc_4k_mp.dom().contains(a) ==>
+                post.allc_4k_mp.spec_index(a).owning_container == pre.allc_4k_mp.spec_index(a).owning_container
+                && post.allc_4k_mp.spec_index(a).global_pool.view() == pre.allc_4k_mp.spec_index(a).global_pool.view(),
         forall|a: RwLockPageAllocatorPtr, i: CpuId|
-            #![trigger post.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view()]
-            post.allocator_4k_map.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
-                post.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view()
-                    == pre.allocator_4k_map.spec_index(a).cpu_caches.spec_index(i).view().view(),
+            #![trigger post.allc_4k_mp.spec_index(a).cpu_caches.spec_index(i).view().view()]
+            post.allc_4k_mp.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
+                post.allc_4k_mp.spec_index(a).cpu_caches.spec_index(i).view().view()
+                    == pre.allc_4k_mp.spec_index(a).cpu_caches.spec_index(i).view().view(),
     ensures
-        container_allocator_free_4k_page_wf(post.allocator_4k_map, post.page_array),
+        container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
     assert(container_allocator_free_4k_page_wf(
-        post.allocator_4k_map, post.page_array,
+        post.allc_4k_mp, post.pg_arr,
     )) by {
         reveal(container_allocator_free_4k_page_wf);
         reveal(container_allocator_global_free_4k_page_wf);
@@ -120,40 +120,40 @@ pub proof fn lemma_no_change_imply_container_allocator_free_4k_page_wf_forall()
         forall|pre: KernelK, post: KernelK|
             #![trigger
                 container_allocator_free_4k_page_wf(
-                    pre.allocator_4k_map,
-                    pre.page_array,
+                    pre.allc_4k_mp,
+                    pre.pg_arr,
                 ),
                 container_allocator_free_4k_page_wf(
-                    post.allocator_4k_map,
-                    post.page_array,
+                    post.allc_4k_mp,
+                    post.pg_arr,
                 )
             ]
             container_allocator_free_4k_page_wf(
-                pre.allocator_4k_map,
-                pre.page_array,
+                pre.allc_4k_mp,
+                pre.pg_arr,
             )
-            && post.page_array == pre.page_array
-            && post.allocator_4k_map.dom() == pre.allocator_4k_map.dom()
+            && post.pg_arr == pre.pg_arr
+            && post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
             && (forall|a: RwLockPageAllocatorPtr|
-                #![trigger post.allocator_4k_map.spec_index(a).owning_container]
-                #![trigger post.allocator_4k_map.spec_index(a).global_pool.view()]
-                post.allocator_4k_map.dom().contains(a) ==>
-                    post.allocator_4k_map.spec_index(a).owning_container
-                        == pre.allocator_4k_map.spec_index(a).owning_container
-                    && post.allocator_4k_map.spec_index(a).global_pool.view()
-                        == pre.allocator_4k_map.spec_index(a).global_pool.view())
+                #![trigger post.allc_4k_mp.spec_index(a).owning_container]
+                #![trigger post.allc_4k_mp.spec_index(a).global_pool.view()]
+                post.allc_4k_mp.dom().contains(a) ==>
+                    post.allc_4k_mp.spec_index(a).owning_container
+                        == pre.allc_4k_mp.spec_index(a).owning_container
+                    && post.allc_4k_mp.spec_index(a).global_pool.view()
+                        == pre.allc_4k_mp.spec_index(a).global_pool.view())
             && (forall|a: RwLockPageAllocatorPtr, i: CpuId|
-                #![trigger post.allocator_4k_map.spec_index(a)
+                #![trigger post.allc_4k_mp.spec_index(a)
                     .cpu_caches.spec_index(i).view().view()]
-                post.allocator_4k_map.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
-                    post.allocator_4k_map.spec_index(a).cpu_caches
+                post.allc_4k_mp.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
+                    post.allc_4k_mp.spec_index(a).cpu_caches
                         .spec_index(i).view().view()
-                    == pre.allocator_4k_map.spec_index(a).cpu_caches
+                    == pre.allc_4k_mp.spec_index(a).cpu_caches
                         .spec_index(i).view().view())
             ==>
                 container_allocator_free_4k_page_wf(
-                    post.allocator_4k_map,
-                    post.page_array,
+                    post.allc_4k_mp,
+                    post.pg_arr,
                 ),
 {
     reveal(container_allocator_free_4k_page_wf);
