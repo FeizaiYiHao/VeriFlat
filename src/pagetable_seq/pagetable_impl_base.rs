@@ -364,7 +364,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -525,7 +525,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -709,7 +709,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -902,7 +902,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             page_map_write_lctx_ensures(old(lctx), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).page_closure() == old(self).page_closure(),

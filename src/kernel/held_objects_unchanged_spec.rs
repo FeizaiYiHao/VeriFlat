@@ -9,8 +9,8 @@ pub open spec fn held_containers_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|c: RwLockContainerPtr|
-        #![trigger lctx.container_lock_set().contains(c)]
-        lctx.container_lock_set().contains(c) ==> {
+        #![trigger lctx.container_lock_map().dom().contains(c)]
+        lctx.container_lock_map().dom().contains(c) ==> {
             &&& pre.dom().contains(c)
             &&& post.dom().contains(c)
             &&& post.lock_id_by_key(c) == pre.lock_id_by_key(c)
@@ -24,8 +24,8 @@ pub open spec fn held_processes_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|p: RwLockProcessPtr|
-        #![trigger lctx.process_lock_set().contains(p)]
-        lctx.process_lock_set().contains(p) ==> {
+        #![trigger lctx.process_lock_map().dom().contains(p)]
+        lctx.process_lock_map().dom().contains(p) ==> {
             &&& pre.dom().contains(p)
             &&& post.dom().contains(p)
             &&& post.lock_id_by_key(p) == pre.lock_id_by_key(p)
@@ -65,8 +65,8 @@ pub open spec fn held_process_owning_containers_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|p: RwLockProcessPtr|
-        #![trigger lctx.process_lock_set().contains(p)]
-        lctx.process_lock_set().contains(p) ==> {
+        #![trigger lctx.process_lock_map().dom().contains(p)]
+        lctx.process_lock_map().dom().contains(p) ==> {
             let c = pre_processes.spec_index(p).view_rodata().view().owning_container;
             &&& pre_processes.dom().contains(p)
             &&& post_processes.dom().contains(p)
@@ -83,8 +83,8 @@ pub open spec fn held_threads_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|t: RwLockThreadPtr|
-        #![trigger lctx.thread_lock_set().contains(t)]
-        lctx.thread_lock_set().contains(t) ==> {
+        #![trigger lctx.thread_lock_map().dom().contains(t)]
+        lctx.thread_lock_map().dom().contains(t) ==> {
             &&& pre.dom().contains(t)
             &&& post.dom().contains(t)
             &&& post.lock_id_by_key(t) == pre.lock_id_by_key(t)
@@ -98,8 +98,8 @@ pub open spec fn held_endpoints_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|e: RwLockEndpointPtr|
-        #![trigger lctx.endpoint_lock_set().contains(e)]
-        lctx.endpoint_lock_set().contains(e) ==> {
+        #![trigger lctx.endpoint_lock_map().dom().contains(e)]
+        lctx.endpoint_lock_map().dom().contains(e) ==> {
             &&& pre.dom().contains(e)
             &&& post.dom().contains(e)
             &&& post.lock_id_by_key(e) == pre.lock_id_by_key(e)
@@ -113,8 +113,8 @@ pub open spec fn held_schedulers_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|s: RwLockSchedulerPtr|
-        #![trigger lctx.scheduler_lock_set().contains(s)]
-        lctx.scheduler_lock_set().contains(s) ==> {
+        #![trigger lctx.scheduler_lock_map().dom().contains(s)]
+        lctx.scheduler_lock_map().dom().contains(s) ==> {
             &&& pre.dom().contains(s)
             &&& post.dom().contains(s)
             &&& post.lock_id_by_key(s) == pre.lock_id_by_key(s)
@@ -128,8 +128,8 @@ pub open spec fn held_pcid_allocators_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|p: RwLockPcidAllocatorPtr|
-        #![trigger lctx.pcid_allocator_lock_set().contains(p)]
-        lctx.pcid_allocator_lock_set().contains(p) ==> {
+        #![trigger lctx.pcid_allocator_lock_map().dom().contains(p)]
+        lctx.pcid_allocator_lock_map().dom().contains(p) ==> {
             &&& pre.dom().contains(p)
             &&& post.dom().contains(p)
             &&& post.lock_id_by_key(p) == pre.lock_id_by_key(p)
@@ -143,8 +143,8 @@ pub open spec fn held_pagetables_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|pt: RwLockPageTableRoot|
-        #![trigger lctx.pagetable_lock_set().contains(pt)]
-        lctx.pagetable_lock_set().contains(pt) ==> {
+        #![trigger lctx.pagetable_lock_map().dom().contains(pt)]
+        lctx.pagetable_lock_map().dom().contains(pt) ==> {
             &&& pre.dom().contains(pt)
             &&& post.dom().contains(pt)
             &&& post.lock_id_by_key(pt) == pre.lock_id_by_key(pt)
@@ -158,8 +158,8 @@ pub open spec fn held_iommu_tables_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|pt: RwLockPageTableRoot|
-        #![trigger lctx.iommu_table_lock_set().contains(pt)]
-        lctx.iommu_table_lock_set().contains(pt) ==> {
+        #![trigger lctx.iommu_table_lock_map().dom().contains(pt)]
+        lctx.iommu_table_lock_map().dom().contains(pt) ==> {
             &&& pre.dom().contains(pt)
             &&& post.dom().contains(pt)
             &&& post.lock_id_by_key(pt) == pre.lock_id_by_key(pt)
@@ -173,8 +173,8 @@ pub open spec fn held_pages_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|i: PageIndex|
-        #![trigger lctx.page_lock_set().contains(i)]
-        lctx.page_lock_set().contains(i) ==> {
+        #![trigger lctx.page_lock_map().dom().contains(i)]
+        lctx.page_lock_map().dom().contains(i) ==> {
             &&& index_valid(NUM_PAGES, i)
             &&& post.spec_index(i).view() == pre.spec_index(i).view()
         }
@@ -186,8 +186,8 @@ pub open spec fn held_cpus_unchanged(
     lctx: &LocalContext,
 ) -> bool {
     forall|c: CpuId|
-        #![trigger lctx.cpu_lock_set().contains(c)]
-        lctx.cpu_lock_set().contains(c) ==> {
+        #![trigger lctx.cpu_lock_map().dom().contains(c)]
+        lctx.cpu_lock_map().dom().contains(c) ==> {
             &&& index_valid(NUM_CPUS, c)
             &&& post.spec_index(c).view() == pre.spec_index(c).view()
         }
@@ -196,26 +196,27 @@ pub open spec fn held_cpus_unchanged(
 pub open spec fn held_allocator_objects_unchanged(
     pre: PageAllocatorUnLockedMap,
     post: PageAllocatorUnLockedMap,
-    page_size: PageSize,
-    lctx: &LocalContext,
+    quota_lock_map: Map<RwLockPageAllocatorPtr, TypedHeldLock>,
+    global_pool_lock_map: Map<RwLockPageAllocatorPtr, TypedHeldLock>,
+    cache_lock_map: Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>,
 ) -> bool {
     &&& (forall|p: RwLockPageAllocatorPtr|
-        #![trigger lctx.allocator_quota_lock_set().contains((page_size, p))]
-        lctx.allocator_quota_lock_set().contains((page_size, p)) ==> {
+        #![trigger quota_lock_map.dom().contains(p)]
+        quota_lock_map.dom().contains(p) ==> {
             &&& pre.dom().contains(p)
             &&& post.dom().contains(p)
             &&& post.spec_index(p).quota == pre.spec_index(p).quota
         })
     &&& (forall|p: RwLockPageAllocatorPtr|
-        #![trigger lctx.allocator_global_pool_lock_set().contains((page_size, p))]
-        lctx.allocator_global_pool_lock_set().contains((page_size, p)) ==> {
+        #![trigger global_pool_lock_map.dom().contains(p)]
+        global_pool_lock_map.dom().contains(p) ==> {
             &&& pre.dom().contains(p)
             &&& post.dom().contains(p)
             &&& post.spec_index(p).global_pool == pre.spec_index(p).global_pool
         })
     &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
-        #![trigger lctx.allocator_cache_lock_set().contains((page_size, p, c))]
-        lctx.allocator_cache_lock_set().contains((page_size, p, c)) ==> {
+        #![trigger cache_lock_map.dom().contains((p, c))]
+        cache_lock_map.dom().contains((p, c)) ==> {
             &&& pre.dom().contains(p)
             &&& post.dom().contains(p)
             &&& index_valid(NUM_CPUS, c)

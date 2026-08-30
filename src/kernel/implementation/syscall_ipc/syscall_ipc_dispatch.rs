@@ -44,18 +44,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             ret is Success ==> final(steps).steps.len()
@@ -295,61 +295,6 @@ verus! {
 
         if queue_len == 0 || queue_is_send == waiting_is_send {
             proof {
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (
-                        kernel.cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id),
-                    ),
-                    (
-                        kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr),
-                    ),
-                    (
-                        kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr),
-                    ),
-                    (
-                        kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                        KernelObjId::Endpoint(endpoint_ptr),
-                    ),
-                ], held => {});
-                assert({
-                    &&& !kernel.endpoint_map.spec_index(endpoint_ptr).view()
-                        .queue.view().contains(current_thread_ptr)
-                    &&& cpu_objects_unlocked_except(
-                        kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                    &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
-                    &&& container_objects_unlocked(kernel.container_map, lctx.thread_id())
-                    &&& process_objects_unlocked_except(
-                        kernel.process_map, lctx.thread_id(), set![process_ptr])
-                    &&& thread_objects_unlocked_except(
-                        kernel.thread_map, lctx.thread_id(), set![current_thread_ptr])
-                    &&& endpoint_objects_unlocked_except(
-                        kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr])
-                    &&& pagetable_objects_unlocked(kernel.pagetable_map, lctx.thread_id())
-                    &&& iommu_table_objects_unlocked(kernel.iommu_table_map, lctx.thread_id())
-                    &&& scheduler_objects_unlocked(kernel.scheduler_map, lctx.thread_id())
-                    &&& pcid_allocator_objects_unlocked(
-                        kernel.pcid_allocator_map, lctx.thread_id())
-                    &&& allocator_objects_unlocked(kernel.allocator_4k_map, lctx.thread_id())
-                    &&& allocator_objects_unlocked(kernel.allocator_2m_map, lctx.thread_id())
-                    &&& allocator_objects_unlocked(kernel.allocator_1g_map, lctx.thread_id())
-                }) by {
-                    reveal(thread_endpoint_queue_wf);
-                    reveal(cpu_objects_unlocked_except);
-                    reveal(process_objects_unlocked_except);
-                    reveal(thread_objects_unlocked_except);
-                    reveal(endpoint_objects_unlocked_except);
-                };
-            }
-            return ipc_block_current(kernel,
-                Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
-                process_ptr, current_thread_ptr, endpoint_ptr,
-                endpoint_index, waiting_state, payload, &*pt_regs,
-                Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                Tracked(current_thread_lock_perm),
-                Tracked(endpoint_lock_perm),
-            );
         }
 
         proof {
@@ -363,48 +308,6 @@ verus! {
         let (_, peer_thread_ptr) = endpoint_ref.queue.peek_head();
 
         proof {
-            assert_sets_equal!(lctx.lock_id_set() == set![
-                (
-                    kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id),
-                ),
-                (
-                    kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr),
-                ),
-                (
-                    kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                    KernelObjId::Thread(current_thread_ptr),
-                ),
-                (
-                    kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                    KernelObjId::Endpoint(endpoint_ptr),
-                ),
-            ], held => {});
-            assert({
-                &&& kernel.thread_map.dom().contains(peer_thread_ptr)
-                &&& kernel.thread_map.spec_index(peer_thread_ptr).view()
-                    .state.is_endpoint_waiting()
-                &&& kernel.thread_map.spec_index(peer_thread_ptr).view()
-                    .blocking_endpoint_ptr == Some(endpoint_ptr)
-                &&& peer_thread_ptr != current_thread_ptr
-                &&& !kernel.thread_map.spec_index(peer_thread_ptr)
-                    .wlocked_by(&*lctx)
-                &&& kernel.thread_map.lock_id_by_key(peer_thread_ptr).major
-                    == THREAD_BLOCKED_LOCK_MAJOR
-                &&& lctx.lock_id_acyclic(
-                    kernel.thread_map.lock_id_by_key(peer_thread_ptr))
-            }) by {
-                reveal(process_perms_wf);
-                reveal(thread_perms_wf);
-                reveal(endpoint_perms_wf);
-                reveal(thread_endpoint_queue_wf);
-                reveal(thread_objects_unlocked_except);
-            };
-        }
-        let peer_thread_res = kernel.wlock_thread_unless_killed(
-            peer_thread_ptr, Tracked(&mut *lctx),
-        );
         if let (false, _) = peer_thread_res {
             proof {
                 assert({
@@ -481,51 +384,6 @@ verus! {
             source_endpoint_index, target_endpoint_index,
         )) = endpoint_match {
             proof {
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (kernel.cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id)),
-                    (kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr)),
-                    (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr)),
-                    (kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                        KernelObjId::Endpoint(endpoint_ptr)),
-                    (kernel.thread_map.lock_id_by_key(peer_thread_ptr),
-                        KernelObjId::Thread(peer_thread_ptr)),
-                ], held => {});
-                assert({
-                    &&& cpu_objects_unlocked_except(
-                        kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-                    &&& page_objects_unlocked(
-                        kernel.page_array, lctx.thread_id())
-                    &&& container_objects_unlocked(
-                        kernel.container_map, lctx.thread_id())
-                    &&& process_objects_unlocked_except(
-                        kernel.process_map, lctx.thread_id(),
-                        set![process_ptr])
-                    &&& thread_objects_unlocked_except(
-                        kernel.thread_map, lctx.thread_id(),
-                        set![current_thread_ptr, peer_thread_ptr])
-                    &&& endpoint_objects_unlocked_except(
-                        kernel.endpoint_map, lctx.thread_id(),
-                        set![endpoint_ptr])
-                }) by {
-                    reveal(cpu_objects_unlocked_except);
-                    reveal(process_objects_unlocked_except);
-                    reveal(thread_objects_unlocked_except);
-                    reveal(endpoint_objects_unlocked_except);
-                };
-            }
-            return ipc_rendezvous_endpoint(
-                kernel, Tracked(&mut *lctx), Tracked(&mut *steps),
-                cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
-                peer_thread_ptr, source_thread_ptr, receiver_thread_ptr,
-                source_endpoint_index, target_endpoint_index,
-                Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                Tracked(current_thread_lock_perm),
-                Tracked(endpoint_lock_perm),
-                Tracked(peer_thread_lock_perm),
-            );
         }
         let pages_match = match (
             waiting_state, payload,
@@ -596,18 +454,6 @@ verus! {
         };
 
         proof {
-            assert_sets_equal!(lctx.lock_id_set() == set![
-                (kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-                (kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
-                (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                    KernelObjId::Thread(current_thread_ptr)),
-                (kernel.endpoint_map.lock_id_by_key(endpoint_ptr),
-                    KernelObjId::Endpoint(endpoint_ptr)),
-                (kernel.thread_map.lock_id_by_key(peer_thread_ptr),
-                    KernelObjId::Thread(peer_thread_ptr)),
-            ], held => {});
             assert({
                 &&& cpu_objects_unlocked_except(
                     kernel.cpu_array, lctx.thread_id(), set![cpu_id])

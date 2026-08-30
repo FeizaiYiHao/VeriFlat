@@ -11,15 +11,13 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).endpoint_map.dom().contains(endpoint_ptr),
-                !old(lctx).endpoint_lock_set().contains(endpoint_ptr),
+                !old(lctx).endpoint_lock_map().dom().contains(endpoint_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(old(self).endpoint_map.lock_id_by_key(endpoint_ptr)),
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
                 final(self).pagetable_map == old(self).pagetable_map,
                 final(self).iommu_table_map == old(self).iommu_table_map,
                 final(self).iommu_root_table == old(self).iommu_root_table,
@@ -39,10 +37,21 @@ impl KernelK {
                 final(self).default_pagetable == old(self).default_pagetable,
                 final(self).endpoint_map.dom() == old(self).endpoint_map.dom(),
                 final(self).endpoint_map.unchanged_except(&old(self).endpoint_map, endpoint_ptr),
-                typed_lock_sets_inserted(
-                    old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr)),
-                final(lctx).endpoint_lock_set().contains(endpoint_ptr),
+                typed_lock_maps_inserted(
+                    old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr),
+                    TypedHeldLock {
+                        lock_id: final(self).endpoint_map.lock_id_by_key(endpoint_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
+                final(lctx).endpoint_lock_map().contains_pair(endpoint_ptr, TypedHeldLock {
+                        lock_id: final(self).endpoint_map.lock_id_by_key(endpoint_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
+                ret.view().ordering_lock_id()
+                    == final(self).endpoint_map.lock_id_by_key(endpoint_ptr),
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
+                final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 wlock_ensures(
                     old(self).endpoint_map.spec_index(endpoint_ptr),
@@ -51,18 +60,12 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
-                    (
-                        final(self).endpoint_map.lock_id_by_key(endpoint_ptr),
-                        KernelObjId::Endpoint(endpoint_ptr),
-                    ),
-                ),
         {
             proof {
                 assert(old(self).endpoint_map.perms_wf()) by { reveal(endpoint_perms_wf); };
                 assert(wlock_requires(
                     old(self).endpoint_map.spec_index(endpoint_ptr), old(lctx))) by {
-                    reveal(typed_lock_sets_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
             let ret = self.endpoint_map.wlock(
@@ -85,12 +88,9 @@ impl KernelK {
                     assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(self.thread_map, old(self).endpoint_map, self.endpoint_map); };
                     assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields(self.container_map, self.thread_map, old(self).endpoint_map, self.endpoint_map); };
                 };
-                assert(lock_id_aligned(self, &*lctx)) by {
-                    reveal(lock_id_aligned);
+                assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
 
-                };
-                assert(typed_lock_sets_aligned(self, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
             }
             ret
@@ -105,18 +105,18 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).endpoint_map.dom().contains(endpoint_ptr),
-                old(self).endpoint_map.spec_index(endpoint_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(
+                    old(lctx).endpoint_lock_map(), endpoint_ptr,
+                    TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
                     == old(self).endpoint_map.spec_index(endpoint_ptr)
                         .locking_thread()->Write_lock_id,
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
                 final(self).pagetable_map == old(self).pagetable_map,
                 final(self).iommu_table_map == old(self).iommu_table_map,
                 final(self).iommu_root_table == old(self).iommu_root_table,
@@ -140,31 +140,31 @@ impl KernelK {
                 final(self).endpoint_map.lock_id_by_key(endpoint_ptr)
                     == old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
+                final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
                 final(lctx).kernel_view_locking_state() is Release,
                 wunlock_ensures(
                     old(self).endpoint_map.spec_index(endpoint_ptr),
                     final(self).endpoint_map.spec_index(endpoint_ptr),
                 ),
-                typed_lock_sets_removed(
+                typed_lock_maps_removed(
                     old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr)),
-                !final(lctx).endpoint_lock_set().contains(endpoint_ptr),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
-                    (
-                        old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
-                        KernelObjId::Endpoint(endpoint_ptr),
-                    ),
-                ),
+                !final(lctx).endpoint_lock_map().dom().contains(endpoint_ptr),
         {
             proof {
                 assert({
                     &&& old(self).endpoint_map.perms_wf()
                     &&& old(self).endpoint_map.spec_index(endpoint_ptr).inv()
                 }) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+                assert(old(self).endpoint_map.spec_index(endpoint_ptr)
+                    .wlocked_by(old(lctx))) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
+                };
                 assert(old(lctx).lock_entry_contains(
                     old(self).endpoint_map.lock_id_by_key(endpoint_ptr),
                     KernelObjId::Endpoint(endpoint_ptr),
                 )) by {
-                    reveal(lock_id_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
             self.endpoint_map.wunlock(
@@ -188,12 +188,9 @@ impl KernelK {
                     assert(thread_endpoint_queue_wf(self.thread_map, self.endpoint_map)) by { thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(self.thread_map, old(self).endpoint_map, self.endpoint_map); };
                     assert(container_thread_endpoint_wf(self.container_map, self.thread_map, self.endpoint_map)) by { container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields(self.container_map, self.thread_map, old(self).endpoint_map, self.endpoint_map); };
                 };
-                assert(lock_id_aligned(self, &*lctx)) by {
-                    reveal(lock_id_aligned);
+                assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
 
-                };
-                assert(typed_lock_sets_aligned(self, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
             }
         }

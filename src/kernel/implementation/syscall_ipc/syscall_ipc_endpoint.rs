@@ -26,7 +26,7 @@ pub(super) fn ipc_copy_endpoint_reference(
     requires
         old(kernel).inv(),
         lctx.kernel_view_locking_state() is Acquire,
-        lock_id_aligned(old(kernel), lctx),
+        typed_lock_maps_aligned(old(kernel), lctx),
         old(kernel).thread_map.dom().contains(receiver_thread_ptr),
         old(kernel).thread_map.spec_index(receiver_thread_ptr).is_init(),
         old(kernel).thread_map.spec_index(receiver_thread_ptr)
@@ -64,7 +64,7 @@ pub(super) fn ipc_copy_endpoint_reference(
         },
     ensures
         final(kernel).inv(),
-        lock_id_aligned(final(kernel), lctx),
+        typed_lock_maps_aligned(final(kernel), lctx),
         final(kernel).thread_map.unchanged_except(
             &old(kernel).thread_map, receiver_thread_ptr),
         final(kernel).endpoint_map.unchanged_except(
@@ -325,8 +325,8 @@ pub(super) fn ipc_copy_endpoint_reference(
             == old(kernel).thread_map.lock_id_by_key(receiver_thread_ptr)) by {
             lock_id_fields_eq_imply_eq();
         };
-        assert(lock_id_aligned(kernel, lctx)) by {
-            reveal(lock_id_aligned);
+        assert(typed_lock_maps_aligned(kernel, lctx)) by {
+            reveal(typed_lock_maps_aligned);
         };
         assert(kernel_k_to_kernel_u(*kernel)
             == kernel_k_to_kernel_u(*old(kernel))) by {
@@ -436,18 +436,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
             .queue.len() != 0,
         old(kernel).endpoint_map.spec_index(channel_endpoint_ptr).view()
             .queue.view().spec_index(0) == peer_thread_ptr,
-        old(lctx).lock_id_set() =~= set![
-            (old(kernel).cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id)),
-            (old(kernel).process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(current_thread_ptr),
-                KernelObjId::Thread(current_thread_ptr)),
-            (old(kernel).endpoint_map.lock_id_by_key(channel_endpoint_ptr),
-                KernelObjId::Endpoint(channel_endpoint_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(peer_thread_ptr),
-                KernelObjId::Thread(peer_thread_ptr)),
-        ],
         cpu_objects_unlocked_except(
             old(kernel).cpu_array, old(lctx).thread_id(), set![cpu_id]),
         page_objects_unlocked(old(kernel).page_array, old(lctx).thread_id()),
@@ -475,7 +463,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             old(kernel).allocator_2m_map, old(lctx).thread_id()),
         allocator_objects_unlocked(
             old(kernel).allocator_1g_map, old(lctx).thread_id()),
-        lock_id_aligned(old(kernel), old(lctx)),
+        typed_lock_maps_aligned(old(kernel), old(lctx)),
     ensures
         final(kernel).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
@@ -548,16 +536,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
             .wlocked_by(final(lctx)),
         final(kernel).thread_map.spec_index(peer_thread_ptr)
             .wlocked_by(final(lctx)),
-        final(lctx).lock_id_set() =~= set![
-            (final(kernel).cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id)),
-            (final(kernel).process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr)),
-            (final(kernel).thread_map.lock_id_by_key(current_thread_ptr),
-                KernelObjId::Thread(current_thread_ptr)),
-            (final(kernel).thread_map.lock_id_by_key(peer_thread_ptr),
-                KernelObjId::Thread(peer_thread_ptr)),
-        ],
         cpu_objects_unlocked_except(
             final(kernel).cpu_array, final(lctx).thread_id(), set![cpu_id]),
         page_objects_unlocked(final(kernel).page_array, final(lctx).thread_id()),
@@ -584,7 +562,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             final(kernel).allocator_2m_map, final(lctx).thread_id()),
         allocator_objects_unlocked(
             final(kernel).allocator_1g_map, final(lctx).thread_id()),
-        lock_id_aligned(final(kernel), final(lctx)),
+        typed_lock_maps_aligned(final(kernel), final(lctx)),
 {
     let ghost old_peer_thread_lock_id =
         kernel.thread_map.lock_id_by_key(peer_thread_ptr);
@@ -625,7 +603,10 @@ pub(super) fn ipc_begin_endpoint_transfer(
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(
             KernelObjId::Thread(peer_thread_ptr),
-            old_peer_thread_lock_id,
+            TypedHeldLock {
+                lock_id: old_peer_thread_lock_id,
+                mode: TypedLockMode::Write,
+            },
             kernel.thread_map.lock_id_by_key(peer_thread_ptr),
         );
         assert(kernel.subsystems_inv()) by {
@@ -761,7 +742,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
                 kernel.cpu_tlb, kernel.pagetable_map)
             &&& tlb_wf_spec(
                 kernel.cpu_tlb, kernel.pagetable_map, kernel.cpu_array)
-            &&& lock_id_aligned(kernel, &*lctx)
+            &&& typed_lock_maps_aligned(kernel, &*lctx)
             &&& cpu_objects_unlocked_except(
                 kernel.cpu_array, lctx.thread_id(), set![cpu_id])
             &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
@@ -796,7 +777,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             reveal(cpu_dirty_map_contains_pagetable_pcid_match);
             reveal(container_cpu_wf);
             reveal(tlb_wf_spec);
-            reveal(lock_id_aligned);
+            reveal(typed_lock_maps_aligned);
             reveal(cpu_objects_unlocked_except);
             reveal(process_objects_unlocked_except);
             reveal(thread_objects_unlocked_except);
@@ -964,14 +945,6 @@ pub(super) fn ipc_finish_endpoint_transit(
         },
         !old(kernel).scheduler_map.spec_index(peer_scheduler_ptr).view()
             .queue.view().contains(peer_thread_ptr),
-        old(lctx).lock_id_set() =~= set![
-            (old(kernel).cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-            (old(kernel).process_map.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-            (old(kernel).endpoint_map.lock_id_by_key(payload_endpoint_ptr), KernelObjId::Endpoint(payload_endpoint_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr)),
-            (old(kernel).scheduler_map.lock_id_by_key(peer_scheduler_ptr), KernelObjId::Scheduler(peer_scheduler_ptr)),
-        ],
         cpu_objects_unlocked_except(
             old(kernel).cpu_array, old(lctx).thread_id(), set![cpu_id]),
         page_objects_unlocked(old(kernel).page_array, old(lctx).thread_id()),
@@ -1000,16 +973,16 @@ pub(super) fn ipc_finish_endpoint_transit(
             old(kernel).allocator_2m_map, old(lctx).thread_id()),
         allocator_objects_unlocked(
             old(kernel).allocator_1g_map, old(lctx).thread_id()),
-        lock_id_aligned(old(kernel), old(lctx)),
+        typed_lock_maps_aligned(old(kernel), old(lctx)),
     ensures
         ret == result,
         final(kernel).inv(),
         final(lctx).kernel_view_locking_state() is Release,
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-        final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+        final(lctx).no_locks_held(),
         final(kernel).all_objects_unlocked(final(lctx)),
-        lock_id_aligned(final(kernel), final(lctx)),
+        typed_lock_maps_aligned(final(kernel), final(lctx)),
 {
     let ghost old_peer_thread_lock_id =
         kernel.thread_map.lock_id_by_key(peer_thread_ptr);
@@ -1041,7 +1014,10 @@ pub(super) fn ipc_finish_endpoint_transit(
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(
             KernelObjId::Thread(peer_thread_ptr),
-            old_peer_thread_lock_id,
+            TypedHeldLock {
+                lock_id: old_peer_thread_lock_id,
+                mode: TypedLockMode::Write,
+            },
             kernel.thread_map.lock_id_by_key(peer_thread_ptr),
         );
         assert(kernel.subsystems_inv()) by {
@@ -1188,7 +1164,7 @@ pub(super) fn ipc_finish_endpoint_transit(
                 kernel.cpu_tlb, kernel.pagetable_map)
             &&& tlb_wf_spec(
                 kernel.cpu_tlb, kernel.pagetable_map, kernel.cpu_array)
-            &&& lock_id_aligned(kernel, &*lctx)
+            &&& typed_lock_maps_aligned(kernel, &*lctx)
             &&& cpu_objects_unlocked_except(
                 kernel.cpu_array, lctx.thread_id(), set![cpu_id])
             &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
@@ -1216,7 +1192,7 @@ pub(super) fn ipc_finish_endpoint_transit(
             reveal(cpu_dirty_map_contains_pagetable_pcid_match);
             reveal(container_cpu_wf);
             reveal(tlb_wf_spec);
-            reveal(lock_id_aligned);
+            reveal(typed_lock_maps_aligned);
             reveal(cpu_objects_unlocked_except);
             reveal(process_objects_unlocked_except);
             reveal(thread_objects_unlocked_except);
@@ -1376,18 +1352,6 @@ pub(super) fn ipc_rendezvous_endpoint(
             .queue.len() != 0,
         old(kernel).endpoint_map.spec_index(channel_endpoint_ptr).view()
             .queue.view().spec_index(0) == peer_thread_ptr,
-        old(lctx).lock_id_set() =~= set![
-            (old(kernel).cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id)),
-            (old(kernel).process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(current_thread_ptr),
-                KernelObjId::Thread(current_thread_ptr)),
-            (old(kernel).endpoint_map.lock_id_by_key(channel_endpoint_ptr),
-                KernelObjId::Endpoint(channel_endpoint_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(peer_thread_ptr),
-                KernelObjId::Thread(peer_thread_ptr)),
-        ],
         cpu_objects_unlocked_except(
             old(kernel).cpu_array, old(lctx).thread_id(), set![cpu_id]),
         page_objects_unlocked(old(kernel).page_array, old(lctx).thread_id()),
@@ -1415,7 +1379,7 @@ pub(super) fn ipc_rendezvous_endpoint(
             old(kernel).allocator_2m_map, old(lctx).thread_id()),
         allocator_objects_unlocked(
             old(kernel).allocator_1g_map, old(lctx).thread_id()),
-        lock_id_aligned(old(kernel), old(lctx)),
+        typed_lock_maps_aligned(old(kernel), old(lctx)),
     ensures
         ret is Success
             || ret is ErrorIpcEndpointSourceInvalid
@@ -1425,9 +1389,9 @@ pub(super) fn ipc_rendezvous_endpoint(
         final(lctx).kernel_view_locking_state() is Release,
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-        final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+        final(lctx).no_locks_held(),
         final(kernel).all_objects_unlocked(final(lctx)),
-        lock_id_aligned(final(kernel), final(lctx)),
+        typed_lock_maps_aligned(final(kernel), final(lctx)),
 {
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked process_lock_perm = process_lock_perm.get();
@@ -1625,20 +1589,6 @@ pub(super) fn ipc_rendezvous_endpoint(
         peer_scheduler_ptr, Tracked(&mut *lctx),
     );
     proof {
-        assert_sets_equal!(lctx.lock_id_set() == set![
-            (kernel.cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id)),
-            (kernel.process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr)),
-            (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                KernelObjId::Thread(current_thread_ptr)),
-            (kernel.endpoint_map.lock_id_by_key(payload_endpoint_ptr),
-                KernelObjId::Endpoint(payload_endpoint_ptr)),
-            (kernel.thread_map.lock_id_by_key(peer_thread_ptr),
-                KernelObjId::Thread(peer_thread_ptr)),
-            (kernel.scheduler_map.lock_id_by_key(peer_scheduler_ptr),
-                KernelObjId::Scheduler(peer_scheduler_ptr)),
-        ], held => {});
         assert({
             &&& kernel.container_map.spec_index(peer_container_ptr)
                 .view_rodata().view().scheduler == peer_scheduler_ptr

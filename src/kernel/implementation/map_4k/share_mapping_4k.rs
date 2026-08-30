@@ -19,7 +19,7 @@ pub open spec fn share_mapping_4k_held_context(
 ) -> bool {
     &&& kernel.inv()
     &&& lctx.kernel_view_locking_state() is Acquire
-    &&& lock_id_aligned(kernel, lctx)
+    &&& typed_lock_maps_aligned(kernel, lctx)
     &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
     &&& lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)
     &&& source_thread != target_thread
@@ -446,7 +446,7 @@ fn share_one_mapping_4k(
         final(steps).steps.len() == old(steps).steps.len() + 1,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
         final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(kernel).cpu_array.spec_index(cpu_id).view()
             == old(kernel).cpu_array.spec_index(cpu_id).view(),
         final(lctx).lock_entry_contains(
@@ -919,8 +919,8 @@ fn share_one_mapping_4k(
                 target_pagetable, target_va,
             );
         };
-        assert(lock_id_aligned(kernel, &*lctx)) by {
-            reveal(lock_id_aligned);
+        assert(typed_lock_maps_aligned(kernel, &*lctx)) by {
+            reveal(typed_lock_maps_aligned);
         };
         assert(kernel_k_to_kernel_u(*kernel)
             != kernel_k_to_kernel_u(*old(kernel))) by {
@@ -1113,7 +1113,7 @@ pub fn share_mapping_4k_source_owner_precheck(
         final(steps).steps.len() == old(steps).steps.len(),
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
         final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
         held_containers_unchanged(
             old(kernel).container_map, final(kernel).container_map, old(lctx),
         ),
@@ -1243,7 +1243,7 @@ pub fn share_mapping_4k_source_owner_precheck(
                 ),
             steps.steps.len() == old(steps).steps.len(),
             lctx.thread_id() == old(lctx).thread_id(),
-            lctx.lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), lctx),
             held_containers_unchanged(
                 old(kernel).container_map, kernel.container_map, old(lctx),
             ),
@@ -1673,7 +1673,7 @@ pub fn share_mapping_4k(
             == old(steps).steps.len() + source_range.len,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
         final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(kernel).pagetable_map.spec_index(source_pagetable).view()
             == old(kernel).pagetable_map.spec_index(source_pagetable).view(),
         final(kernel).thread_map.spec_index(source_thread).view()
@@ -1757,7 +1757,7 @@ pub fn share_mapping_4k(
             0 <= i <= source_range.len,
             steps.steps.len() == old(steps).steps.len() + i,
             lctx.thread_id() == old(lctx).thread_id(),
-            lctx.lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), lctx),
             old(kernel).pagetable_map.dom().contains(source_pagetable),
             old(kernel).pagetable_map.dom().contains(target_pagetable),
             kernel.process_map.dom().contains(target_process),
@@ -2060,7 +2060,7 @@ pub fn share_mapping_4k_build_and_share(
         final(steps).steps.len()
             == old(steps).steps.len() + source_range.len,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(kernel).pagetable_map.spec_index(source_pagetable).view()
             == old(kernel).pagetable_map.spec_index(source_pagetable).view(),
         final(kernel).thread_map.spec_index(source_thread).view()
@@ -2196,7 +2196,7 @@ pub fn share_mapping_4k_build_and_share(
             0 <= i <= source_range.len,
             steps.steps.len() == old(steps).steps.len() + i,
             lctx.thread_id() == old(lctx).thread_id(),
-            lctx.lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), lctx),
             old(kernel).thread_map.dom().contains(source_thread),
             old(kernel).thread_map.dom().contains(target_thread),
             old(kernel).pagetable_map.dom().contains(source_pagetable),

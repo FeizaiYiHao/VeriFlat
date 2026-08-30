@@ -129,8 +129,8 @@ pub open spec fn page_map_write_lctx_ensures(
 ) -> bool {
     &&& new_lctx.thread_id() == old_lctx.thread_id()
     &&& new_lctx.kernel_view_locking_state() is Release
-    &&& new_lctx.lock_id_set() == old_lctx.lock_id_set()
-    &&& new_lctx.lock_id_set() == old_lctx.lock_id_set()
+    &&& typed_lock_maps_unchanged(old_lctx, new_lctx)
+    &&& typed_lock_maps_unchanged(old_lctx, new_lctx)
 }
 
 pub(super) fn page_map_set_published(

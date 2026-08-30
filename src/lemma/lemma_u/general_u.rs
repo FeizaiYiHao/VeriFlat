@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 verus! {
 
 pub broadcast proof fn map_equal_implies_submap_each_other<K, V>(a: Map<K, V>, b: Map<K, V>)
@@ -42,6 +42,46 @@ pub proof fn set_insert_remove_absent_lemma<A>(s: Set<A>, a: A)
                 );
             }
         }
+    );
+}
+
+pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
+    requires
+        !m.dom().contains(key),
+    ensures
+        m.insert(key, value).remove(key) == m,
+{
+    assert_maps_equal!(m.insert(key, value).remove(key), m);
+}
+
+pub proof fn map_insert_overwrite_lemma<K, V>(
+    m: Map<K, V>,
+    key: K,
+    old_value: V,
+    new_value: V,
+)
+    ensures
+        m.insert(key, old_value).insert(key, new_value)
+            == m.insert(key, new_value),
+{
+    assert_maps_equal!(
+        m.insert(key, old_value).insert(key, new_value),
+        m.insert(key, new_value),
+    );
+}
+
+pub proof fn map_union_remove_right_domain_disjoint_lemma<K, V>(
+    left: Map<K, V>,
+    right: Map<K, V>,
+)
+    requires
+        left.dom().disjoint(right.dom()),
+    ensures
+        left.union_prefer_right(right).remove_keys(right.dom()) == left,
+{
+    assert_maps_equal!(
+        left.union_prefer_right(right).remove_keys(right.dom()),
+        left,
     );
 }
 

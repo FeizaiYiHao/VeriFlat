@@ -34,46 +34,38 @@ verus! {
                 old(kernel).process_map.dom().contains(process_ptr),
                 old(kernel).thread_map.dom().contains(current_thread_ptr),
                 old(kernel).container_map.dom().contains(container_ptr),
-                lctx.lock_id_set() =~= set![
-                    (old(kernel).cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id)),
-                    (old(kernel).scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr)),
-                    (old(kernel).process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr)),
-                    (old(kernel).thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr)),
-                ],
                 cpu_lock_perm.view().state() is WriteLock,
                 cpu_lock_perm.view().thread_id() == lctx.thread_id(),
-                cpu_lock_perm.view().lock_id() == old(kernel).cpu_array.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-                old(kernel).cpu_array.spec_index(cpu_id).view().wlocked_by(&lctx),
+                old(kernel).cpu_array.spec_index(cpu_id).view()
+                    .write_lock_perm_match(&cpu_lock_perm.view()),
+                typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
                 old(kernel).cpu_array.spec_index(cpu_id).view().being_killed() == false,
                 old(kernel).cpu_array.spec_index(cpu_id).view().view().state == CpuState::Running,
                 scheduler_lock_perm.view().state() is WriteLock,
                 scheduler_lock_perm.view().thread_id() == lctx.thread_id(),
-                scheduler_lock_perm.view().lock_id() == old(kernel).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
+                old(kernel).scheduler_map.spec_index(scheduler_ptr)
+                    .write_lock_perm_match(&scheduler_lock_perm.view()),
                 scheduler_lock_perm.view().ordering_lock_id().major
                     == SCHEDULER_LOCK_MAJOR,
-                old(kernel).scheduler_map.spec_index(scheduler_ptr).wlocked_by(&lctx),
+                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 old(kernel).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
                 old(kernel).container_map.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
                 process_lock_perm.view().state() is WriteLock,
                 process_lock_perm.view().thread_id() == lctx.thread_id(),
-                process_lock_perm.view().lock_id() == old(kernel).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
+                old(kernel).process_map.spec_index(process_ptr)
+                    .write_lock_perm_match(&process_lock_perm.view()),
                 process_lock_perm.view().ordering_lock_id().major
                     == PROCESS_LOCK_MAJOR,
-                old(kernel).process_map.spec_index(process_ptr).wlocked_by(&lctx),
+                typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 old(kernel).process_map.spec_index(process_ptr).being_killed() == false,
                 old(kernel).process_map.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
                 current_thread_lock_perm.view().state() is WriteLock,
                 current_thread_lock_perm.view().thread_id() == lctx.thread_id(),
-                current_thread_lock_perm.view().lock_id()
-                    == old(kernel).thread_map.spec_index(current_thread_ptr)
-                        .locking_thread()->Write_lock_id,
+                old(kernel).thread_map.spec_index(current_thread_ptr)
+                    .write_lock_perm_match(&current_thread_lock_perm.view()),
                 current_thread_lock_perm.view().ordering_lock_id().major
                     == THREAD_LOCK_MAJOR,
-                old(kernel).thread_map.spec_index(current_thread_ptr).wlocked_by(&lctx),
+                typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
                 old(kernel).thread_map.spec_index(current_thread_ptr).being_killed() == false,
                 old(kernel).thread_map.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
                 old(kernel).thread_map.spec_index(current_thread_ptr).view().owning_container == container_ptr,
@@ -81,46 +73,47 @@ verus! {
                 old(kernel).thread_map.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
                 old(kernel).thread_map.spec_index(current_thread_ptr).view().quota_4k >= 1,
                 old(kernel).thread_map.lock_id_by_key(current_thread_ptr).major == THREAD_LOCK_MAJOR,
-                old(lctx).page_lock_set().is_empty(),
-                old(lctx).cpu_lock_set() =~= set![cpu_id],
-                old(lctx).container_lock_set().is_empty(),
-                old(lctx).process_lock_set() =~= set![process_ptr],
-                old(lctx).thread_lock_set() =~= set![current_thread_ptr],
-                old(lctx).endpoint_lock_set().is_empty(),
-                old(lctx).scheduler_lock_set() =~= set![scheduler_ptr],
-                old(lctx).pcid_allocator_lock_set().is_empty(),
-                old(lctx).pagetable_lock_set().is_empty(),
-                old(lctx).iommu_table_lock_set().is_empty(),
-                old(lctx).allocator_quota_lock_set().is_empty(),
-                old(lctx).allocator_cache_lock_set().is_empty(),
-                old(lctx).allocator_global_pool_lock_set().is_empty(),
-                lock_id_aligned(old(kernel), old(lctx)),
-                typed_lock_sets_aligned(old(kernel), old(lctx)),
+                old(lctx).page_lock_map().dom().is_empty(),
+                old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+                typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+                old(lctx).container_lock_map().dom().is_empty(),
+                old(lctx).process_lock_map().dom() =~= set![process_ptr],
+                typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+                old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+                typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+                old(lctx).endpoint_lock_map().dom().is_empty(),
+                old(lctx).scheduler_lock_map().dom() =~= set![scheduler_ptr],
+                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
+                old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+                old(lctx).pagetable_lock_map().dom().is_empty(),
+                old(lctx).iommu_table_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+                old(lctx).holds_no_typed_allocator_locks(PageSize::SZ2m),
+                old(lctx).holds_no_typed_allocator_locks(PageSize::SZ1g),
+                old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+                typed_lock_maps_aligned(old(kernel), old(lctx)),
             ensures
-                lock_id_aligned(final(kernel), final(lctx)),
-                typed_lock_sets_aligned(final(kernel), final(lctx)),
-                final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
-                final(lctx).page_lock_set().is_empty(),
-                final(lctx).cpu_lock_set().is_empty(),
-                final(lctx).container_lock_set().is_empty(),
-                final(lctx).process_lock_set().is_empty(),
-                final(lctx).thread_lock_set().is_empty(),
-                final(lctx).endpoint_lock_set().is_empty(),
-                final(lctx).scheduler_lock_set().is_empty(),
-                final(lctx).pcid_allocator_lock_set().is_empty(),
-                final(lctx).pagetable_lock_set().is_empty(),
-                final(lctx).iommu_table_lock_set().is_empty(),
-                final(lctx).allocator_quota_lock_set().is_empty(),
-                final(lctx).allocator_cache_lock_set().is_empty(),
-                final(lctx).allocator_global_pool_lock_set().is_empty(),
-                !final(kernel).cpu_array.spec_index(cpu_id).view()
-                    .locked_by_thread(final(lctx).thread_id()),
-                !final(kernel).scheduler_map.spec_index(scheduler_ptr)
-                    .locked_by_thread(final(lctx).thread_id()),
-                !final(kernel).process_map.spec_index(process_ptr)
-                    .locked_by_thread(final(lctx).thread_id()),
-                !final(kernel).thread_map.spec_index(current_thread_ptr)
-                    .locked_by_thread(final(lctx).thread_id()),
+                typed_lock_maps_aligned(final(kernel), final(lctx)),
+                final(lctx).no_locks_held(),
+                final(lctx).page_lock_map().dom().is_empty(),
+                final(lctx).cpu_lock_map().dom().is_empty(),
+                final(lctx).container_lock_map().dom().is_empty(),
+                final(lctx).process_lock_map().dom().is_empty(),
+                final(lctx).thread_lock_map().dom().is_empty(),
+                final(lctx).endpoint_lock_map().dom().is_empty(),
+                final(lctx).scheduler_lock_map().dom().is_empty(),
+                final(lctx).pcid_allocator_lock_map().dom().is_empty(),
+                final(lctx).pagetable_lock_map().dom().is_empty(),
+                final(lctx).iommu_table_lock_map().dom().is_empty(),
+                final(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+                final(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+                final(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+                final(lctx).allocator_2m_lock_maps()
+                    == old(lctx).allocator_2m_lock_maps(),
+                final(lctx).allocator_1g_lock_maps()
+                    == old(lctx).allocator_1g_lock_maps(),
                 final(steps).steps.len() == old(steps).steps.len() + 1,
                 final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(kernel)),
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
@@ -149,75 +142,12 @@ verus! {
                     reveal(scheduler_perms_wf);
                     reveal(process_perms_wf);
                 };
-                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by {
-                    let cpu_lock = (
-                        kernel.cpu_array.lock_id_by_index(cpu_id),
-                        KernelObjId::Cpu(cpu_id),
-                    );
-                    let scheduler_lock = (
-                        kernel.scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr),
-                    );
-                    let process_lock = (
-                        kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr),
-                    );
-                    let thread_lock = (
-                        kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr),
-                    );
-                    let held_set = set![
-                        cpu_lock,
-                        scheduler_lock,
-                        process_lock,
-                        thread_lock,
-                    ];
-                    if !lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR) {
-                        let held = choose|held: HeldLock|
-                            #![trigger lctx.lock_id_set().contains(held)]
-                            lctx.lock_id_set().contains(held)
-                            && !(held.0.major < ALLOCATOR_CACHE_MAJOR);
-                        vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), held_set);
-                        if held != thread_lock {
-                            vstd::set::lemma_set_insert_different(
-                                set![cpu_lock, scheduler_lock, process_lock],
-                                held,
-                                thread_lock,
-                            );
-                        }
-                        if held != process_lock {
-                            vstd::set::lemma_set_insert_different(
-                                set![cpu_lock, scheduler_lock], held, process_lock);
-                        }
-                        if held != scheduler_lock {
-                            vstd::set::lemma_set_insert_different(
-                                set![cpu_lock], held, scheduler_lock);
-                        }
-                        if held != cpu_lock {
-                            vstd::set::lemma_set_insert_different(
-                                Set::<HeldLock>::empty(), held, cpu_lock);
-                            vstd::set::lemma_set_empty(held);
-                        }
-                    }
-                };
                 assert(kernel.container_map.perms_wf()) by {
                     reveal(container_perms_wf);
                 };
                 assert(lctx.holds_no_typed_allocator_locks(
                     PageSize::SZ4k)) by {
                     reveal(LocalContext::holds_no_typed_allocator_locks);
-                };
-                assert(lctx.cpu_lock_set().contains(cpu_id)) by {
-                    reveal(typed_lock_sets_aligned);
-                };
-                assert(lctx.process_lock_set().contains(process_ptr)) by {
-                    reveal(typed_lock_sets_aligned);
-                };
-                assert(lctx.thread_lock_set().contains(current_thread_ptr)) by {
-                    reveal(typed_lock_sets_aligned);
-                };
-                assert(lctx.scheduler_lock_set().contains(scheduler_ptr)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
             }
 
@@ -242,17 +172,6 @@ verus! {
                     == old(kernel).cpu_array.spec_index(cpu_id).view()) by {
                     reveal(held_cpus_unchanged);
                 };
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                    (kernel.page_array.lock_id_by_index(page_index),
-                        KernelObjId::Page(page_index)),
-                    (kernel.scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr)),
-                    (kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr)),
-                    (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr)),
-                ], held => {});
                 assert(page_ptr != current_thread_ptr) by {
                     reveal(thread_pages_wf);
                 };
@@ -263,7 +182,7 @@ verus! {
                 }) by {
                     reveal(container_scheduler_wf);
                 };
-                enter_kernel_view_release_preserving_lock_id_alignment(
+                enter_kernel_view_release_preserving_typed_lock_alignment(
                     &*kernel, &mut *lctx,
                 );
             }
@@ -275,39 +194,16 @@ verus! {
             );
 
             proof {
-                assert(kernel.thread_map.lock_id_by_key(new_thread_ptr)
-                    != kernel.thread_map.lock_id_by_key(current_thread_ptr)) by {
+                assert(new_thread_ptr != current_thread_ptr
+                    && kernel.thread_map.lock_id_by_key(new_thread_ptr)
+                        != kernel.thread_map.lock_id_by_key(current_thread_ptr)) by {
                     reveal(thread_perms_wf);
                     reveal(thread_cpu_wf);
                 };
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                    (kernel.page_array.lock_id_by_index(page_index),
-                        KernelObjId::Page(page_index)),
-                    (kernel.scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr)),
-                    (kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr)),
-                    (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr)),
-                    (kernel.thread_map.lock_id_by_key(new_thread_ptr),
-                        KernelObjId::Thread(new_thread_ptr)),
-                ], held => {});
             }
-            kernel.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm));
-            proof {
-                assert_sets_equal!(lctx.lock_id_set() == set![
-                    (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                    (kernel.page_array.lock_id_by_index(page_index),
-                        KernelObjId::Page(page_index)),
-                    (kernel.scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr)),
-                    (kernel.process_map.lock_id_by_key(process_ptr),
-                        KernelObjId::Process(process_ptr)),
-                    (kernel.thread_map.lock_id_by_key(current_thread_ptr),
-                        KernelObjId::Thread(current_thread_ptr)),
-                ], held => {});
-            }
+            kernel.wunlock_thread(
+                new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm),
+            );
             kernel.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
             kernel.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
             kernel.wunlock_thread(
@@ -317,10 +213,10 @@ verus! {
             kernel.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
-                assert_sets_equal!(
-                    lctx.lock_id_set() == Set::<HeldLock>::empty(),
-                    lock_id => {}
-                );
+                assert(lctx.no_locks_held()) by {
+                    reveal(LocalContext::no_locks_held);
+                    reveal(LocalContext::holds_no_typed_allocator_locks);
+                };
                 steps.end_kernel_step(&*kernel, &*lctx);
                 assert(kernel_u_new_thread_changed(
                     steps.steps.last().old_u,
@@ -342,6 +238,7 @@ verus! {
         /// Retype a staged page, wire the new thread into its owners, and
         /// re-establish the kernel invariants.
         #[verifier::spinoff_prover]
+        #[verifier::rlimit(50)]
         pub(crate) fn create_thread_from_staged_page_merged(
             kernel: &mut KernelK,
             page_ptr: PagePtr,
@@ -366,39 +263,44 @@ verus! {
                 old(kernel).container_map.dom().contains(container_ptr),
                 old(kernel).container_map.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
                 old(kernel).process_map.spec_index(process_ptr).being_killed() == false,
-                old(kernel).process_map.spec_index(process_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 process_lock_perm.state() is WriteLock,
                 process_lock_perm.thread_id() == old(lctx).thread_id(),
-                process_lock_perm.lock_id() == old(kernel).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
+                old(kernel).process_map.spec_index(process_ptr)
+                    .write_lock_perm_match(&process_lock_perm),
                 old(kernel).scheduler_map.dom().contains(scheduler_ptr),
                 old(kernel).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
-                old(kernel).scheduler_map.spec_index(scheduler_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 scheduler_lock_perm.state() is WriteLock,
                 scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
-                scheduler_lock_perm.lock_id() == old(kernel).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
+                old(kernel).scheduler_map.spec_index(scheduler_ptr)
+                    .write_lock_perm_match(&scheduler_lock_perm),
                 old(kernel).thread_map.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view()
                     =~= Set::<PagePtr>::empty().insert(page_ptr),
                 old(kernel).thread_map.spec_index(staging_thread_ptr).view().temp_alloc_cache_2m.view().len() == 0,
                 old(kernel).thread_map.spec_index(staging_thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
                 old(kernel).thread_map.spec_index(staging_thread_ptr).view().quota_4k >= 1,
                 old(kernel).thread_map.spec_index(staging_thread_ptr).view().free_quota_pending_clean(),
-                old(kernel).thread_map.spec_index(staging_thread_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
                 staging_thread_lock_perm.state() is WriteLock,
                 staging_thread_lock_perm.thread_id() == old(lctx).thread_id(),
-                staging_thread_lock_perm.lock_id()
-                    == old(kernel).thread_map.spec_index(staging_thread_ptr)
-                        .locking_thread()->Write_lock_id,
+                old(kernel).thread_map.spec_index(staging_thread_ptr)
+                    .write_lock_perm_match(&staging_thread_lock_perm),
                 old(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == false,
                 old(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state
                     == (PageState::Owned4k{ thread_ptr: staging_thread_ptr }),
                 page_lock_perm.state() is WriteLock,
                 page_lock_perm.thread_id() == old(lctx).thread_id(),
-                page_lock_perm.lock_id() == old(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
                 old(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view()
-                    .wlocked_by(old(lctx)),
+                    .write_lock_perm_match(&page_lock_perm),
+                old(lctx).page_lock_map().contains_pair(
+                    page_ptr2page_index(page_ptr), TypedHeldLock {
+                        lock_id: old(kernel).page_array.lock_id_by_index(
+                            page_ptr2page_index(page_ptr)),
+                        mode: TypedLockMode::Write,
+                    }),
                 old(lctx).kernel_view_locking_state() is Release,
-                lock_id_aligned(old(kernel), old(lctx)),
-                typed_lock_sets_aligned(old(kernel), old(lctx)),
+                typed_lock_maps_aligned(old(kernel), old(lctx)),
             ensures
                 final(kernel).inv(),
                 ret.0 == page_ptr,
@@ -406,9 +308,21 @@ verus! {
                 ret.1.view().state() is WriteLock,
                 ret.1.view().thread_id() == final(lctx).thread_id(),
                 ret.1.view().lock_id() == final(kernel).thread_map.spec_index(page_ptr).locking_thread()->Write_lock_id,
+                final(kernel).thread_map.spec_index(page_ptr)
+                    .write_lock_perm_match(&ret.1.view()),
                 final(kernel).thread_map.dom().contains(page_ptr),
                 final(kernel).thread_map.spec_index(page_ptr).is_init(),
-                final(kernel).thread_map.spec_index(page_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).thread_lock_map(), page_ptr, TypedLockMode::Write),
+                final(lctx).thread_lock_map().contains_pair(page_ptr, TypedHeldLock {
+                    lock_id: final(kernel).thread_map.lock_id_by_key(page_ptr),
+                    mode: TypedLockMode::Write,
+                }),
+                final(lctx).page_lock_map().contains_pair(
+                    page_ptr2page_index(page_ptr), TypedHeldLock {
+                        lock_id: final(kernel).page_array.lock_id_by_index(
+                            page_ptr2page_index(page_ptr)),
+                        mode: TypedLockMode::Write,
+                    }),
                 final(kernel).thread_map.dom()
                     =~= old(kernel).thread_map.dom().insert(page_ptr),
                 forall|t: RwLockThreadPtr|
@@ -425,7 +339,7 @@ verus! {
                 final(kernel).thread_map.spec_index(page_ptr).view().endpoint_descriptors.wf(),
                 final(kernel).thread_map.spec_index(page_ptr).being_killed() == false,
                 final(kernel).process_map.dom().contains(process_ptr),
-                final(kernel).process_map.spec_index(process_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 final(kernel).process_map.spec_index(process_ptr).being_killed() == false,
                 final(kernel).thread_map.spec_index(staging_thread_ptr).view().temp_alloc_clean(),
                 final(kernel).thread_map.spec_index(staging_thread_ptr).view().free_quota_pending_clean(),
@@ -433,10 +347,12 @@ verus! {
                 final(kernel).thread_map.spec_index(staging_thread_ptr).being_killed()
                     == old(kernel).thread_map.spec_index(staging_thread_ptr)
                         .being_killed(),
-                final(kernel).thread_map.spec_index(staging_thread_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
                 staging_thread_lock_perm.lock_id()
                     == final(kernel).thread_map.spec_index(staging_thread_ptr)
                         .locking_thread()->Write_lock_id,
+                final(kernel).thread_map.spec_index(staging_thread_ptr)
+                    .write_lock_perm_match(&staging_thread_lock_perm),
                 final(kernel).thread_map.lock_id_by_key(staging_thread_ptr)
                     == old(kernel).thread_map.lock_id_by_key(staging_thread_ptr),
                 final(kernel).process_map.lock_id_by_key(process_ptr)
@@ -448,17 +364,15 @@ verus! {
                 ),
                 process_lock_perm.lock_id() == final(kernel).process_map.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 final(kernel).scheduler_map.dom().contains(scheduler_ptr),
-                final(kernel).scheduler_map.spec_index(scheduler_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 final(kernel).scheduler_map.spec_index(scheduler_ptr).being_killed() == false,
                 scheduler_lock_perm.lock_id() == final(kernel).scheduler_map.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 final(kernel).scheduler_map.lock_id_by_key(scheduler_ptr)
                     == old(kernel).scheduler_map.lock_id_by_key(scheduler_ptr),
                 final(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == false,
-                final(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view()
-                    .wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
                 page_lock_perm.lock_id() == final(kernel).page_array.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
-                lock_id_aligned(final(kernel), final(lctx)),
-                typed_lock_sets_aligned(final(kernel), final(lctx)),
+                typed_lock_maps_aligned(final(kernel), final(lctx)),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state()
                     == old(lctx).kernel_view_locking_state(),
@@ -492,25 +406,36 @@ verus! {
                 final(kernel).cpu_array == old(kernel).cpu_array,
                 final(kernel).page_array.entries_unchanged_except(
                     &old(kernel).page_array, page_ptr2page_index(page_ptr)),
-                final(lctx).lock_id_set() ==
-                    old(lctx).lock_id_set()
-                        .remove((old(kernel).page_array.lock_id_by_index(
-                            page_ptr2page_index(page_ptr)),
-                            KernelObjId::Page(page_ptr2page_index(page_ptr))))
-                        .insert((final(kernel).page_array.lock_id_by_index(
-                            page_ptr2page_index(page_ptr)),
-                            KernelObjId::Page(page_ptr2page_index(page_ptr))))
-                        .insert((final(kernel).thread_map.lock_id_by_key(page_ptr),
-                            KernelObjId::Thread(page_ptr))),
-                typed_lock_sets_inserted(
-                    old(lctx), final(lctx), KernelObjId::Thread(page_ptr)),
+                final(lctx).page_lock_map()
+                    == old(lctx).page_lock_map().insert(
+                        page_ptr2page_index(page_ptr), TypedHeldLock {
+                            lock_id: final(kernel).page_array.lock_id_by_index(
+                                page_ptr2page_index(page_ptr)),
+                            mode: TypedLockMode::Write,
+                        }),
+                final(lctx).thread_lock_map()
+                    == old(lctx).thread_lock_map().insert(page_ptr, TypedHeldLock {
+                        lock_id: final(kernel).thread_map.lock_id_by_key(page_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
+                final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+                final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+                final(lctx).process_lock_map() == old(lctx).process_lock_map(),
+                final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
+                final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
+                final(lctx).pcid_allocator_lock_map()
+                    == old(lctx).pcid_allocator_lock_map(),
+                final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+                final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+                final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
+                final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
+                final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         {
             proof {
                 assert(
                     kernel.process_map.perms_wf()
                     && kernel.process_map.dom().contains(process_ptr)
                     && kernel.process_map.spec_index(process_ptr).is_init()
-                    && kernel.process_map.spec_index(process_ptr).wlocked_by(&*lctx)
                 ) by {
                     reveal(process_perms_wf);
                 };
@@ -528,7 +453,6 @@ verus! {
                     kernel.scheduler_map.perms_wf()
                     && kernel.scheduler_map.dom().contains(scheduler_ptr)
                     && kernel.scheduler_map.spec_index(scheduler_ptr).is_init()
-                    && kernel.scheduler_map.spec_index(scheduler_ptr).wlocked_by(&*lctx)
                 ) by {
                     reveal(scheduler_perms_wf);
                 };
@@ -624,27 +548,26 @@ verus! {
             );
 
             let page_index = page_ptr2page_index(page_ptr);
-            assert(lctx.lock_entry_contains(
-                old(kernel).page_array.lock_id_by_index(page_index),
-                KernelObjId::Page(page_index),
-            )) by {
-                reveal(lock_id_aligned);
-            };
             let ghost old_page_lock_id = kernel.page_array.lock_id_by_index(page_index);
-            let page_mut = kernel.page_array.borrow_mut(page_index, Tracked(&*lctx), Tracked(page_lock_perm));
+            let page_mut = kernel.page_array.borrow_mut_typed(
+                page_index,
+                Ghost(lctx.page_lock_map()),
+                Tracked(&*lctx),
+                Tracked(page_lock_perm),
+            );
             let Tracked(page_perm) = take_perm_4k(page_mut);
             page_mut.state = PageState::Allocated4k{ state: Allocated4KPageState::AsThread };
             proof {
                 lctx.update_lock_id(
                     KernelObjId::Page(page_index),
-                    old_page_lock_id,
+                    TypedHeldLock {
+                        lock_id: old_page_lock_id,
+                        mode: TypedLockMode::Write,
+                    },
                     kernel.page_array.lock_id_by_index(page_index),
                 );
-                assert(lock_id_aligned(kernel, &*lctx)) by {
-                    reveal(lock_id_aligned);
-                };
-                assert(typed_lock_sets_aligned(kernel, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
+                assert(typed_lock_maps_aligned(kernel, &*lctx)) by {
+                    reveal(LockedArray::typed_lock_map_aligned);
                 };
             }
 
@@ -664,11 +587,17 @@ verus! {
                 kernel.thread_map.lock_id_by_key(page_ptr);
             proof {
                 lctx.enter_kernel_view_release();
+                assert(typed_lock_maps_aligned(kernel, &*lctx)) by {
+                    reveal(LockedArray::typed_lock_map_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
+                };
             }
 
             {
-                let staging_thread_mut = kernel.thread_map.borrow_mut(
+                let staging_thread_mut = kernel.thread_map
+                    .borrow_mut_typed(
                     staging_thread_ptr,
+                    Ghost(lctx.thread_lock_map()),
                     Tracked(&*lctx),
                     Tracked(staging_thread_lock_perm),
                 );
@@ -702,10 +631,20 @@ verus! {
                     }
                 }
             }
-            let thread_mut = kernel.thread_map.borrow_mut(page_ptr, Tracked(&*lctx), Tracked(&thread_perm));
+            let thread_mut = kernel.thread_map.borrow_mut_typed(
+                page_ptr,
+                Ghost(lctx.thread_lock_map()),
+                Tracked(&*lctx),
+                Tracked(&thread_perm),
+            );
             let (node_addr, mut node_perm) = thread_mut.proc_linkedlist_node.take();
             node_update_value(node_addr, &mut node_perm, page_ptr);
-            let process_mut = kernel.process_map.borrow_mut(process_ptr, Tracked(&*lctx), Tracked(process_lock_perm));
+            let process_mut = kernel.process_map.borrow_mut_typed(
+                process_ptr,
+                Ghost(lctx.process_lock_map()),
+                Tracked(&*lctx),
+                Tracked(process_lock_perm),
+            );
             proof {
                 assert(
                     process_mut.owned_threads.wf()
@@ -727,7 +666,12 @@ verus! {
                     reveal(scheduler_perms_wf);
                 };
             }
-            let scheduler_mut = kernel.scheduler_map.borrow_mut(scheduler_ptr, Tracked(&*lctx), Tracked(scheduler_lock_perm));
+            let scheduler_mut = kernel.scheduler_map.borrow_mut_typed(
+                scheduler_ptr,
+                Ghost(lctx.scheduler_lock_map()),
+                Tracked(&*lctx),
+                Tracked(scheduler_lock_perm),
+            );
             proof {
                 assert(
                     scheduler_mut.queue.wf()
@@ -746,7 +690,10 @@ verus! {
             proof {
                 lctx.update_lock_id(
                     KernelObjId::Thread(page_ptr),
-                    fresh_thread_lock_id,
+                    TypedHeldLock {
+                        lock_id: fresh_thread_lock_id,
+                        mode: TypedLockMode::Write,
+                    },
                     kernel.thread_map.lock_id_by_key(page_ptr),
                 );
                 assert(process_reference_fields_unchanged(
@@ -842,9 +789,19 @@ verus! {
                     assert(thread_pages_wf(kernel.thread_map, kernel.page_array)) by {
                         reveal(thread_pages_wf);
                     };
-                    assert(thread_staged_pages_wf(kernel.thread_map, kernel.page_array)) by {
+                    assert(thread_staged_pages_4k_wf(
+                        kernel.thread_map, kernel.page_array,
+                    )) by {
                         reveal(thread_staged_pages_4k_wf);
+                    };
+                    assert(thread_staged_pages_2m_wf(
+                        kernel.thread_map, kernel.page_array,
+                    )) by {
                         reveal(thread_staged_pages_2m_wf);
+                    };
+                    assert(thread_staged_pages_1g_wf(
+                        kernel.thread_map, kernel.page_array,
+                    )) by {
                         reveal(thread_staged_pages_1g_wf);
                     };
                     assert(endpoint_pages_wf(kernel.endpoint_map, kernel.page_array)) by { endpoint_pages_wf_preserved_for_page_state_eq(old(kernel).endpoint_map, kernel.endpoint_map, old(kernel).page_array, kernel.page_array); };
@@ -997,11 +954,8 @@ verus! {
                         seq_subrange_split_lemma::<RwLockThreadPtr>();
                     }
                 );
-                assert(lock_id_aligned(&*kernel, &*lctx)) by {
-                    reveal(lock_id_aligned);
-                };
-                assert(typed_lock_sets_aligned(&*kernel, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
+                assert(typed_lock_maps_aligned(&*kernel, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
                 assert(kernel.inv()) by {
                     assert(iommu_root_table_process_wf(
@@ -1039,56 +993,6 @@ verus! {
                     reveal(container_cpu_wf);
                     reveal(tlb_wf_spec);
                 };
-                assert(!old(lctx).lock_id_set()
-                    .remove((old_page_lock_id, KernelObjId::Page(page_index)))
-                    .insert((kernel.page_array.lock_id_by_index(page_index),
-                        KernelObjId::Page(page_index)))
-                    .contains((fresh_thread_lock_id,
-                        KernelObjId::Thread(page_ptr)))) by {
-                    reveal(lock_id_aligned);
-                    vstd::set::lemma_set_remove_different(
-                        old(lctx).lock_id_set(),
-                        (fresh_thread_lock_id, KernelObjId::Thread(page_ptr)),
-                        (old_page_lock_id, KernelObjId::Page(page_index)),
-                    );
-                    vstd::set::lemma_set_insert_different(
-                        old(lctx).lock_id_set().remove((
-                            old_page_lock_id, KernelObjId::Page(page_index))),
-                        (fresh_thread_lock_id, KernelObjId::Thread(page_ptr)),
-                        (kernel.page_array.lock_id_by_index(page_index),
-                            KernelObjId::Page(page_index)),
-                    );
-                };
-                assert(old(lctx).lock_id_set()
-                    .remove((old_page_lock_id, KernelObjId::Page(page_index)))
-                    .insert((kernel.page_array.lock_id_by_index(page_index),
-                        KernelObjId::Page(page_index)))
-                    .insert((fresh_thread_lock_id,
-                        KernelObjId::Thread(page_ptr)))
-                    .remove((fresh_thread_lock_id,
-                        KernelObjId::Thread(page_ptr)))
-                    == old(lctx).lock_id_set()
-                        .remove((old_page_lock_id, KernelObjId::Page(page_index)))
-                        .insert((kernel.page_array.lock_id_by_index(page_index),
-                            KernelObjId::Page(page_index)))) by {
-                    set_insert_remove_absent_lemma(
-                        old(lctx).lock_id_set()
-                            .remove((old_page_lock_id, KernelObjId::Page(page_index)))
-                            .insert((kernel.page_array.lock_id_by_index(page_index),
-                                KernelObjId::Page(page_index))),
-                        (fresh_thread_lock_id, KernelObjId::Thread(page_ptr)),
-                    );
-                };
-                assert_sets_equal!(
-                    lctx.lock_id_set()
-                    == old(lctx).lock_id_set()
-                        .remove((old_page_lock_id, KernelObjId::Page(page_index)))
-                        .insert((kernel.page_array.lock_id_by_index(page_index),
-                            KernelObjId::Page(page_index)))
-                        .insert((kernel.thread_map.lock_id_by_key(page_ptr),
-                            KernelObjId::Thread(page_ptr))),
-                    held => {}
-                );
             }
             (page_ptr, Tracked(thread_perm))
         }

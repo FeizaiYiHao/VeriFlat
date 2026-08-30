@@ -12,15 +12,14 @@ impl KernelK {
                 old(self).inv(),
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                !old(lctx).scheduler_lock_set().contains(scheduler_ptr),
+                !old(lctx).scheduler_lock_map().dom().contains(scheduler_ptr),
                 old(lctx).lock_id_acyclic(LockId{
                     container: old(self).scheduler_map.spec_index(scheduler_ptr).container_depth(),
                     process: old(self).scheduler_map.spec_index(scheduler_ptr).process_depth(),
                     major: old(self).scheduler_map.spec_index(scheduler_ptr).view().current_lock_major(),
                     minor: scheduler_ptr,
                 }),
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -28,8 +27,7 @@ impl KernelK {
                 // ---- Every held lock still matches lctx (scheduler now locked) ----
 
                 // ---- Dynamic lock ids remain aligned ----
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only scheduler_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -53,12 +51,23 @@ impl KernelK {
                 // ---- scheduler_map: dom unchanged; only the targeted entry's lock state changed ----
                 final(self).scheduler_map.dom() == old(self).scheduler_map.dom(),
                 final(self).scheduler_map.unchanged_except(&old(self).scheduler_map, scheduler_ptr),
-                typed_lock_sets_inserted(
-                    old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr)),
-                final(lctx).scheduler_lock_set().contains(scheduler_ptr),
+                typed_lock_maps_inserted(
+                    old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr),
+                    TypedHeldLock {
+                        lock_id: final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
+                final(lctx).scheduler_lock_map().contains_pair(scheduler_ptr, TypedHeldLock {
+                        lock_id: final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
+                ret.view().ordering_lock_id()
+                    == final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
 
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
+                final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
 
                 // ---- The lock perm + lock ensures (forwarded from LockedMap::wlock) ----
@@ -74,13 +83,6 @@ impl KernelK {
                     final(lctx),
                     ret.view(),
                 ),
-                final(lctx).lock_id_set()
-                    == old(lctx).lock_id_set().insert(
-                    (
-                        final(self).scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr),
-                    ),
-                ),
         {
             proof {
                 assert(old(self).scheduler_map.perms_wf()) by {
@@ -88,7 +90,7 @@ impl KernelK {
                 };
                 assert(wlock_requires(
                     old(self).scheduler_map.spec_index(scheduler_ptr), old(lctx))) by {
-                    reveal(typed_lock_sets_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
             let ret = self.scheduler_map.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
@@ -130,12 +132,9 @@ impl KernelK {
                             reveal(container_thread_scheduler_wf);
                         };
                     };
-                assert(lock_id_aligned(self, &*lctx)) by {
-                    reveal(lock_id_aligned);
+                assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
 
-                };
-                assert(typed_lock_sets_aligned(self, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
             }
             ret
@@ -150,15 +149,15 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).scheduler_map.dom().contains(scheduler_ptr),
-                old(self).scheduler_map.spec_index(scheduler_ptr)
-                    .wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(
+                    old(lctx).scheduler_lock_map(), scheduler_ptr,
+                    TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
                     == old(self).scheduler_map.spec_index(scheduler_ptr)
                         .locking_thread()->Write_lock_id,
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -166,8 +165,7 @@ impl KernelK {
                 // ---- Every held lock still matches lctx (scheduler now released) ----
 
                 // ---- Dynamic lock ids remain aligned ----
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
 
                 // ---- Field framing: only scheduler_map's lock state moves ----
                 final(self).pagetable_map     == old(self).pagetable_map,
@@ -201,6 +199,8 @@ impl KernelK {
                 // `unlock_ensures` flips it Acquire → Release (same trap as the
                 // `LockedArray::wunlock` NOTE).
                 final(lctx).thread_id() == old(lctx).thread_id(),
+                final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
+                final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
                 final(lctx).kernel_view_locking_state() is Release,
 
                 // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
@@ -208,16 +208,9 @@ impl KernelK {
                     old(self).scheduler_map.spec_index(scheduler_ptr),
                     final(self).scheduler_map.spec_index(scheduler_ptr),
                 ),
-                typed_lock_sets_removed(
+                typed_lock_maps_removed(
                     old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr)),
-                !final(lctx).scheduler_lock_set().contains(scheduler_ptr),
-                final(lctx).lock_id_set()
-                    == old(lctx).lock_id_set().remove(
-                    (
-                        old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
-                        KernelObjId::Scheduler(scheduler_ptr),
-                    ),
-                ),
+                !final(lctx).scheduler_lock_map().dom().contains(scheduler_ptr),
                 unlock_ensures(
                     old(lctx), final(lctx), (),
                     lock_perm.view().lock_id(),
@@ -226,17 +219,21 @@ impl KernelK {
                 ),
         {
             proof {
-                assert(old(lctx).lock_entry_contains(
-                    old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
-                    KernelObjId::Scheduler(scheduler_ptr),
-                )) by {
-                    reveal(lock_id_aligned);
-                };
                 assert({
                     &&& old(self).scheduler_map.perms_wf()
                     &&& old(self).scheduler_map.spec_index(scheduler_ptr).inv()
                 }) by {
                     reveal(scheduler_perms_wf);
+                };
+                assert(old(self).scheduler_map.spec_index(scheduler_ptr)
+                    .wlocked_by(old(lctx))) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
+                };
+                assert(old(lctx).lock_entry_contains(
+                    old(self).scheduler_map.lock_id_by_key(scheduler_ptr),
+                    KernelObjId::Scheduler(scheduler_ptr),
+                )) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
             self.scheduler_map.wunlock(scheduler_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Scheduler(scheduler_ptr)));
@@ -278,12 +275,9 @@ impl KernelK {
                             reveal(container_thread_scheduler_wf);
                         };
                     };
-                assert(lock_id_aligned(self, &*lctx)) by {
-                    reveal(lock_id_aligned);
+                assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
 
-                };
-                assert(typed_lock_sets_aligned(self, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
             }
         }

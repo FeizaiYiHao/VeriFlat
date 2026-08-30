@@ -35,7 +35,7 @@ pub(super) open spec fn ipc_pages_base_roots_context(
     peer_thread_lock_perm: &LockPerm,
 ) -> bool {
     &&& kernel.inv()
-    &&& lock_id_aligned(kernel, lctx)
+    &&& typed_lock_maps_aligned(kernel, lctx)
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& current_thread_ptr != peer_thread_ptr
     &&& kernel.cpu_array.spec_index(cpu_id).view().wlocked_by(lctx)
@@ -194,10 +194,10 @@ fn ipc_share_pages_locked(
         ),
     ensures
         final(kernel).inv(),
-        lock_id_aligned(final(kernel), final(lctx)),
+        typed_lock_maps_aligned(final(kernel), final(lctx)),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
         ret is Ready ==>
             final(steps).steps.len() == old(steps).steps.len() + source_range.len,
@@ -635,13 +635,6 @@ pub(super) fn ipc_share_pages_mapping(
             cpu_lock_perm, process_lock_perm, current_thread_lock_perm,
             endpoint_lock_perm, peer_thread_lock_perm,
         ),
-        old(lctx).lock_id_set() =~= set![
-            (old(kernel).cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-            (old(kernel).process_map.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-            (old(kernel).endpoint_map.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr)),
-        ],
         cpu_objects_unlocked_except(
             old(kernel).cpu_array, old(lctx).thread_id(), set![cpu_id]),
         page_objects_unlocked(
@@ -686,13 +679,6 @@ pub(super) fn ipc_share_pages_mapping(
             cpu_lock_perm, process_lock_perm, current_thread_lock_perm,
             endpoint_lock_perm, peer_thread_lock_perm,
         ),
-        final(lctx).lock_id_set() =~= set![
-            (final(kernel).cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-            (final(kernel).process_map.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-            (final(kernel).thread_map.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-            (final(kernel).endpoint_map.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-            (final(kernel).thread_map.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr)),
-        ],
         cpu_objects_unlocked_except(
             final(kernel).cpu_array, final(lctx).thread_id(), set![cpu_id]),
         page_objects_unlocked(
@@ -720,7 +706,7 @@ pub(super) fn ipc_share_pages_mapping(
             final(kernel).allocator_2m_map, final(lctx).thread_id()),
         allocator_objects_unlocked(
             final(kernel).allocator_1g_map, final(lctx).thread_id()),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(kernel).thread_map.spec_index(peer_thread_ptr).view().owning_container
             == old(kernel).thread_map.spec_index(peer_thread_ptr).view().owning_container,
         ret is SameProcess ==>
@@ -1357,7 +1343,7 @@ pub(super) fn ipc_share_pages_mapping(
     }
     proof {
         assert_sets_equal!(
-            lctx.lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), lctx),
             held => {}
         );
         assert(ipc_pages_base_roots_context(
@@ -1388,150 +1374,6 @@ pub(super) fn ipc_share_pages_mapping(
             reveal(endpoint_perms_wf);
             lock_id_fields_eq_imply_eq();
         };
-        assert_sets_equal!(lctx.lock_id_set() == set![
-            (kernel.cpu_array.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-            (kernel.process_map.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-            (kernel.thread_map.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-            (kernel.endpoint_map.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-            (kernel.thread_map.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr)),
-        ], held => {
-            lock_id_fields_eq_imply_eq();
-        });
-        assert({
-            &&& cpu_objects_unlocked_except(
-                kernel.cpu_array, lctx.thread_id(), set![cpu_id])
-            &&& process_objects_unlocked_except(
-                kernel.process_map, lctx.thread_id(), set![process_ptr])
-            &&& thread_objects_unlocked_except(
-                kernel.thread_map, lctx.thread_id(),
-                set![current_thread_ptr, peer_thread_ptr])
-            &&& endpoint_objects_unlocked_except(
-                kernel.endpoint_map, lctx.thread_id(), set![endpoint_ptr])
-        }) by {
-            reveal(cpu_objects_unlocked_except);
-            reveal(process_objects_unlocked_except);
-            reveal(thread_objects_unlocked_except);
-            reveal(endpoint_objects_unlocked_except);
-        };
-    }
-    result
-}
-
-pub(super) fn ipc_rendezvous_pages(
-    kernel: &mut KernelK,
-    source_range: &VaRange4K,
-    target_range: &VaRange4K,
-    source_thread: RwLockThreadPtr,
-    target_thread: RwLockThreadPtr,
-    cpu_id: CpuId,
-    process_ptr: RwLockProcessPtr,
-    current_thread_ptr: RwLockThreadPtr,
-    endpoint_ptr: RwLockEndpointPtr,
-    peer_thread_ptr: RwLockThreadPtr,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_lock_perm: Tracked<LockPerm>,
-    process_lock_perm: Tracked<LockPerm>,
-    current_thread_lock_perm: Tracked<LockPerm>,
-    endpoint_lock_perm: Tracked<LockPerm>,
-    peer_thread_lock_perm: Tracked<LockPerm>,
-) -> (ret: RetValueType)
-    requires
-        ipc_pages_base_roots_context(
-            old(kernel), old(lctx), cpu_id, process_ptr,
-            current_thread_ptr, endpoint_ptr, peer_thread_ptr,
-            &cpu_lock_perm.view(), &process_lock_perm.view(),
-            &current_thread_lock_perm.view(), &endpoint_lock_perm.view(),
-            &peer_thread_lock_perm.view(),
-        ),
-        old(lctx).lock_id_set() =~= set![
-            (old(kernel).cpu_array.lock_id_by_index(cpu_id),
-                KernelObjId::Cpu(cpu_id)),
-            (old(kernel).process_map.lock_id_by_key(process_ptr),
-                KernelObjId::Process(process_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(current_thread_ptr),
-                KernelObjId::Thread(current_thread_ptr)),
-            (old(kernel).endpoint_map.lock_id_by_key(endpoint_ptr),
-                KernelObjId::Endpoint(endpoint_ptr)),
-            (old(kernel).thread_map.lock_id_by_key(peer_thread_ptr),
-                KernelObjId::Thread(peer_thread_ptr)),
-        ],
-        cpu_objects_unlocked_except(
-            old(kernel).cpu_array, old(lctx).thread_id(), set![cpu_id]),
-        page_objects_unlocked(
-            old(kernel).page_array, old(lctx).thread_id()),
-        container_objects_unlocked(
-            old(kernel).container_map, old(lctx).thread_id()),
-        process_objects_unlocked_except(
-            old(kernel).process_map, old(lctx).thread_id(),
-            set![process_ptr]),
-        thread_objects_unlocked_except(
-            old(kernel).thread_map, old(lctx).thread_id(),
-            set![current_thread_ptr, peer_thread_ptr]),
-        endpoint_objects_unlocked_except(
-            old(kernel).endpoint_map, old(lctx).thread_id(),
-            set![endpoint_ptr]),
-        pagetable_objects_unlocked(
-            old(kernel).pagetable_map, old(lctx).thread_id()),
-        iommu_table_objects_unlocked(
-            old(kernel).iommu_table_map, old(lctx).thread_id()),
-        scheduler_objects_unlocked(
-            old(kernel).scheduler_map, old(lctx).thread_id()),
-        pcid_allocator_objects_unlocked(
-            old(kernel).pcid_allocator_map, old(lctx).thread_id()),
-        allocator_objects_unlocked(
-            old(kernel).allocator_4k_map, old(lctx).thread_id()),
-        allocator_objects_unlocked(
-            old(kernel).allocator_2m_map, old(lctx).thread_id()),
-        allocator_objects_unlocked(
-            old(kernel).allocator_1g_map, old(lctx).thread_id()),
-        old(lctx).kernel_view_locking_state() is Acquire,
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
-        source_range.wf(),
-        target_range.wf(),
-        source_range.len == target_range.len,
-        source_range.len > 0,
-        source_range.len <= usize::MAX / 3usize,
-        source_thread != target_thread,
-        source_thread == current_thread_ptr
-            && target_thread == peer_thread_ptr
-            || source_thread == peer_thread_ptr
-                && target_thread == current_thread_ptr,
-    ensures
-        ret is Success
-            || ret is ErrorIpcSameProcess
-            || ret is ErrorIpcSourceUnmapped
-            || ret is ErrorIpcPageOwnerMismatch
-            || ret is ErrorNoQuota
-            || ret is ErrorVaInUse
-            || ret is Error,
-        final(kernel).inv(),
-        final(lctx).kernel_view_locking_state() is Release,
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
-        ret is Success ==>
-            final(steps).steps.len()
-                == old(steps).steps.len() + source_range.len,
-        !(ret is Success) ==>
-            final(steps).steps.len() == old(steps).steps.len(),
-        final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
-        final(kernel).all_objects_unlocked(final(lctx)),
-        lock_id_aligned(final(kernel), final(lctx)),
-{
-    let tracked cpu_lock_perm = cpu_lock_perm.get();
-    let tracked process_lock_perm = process_lock_perm.get();
-    let tracked current_thread_lock_perm =
-        current_thread_lock_perm.get();
-    let tracked endpoint_lock_perm = endpoint_lock_perm.get();
-    let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
-
-    let pages_result = ipc_share_pages_mapping(
-        kernel, source_range, target_range, source_thread, target_thread,
-        cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
-        peer_thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps),
-        Tracked(&cpu_lock_perm), Tracked(&process_lock_perm),
-        Tracked(&current_thread_lock_perm), Tracked(&endpoint_lock_perm),
-        Tracked(&peer_thread_lock_perm),
-    );
     let result;
     if let IpcPagesMapping::Ready = pages_result {
         proof {

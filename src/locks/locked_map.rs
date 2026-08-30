@@ -53,6 +53,51 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             self.spec_index(k) == old.spec_index(k)
     }
 
+    /// Exact alignment between this lock map and one typed held-lock family.
+    /// Kept opaque so consumers can carry the family fact without importing
+    /// its three map-wide quantifiers.
+    #[verifier::opaque]
+    pub open spec fn typed_lock_map_aligned(
+        &self,
+        held_locks: Map<usize, TypedHeldLock>,
+        thread_id: LockThreadId,
+    ) -> bool
+        where
+            T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+            ROT: LockOwnerIdTrait,
+    {
+        &&& (forall|key: usize|
+            #![trigger held_locks.dom().contains(key)]
+            #![trigger self.spec_index(key).locked_by_thread(thread_id)]
+            held_locks.dom().contains(key) == {
+                &&& self.dom().contains(key)
+                &&& self.spec_index(key).locked_by_thread(thread_id)
+            }
+            && (held_locks.dom().contains(key) ==>
+                held_locks.index(key).lock_id == LockId {
+                    container: self.spec_index(key).container_depth(),
+                    process: self.spec_index(key).process_depth(),
+                    major: self.spec_index(key).view().current_lock_major(),
+                    minor: key,
+                }))
+        &&& (forall|key: usize|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, key, TypedLockMode::Read)]
+            #![trigger self.spec_index(key).rlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read) == {
+                &&& self.dom().contains(key)
+                &&& self.spec_index(key).rlocked_by_thread(thread_id)
+            })
+        &&& (forall|key: usize|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, key, TypedLockMode::Write)]
+            #![trigger self.spec_index(key).wlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write) == {
+                &&& self.dom().contains(key)
+                &&& self.spec_index(key).wlocked_by_thread(thread_id)
+            })
+    }
+
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),
@@ -127,13 +172,10 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
-
-            old(self).spec_index(key).wlocked_by(lctx),
             old(self).spec_index(key).is_init(),
-
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
+            old(self).spec_index(key).write_lock_perm_match(lock_perm.view()),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -156,6 +198,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
             // Lock state of `key`'s rwlock is preserved.
             final(self).spec_index(key).is_init(),
             final(self).spec_index(key).wlocked_by(lctx),
+            final(self).spec_index(key).write_lock_perm_match(lock_perm.view()),
             final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata(),
             final(self).spec_index(key).view_kernel_ghost() == old(self).spec_index(key).view_kernel_ghost(),
             final(self).spec_index(key).view_user_ghost() == old(self).spec_index(key).view_user_ghost(),
@@ -169,6 +212,81 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, R
         let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
         let ret = borrow_mut(&PPtr::<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(perm), Tracked(lctx), lock_perm);
         return ret;
+    }
+
+    pub fn borrow_mut_typed<'a>(
+        &'a mut self,
+        key: usize,
+        Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&'a LockPerm>,
+    ) -> (ret: &'a mut T)
+        where
+            T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+            ROT: LockOwnerIdTrait,
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            old(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
+            typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write),
+            old(self).spec_index(key).is_init(),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            old(self).spec_index(key).write_lock_perm_match(lock_perm.view()),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() == old(self).dom(),
+            forall|k:usize|
+                #![trigger final(self).spec_index(k)]
+                #![trigger old(self).spec_index(k)]
+                old(self).dom().contains(k) && k != key
+                ==> final(self).spec_index(k) == old(self).spec_index(k),
+            forall|k: usize|
+                #![trigger old(self).view().spec_index(k)]
+                #![trigger final(self).view().spec_index(k)]
+                old(self).dom().contains(k) && k != key
+                ==> final(self).dom().contains(k)
+                    && final(self).view().spec_index(k)
+                        == old(self).view().spec_index(k),
+            final(self).spec_index(key).is_init(),
+            final(self).spec_index(key).wlocked_by(lctx),
+            final(self).spec_index(key).write_lock_perm_match(lock_perm.view()),
+            final(self).spec_index(key).view_rodata()
+                == old(self).spec_index(key).view_rodata(),
+            final(self).spec_index(key).view_kernel_ghost()
+                == old(self).spec_index(key).view_kernel_ghost(),
+            final(self).spec_index(key).view_user_ghost()
+                == old(self).spec_index(key).view_user_ghost(),
+            final(self).spec_index(key).locking_thread()
+                == old(self).spec_index(key).locking_thread(),
+            final(self).spec_index(key).being_killed()
+                == old(self).spec_index(key).being_killed(),
+            *ret == old(self).spec_index(key).view(),
+            final(self).spec_index(key).view() == *final(ret),
+            {
+                let final_lock_id = LockId {
+                    container: final(self).spec_index(key).container_depth(),
+                    process: final(self).spec_index(key).process_depth(),
+                    major: final(self).spec_index(key).view().current_lock_major(),
+                    minor: key,
+                };
+                let old_lock_id = LockId {
+                    container: old(self).spec_index(key).container_depth(),
+                    process: old(self).spec_index(key).process_depth(),
+                    major: old(self).spec_index(key).view().current_lock_major(),
+                    minor: key,
+                };
+                final_lock_id == old_lock_id ==>
+                    final(self).typed_lock_map_aligned(
+                        held_locks, lctx.thread_id())
+            },
+    {
+        proof {
+            // This is a single-stage contract proof: after returning `&mut T`,
+            // Rust no longer permits reading `final(self)` in the body.
+            reveal(LockedMap::typed_lock_map_aligned);
+        }
+        self.borrow_mut(key, Tracked(lctx), lock_perm)
     }
 
     pub fn borrow_rodata(&self, key:usize) -> (ret:&ROT)
@@ -465,7 +583,6 @@ HAS_KILL_STATE>{
             // thread's identity (see free `wlock_unless_killed`).
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-
             ret.0 == false ==> 
             {
                 &&&
@@ -533,7 +650,6 @@ HAS_KILL_STATE>{
             final(self).spec_index(key).locking_thread() is None,
             old(self).spec_index(key).being_killed() == final(self).spec_index(key).being_killed(),
             final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key),
-
             wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
             unlock_ensures(
                 old(lctx),

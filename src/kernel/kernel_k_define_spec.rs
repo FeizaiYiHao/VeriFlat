@@ -284,7 +284,7 @@ verus! {
         ///   - `inv()` holds (we entered the boundary in a wf state),
         ///   - `kernel_view_locking_state is Release` (the current section
         ///     is done),
-        ///   - `lock_id_aligned(self, lctx)` (no stealth locks, every
+        ///   - `typed_lock_maps_aligned(self, lctx)` (no stealth locks, every
         ///     LocalContext entry corresponds to the named real held lock),
         /// TCB maintenance rule: do not change this function's signature,
         /// contract, triggers, or body without the user's explicit approval.
@@ -298,17 +298,14 @@ verus! {
             requires
                 old(self).inv(),
                 old(lctx).kernel_view_locking_state() is Release,
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
                 // LocalContext is thread-local: the phase flips to Acquire,
-                // while its identity and exact held-lock set stay put.
+                // while its identity and exact typed lock maps stay put.
                 final(lctx).thread_id() == old(lctx).thread_id(),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-                typed_lock_sets_unchanged(old(lctx), final(lctx)),
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_unchanged(old(lctx), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
                 final(lctx).kernel_view_locking_state() is Acquire,
                 // Record this thread's completed section before refreshing the
                 // snapshot to the post-interleaving projection.
@@ -324,7 +321,7 @@ verus! {
                 processes_rodata_unchanged(
                     old(self).process_map, final(self).process_map,
                 ),
-                // The forward typed lock sets are the framing range: every
+                // The forward typed lock-map domains are the framing range: every
                 // object they contain before interleaving is still present
                 // and bit-for-bit unchanged afterwards.
                 held_containers_unchanged(
@@ -363,16 +360,22 @@ verus! {
                     old(lctx)),
                 held_allocator_objects_unchanged(
                     old(self).allocator_4k_map, final(self).allocator_4k_map,
-                    PageSize::SZ4k, old(lctx)),
+                    old(lctx).allocator_quota_4k_lock_map(),
+                    old(lctx).allocator_global_pool_4k_lock_map(),
+                    old(lctx).allocator_cache_4k_lock_map()),
                 held_allocator_objects_unchanged(
                     old(self).allocator_2m_map, final(self).allocator_2m_map,
-                    PageSize::SZ2m, old(lctx)),
+                    old(lctx).allocator_quota_2m_lock_map(),
+                    old(lctx).allocator_global_pool_2m_lock_map(),
+                    old(lctx).allocator_cache_2m_lock_map()),
                 held_allocator_objects_unchanged(
                     old(self).allocator_1g_map, final(self).allocator_1g_map,
-                    PageSize::SZ1g, old(lctx)),
+                    old(lctx).allocator_quota_1g_lock_map(),
+                    old(lctx).allocator_global_pool_1g_lock_map(),
+                    old(lctx).allocator_cache_1g_lock_map()),
                 // Deliberately omitted from the old boundary contract:
                 // - root/default-pagetable equality across interleaving;
-                // Global rodata immutability and final lock-id alignment remain
+                // Global rodata immutability and final typed-lock alignment remain
                 // explicit because both are common next-section framing facts.
         {
             unimplemented!()
@@ -381,303 +384,65 @@ verus! {
 
     // ---- Held-lock / kernel-state alignment ----
 
-    /// Exact object-sensitive mirror for the single held-lock ledger.
-    #[verifier::opaque]
-    pub open spec fn lock_id_aligned(k: &KernelK, lctx: &LocalContext) -> bool {
-        &&& (forall|id: LockId, ptr: RwLockContainerPtr|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Container(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Container(ptr))) == {
-                &&& k.container_map.dom().contains(ptr)
-                &&& k.container_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.container_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockProcessPtr|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Process(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Process(ptr))) == {
-                &&& k.process_map.dom().contains(ptr)
-                &&& k.process_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.process_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockThreadPtr|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Thread(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Thread(ptr))) == {
-                &&& k.thread_map.dom().contains(ptr)
-                &&& k.thread_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.thread_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockEndpointPtr|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Endpoint(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Endpoint(ptr))) == {
-                &&& k.endpoint_map.dom().contains(ptr)
-                &&& k.endpoint_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.endpoint_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockSchedulerPtr|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Scheduler(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Scheduler(ptr))) == {
-                &&& k.scheduler_map.dom().contains(ptr)
-                &&& k.scheduler_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.scheduler_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPcidAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::PcidAllocator(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::PcidAllocator(ptr))) == {
-                &&& k.pcid_allocator_map.dom().contains(ptr)
-                &&& k.pcid_allocator_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.pcid_allocator_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageTableRoot|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::PageTable(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::PageTable(ptr))) == {
-                &&& k.pagetable_map.dom().contains(ptr)
-                &&& k.pagetable_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.pagetable_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageTableRoot|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::IommuTable(ptr)))]
-            lctx.lock_id_set().contains((id, KernelObjId::IommuTable(ptr))) == {
-                &&& k.iommu_table_map.dom().contains(ptr)
-                &&& k.iommu_table_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-                &&& id == k.iommu_table_map.lock_id_by_key(ptr)
-            })
-        &&& (forall|id: LockId, index: PageIndex|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Page(index)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Page(index))) == {
-                &&& index_valid(NUM_PAGES, index)
-                &&& k.page_array.spec_index(index).view().locked_by_thread(lctx.thread_id())
-                &&& id == k.page_array.lock_id_by_index(index)
-            })
-        &&& (forall|id: LockId, cpu_id: CpuId|
-            #![trigger lctx.lock_id_set().contains((id, KernelObjId::Cpu(cpu_id)))]
-            lctx.lock_id_set().contains((id, KernelObjId::Cpu(cpu_id))) == {
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& k.cpu_array.spec_index(cpu_id).view().locked_by_thread(lctx.thread_id())
-                &&& id == k.cpu_array.lock_id_by_index(cpu_id)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorQuota(PageSize::SZ4k, ptr)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorQuota(PageSize::SZ4k, ptr))) == {
-                &&& k.allocator_4k_map.dom().contains(ptr)
-                &&& k.allocator_4k_map.spec_index(ptr).quota.locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_4k_map.spec_index(ptr).quota.lock_id()
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorQuota(PageSize::SZ2m, ptr)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorQuota(PageSize::SZ2m, ptr))) == {
-                &&& k.allocator_2m_map.dom().contains(ptr)
-                &&& k.allocator_2m_map.spec_index(ptr).quota.locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_2m_map.spec_index(ptr).quota.lock_id()
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorQuota(PageSize::SZ1g, ptr)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorQuota(PageSize::SZ1g, ptr))) == {
-                &&& k.allocator_1g_map.dom().contains(ptr)
-                &&& k.allocator_1g_map.spec_index(ptr).quota.locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_1g_map.spec_index(ptr).quota.lock_id()
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorCache(PageSize::SZ4k, ptr, cpu_id)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorCache(PageSize::SZ4k, ptr, cpu_id))) == {
-                &&& k.allocator_4k_map.dom().contains(ptr)
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& k.allocator_4k_map.spec_index(ptr).cpu_caches.spec_index(cpu_id).view()
-                    .locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_4k_map.spec_index(ptr).cpu_caches.lock_id_by_index(cpu_id)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorCache(PageSize::SZ2m, ptr, cpu_id)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorCache(PageSize::SZ2m, ptr, cpu_id))) == {
-                &&& k.allocator_2m_map.dom().contains(ptr)
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& k.allocator_2m_map.spec_index(ptr).cpu_caches.spec_index(cpu_id).view()
-                    .locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_2m_map.spec_index(ptr).cpu_caches.lock_id_by_index(cpu_id)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorCache(PageSize::SZ1g, ptr, cpu_id)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorCache(PageSize::SZ1g, ptr, cpu_id))) == {
-                &&& k.allocator_1g_map.dom().contains(ptr)
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& k.allocator_1g_map.spec_index(ptr).cpu_caches.spec_index(cpu_id).view()
-                    .locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_1g_map.spec_index(ptr).cpu_caches.lock_id_by_index(cpu_id)
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, ptr)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, ptr))) == {
-                &&& k.allocator_4k_map.dom().contains(ptr)
-                &&& k.allocator_4k_map.spec_index(ptr).global_pool.locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_4k_map.spec_index(ptr).global_pool.lock_id()
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, ptr)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, ptr))) == {
-                &&& k.allocator_2m_map.dom().contains(ptr)
-                &&& k.allocator_2m_map.spec_index(ptr).global_pool.locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_2m_map.spec_index(ptr).global_pool.lock_id()
-            })
-        &&& (forall|id: LockId, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, ptr)))]
-            lctx.lock_id_set().contains((
-                id, KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, ptr))) == {
-                &&& k.allocator_1g_map.dom().contains(ptr)
-                &&& k.allocator_1g_map.spec_index(ptr).global_pool.locked_by_thread(lctx.thread_id())
-                &&& id == k.allocator_1g_map.spec_index(ptr).global_pool.lock_id()
-            })
-    }
-
     /// Exact forward mirror for every typed lockable object family.
-    #[verifier::opaque]
-    pub open spec fn typed_lock_sets_aligned(
+    pub open spec fn typed_lock_maps_aligned(
         k: &KernelK,
         lctx: &LocalContext,
     ) -> bool {
-        &&& (forall|index: PageIndex|
-            #![trigger lctx.page_lock_set().contains(index)]
-            lctx.page_lock_set().contains(index) == {
-                &&& index_valid(NUM_PAGES, index)
-                &&& k.page_array.spec_index(index).view()
-                    .locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|cpu_id: CpuId|
-            #![trigger lctx.cpu_lock_set().contains(cpu_id)]
-            lctx.cpu_lock_set().contains(cpu_id) == {
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& k.cpu_array.spec_index(cpu_id).view()
-                    .locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockContainerPtr|
-            #![trigger lctx.container_lock_set().contains(ptr)]
-            lctx.container_lock_set().contains(ptr) == {
-                &&& k.container_map.dom().contains(ptr)
-                &&& k.container_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockProcessPtr|
-            #![trigger lctx.process_lock_set().contains(ptr)]
-            lctx.process_lock_set().contains(ptr) == {
-                &&& k.process_map.dom().contains(ptr)
-                &&& k.process_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockThreadPtr|
-            #![trigger lctx.thread_lock_set().contains(ptr)]
-            lctx.thread_lock_set().contains(ptr) == {
-                &&& k.thread_map.dom().contains(ptr)
-                &&& k.thread_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockEndpointPtr|
-            #![trigger lctx.endpoint_lock_set().contains(ptr)]
-            lctx.endpoint_lock_set().contains(ptr) == {
-                &&& k.endpoint_map.dom().contains(ptr)
-                &&& k.endpoint_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockSchedulerPtr|
-            #![trigger lctx.scheduler_lock_set().contains(ptr)]
-            lctx.scheduler_lock_set().contains(ptr) == {
-                &&& k.scheduler_map.dom().contains(ptr)
-                &&& k.scheduler_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockPcidAllocatorPtr|
-            #![trigger lctx.pcid_allocator_lock_set().contains(ptr)]
-            lctx.pcid_allocator_lock_set().contains(ptr) == {
-                &&& k.pcid_allocator_map.dom().contains(ptr)
-                &&& k.pcid_allocator_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockPageTableRoot|
-            #![trigger lctx.pagetable_lock_set().contains(ptr)]
-            lctx.pagetable_lock_set().contains(ptr) == {
-                &&& k.pagetable_map.dom().contains(ptr)
-                &&& k.pagetable_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|ptr: RwLockPageTableRoot|
-            #![trigger lctx.iommu_table_lock_set().contains(ptr)]
-            lctx.iommu_table_lock_set().contains(ptr) == {
-                &&& k.iommu_table_map.dom().contains(ptr)
-                &&& k.iommu_table_map.spec_index(ptr).locked_by_thread(lctx.thread_id())
-            })
-        &&& (forall|size: PageSize, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.allocator_quota_lock_set().contains((size, ptr))]
-            lctx.allocator_quota_lock_set().contains((size, ptr)) == match size {
-                PageSize::SZ4k => k.allocator_4k_map.dom().contains(ptr)
-                    && k.allocator_4k_map.spec_index(ptr).quota
-                        .locked_by_thread(lctx.thread_id()),
-                PageSize::SZ2m => k.allocator_2m_map.dom().contains(ptr)
-                    && k.allocator_2m_map.spec_index(ptr).quota
-                        .locked_by_thread(lctx.thread_id()),
-                PageSize::SZ1g => k.allocator_1g_map.dom().contains(ptr)
-                    && k.allocator_1g_map.spec_index(ptr).quota
-                        .locked_by_thread(lctx.thread_id()),
-            })
-        &&& (forall|size: PageSize, ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
-            #![trigger lctx.allocator_cache_lock_set().contains((size, ptr, cpu_id))]
-            lctx.allocator_cache_lock_set().contains((size, ptr, cpu_id)) == {
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& match size {
-                    PageSize::SZ4k => k.allocator_4k_map.dom().contains(ptr)
-                        && k.allocator_4k_map.spec_index(ptr).cpu_caches
-                            .spec_index(cpu_id).view().locked_by_thread(lctx.thread_id()),
-                    PageSize::SZ2m => k.allocator_2m_map.dom().contains(ptr)
-                        && k.allocator_2m_map.spec_index(ptr).cpu_caches
-                            .spec_index(cpu_id).view().locked_by_thread(lctx.thread_id()),
-                    PageSize::SZ1g => k.allocator_1g_map.dom().contains(ptr)
-                        && k.allocator_1g_map.spec_index(ptr).cpu_caches
-                            .spec_index(cpu_id).view().locked_by_thread(lctx.thread_id()),
-                }
-            })
-        &&& (forall|size: PageSize, ptr: RwLockPageAllocatorPtr|
-            #![trigger lctx.allocator_global_pool_lock_set().contains((size, ptr))]
-            lctx.allocator_global_pool_lock_set().contains((size, ptr)) == match size {
-                PageSize::SZ4k => k.allocator_4k_map.dom().contains(ptr)
-                    && k.allocator_4k_map.spec_index(ptr).global_pool
-                        .locked_by_thread(lctx.thread_id()),
-                PageSize::SZ2m => k.allocator_2m_map.dom().contains(ptr)
-                    && k.allocator_2m_map.spec_index(ptr).global_pool
-                        .locked_by_thread(lctx.thread_id()),
-                PageSize::SZ1g => k.allocator_1g_map.dom().contains(ptr)
-                    && k.allocator_1g_map.spec_index(ptr).global_pool
-                        .locked_by_thread(lctx.thread_id()),
-            })
+        &&& k.page_array.typed_lock_map_aligned(
+            lctx.page_lock_map(), lctx.thread_id())
+        &&& k.cpu_array.typed_lock_map_aligned(
+            lctx.cpu_lock_map(), lctx.thread_id())
+        &&& k.container_map.typed_lock_map_aligned(
+            lctx.container_lock_map(), lctx.thread_id())
+        &&& k.process_map.typed_lock_map_aligned(
+            lctx.process_lock_map(), lctx.thread_id())
+        &&& k.thread_map.typed_lock_map_aligned(
+            lctx.thread_lock_map(), lctx.thread_id())
+        &&& k.endpoint_map.typed_lock_map_aligned(
+            lctx.endpoint_lock_map(), lctx.thread_id())
+        &&& k.scheduler_map.typed_lock_map_aligned(
+            lctx.scheduler_lock_map(), lctx.thread_id())
+        &&& k.pcid_allocator_map.typed_lock_map_aligned(
+            lctx.pcid_allocator_lock_map(), lctx.thread_id())
+        &&& k.pagetable_map.typed_lock_map_aligned(
+            lctx.pagetable_lock_map(), lctx.thread_id())
+        &&& k.iommu_table_map.typed_lock_map_aligned(
+            lctx.iommu_table_lock_map(), lctx.thread_id())
+        &&& k.allocator_4k_map.typed_quota_lock_map_aligned(
+            lctx.allocator_quota_4k_lock_map(), lctx.thread_id())
+        &&& k.allocator_4k_map.typed_cache_lock_map_aligned(
+            lctx.allocator_cache_4k_lock_map(), lctx.thread_id())
+        &&& k.allocator_4k_map.typed_global_pool_lock_map_aligned(
+            lctx.allocator_global_pool_4k_lock_map(), lctx.thread_id())
+        &&& k.allocator_2m_map.typed_quota_lock_map_aligned(
+            lctx.allocator_quota_2m_lock_map(), lctx.thread_id())
+        &&& k.allocator_2m_map.typed_cache_lock_map_aligned(
+            lctx.allocator_cache_2m_lock_map(), lctx.thread_id())
+        &&& k.allocator_2m_map.typed_global_pool_lock_map_aligned(
+            lctx.allocator_global_pool_2m_lock_map(), lctx.thread_id())
+        &&& k.allocator_1g_map.typed_quota_lock_map_aligned(
+            lctx.allocator_quota_1g_lock_map(), lctx.thread_id())
+        &&& k.allocator_1g_map.typed_cache_lock_map_aligned(
+            lctx.allocator_cache_1g_lock_map(), lctx.thread_id())
+        &&& k.allocator_1g_map.typed_global_pool_lock_map_aligned(
+            lctx.allocator_global_pool_1g_lock_map(), lctx.thread_id())
     }
 
-pub proof fn enter_kernel_view_release_preserving_lock_id_alignment(
+pub proof fn enter_kernel_view_release_preserving_typed_lock_alignment(
     kernel: &KernelK,
     tracked lctx: &mut LocalContext,
 )
     requires
         old(lctx).kernel_view_locking_state() is Acquire,
-        lock_id_aligned(kernel, old(lctx)),
-        typed_lock_sets_aligned(kernel, old(lctx)),
+        typed_lock_maps_aligned(kernel, old(lctx)),
     ensures
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-        lock_id_aligned(kernel, final(lctx)),
-        typed_lock_sets_unchanged(old(lctx), final(lctx)),
-        typed_lock_sets_aligned(kernel, final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        typed_lock_maps_aligned(kernel, final(lctx)),
 {
     lctx.enter_kernel_view_release();
-    assert(lock_id_aligned(kernel, &*lctx)) by {
-        reveal(lock_id_aligned);
-    };
-    assert(typed_lock_sets_aligned(kernel, &*lctx)) by {
-        reveal(typed_lock_sets_aligned);
-    };
 }
 
 }

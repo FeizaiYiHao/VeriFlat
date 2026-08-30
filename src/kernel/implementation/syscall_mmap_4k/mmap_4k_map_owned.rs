@@ -212,7 +212,10 @@ use crate::*;
         proof {
             lctx.update_lock_id(
                 KernelObjId::Page(page_index),
-                old_page_lock_id,
+                TypedHeldLock {
+                    lock_id: old_page_lock_id,
+                    mode: TypedLockMode::Write,
+                },
                 kernel.page_array.lock_id_by_index(page_index),
             );
             assert(kernel.subsystems_inv()) by {
@@ -316,8 +319,8 @@ use crate::*;
             };
             assert(cpu_dirty_map_wf(kernel.container_map, kernel.process_map, kernel.cpu_array, kernel.cpu_tlb, kernel.pagetable_map)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(kernel.cpu_tlb, kernel.pagetable_map, kernel.cpu_array)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(kernel.cpu_tlb, kernel.cpu_array, old(kernel).pagetable_map, kernel.pagetable_map, pagetable_ptr, va); };
-            assert(lock_id_aligned(kernel, &*lctx)) by {
-                reveal(lock_id_aligned);
+            assert(typed_lock_maps_aligned(kernel, &*lctx)) by {
+                reveal(typed_lock_maps_aligned);
             };
             assert({
                 let process_ptr = kernel.thread_map.spec_index(thread_ptr)

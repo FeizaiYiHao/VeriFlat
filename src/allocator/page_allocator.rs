@@ -374,11 +374,11 @@ impl PageAllocator{
         requires
             old(self).wf(),
             index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
             old(self).cpu_caches.spec_index(cpu_id).view().is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(self).cpu_caches.spec_index(cpu_id).view()
+                .write_lock_perm_match(lock_perm.view()),
             old(self).cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
         ensures
             final(self).wf(),
@@ -433,11 +433,10 @@ impl PageAllocator{
     pub fn pop_global_pool_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
         requires
             old(self).wf(),
-            old(self).global_pool.wlocked_by(lctx),
             old(self).global_pool.is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
+            old(self).global_pool.write_lock_perm_match(lock_perm.view()),
             old(self).global_pool.view().len() > 0,
         ensures
             final(self).wf(),

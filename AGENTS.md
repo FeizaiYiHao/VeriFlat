@@ -46,42 +46,24 @@ this file or live code, this file and live code win.
 
 ## Current lock model
 
-- This experimental branch intentionally uses two independent held-lock
-  representations in `LocalContext`:
-  - `Set<(LockId, KernelObjId)>` (`Set<HeldLock>`) is the reverse ledger of
-    every held kernel lock and its current dynamic ordering id.
-  - One typed key set for each lockable object family is the forward ledger of
-    which objects of that family are held.  Pages use `PageIndex`, CPUs use
-    `CpuId`, allocator sets include `PageSize`, and the allocator-cache set also
-    includes its cache `CpuId`.
-- Do not add a direct equality, projection, or bridge invariant between the
-  reverse ledger and the typed sets.  Each representation aligns independently
-  with the real kernel lock state.
-- `lock_id_aligned(k, lctx)` is the exact object-sensitive mirror:
-
-  ```text
-  lctx.lock_id_set().contains((id, obj))
-      <==>
-  obj exists in its corresponding kernel map/array
-      && the real object is read- or write-locked by lctx.thread_id()
-      && id is that object's current dynamic lock id
-  ```
-
-- Each typed-set alignment has the exact form
-  `set.contains(key) <==> object exists && object locked_by_thread(lctx)`;
-  map-backed families use map membership for existence, arrays use index
-  validity, and allocator keys include the additional size/cache components
-  needed to locate the physical lock.  Read and write ownership share the same
-  typed set.
-- For every acquisition, typed-set nonmembership is the caller-facing
-  target-freshness fact: combine it with `typed_lock_sets_aligned` to establish
-  that the real target is not already locked by the current thread.  The lock
-  primitive retains that direct physical precondition, inserts exactly
-  `(current_id, obj)` into the reverse ledger, and inserts exactly the typed
-  object key into the corresponding forward set.  Unlock removes both exact
-  entries.  A dynamic-id change replaces only the reverse-ledger pair; every
-  typed set is unchanged.  Do not add a separate lock-entry freshness
-  predicate.
+- This experimental branch has one held-lock source of truth in
+  `LocalContext`: one `Map<Key, TypedHeldLock>` per lockable object family.
+  `TypedHeldLock` contains the object's current dynamic `LockId` and its
+  `Read` or `Write` mode. There is no reverse pair set or scalar lock-id set.
+  Pages use `PageIndex`, CPUs use `CpuId`, and allocator quota/cache/global
+  pool maps are separate for 4K, 2M, and 1G. Only allocator-cache keys include
+  an additional `CpuId`.
+- `typed_lock_maps_aligned(k, lctx)` is exact for every family: domain
+  membership iff the real object exists and is locked by `lctx.thread_id()`;
+  the entry mode iff the real lock is held in that mode; and the entry
+  `lock_id` equals the object's current dynamic lock id.
+- For every acquisition, typed-map domain nonmembership is the caller-facing
+  target-freshness fact. The locker keeps the direct physical freshness
+  precondition and inserts exactly
+  `key -> TypedHeldLock { lock_id: current_id, mode }`. Unlock removes exactly
+  that key. A dynamic-id transition overwrites the same key with the new
+  current id while preserving its mode. Do not reintroduce a reverse ledger or
+  a separate lock-entry freshness predicate.
 - A `Thread` always retains `owning_container`, `owning_proc`,
   `container_depth`, and `process_depth`; blocking does not erase ownership
   metadata.  Its dynamic lock id is state-dependent:
@@ -91,24 +73,22 @@ this file or live code, this file and live code win.
   - `SENDING`, `RECEIVING`, `CALLING`, `RECEIVING_CALL`, and
     `WAITING_REPLY`: `LockOwnerId::NotApp` for both owner components and
     `THREAD_BLOCKED_LOCK_MAJOR`.
-- State transitions maintain dynamic ids forward: consume the old exact
-  `(LockId, KernelObjId::Thread(ptr))` pair and produce the new exact pair in
-  the transition/release contract.  Do not infer the old lock state backwards
-  from `lock_id_aligned`.
+- State transitions maintain dynamic ids forward: consume the old exact typed
+  entry and produce the same key and mode with the new id in the
+  transition/release contract. Do not infer old lock state backwards from
+  global alignment.
 - `NotApp` changes lock ordering only; it does not erase ownership or restrict
   IPC topology.  Ordinary send/receive rendezvous may cross container and
   process depths.  Do not add a same-depth or same-container restriction to
   ordinary IPC.
-- `LocalContext` has no separate `wf()` predicate.  Consistency with kernel
-  lock state is expressed by `lock_id_aligned` for the reverse ledger and by
-  `typed_lock_sets_aligned` for the forward sets.
-- At `kernel_step_boundary`, both representations are exactly unchanged.  The
-  forward typed sets determine the exact range of held objects whose state is
-  framed; the reverse ledger is not used to enumerate that range.  Both final
-  alignment predicates remain explicit.
+- `LocalContext` has no separate `wf()` predicate. Consistency with kernel
+  lock state is expressed exclusively by `typed_lock_maps_aligned`.
+- At `kernel_step_boundary`, every typed map is exactly unchanged. Typed-map
+  domains determine the exact range of held objects whose state is framed, and
+  final typed alignment is explicit.
 - Replace `*_objects_unlocked_except` in the enabled experiment with direct
-  typed-set equalities/subsets and exact set changes.  Express total absence of
-  held locks as an empty reverse ledger.  Preserve independent object-state
+  typed-map equalities/domain scopes and exact map changes. `no_locks_held`
+  means every typed-map domain is empty. Preserve independent object-state
   framing when it is semantically required.
 
 ## Current syscall semantics
@@ -198,10 +178,10 @@ this file or live code, this file and live code win.
 - Prefer direct, explicit facts over chains such as
   `map key -> id set -> major bound -> fresh`.
 - Prove local operation facts from direct preconditions, operation
-  postconditions, or the invariant leaf that states that fact.  Do not run a
-  global relation backwards to rediscover local state—for example, do not use
-  `lock_id_aligned` or held-set membership to infer that a known object is
-  `locked_by_thread` when the lock operation can state that fact directly.
+  postconditions, or the invariant leaf that states that fact. Do not run
+  `typed_lock_maps_aligned` backwards to rediscover a known physical lock
+  state when the locker or mutable-borrow operation can state that fact
+  directly.
 - Proofs should remain structurally simple even when the property being proved
   is difficult.  If a local obligation needs a long chain through unrelated
   maps, ownership relations, lock ledgers, or wrapper invariants, treat that as
@@ -211,8 +191,8 @@ this file or live code, this file and live code win.
   postconditions: exact lock-set changes, target lock state, dynamic lock-id
   stability/change, and unchanged kernel fields.  Callers should not reopen
   implementation specs to rediscover these facts.
-- For lock acyclicity, quantify directly over the held pair set and compare the
-  `.0` lock-id component.
+- For lock acyclicity and major bounds, quantify directly over every typed
+  map's values and compare each entry's `lock_id`.
 - Keep invariant reveals scoped and minimal.  Re-establish only invariant
   conjuncts whose actual inputs changed.
 - For an opaque `wf` predicate with `recommends`, establish the recommended

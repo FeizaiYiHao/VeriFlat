@@ -159,7 +159,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
                 final(kernel), final(lctx), cpu_id, container_ptr, process_ptr,
                 thread_ptr, pagetable_ptr,
             ),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(lctx).lock_entry_contains(
                 final(kernel).container_map.lock_id_by_key(container_ptr),
                 KernelObjId::Container(container_ptr),
@@ -233,7 +233,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
                 range_start == range.start,
                 0 <= i <= range.len,
                 steps.steps.len() == old(steps).steps.len() + i,
-                lctx.lock_id_set() == old(lctx).lock_id_set(),
+                typed_lock_maps_unchanged(old(lctx), lctx),
                 kernel.container_map.spec_index(container_ptr)
                     .locked_by_thread(lctx.thread_id()),
                 kernel.process_map.spec_index(process_ptr)
@@ -541,7 +541,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
                 final(kernel), final(lctx), cpu_id, container_ptr, process_ptr,
                 thread_ptr, pagetable_ptr,
             ),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(lctx).lock_entry_contains(
                 final(kernel).container_map.lock_id_by_key(container_ptr),
                 KernelObjId::Container(container_ptr),

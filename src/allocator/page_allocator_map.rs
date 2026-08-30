@@ -9,6 +9,124 @@ verus! {
 /// `AllocatorQuota` value protected by the inner RwLock — the caller must hold
 /// the appropriate `LockPerm`.
 impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
+    #[verifier::opaque]
+    pub open spec fn typed_quota_lock_map_aligned(
+        &self,
+        held_locks: Map<RwLockPageAllocatorPtr, TypedHeldLock>,
+        thread_id: LockThreadId,
+    ) -> bool {
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger held_locks.dom().contains(ptr)]
+            #![trigger self.spec_index(ptr).quota.locked_by_thread(thread_id)]
+            held_locks.dom().contains(ptr) == {
+                &&& self.dom().contains(ptr)
+                &&& self.spec_index(ptr).quota.locked_by_thread(thread_id)
+            }
+            && (held_locks.dom().contains(ptr) ==>
+                held_locks.index(ptr).lock_id
+                    == self.spec_index(ptr).quota.lock_id()))
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, ptr, TypedLockMode::Read)]
+            #![trigger self.spec_index(ptr).quota.rlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(held_locks, ptr, TypedLockMode::Read) == {
+                &&& self.dom().contains(ptr)
+                &&& self.spec_index(ptr).quota.rlocked_by_thread(thread_id)
+            })
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, ptr, TypedLockMode::Write)]
+            #![trigger self.spec_index(ptr).quota.wlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(held_locks, ptr, TypedLockMode::Write) == {
+                &&& self.dom().contains(ptr)
+                &&& self.spec_index(ptr).quota.wlocked_by_thread(thread_id)
+            })
+    }
+
+    #[verifier::opaque]
+    pub open spec fn typed_cache_lock_map_aligned(
+        &self,
+        held_locks: Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>,
+        thread_id: LockThreadId,
+    ) -> bool {
+        &&& (forall|ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+            #![trigger held_locks.dom().contains((ptr, cpu_id))]
+            #![trigger self.spec_index(ptr).cpu_caches.spec_index(cpu_id)
+                .view().locked_by_thread(thread_id)]
+            held_locks.dom().contains((ptr, cpu_id)) == {
+                &&& self.dom().contains(ptr)
+                &&& index_valid(NUM_CPUS, cpu_id)
+                &&& self.spec_index(ptr).cpu_caches.spec_index(cpu_id)
+                    .view().locked_by_thread(thread_id)
+            }
+            && (held_locks.dom().contains((ptr, cpu_id)) ==>
+                held_locks.index((ptr, cpu_id)).lock_id
+                    == self.spec_index(ptr).cpu_caches
+                        .lock_id_by_index(cpu_id)))
+        &&& (forall|ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, (ptr, cpu_id), TypedLockMode::Read)]
+            #![trigger self.spec_index(ptr).cpu_caches.spec_index(cpu_id)
+                .view().rlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(
+                held_locks, (ptr, cpu_id), TypedLockMode::Read) == {
+                &&& self.dom().contains(ptr)
+                &&& index_valid(NUM_CPUS, cpu_id)
+                &&& self.spec_index(ptr).cpu_caches.spec_index(cpu_id)
+                    .view().rlocked_by_thread(thread_id)
+            })
+        &&& (forall|ptr: RwLockPageAllocatorPtr, cpu_id: CpuId|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, (ptr, cpu_id), TypedLockMode::Write)]
+            #![trigger self.spec_index(ptr).cpu_caches.spec_index(cpu_id)
+                .view().wlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(
+                held_locks, (ptr, cpu_id), TypedLockMode::Write) == {
+                &&& self.dom().contains(ptr)
+                &&& index_valid(NUM_CPUS, cpu_id)
+                &&& self.spec_index(ptr).cpu_caches.spec_index(cpu_id)
+                    .view().wlocked_by_thread(thread_id)
+            })
+    }
+
+    #[verifier::opaque]
+    pub open spec fn typed_global_pool_lock_map_aligned(
+        &self,
+        held_locks: Map<RwLockPageAllocatorPtr, TypedHeldLock>,
+        thread_id: LockThreadId,
+    ) -> bool {
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger held_locks.dom().contains(ptr)]
+            #![trigger self.spec_index(ptr).global_pool.locked_by_thread(thread_id)]
+            held_locks.dom().contains(ptr) == {
+                &&& self.dom().contains(ptr)
+                &&& self.spec_index(ptr).global_pool.locked_by_thread(thread_id)
+            }
+            && (held_locks.dom().contains(ptr) ==>
+                held_locks.index(ptr).lock_id
+                    == self.spec_index(ptr).global_pool.lock_id()))
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, ptr, TypedLockMode::Read)]
+            #![trigger self.spec_index(ptr).global_pool
+                .rlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(held_locks, ptr, TypedLockMode::Read) == {
+                &&& self.dom().contains(ptr)
+                &&& self.spec_index(ptr).global_pool
+                    .rlocked_by_thread(thread_id)
+            })
+        &&& (forall|ptr: RwLockPageAllocatorPtr|
+            #![trigger typed_lock_map_contains_mode(
+                held_locks, ptr, TypedLockMode::Write)]
+            #![trigger self.spec_index(ptr).global_pool
+                .wlocked_by_thread(thread_id)]
+            typed_lock_map_contains_mode(held_locks, ptr, TypedLockMode::Write) == {
+                &&& self.dom().contains(ptr)
+                &&& self.spec_index(ptr).global_pool
+                    .wlocked_by_thread(thread_id)
+            })
+    }
+
     /// Shared borrow into the quota of the allocator at `alloc_ptr`. Caller
     /// holds either a read or a write lock on `quota`.
     pub fn borrow_quota<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a crate::allocator::allocator_quota::AllocatorQuota)
@@ -32,12 +150,11 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
         requires
             old(self).perms_wf(),
             old(self).dom().contains(alloc_ptr),
-            old(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
             old(self).spec_index(alloc_ptr).quota.is_init(),
-
             lp.view().state() is WriteLock,
             lp.view().thread_id() == lctx.thread_id(),
-            lp.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
+            old(self).spec_index(alloc_ptr).quota
+                .write_lock_perm_match(lp.view()),
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -67,6 +184,82 @@ impl UnLockedMap<usize, crate::allocator::page_allocator::PageAllocator>{
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.quota.borrow_mut(Tracked(lctx), lp)
+    }
+
+    pub fn borrow_mut_quota_typed<'a>(
+        &'a mut self,
+        alloc_ptr: usize,
+        Ghost(quota_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Ghost(cache_locks): Ghost<
+            Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
+        Ghost(global_pool_locks): Ghost<
+            Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lp: Tracked<&'a LockPerm>,
+    ) -> (ret: &'a mut crate::allocator::allocator_quota::AllocatorQuota)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(alloc_ptr),
+            old(self).typed_quota_lock_map_aligned(
+                quota_locks, lctx.thread_id()),
+            old(self).typed_cache_lock_map_aligned(
+                cache_locks, lctx.thread_id()),
+            old(self).typed_global_pool_lock_map_aligned(
+                global_pool_locks, lctx.thread_id()),
+            typed_lock_map_contains_mode(
+                quota_locks, alloc_ptr, TypedLockMode::Write),
+            old(self).spec_index(alloc_ptr).quota.is_init(),
+            lp.view().state() is WriteLock,
+            lp.view().thread_id() == lctx.thread_id(),
+            old(self).spec_index(alloc_ptr).quota
+                .write_lock_perm_match(lp.view()),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() == old(self).dom(),
+            final(self).spec_index(alloc_ptr).quota.is_init(),
+            final(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
+            final(self).spec_index(alloc_ptr).quota.write_lock_perm_match(lp.view()),
+            final(self).spec_index(alloc_ptr).quota.view_rodata()
+                == old(self).spec_index(alloc_ptr).quota.view_rodata(),
+            final(self).spec_index(alloc_ptr).quota.view_kernel_ghost()
+                == old(self).spec_index(alloc_ptr).quota.view_kernel_ghost(),
+            final(self).spec_index(alloc_ptr).quota.view_user_ghost()
+                == old(self).spec_index(alloc_ptr).quota.view_user_ghost(),
+            final(self).spec_index(alloc_ptr).quota.locking_thread()
+                == old(self).spec_index(alloc_ptr).quota.locking_thread(),
+            final(self).spec_index(alloc_ptr).quota.being_killed()
+                == old(self).spec_index(alloc_ptr).quota.being_killed(),
+            final(self).spec_index(alloc_ptr).cpu_caches
+                == old(self).spec_index(alloc_ptr).cpu_caches,
+            final(self).spec_index(alloc_ptr).global_pool
+                == old(self).spec_index(alloc_ptr).global_pool,
+            final(self).spec_index(alloc_ptr).owning_container
+                == old(self).spec_index(alloc_ptr).owning_container,
+            final(self).spec_index(alloc_ptr).total_free_pages
+                == old(self).spec_index(alloc_ptr).total_free_pages,
+            *ret == old(self).spec_index(alloc_ptr).quota.view(),
+            final(self).spec_index(alloc_ptr).quota.view() == *final(ret),
+            final(self).spec_index(alloc_ptr).quota.lock_id()
+                == old(self).spec_index(alloc_ptr).quota.lock_id()
+                ==> final(self).typed_quota_lock_map_aligned(
+                    quota_locks, lctx.thread_id()),
+            final(self).typed_cache_lock_map_aligned(
+                cache_locks, lctx.thread_id()),
+            final(self).typed_global_pool_lock_map_aligned(
+                global_pool_locks, lctx.thread_id()),
+            forall|k:usize|
+                #![auto]
+                old(self).dom().contains(k) && k != alloc_ptr
+                ==> final(self).spec_index(k) == old(self).spec_index(k),
+    {
+        proof {
+            // The three allocator ledgers share this enclosing map. Unfold
+            // them before returning the inner `&mut AllocatorQuota`.
+            reveal(UnLockedMap::typed_quota_lock_map_aligned);
+            reveal(UnLockedMap::typed_cache_lock_map_aligned);
+            reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+        }
+        self.borrow_mut_quota(alloc_ptr, Tracked(lctx), lp)
     }
 
     // -------- global_pool borrows --------

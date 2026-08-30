@@ -72,7 +72,7 @@ verus! {
             final(steps).steps.len() == old(steps).steps.len() + 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             mmap_4k_allocation_ready(final(kernel), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(lctx).lock_entry_contains(
                 final(kernel).container_map.lock_id_by_key(container_ptr),
                 KernelObjId::Container(container_ptr),

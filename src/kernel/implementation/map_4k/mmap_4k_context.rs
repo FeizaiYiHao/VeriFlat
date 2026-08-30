@@ -4,11 +4,9 @@ use crate::*;
 
 verus! {
 
-/// No page object is present in this thread's held-lock ledger.
+/// The page-family typed lock map is empty.
 pub open spec fn mmap_4k_no_page_locks(lctx: &LocalContext) -> bool {
-    forall|lock_id: LockId, page_index: PageIndex|
-        #![trigger lctx.lock_id_set().contains((lock_id, KernelObjId::Page(page_index)))]
-        !lctx.lock_id_set().contains((lock_id, KernelObjId::Page(page_index)))
+    lctx.page_lock_map().dom().is_empty()
 }
 
 /// The owner-lock context is ready to enter the 4K allocator only when no
@@ -43,9 +41,12 @@ pub open spec fn mmap_4k_held_context(
 ) -> bool {
     &&& kernel.inv()
     &&& lctx.kernel_view_locking_state() is Acquire
-    &&& lock_id_aligned(kernel, lctx)
+    &&& typed_lock_maps_aligned(kernel, lctx)
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& kernel.cpu_array.spec_index(cpu_id).view().wlocked_by(lctx)
+    &&& lctx.cpu_lock_map().contains_pair(cpu_id, TypedHeldLock {
+        lock_id: kernel.cpu_array.lock_id_by_index(cpu_id),
+        mode: TypedLockMode::Write,
+    })
     &&& kernel.cpu_array.spec_index(cpu_id).view().being_killed() == false
     &&& kernel.container_map.dom().contains(container_ptr)
     &&& kernel.container_map.spec_index(container_ptr).view_rodata().view()
@@ -54,7 +55,10 @@ pub open spec fn mmap_4k_held_context(
     &&& kernel.process_map.spec_index(process_ptr).view_rodata().view()
         .owning_container == container_ptr
     &&& kernel.thread_map.dom().contains(thread_ptr)
-    &&& kernel.thread_map.spec_index(thread_ptr).wlocked_by(lctx)
+    &&& lctx.thread_lock_map().contains_pair(thread_ptr, TypedHeldLock {
+        lock_id: kernel.thread_map.lock_id_by_key(thread_ptr),
+        mode: TypedLockMode::Write,
+    })
     &&& kernel.thread_map.spec_index(thread_ptr).being_killed() == false
     &&& kernel.thread_map.spec_index(thread_ptr).view().owning_proc
         == process_ptr
@@ -69,24 +73,15 @@ pub open spec fn mmap_4k_held_context(
             .locking_thread()->Write_lock_id
     &&& kernel.allocator_4k_map.dom().contains(alloc_ptr_4k)
     &&& kernel.pagetable_map.dom().contains(pagetable_ptr)
-    &&& kernel.pagetable_map.spec_index(pagetable_ptr).wlocked_by(lctx)
+    &&& lctx.pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock {
+        lock_id: kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
+        mode: TypedLockMode::Write,
+    })
     &&& pagetable_lock_perm.state() is WriteLock
     &&& pagetable_lock_perm.thread_id() == lctx.thread_id()
     &&& pagetable_lock_perm.lock_id()
         == kernel.pagetable_map.spec_index(pagetable_ptr)
             .locking_thread()->Write_lock_id
-    &&& lctx.lock_entry_contains(
-        kernel.cpu_array.lock_id_by_index(cpu_id),
-        KernelObjId::Cpu(cpu_id),
-    )
-    &&& lctx.lock_entry_contains(
-        kernel.thread_map.lock_id_by_key(thread_ptr),
-        KernelObjId::Thread(thread_ptr),
-    )
-    &&& lctx.lock_entry_contains(
-        kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
-        KernelObjId::PageTable(pagetable_ptr),
-    )
 }
 
 /// Preconditions shared by the two primitives that consume a staged 4K page:
@@ -103,7 +98,7 @@ pub open spec fn staged_4k_page_op_requires(
     pagetable_lock_perm: &LockPerm,
 ) -> bool {
     &&& kernel.inv()
-    &&& lock_id_aligned(kernel, lctx)
+    &&& typed_lock_maps_aligned(kernel, lctx)
     &&& lctx.kernel_view_locking_state() is Acquire
     &&& page_ptr_valid(page_ptr)
     &&& va_4k_valid(va)
@@ -122,23 +117,29 @@ pub open spec fn staged_4k_page_op_requires(
     &&& kernel.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
         .contains(page_ptr)
     &&& kernel.thread_map.spec_index(thread_ptr).view().quota_4k >= 1
-    &&& kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view()
-        .wlocked_by(lctx)
-    &&& lctx.lock_entry_contains(
-        kernel.page_array.lock_id_by_index(page_ptr2page_index(page_ptr)),
-        KernelObjId::Page(page_ptr2page_index(page_ptr)),
-    )
+    &&& lctx.page_lock_map().contains_pair(
+        page_ptr2page_index(page_ptr), TypedHeldLock {
+            lock_id: kernel.page_array.lock_id_by_index(
+                page_ptr2page_index(page_ptr)),
+            mode: TypedLockMode::Write,
+        })
     &&& page_lock_perm.state() is WriteLock
     &&& page_lock_perm.thread_id() == lctx.thread_id()
     &&& page_lock_perm.lock_id()
         == kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view()
             .locking_thread()->Write_lock_id
-    &&& kernel.thread_map.spec_index(thread_ptr).wlocked_by(lctx)
+    &&& lctx.thread_lock_map().contains_pair(thread_ptr, TypedHeldLock {
+        lock_id: kernel.thread_map.lock_id_by_key(thread_ptr),
+        mode: TypedLockMode::Write,
+    })
     &&& thread_lock_perm.state() is WriteLock
     &&& thread_lock_perm.thread_id() == lctx.thread_id()
     &&& thread_lock_perm.lock_id()
         == kernel.thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id
-    &&& kernel.pagetable_map.spec_index(pagetable_ptr).wlocked_by(lctx)
+    &&& lctx.pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock {
+        lock_id: kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
+        mode: TypedLockMode::Write,
+    })
     &&& pagetable_lock_perm.state() is WriteLock
     &&& pagetable_lock_perm.thread_id() == lctx.thread_id()
     &&& pagetable_lock_perm.lock_id()
@@ -160,7 +161,7 @@ pub open spec fn staged_4k_page_table_op_requires(
     pagetable_lock_perm: &LockPerm,
 ) -> bool {
     &&& kernel.inv()
-    &&& lock_id_aligned(kernel, lctx)
+    &&& typed_lock_maps_aligned(kernel, lctx)
     &&& lctx.kernel_view_locking_state() is Acquire
     &&& page_ptr_valid(page_ptr)
     &&& kernel.thread_map.dom().contains(thread_ptr)
@@ -181,23 +182,29 @@ pub open spec fn staged_4k_page_table_op_requires(
     &&& kernel.thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
         .contains(page_ptr)
     &&& kernel.thread_map.spec_index(thread_ptr).view().quota_4k >= 1
-    &&& kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view()
-        .wlocked_by(lctx)
-    &&& lctx.lock_entry_contains(
-        kernel.page_array.lock_id_by_index(page_ptr2page_index(page_ptr)),
-        KernelObjId::Page(page_ptr2page_index(page_ptr)),
-    )
+    &&& lctx.page_lock_map().contains_pair(
+        page_ptr2page_index(page_ptr), TypedHeldLock {
+            lock_id: kernel.page_array.lock_id_by_index(
+                page_ptr2page_index(page_ptr)),
+            mode: TypedLockMode::Write,
+        })
     &&& page_lock_perm.state() is WriteLock
     &&& page_lock_perm.thread_id() == lctx.thread_id()
     &&& page_lock_perm.lock_id()
         == kernel.page_array.spec_index(page_ptr2page_index(page_ptr)).view()
             .locking_thread()->Write_lock_id
-    &&& kernel.thread_map.spec_index(thread_ptr).wlocked_by(lctx)
+    &&& lctx.thread_lock_map().contains_pair(thread_ptr, TypedHeldLock {
+        lock_id: kernel.thread_map.lock_id_by_key(thread_ptr),
+        mode: TypedLockMode::Write,
+    })
     &&& thread_lock_perm.state() is WriteLock
     &&& thread_lock_perm.thread_id() == lctx.thread_id()
     &&& thread_lock_perm.lock_id()
         == kernel.thread_map.spec_index(thread_ptr).locking_thread()->Write_lock_id
-    &&& kernel.pagetable_map.spec_index(pagetable_ptr).wlocked_by(lctx)
+    &&& lctx.pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock {
+        lock_id: kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
+        mode: TypedLockMode::Write,
+    })
     &&& pagetable_lock_perm.state() is WriteLock
     &&& pagetable_lock_perm.thread_id() == lctx.thread_id()
     &&& pagetable_lock_perm.lock_id()
@@ -220,28 +227,34 @@ pub open spec fn staged_4k_page_op_ensures(
     pagetable_lock_perm: &LockPerm,
 ) -> bool {
     &&& post.inv()
-    &&& lock_id_aligned(post, post_lctx)
+    &&& typed_lock_maps_aligned(post, post_lctx)
     &&& post_lctx.kernel_view_locking_state() is Release
     &&& post_lctx.thread_id() == pre_lctx.thread_id()
-    &&& post_lctx.lock_id_set()
-        == pre_lctx.lock_id_set()
-            .remove((
-                pre.page_array.lock_id_by_index(page_ptr2page_index(page_ptr)),
-                KernelObjId::Page(page_ptr2page_index(page_ptr)),
-            ))
-            .insert((
-                post.page_array.lock_id_by_index(page_ptr2page_index(page_ptr)),
-                KernelObjId::Page(page_ptr2page_index(page_ptr)),
-            ))
-    &&& forall|held: HeldLock|
-        #![trigger post_lctx.lock_entry_contains(held.0, held.1)]
-        held.1 != KernelObjId::Page(page_ptr2page_index(page_ptr))
-        ==> post_lctx.lock_entry_contains(held.0, held.1)
-            == pre_lctx.lock_entry_contains(held.0, held.1)
-    &&& post.page_array.spec_index(page_ptr2page_index(page_ptr)).view()
-        .wlocked_by(post_lctx)
-    &&& post.thread_map.spec_index(thread_ptr).wlocked_by(post_lctx)
-    &&& post.pagetable_map.spec_index(pagetable_ptr).wlocked_by(post_lctx)
+    &&& typed_lock_maps_inserted(
+        pre_lctx,
+        post_lctx,
+        KernelObjId::Page(page_ptr2page_index(page_ptr)),
+        TypedHeldLock {
+            lock_id: post.page_array.lock_id_by_index(
+                page_ptr2page_index(page_ptr)),
+            mode: TypedLockMode::Write,
+        },
+    )
+    &&& post_lctx.page_lock_map().contains_pair(
+        page_ptr2page_index(page_ptr), TypedHeldLock {
+            lock_id: post.page_array.lock_id_by_index(
+                page_ptr2page_index(page_ptr)),
+            mode: TypedLockMode::Write,
+        })
+    &&& post_lctx.thread_lock_map().contains_pair(thread_ptr, TypedHeldLock {
+        lock_id: post.thread_map.lock_id_by_key(thread_ptr),
+        mode: TypedLockMode::Write,
+    })
+    &&& post_lctx.pagetable_lock_map().contains_pair(
+        pagetable_ptr, TypedHeldLock {
+            lock_id: post.pagetable_map.lock_id_by_key(pagetable_ptr),
+            mode: TypedLockMode::Write,
+        })
     &&& post.thread_map.lock_id_by_key(thread_ptr)
         == pre.thread_map.lock_id_by_key(thread_ptr)
     &&& post.pagetable_map.lock_id_by_key(pagetable_ptr)

@@ -19,18 +19,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             !(ret is CpuIdle) ==> final(steps).steps.len() == 0,
@@ -64,18 +64,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             !(ret is CpuIdle) ==> final(steps).steps.len() == 0,
@@ -110,18 +110,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             !(ret is CpuIdle) ==> final(steps).steps.len() == 0,
@@ -163,18 +163,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             !(ret is CpuIdle) ==> final(steps).steps.len() == 0,
@@ -216,18 +216,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             ret is Success ==> final(steps).steps.len() == range,
@@ -270,18 +270,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             ret is Success ==> final(steps).steps.len() == range,
@@ -326,18 +326,18 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             ret is Success ==> final(steps).steps.len() == range,
@@ -363,7 +363,7 @@ verus! {
             || !va_4k_valid(va)
         {
             proof {
-                enter_kernel_view_release_preserving_lock_id_alignment(
+                enter_kernel_view_release_preserving_typed_lock_alignment(
                     &*kernel, &mut *lctx,
                 );
                 steps.end_kernel_step(&*kernel, &*lctx);
@@ -373,7 +373,7 @@ verus! {
         let span = range * 4096usize;
         if va >= usize::MAX - span || !va_4k_range_valid(va, range) {
             proof {
-                enter_kernel_view_release_preserving_lock_id_alignment(
+                enter_kernel_view_release_preserving_typed_lock_alignment(
                     &*kernel, &mut *lctx,
                 );
                 steps.end_kernel_step(&*kernel, &*lctx);

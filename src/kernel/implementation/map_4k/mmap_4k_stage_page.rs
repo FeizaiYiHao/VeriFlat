@@ -43,12 +43,16 @@ verus! {
                 container_ptr, cpu_id, pagetable_ptr, thread_lock_perm,
                 pagetable_lock_perm,
             ),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((
-                final(kernel).page_array.lock_id_by_index(
-                    page_ptr2page_index(ret.0),
-                ),
+            typed_lock_maps_inserted(
+                old(lctx),
+                final(lctx),
                 KernelObjId::Page(page_ptr2page_index(ret.0)),
-            )),
+                TypedHeldLock {
+                    lock_id: final(kernel).page_array.lock_id_by_index(
+                        page_ptr2page_index(ret.0)),
+                    mode: TypedLockMode::Write,
+                },
+            ),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             allocator_objects_unlocked(

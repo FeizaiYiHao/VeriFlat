@@ -26,17 +26,17 @@ verus! {
             old(kernel).cpu_array.spec_index(cpu_id).view().view().state
                 == CpuState::Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(kernel).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(kernel), old(lctx)),
+            typed_lock_maps_aligned(old(kernel), old(lctx)),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(kernel)),
         ensures
             final(kernel).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(kernel).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(kernel), final(lctx)),
+            typed_lock_maps_aligned(final(kernel), final(lctx)),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             ret is Success
                 || ret is Error
@@ -68,7 +68,7 @@ verus! {
             || !va_4k_valid(va)
         {
             proof {
-                enter_kernel_view_release_preserving_lock_id_alignment(
+                enter_kernel_view_release_preserving_typed_lock_alignment(
                     &*kernel, &mut *lctx,
                 );
                 steps.end_kernel_step(&*kernel, &*lctx);
@@ -79,7 +79,7 @@ verus! {
         let span = range * 4096usize;
         if va >= usize::MAX - span || !va_4k_range_valid(va, range) {
             proof {
-                enter_kernel_view_release_preserving_lock_id_alignment(
+                enter_kernel_view_release_preserving_typed_lock_alignment(
                     &*kernel, &mut *lctx,
                 );
                 steps.end_kernel_step(&*kernel, &*lctx);
@@ -122,7 +122,7 @@ verus! {
         assert(lctx.lock_id_acyclic(
             kernel.container_map.lock_id_by_key(container_ptr),
         )) by {
-            reveal(lock_id_aligned);
+            reveal(typed_lock_maps_aligned);
             reveal(container_cpu_wf);
         };
         let container_res = kernel.wlock_container_unless_killed(
@@ -145,7 +145,7 @@ verus! {
         assert(lctx.lock_id_acyclic(
             kernel.process_map.lock_id_by_key(process_ptr),
         )) by {
-            reveal(lock_id_aligned);
+            reveal(typed_lock_maps_aligned);
             reveal(container_process_wf);
             reveal(process_cpu_wf);
         };
@@ -174,7 +174,7 @@ verus! {
         assert(lctx.lock_id_acyclic(
             kernel.thread_map.lock_id_by_key(thread_ptr),
         )) by {
-            reveal(lock_id_aligned);
+            reveal(typed_lock_maps_aligned);
             reveal(process_thread_wf);
             reveal(process_perms_wf);
             reveal(thread_perms_wf);
@@ -239,7 +239,7 @@ verus! {
         )) by {
             reveal(thread_cpu_wf);
             reveal(thread_perms_wf);
-            reveal(lock_id_aligned);
+            reveal(typed_lock_maps_aligned);
             reveal(pagetable_perms_wf);
         };
         let Tracked(pagetable_lock_perm) = kernel.wlock_pagetable(
@@ -247,59 +247,6 @@ verus! {
             Tracked(&mut *lctx),
         );
         proof {
-            assert_sets_equal!(lctx.lock_id_set() == set![
-                (kernel.cpu_array.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-                (kernel.container_map.lock_id_by_key(container_ptr),
-                    KernelObjId::Container(container_ptr)),
-                (kernel.process_map.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
-                (kernel.thread_map.lock_id_by_key(thread_ptr),
-                    KernelObjId::Thread(thread_ptr)),
-                (kernel.pagetable_map.lock_id_by_key(pagetable_ptr),
-                    KernelObjId::PageTable(pagetable_ptr)),
-            ], held_lock => {});
-            assert(mmap_4k_held_context(
-                kernel,
-                &*lctx,
-                alloc_ptr_4k,
-                thread_ptr,
-                process_ptr,
-                container_ptr,
-                cpu_id,
-                pagetable_ptr,
-                &thread_lock_perm,
-                &pagetable_lock_perm,
-            )) by {
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(process_perms_wf);
-                reveal(thread_perms_wf);
-                reveal(pagetable_perms_wf);
-                reveal(container_allocator_wf);
-            };
-            assert(mmap_4k_allocation_ready(kernel, &*lctx)) by {
-                assert(thread_lock_perm.ordering_lock_id().major
-                    == THREAD_LOCK_MAJOR) by {
-                    reveal(thread_cpu_wf);
-                    reveal(thread_perms_wf);
-                };
-                reveal(cpu_array_wf);
-                reveal(container_perms_wf);
-                reveal(process_perms_wf);
-                reveal(thread_perms_wf);
-                reveal(pagetable_perms_wf);
-            };
-        }
-
-        let precheck = mmap_4k_precheck(kernel,
-            &va_range,
-            thread_ptr,
-            pagetable_ptr,
-            Tracked(&*lctx),
-            Tracked(&thread_lock_perm),
-            Tracked(&pagetable_lock_perm),
-        );
         let result;
         match precheck {
             Mmap4kPrecheck::Ready => {
@@ -382,7 +329,7 @@ verus! {
         );
         proof {
             assert_sets_equal!(
-                lctx.lock_id_set() == Set::<HeldLock>::empty(), held_lock => {}
+                lctx.no_locks_held(), held_lock => {}
             );
             assert(kernel.all_objects_unlocked(&*lctx)) by {
                 reveal(pagetable_objects_unlocked_except);

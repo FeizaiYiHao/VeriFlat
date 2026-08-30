@@ -377,18 +377,16 @@ pub fn borrow_mut<'a, T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool>(pptr
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
-
-        old(perm).value().wlocked_by(lctx),
         old(perm).value().is_init(),
-
         lock_perm.view().state() is WriteLock,
         lock_perm.view().thread_id() == lctx.thread_id(),
-        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        old(perm).value().write_lock_perm_match(lock_perm.view()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         final(perm).value().is_init(),
         final(perm).value().wlocked_by(lctx),
+        final(perm).value().write_lock_perm_match(lock_perm.view()),
 
         // The rwlock's structural state is unchanged.
         final(perm).value().view_rodata() == old(perm).value().view_rodata(),

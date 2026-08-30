@@ -173,7 +173,7 @@ enum Mmap4kDirectorySlot {
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(kernel)),
             mmap_4k_allocation_ready(final(kernel), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             forall|t: RwLockThreadPtr|
                 #![trigger old(kernel).thread_map.spec_index(t)]
                 #![trigger final(kernel).thread_map.spec_index(t)]

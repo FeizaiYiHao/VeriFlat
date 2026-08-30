@@ -11,18 +11,16 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).pagetable_map.dom().contains(pagetable_ptr),
-                !old(lctx).pagetable_lock_set().contains(pagetable_ptr),
+                !old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(
                     old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
                 ),
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
 
                 final(self).iommu_table_map == old(self).iommu_table_map,
                 final(self).iommu_root_table == old(self).iommu_root_table,
@@ -46,9 +44,16 @@ impl KernelK {
                     &old(self).pagetable_map,
                     pagetable_ptr,
                 ),
-                typed_lock_sets_inserted(
-                    old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
-                final(lctx).pagetable_lock_set().contains(pagetable_ptr),
+                typed_lock_maps_inserted(
+                    old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr),
+                    TypedHeldLock {
+                        lock_id: final(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
+                final(lctx).pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock {
+                        lock_id: final(self).pagetable_map.lock_id_by_key(pagetable_ptr),
+                        mode: TypedLockMode::Write,
+                    }),
 
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state()
@@ -59,12 +64,6 @@ impl KernelK {
                     old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
                     final(lctx),
                     ret.view(),
-                ),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert(
-                    (
-                        final(self).pagetable_map.lock_id_by_key(pagetable_ptr),
-                        KernelObjId::PageTable(pagetable_ptr),
-                    ),
                 ),
                 forall|other_pagetable: RwLockPageTableRoot|
                     #![trigger final(lctx).lock_entry_contains(
@@ -85,7 +84,7 @@ impl KernelK {
                 assert(old(self).pagetable_map.perms_wf()) by { reveal(pagetable_perms_wf); };
                 assert(wlock_requires(
                     old(self).pagetable_map.spec_index(pagetable_ptr), old(lctx))) by {
-                    reveal(typed_lock_sets_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
             let ret = self.pagetable_map.wlock(
@@ -144,12 +143,9 @@ impl KernelK {
                     self.pagetable_map,
                     self.cpu_array,
                 )) by { reveal(tlb_wf_spec); };
-                assert(lock_id_aligned(self, &*lctx)) by {
-                    reveal(lock_id_aligned);
+                assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
 
-                };
-                assert(typed_lock_sets_aligned(self, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
@@ -167,20 +163,19 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).pagetable_map.dom().contains(pagetable_ptr),
-                old(self).pagetable_map.spec_index(pagetable_ptr)
-                    .wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(
+                    old(lctx).pagetable_lock_map(),
+                    pagetable_ptr, TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id()
                     == old(self).pagetable_map.spec_index(pagetable_ptr)
                         .locking_thread()->Write_lock_id,
-                lock_id_aligned(old(self), old(lctx)),
-                typed_lock_sets_aligned(old(self), old(lctx)),
+                typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-                lock_id_aligned(final(self), final(lctx)),
-                typed_lock_sets_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
 
                 final(self).iommu_table_map == old(self).iommu_table_map,
                 final(self).iommu_root_table == old(self).iommu_root_table,
@@ -213,15 +208,9 @@ impl KernelK {
                     old(self).pagetable_map.spec_index(pagetable_ptr),
                     final(self).pagetable_map.spec_index(pagetable_ptr),
                 ),
-                typed_lock_sets_removed(
+                typed_lock_maps_removed(
                     old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
-                !final(lctx).pagetable_lock_set().contains(pagetable_ptr),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove(
-                    (
-                        old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
-                        KernelObjId::PageTable(pagetable_ptr),
-                    ),
-                ),
+                !final(lctx).pagetable_lock_map().dom().contains(pagetable_ptr),
                 forall|other_pagetable: RwLockPageTableRoot|
                     #![trigger final(lctx).lock_entry_contains(
                         final(self).pagetable_map.lock_id_by_key(other_pagetable),
@@ -245,11 +234,15 @@ impl KernelK {
                     reveal(pagetable_perms_wf);
 
                 };
+                assert(old(self).pagetable_map.spec_index(pagetable_ptr)
+                    .wlocked_by(old(lctx))) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
+                };
                 assert(old(lctx).lock_entry_contains(
                     old(self).pagetable_map.lock_id_by_key(pagetable_ptr),
                     KernelObjId::PageTable(pagetable_ptr),
                 )) by {
-                    reveal(lock_id_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
             self.pagetable_map.wunlock(
@@ -309,12 +302,9 @@ impl KernelK {
                     self.pagetable_map,
                     self.cpu_array,
                 )) by { reveal(tlb_wf_spec); };
-                assert(lock_id_aligned(self, &*lctx)) by {
-                    reveal(lock_id_aligned);
+                assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                    reveal(LockedMap::typed_lock_map_aligned);
 
-                };
-                assert(typed_lock_sets_aligned(self, &*lctx)) by {
-                    reveal(typed_lock_sets_aligned);
                 };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);

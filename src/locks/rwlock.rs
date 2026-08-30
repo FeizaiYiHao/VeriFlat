@@ -375,15 +375,14 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
     #[verifier::external_body]
     pub fn borrow_mut<'a>(&'a mut self, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
         requires
-            old(self).wlocked_by(lctx),
             old(self).is_init(),
-
             lp.view().state() is WriteLock,
             lp.view().thread_id() == lctx.thread_id(),
-            lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
+            old(self).write_lock_perm_match(lp.view()),
         ensures
             final(self).is_init(),
             final(self).wlocked_by(lctx),
+            final(self).write_lock_perm_match(lp.view()),
             // Invariants of the lock are preserved by the structure of the rwlock.
             final(self).view_rodata() == old(self).view_rodata(),
             final(self).view_kernel_ghost() == old(self).view_kernel_ghost(),
@@ -431,7 +430,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         ensures
             update_kernel_ghost_ensures(*old(self), *final(self), new_kernel_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(lctx).kernel_view_locking_state() is Release,
     {
         unimplemented!()
@@ -451,7 +450,7 @@ impl<T, ROT, KGhostT, UGhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, KGhost
         ensures
             update_user_ghost_ensures(*old(self), *final(self), new_user_ghost),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(lctx).kernel_view_locking_state() is Release,
     {
         unimplemented!()
@@ -665,9 +664,11 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
                 &&&
                 final(lctx).thread_id() == old(lctx).thread_id()
                 &&&
-                final(lctx).lock_id_set()
-                    == old(lctx).lock_id_set()
-                        .insert((lock_id.view(), obj_id.view()))
+                typed_lock_maps_inserted(
+                    old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
+                        lock_id: lock_id.view(),
+                        mode: TypedLockMode::Write,
+                    })
                 &&&
                 final(lctx).kernel_view_locking_state() is Release
             }
