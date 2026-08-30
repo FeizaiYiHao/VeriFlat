@@ -1,0 +1,33 @@
+{
+  "description": "Session-scoped VeriFlat style reminder and stop gate.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/style_gate.py\" session-start",
+            "commandWindows": "wsl.exe -d Ubuntu-24.04 --cd /home/xiangdc/VeriFlat python3 /home/xiangdc/VeriFlat/.codex/hooks/style_gate.py session-start",
+            "timeout": 10,
+            "statusMessage": "Loading VeriFlat style gate",
+            "additionalContextLimit": 600
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/style_gate.py\" stop",
+            "commandWindows": "wsl.exe -d Ubuntu-24.04 --cd /home/xiangdc/VeriFlat python3 /home/xiangdc/VeriFlat/.codex/hooks/style_gate.py stop",
+            "timeout": 15,
+            "statusMessage": "Checking VeriFlat style"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -26,6 +26,6 @@ fresh session loads them automatically:
 After any substantial edit to `src/` (a new/rewritten function, extracted
 helper, or moved lemma) that has verified clean, run the `/style-check` slash
 command before calling the work done. It reviews the working diff against
-`verus-style.md` and the canonical style files
-(`syscall_alloc_quota_4k` + the `locker_unlocker.rs` wrappers) so style
-conformance doesn't depend on remembering the rules mid-edit.
+`AGENTS.md`, `verus-style.md`, and the hand-edited canonical
+`src/kernel/implementation/syscall_alloc_quota/` directory so style
+conformance does not depend on remembering the rules mid-edit.

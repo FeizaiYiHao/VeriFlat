@@ -216,8 +216,8 @@ verus! {
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
 
-                old(lctx).lock_entry_contains(
-                    old(self).lock_id_by_index(index), obj_id.view()),
+                old(lctx).lock_id_set().contains((
+                    old(self).lock_id_by_index(index), obj_id.view())),
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),

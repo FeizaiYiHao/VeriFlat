@@ -10,9 +10,7 @@ pub open spec fn mmap_4k_syscall_range_mapped(
     len: usize,
 ) -> bool {
     forall|i: usize|
-        #![trigger pagetable.mapping_4k().dom().contains(
-            spec_va_add_range(va, i),
-        )]
+        #![trigger pagetable.mapping_4k().dom().contains(spec_va_add_range(va, i))]
         i < len ==> {
             let mapped_va = spec_va_add_range(va, i);
             &&& pagetable.mapping_4k().dom().contains(mapped_va)
@@ -24,7 +22,7 @@ pub open spec fn mmap_4k_syscall_range_mapped(
 
 /// Exact object-family lock scope held by ordinary mmap.
 pub(super) open spec fn mmap_4k_lock_scope(
-    kernel: &KernelK,
+    krnl: &KernelK,
     lctx: &LocalContext,
     cpu_id: CpuId,
     container_ptr: RwLockContainerPtr,
@@ -32,39 +30,19 @@ pub(super) open spec fn mmap_4k_lock_scope(
     thread_ptr: RwLockThreadPtr,
     pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
-    &&& cpu_objects_unlocked_except(
-        kernel.cpu_array, lctx.thread_id(), set![cpu_id],
-    )
-    &&& page_objects_unlocked(kernel.page_array, lctx.thread_id())
-    &&& container_objects_unlocked_except(
-        kernel.container_map, lctx.thread_id(), set![container_ptr],
-    )
-    &&& process_objects_unlocked_except(
-        kernel.process_map, lctx.thread_id(), set![process_ptr],
-    )
-    &&& thread_objects_unlocked_except(
-        kernel.thread_map, lctx.thread_id(), set![thread_ptr],
-    )
-    &&& endpoint_objects_unlocked(kernel.endpoint_map, lctx.thread_id())
-    &&& pagetable_objects_unlocked_except(
-        kernel.pagetable_map, lctx.thread_id(), set![pagetable_ptr],
-    )
-    &&& iommu_table_objects_unlocked(
-        kernel.iommu_table_map, lctx.thread_id(),
-    )
-    &&& scheduler_objects_unlocked(kernel.scheduler_map, lctx.thread_id())
-    &&& pcid_allocator_objects_unlocked(
-        kernel.pcid_allocator_map, lctx.thread_id(),
-    )
-    &&& allocator_objects_unlocked(
-        kernel.allocator_4k_map, lctx.thread_id(),
-    )
-    &&& allocator_objects_unlocked(
-        kernel.allocator_2m_map, lctx.thread_id(),
-    )
-    &&& allocator_objects_unlocked(
-        kernel.allocator_1g_map, lctx.thread_id(),
-    )
+    &&& cpu_objects_unlocked_except(krnl.cpu_arr, lctx.thread_id(), set![cpu_id])
+    &&& page_objects_unlocked(krnl.pg_arr, lctx.thread_id())
+    &&& container_objects_unlocked_except(krnl.ctn_mp, lctx.thread_id(), set![container_ptr])
+    &&& process_objects_unlocked_except(krnl.prc_mp, lctx.thread_id(), set![process_ptr])
+    &&& thread_objects_unlocked_except(krnl.thr_mp, lctx.thread_id(), set![thread_ptr])
+    &&& endpoint_objects_unlocked(krnl.ep_mp, lctx.thread_id())
+    &&& pagetable_objects_unlocked_except(krnl.pt_mp, lctx.thread_id(), set![pagetable_ptr])
+    &&& iommu_table_objects_unlocked(krnl.it_mp, lctx.thread_id())
+    &&& scheduler_objects_unlocked(krnl.sched_mp, lctx.thread_id())
+    &&& pcid_allocator_objects_unlocked(krnl.pcid_allc_mp, lctx.thread_id())
+    &&& allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id())
+    &&& allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id())
+    &&& allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id())
 }
 
 } // verus!

@@ -252,9 +252,9 @@ pub open spec fn allocator_objects_unlocked_except_quota(
 impl KernelK{
     pub open spec fn get_process_pagetable(&self, process_ptr:RwLockProcessPtr) -> PageTable<PT_TYPE>
         recommends
-            self.process_map.dom().contains(process_ptr)
+            self.prc_mp.dom().contains(process_ptr)
     {
-        self.pagetable_map.spec_index(self.process_map.spec_index(process_ptr).view().pagetable).view()
+        self.pt_mp.spec_index(self.prc_mp.spec_index(process_ptr).view().pagetable).view()
     }
 
     pub open spec fn get_process_iommu_table(
@@ -262,30 +262,30 @@ impl KernelK{
         process_ptr: RwLockProcessPtr,
     ) -> Option<PageTable<IOMMU_TYPE>>
         recommends
-            self.process_map.dom().contains(process_ptr),
+            self.prc_mp.dom().contains(process_ptr),
     {
-        match self.process_map.spec_index(process_ptr).view().iommu_table {
+        match self.prc_mp.spec_index(process_ptr).view().iommu_table {
             Some(iommu_root) => Some(
-                self.iommu_table_map.spec_index(iommu_root).view(),
+                self.it_mp.spec_index(iommu_root).view(),
             ),
             None => None,
         }
     }
     pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool{
-        &&& cpu_objects_unlocked(self.cpu_array, lctx.thread_id())
-        &&& page_objects_unlocked(self.page_array, lctx.thread_id())
-        &&& container_objects_unlocked(self.container_map, lctx.thread_id())
-        &&& process_objects_unlocked(self.process_map, lctx.thread_id())
-        &&& thread_objects_unlocked(self.thread_map, lctx.thread_id())
-        &&& endpoint_objects_unlocked(self.endpoint_map, lctx.thread_id())
-        &&& pagetable_objects_unlocked(self.pagetable_map, lctx.thread_id())
-        &&& iommu_table_objects_unlocked(self.iommu_table_map, lctx.thread_id())
-        &&& scheduler_objects_unlocked(self.scheduler_map, lctx.thread_id())
+        &&& cpu_objects_unlocked(self.cpu_arr, lctx.thread_id())
+        &&& page_objects_unlocked(self.pg_arr, lctx.thread_id())
+        &&& container_objects_unlocked(self.ctn_mp, lctx.thread_id())
+        &&& process_objects_unlocked(self.prc_mp, lctx.thread_id())
+        &&& thread_objects_unlocked(self.thr_mp, lctx.thread_id())
+        &&& endpoint_objects_unlocked(self.ep_mp, lctx.thread_id())
+        &&& pagetable_objects_unlocked(self.pt_mp, lctx.thread_id())
+        &&& iommu_table_objects_unlocked(self.it_mp, lctx.thread_id())
+        &&& scheduler_objects_unlocked(self.sched_mp, lctx.thread_id())
         &&& pcid_allocator_objects_unlocked(
-            self.pcid_allocator_map, lctx.thread_id())
-        &&& allocator_objects_unlocked(self.allocator_4k_map, lctx.thread_id())
-        &&& allocator_objects_unlocked(self.allocator_2m_map, lctx.thread_id())
-        &&& allocator_objects_unlocked(self.allocator_1g_map, lctx.thread_id())
+            self.pcid_allc_mp, lctx.thread_id())
+        &&& allocator_objects_unlocked(self.allc_4k_mp, lctx.thread_id())
+        &&& allocator_objects_unlocked(self.allc_2m_mp, lctx.thread_id())
+        &&& allocator_objects_unlocked(self.allc_1g_mp, lctx.thread_id())
     }
 
 }

@@ -161,9 +161,9 @@ impl PageAllocator{
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).quota.locking_thread()->Write_lock_id,
 
-            old(lctx).lock_entry_contains(
+            old(lctx).lock_id_set().contains((
                 old(self).quota.lock_id(),
-                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
+                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()))),
         ensures
             final(self).wf(),
             final(self).quota.lock_id() == old(self).quota.lock_id(),
@@ -255,9 +255,9 @@ impl PageAllocator{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(lctx).lock_entry_contains(
+            old(lctx).lock_id_set().contains((
                 old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
+                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id))),
         ensures
             final(self).wf(),
             final(self).cpu_caches.spec_index(cpu_id).lock_id()
@@ -346,9 +346,9 @@ impl PageAllocator{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
-            old(lctx).lock_entry_contains(
+            old(lctx).lock_id_set().contains((
                 old(self).global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view())),
+                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view()))),
         ensures
             final(self).wf(),
             final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),

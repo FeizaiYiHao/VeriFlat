@@ -54,23 +54,23 @@ pub open spec fn container_lock_kernel_context_unchanged(
     pre: KernelK,
     post: KernelK,
 ) -> bool {
-    &&& post.pagetable_map == pre.pagetable_map
-    &&& post.iommu_table_map == pre.iommu_table_map
-    &&& post.iommu_root_table == pre.iommu_root_table
-    &&& post.page_array == pre.page_array
-    &&& post.cpu_array == pre.cpu_array
-    &&& post.scheduler_map == pre.scheduler_map
-    &&& post.pcid_allocator_map == pre.pcid_allocator_map
-    &&& post.process_map == pre.process_map
-    &&& post.thread_map == pre.thread_map
-    &&& post.endpoint_map == pre.endpoint_map
-    &&& post.allocator_4k_map == pre.allocator_4k_map
-    &&& post.allocator_2m_map == pre.allocator_2m_map
-    &&& post.allocator_1g_map == pre.allocator_1g_map
+    &&& post.pt_mp == pre.pt_mp
+    &&& post.it_mp == pre.it_mp
+    &&& post.irt == pre.irt
+    &&& post.pg_arr == pre.pg_arr
+    &&& post.cpu_arr == pre.cpu_arr
+    &&& post.sched_mp == pre.sched_mp
+    &&& post.pcid_allc_mp == pre.pcid_allc_mp
+    &&& post.prc_mp == pre.prc_mp
+    &&& post.thr_mp == pre.thr_mp
+    &&& post.ep_mp == pre.ep_mp
+    &&& post.allc_4k_mp == pre.allc_4k_mp
+    &&& post.allc_2m_mp == pre.allc_2m_mp
+    &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
-    &&& post.root_container == pre.root_container
-    &&& post.default_pagetable == pre.default_pagetable
+    &&& post.rt_ctn == pre.rt_ctn
+    &&& post.dflt_pt == pre.dflt_pt
 }
 
 pub proof fn container_no_change_imply_memory_management_inv(
@@ -79,46 +79,46 @@ pub proof fn container_no_change_imply_memory_management_inv(
 )
     requires
         pre.memory_management_inv(),
-        container_process_wf(pre.container_map, pre.process_map),
-        container_invariant_fields_unchanged(pre.container_map, post.container_map),
+        container_process_wf(pre.ctn_mp, pre.prc_mp),
+        container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         container_lock_kernel_context_unchanged(pre, post),
     ensures
         post.memory_management_inv(),
 {
-    assert(container_page_owner_wf(post.container_map, post.page_array)) by {
+    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by {
         reveal(container_page_owner_wf);
     };
     assert(container_process_page_pagetable_wf(
-        post.container_map,
-        post.process_map,
-        post.pagetable_map,
-        post.page_array,
+        post.ctn_mp,
+        post.prc_mp,
+        post.pt_mp,
+        post.pg_arr,
     )) by {
         reveal(container_process_page_pagetable_wf);
         reveal(container_process_wf);
         reveal(process_pagetable_match);
         reveal(container_page_owner_wf);
     };
-    assert(container_pages_wf(post.page_array, post.container_map)) by {
+    assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by {
         reveal(container_pages_wf);
     };
     assert(container_process_allocator_quota_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_4k_map,
-        post.allocator_2m_map,
-        post.allocator_1g_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_4k_mp,
+        post.allc_2m_mp,
+        post.allc_1g_mp,
     )) by {
         reveal(container_process_allocator_quota_4k_wf);
         reveal(container_process_allocator_quota_2m_wf);
         reveal(container_process_allocator_quota_1g_wf);
     };
     assert(container_allocator_wf(
-        post.container_map,
-        post.allocator_4k_map,
-        post.allocator_2m_map,
-        post.allocator_1g_map,
+        post.ctn_mp,
+        post.allc_4k_mp,
+        post.allc_2m_mp,
+        post.allc_1g_mp,
     )) by {
         reveal(container_allocator_wf);
     };
@@ -130,47 +130,47 @@ pub proof fn container_no_change_imply_process_management_inv(
 )
     requires
         pre.process_management_inv(),
-        container_invariant_fields_unchanged(pre.container_map, post.container_map),
+        container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         container_lock_kernel_context_unchanged(pre, post),
     ensures
         post.process_management_inv(),
 {
     assert(container_pcid_allocator_wf(
-        post.container_map,
-        post.pcid_allocator_map,
+        post.ctn_mp,
+        post.pcid_allc_mp,
     )) by {
         lemma_no_change_imply_container_pcid_allocator_wf_forall();
     };
     assert(process_pcid_allocator_wf(
-        post.container_map,
-        post.process_map,
-        post.pcid_allocator_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.pcid_allc_mp,
     )) by {
         lemma_no_change_imply_process_pcid_allocator_wf_for_container_fields_forall();
     };
-    assert(container_tree_wf(post.root_container, post.container_map)) by {
+    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by {
         container_no_change_to_tree_fields_imply_wf(
-            pre.root_container,
-            pre.container_map,
-            post.container_map,
+            pre.rt_ctn,
+            pre.ctn_mp,
+            post.ctn_mp,
         );
     };
-    assert(container_process_wf(post.container_map, post.process_map)) by {
+    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by {
         reveal(container_process_wf);
     };
     assert(per_container_process_tree_wf(
-        post.container_map,
-        post.process_map,
+        post.ctn_mp,
+        post.prc_mp,
     )) by {
         reveal(per_container_process_tree_wf);
     };
-    assert(container_cpu_wf(post.container_map, post.cpu_array)) by {
+    assert(container_cpu_wf(post.ctn_mp, post.cpu_arr)) by {
         reveal(container_cpu_wf);
     };
     assert(container_thread_endpoint_wf(
-        post.container_map,
-        post.thread_map,
-        post.endpoint_map,
+        post.ctn_mp,
+        post.thr_mp,
+        post.ep_mp,
     )) by {
         reveal(container_endpoint_wf);
         reveal(thread_endpoint_ref_counter_wf);
@@ -178,21 +178,21 @@ pub proof fn container_no_change_imply_process_management_inv(
         reveal(container_thread_endpoint_wf);
     };
     assert(container_thread_scheduler_wf(
-        post.container_map,
-        post.thread_map,
-        post.scheduler_map,
+        post.ctn_mp,
+        post.thr_mp,
+        post.sched_mp,
     )) by {
         reveal(container_thread_wf);
         reveal(container_scheduler_wf);
         reveal(container_thread_scheduler_wf);
     };
-    assert(container_endpoint_wf(post.container_map, post.endpoint_map)) by {
+    assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by {
         reveal(container_endpoint_wf);
     };
-    assert(container_scheduler_wf(post.container_map, post.scheduler_map)) by {
+    assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by {
         reveal(container_scheduler_wf);
     };
-    assert(container_thread_wf(post.container_map, post.thread_map)) by {
+    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by {
         reveal(container_thread_wf);
     };
 }
@@ -203,22 +203,22 @@ pub proof fn container_no_change_imply_cpu_dirty_map_wf(
 )
     requires
         cpu_dirty_map_wf(
-            pre.container_map,
-            pre.process_map,
-            pre.cpu_array,
+            pre.ctn_mp,
+            pre.prc_mp,
+            pre.cpu_arr,
             pre.cpu_tlb,
-            pre.pagetable_map,
+            pre.pt_mp,
         ),
-        container_cpu_wf(pre.container_map, pre.cpu_array),
-        container_invariant_fields_unchanged(pre.container_map, post.container_map),
+        container_cpu_wf(pre.ctn_mp, pre.cpu_arr),
+        container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         container_lock_kernel_context_unchanged(pre, post),
     ensures
         cpu_dirty_map_wf(
-            post.container_map,
-            post.process_map,
-            post.cpu_array,
+            post.ctn_mp,
+            post.prc_mp,
+            post.cpu_arr,
             post.cpu_tlb,
-            post.pagetable_map,
+            post.pt_mp,
         ),
 {
     reveal(cpu_dirty_map_contains_container_processes);

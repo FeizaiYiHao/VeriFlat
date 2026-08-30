@@ -144,8 +144,8 @@ NO_KILL_STATE>>>,
         lock_perm.view().thread_id() == old(lctx).thread_id(),
         lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
-        old(lctx).lock_entry_contains(
-            old(perm).lock_id(), obj_id.view()),
+        old(lctx).lock_id_set().contains((
+            old(perm).lock_id(), obj_id.view())),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),
@@ -258,8 +258,8 @@ HAS_KILL_STATE>>>,
         lock_perm.view().thread_id() == old(lctx).thread_id(),
         lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
 
-        old(lctx).lock_entry_contains(
-            old(perm).lock_id(), obj_id.view()),
+        old(lctx).lock_id_set().contains((
+            old(perm).lock_id(), obj_id.view())),
     ensures
         old(perm).addr() == final(perm).addr(),
         final(perm).is_init(),

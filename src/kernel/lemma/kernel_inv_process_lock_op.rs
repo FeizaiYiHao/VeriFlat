@@ -44,23 +44,23 @@ pub open spec fn process_lock_kernel_context_unchanged(
     pre: KernelK,
     post: KernelK,
 ) -> bool {
-    &&& post.pagetable_map == pre.pagetable_map
-    &&& post.iommu_table_map == pre.iommu_table_map
-    &&& post.iommu_root_table == pre.iommu_root_table
-    &&& post.page_array == pre.page_array
-    &&& post.cpu_array == pre.cpu_array
-    &&& post.container_map == pre.container_map
-    &&& post.scheduler_map == pre.scheduler_map
-    &&& post.pcid_allocator_map == pre.pcid_allocator_map
-    &&& post.thread_map == pre.thread_map
-    &&& post.endpoint_map == pre.endpoint_map
-    &&& post.allocator_4k_map == pre.allocator_4k_map
-    &&& post.allocator_2m_map == pre.allocator_2m_map
-    &&& post.allocator_1g_map == pre.allocator_1g_map
+    &&& post.pt_mp == pre.pt_mp
+    &&& post.it_mp == pre.it_mp
+    &&& post.irt == pre.irt
+    &&& post.pg_arr == pre.pg_arr
+    &&& post.cpu_arr == pre.cpu_arr
+    &&& post.ctn_mp == pre.ctn_mp
+    &&& post.sched_mp == pre.sched_mp
+    &&& post.pcid_allc_mp == pre.pcid_allc_mp
+    &&& post.thr_mp == pre.thr_mp
+    &&& post.ep_mp == pre.ep_mp
+    &&& post.allc_4k_mp == pre.allc_4k_mp
+    &&& post.allc_2m_mp == pre.allc_2m_mp
+    &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
-    &&& post.root_container == pre.root_container
-    &&& post.default_pagetable == pre.default_pagetable
+    &&& post.rt_ctn == pre.rt_ctn
+    &&& post.dflt_pt == pre.dflt_pt
 }
 
 pub proof fn process_no_change_imply_memory_management_inv(
@@ -69,67 +69,67 @@ pub proof fn process_no_change_imply_memory_management_inv(
 )
     requires
         pre.memory_management_inv(),
-        container_process_wf(pre.container_map, pre.process_map),
-        process_invariant_fields_unchanged(pre.process_map, post.process_map),
+        container_process_wf(pre.ctn_mp, pre.prc_mp),
+        process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),
         process_lock_kernel_context_unchanged(pre, post),
     ensures
         post.memory_management_inv(),
 {
     assert(container_process_page_pagetable_wf(
-        post.container_map,
-        post.process_map,
-        post.pagetable_map,
-        post.page_array,
+        post.ctn_mp,
+        post.prc_mp,
+        post.pt_mp,
+        post.pg_arr,
     )) by {
         lemma_no_change_imply_container_process_page_pagetable_wf_forall();
     };
-    assert(process_pages_wf(post.page_array, post.process_map)) by {
+    assert(process_pages_wf(post.pg_arr, post.prc_mp)) by {
         lemma_no_change_imply_process_pages_wf_forall();
     };
     assert(container_process_allocator_quota_4k_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_4k_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_4k_mp,
     )) by {
         reveal(container_process_allocator_quota_4k_wf);
         reveal(container_process_wf);
         lemma_process_effective_quota_4k_fold_sum_eq_forall();
     };
     assert(container_process_allocator_quota_2m_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_2m_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_2m_mp,
     )) by {
         container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(
-            post.container_map,
-            post.thread_map,
-            post.allocator_2m_map,
-            pre.process_map,
-            post.process_map,
+            post.ctn_mp,
+            post.thr_mp,
+            post.allc_2m_mp,
+            pre.prc_mp,
+            post.prc_mp,
         );
     };
     assert(container_process_allocator_quota_1g_wf(
-        post.container_map,
-        post.process_map,
-        post.thread_map,
-        post.allocator_1g_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.thr_mp,
+        post.allc_1g_mp,
     )) by {
         container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(
-            post.container_map,
-            post.thread_map,
-            post.allocator_1g_map,
-            pre.process_map,
-            post.process_map,
+            post.ctn_mp,
+            post.thr_mp,
+            post.allc_1g_mp,
+            pre.prc_mp,
+            post.prc_mp,
         );
     };
-    assert(process_pagetable_match(post.process_map, post.pagetable_map)) by {
+    assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by {
         lemma_no_change_imply_process_pagetable_match_forall();
     };
     assert(process_iommu_table_match(
-        post.process_map,
-        post.iommu_table_map,
+        post.prc_mp,
+        post.it_mp,
     )) by {
         lemma_no_change_imply_process_iommu_table_match_forall();
     };
@@ -141,31 +141,31 @@ pub proof fn process_no_change_imply_process_management_inv(
 )
     requires
         pre.process_management_inv(),
-        process_invariant_fields_unchanged(pre.process_map, post.process_map),
+        process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),
         process_lock_kernel_context_unchanged(pre, post),
     ensures
         post.process_management_inv(),
 {
     assert(process_pcid_allocator_wf(
-        post.container_map,
-        post.process_map,
-        post.pcid_allocator_map,
+        post.ctn_mp,
+        post.prc_mp,
+        post.pcid_allc_mp,
     )) by {
         lemma_no_change_imply_process_pcid_allocator_wf_forall();
     };
-    assert(container_process_wf(post.container_map, post.process_map)) by {
+    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by {
         lemma_no_change_imply_container_process_wf_forall();
     };
     assert(per_container_process_tree_wf(
-        post.container_map,
-        post.process_map,
+        post.ctn_mp,
+        post.prc_mp,
     )) by {
         lemma_no_change_imply_per_container_process_tree_wf_forall();
     };
-    assert(process_cpu_wf(post.process_map, post.cpu_array)) by {
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by {
         lemma_no_change_imply_process_cpu_wf_forall();
     };
-    assert(process_thread_wf(post.process_map, post.thread_map)) by {
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
         lemma_no_change_imply_process_thread_wf_forall();
     };
 }

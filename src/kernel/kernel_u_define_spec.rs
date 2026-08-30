@@ -40,12 +40,12 @@ verus! {
     /// spec-level mapping used at every kernel boundary.  The boundary
     /// compares this projection with the preceding snapshot; only a changed
     /// projection is recorded as a user-visible step.
-    pub open spec fn kernel_k_to_kernel_u(kernel_k: KernelK) -> KernelU {
+    pub open spec fn kernel_k_to_kernel_u(krnl: KernelK) -> KernelU {
         KernelU {
             cpu_array: Seq::new(
                 NUM_CPUS as nat,
                 |i: int| {
-                    let c = kernel_k.cpu_array.spec_index(i as usize).value.view();
+                    let c = krnl.cpu_arr.spec_index(i as usize).value.view();
                     CpuU {
                         owning_container: c.owning_container,
                         state: c.state,
@@ -55,16 +55,16 @@ verus! {
                 },
             ),
             process_map: Map::new(
-                kernel_k.process_map.dom(),
+                krnl.prc_mp.dom(),
                 |ptr: RwLockProcessPtr| {
-                    let p = kernel_k.process_map.spec_index(ptr).view();
-                    let p_ro = kernel_k.process_map.spec_index(ptr).view_rodata().view();
+                    let p = krnl.prc_mp.spec_index(ptr).view();
+                    let p_ro = krnl.prc_mp.spec_index(ptr).view_rodata().view();
                     ProcessU {
-                        pagetable: pagetable_map_user_view(kernel_k.pagetable_map)
+                        pagetable: pagetable_map_user_view(krnl.pt_mp)
                             .spec_index(p.pagetable),
                         iommu_table: match p.iommu_table {
                             Some(iommu_table) => Some(
-                                iommu_table_map_user_view(kernel_k.iommu_table_map)
+                                iommu_table_map_user_view(krnl.it_mp)
                                     .spec_index(iommu_table),
                             ),
                             None => None,
@@ -78,7 +78,7 @@ verus! {
                         uppertree_seq: p.uppertree_seq.view(),
                         subtree_set: p.subtree_set.view(),
                         owned_threads: p.owned_threads.view(),
-                        killed: kernel_k.process_map.spec_index(ptr).being_killed(),
+                        killed: krnl.prc_mp.spec_index(ptr).being_killed(),
                     }
                 },
             ),
@@ -103,44 +103,44 @@ verus! {
             // domain on which the per-entry framing premise below applies.
             // Domain equality alone does not constrain `Map::spec_index` at a
             // process-referenced key unless that key is known to be present.
-            process_pagetable_match(pre.process_map, pre.pagetable_map),
+            process_pagetable_match(pre.prc_mp, pre.pt_mp),
             // pagetable_map: only the abstract mapping projection is read.
-            post.pagetable_map.dom() =~= pre.pagetable_map.dom(),
+            post.pt_mp.dom() =~= pre.pt_mp.dom(),
             forall|pt: RwLockPageTableRoot|
-                #![trigger post.pagetable_map.spec_index(pt).view().user_view()]
-                pre.pagetable_map.dom().contains(pt) ==>
-                    post.pagetable_map.spec_index(pt).view().user_view()
-                        == pre.pagetable_map.spec_index(pt).view().user_view(),
+                #![trigger post.pt_mp.spec_index(pt).view().user_view()]
+                pre.pt_mp.dom().contains(pt) ==>
+                    post.pt_mp.spec_index(pt).view().user_view()
+                        == pre.pt_mp.spec_index(pt).view().user_view(),
             // No implemented operation moves an IOMMU-table lock yet, so the
             // current framing surface preserves the whole map. This can be
             // weakened to per-entry views when those operations are added.
-            post.iommu_table_map == pre.iommu_table_map,
-            post.iommu_root_table == pre.iommu_root_table,
+            post.it_mp == pre.it_mp,
+            post.irt == pre.irt,
             // process_map: same domain, and per process only the fields
             // `ProcessU` projects are read — quota/tree fields off `view()`,
             // `parent`/`depth` off `view_rodata()`, and `being_killed()`. NOT
             // the whole `view()`: other kernel-only fields are unprojected.
-            post.process_map.dom() =~= pre.process_map.dom(),
+            post.prc_mp.dom() =~= pre.prc_mp.dom(),
             forall|ptr: RwLockProcessPtr|
-                #![trigger post.process_map.spec_index(ptr)]
-                pre.process_map.dom().contains(ptr) ==>
-                    post.process_map.spec_index(ptr).view().quota_4k == pre.process_map.spec_index(ptr).view().quota_4k
-                    && post.process_map.spec_index(ptr).view().quota_2m == pre.process_map.spec_index(ptr).view().quota_2m
-                    && post.process_map.spec_index(ptr).view().quota_1g == pre.process_map.spec_index(ptr).view().quota_1g
-                    && post.process_map.spec_index(ptr).view().children.view() == pre.process_map.spec_index(ptr).view().children.view()
-                    && post.process_map.spec_index(ptr).view().uppertree_seq.view() == pre.process_map.spec_index(ptr).view().uppertree_seq.view()
-                    && post.process_map.spec_index(ptr).view().subtree_set.view() == pre.process_map.spec_index(ptr).view().subtree_set.view()
-                    && post.process_map.spec_index(ptr).view().owned_threads.view() == pre.process_map.spec_index(ptr).view().owned_threads.view()
-                    && post.process_map.spec_index(ptr).view().pagetable == pre.process_map.spec_index(ptr).view().pagetable
-                    && post.process_map.spec_index(ptr).view().iommu_table == pre.process_map.spec_index(ptr).view().iommu_table
-                    && post.process_map.spec_index(ptr).view_rodata() == pre.process_map.spec_index(ptr).view_rodata()
-                    && post.process_map.spec_index(ptr).being_killed() == pre.process_map.spec_index(ptr).being_killed(),
+                #![trigger post.prc_mp.spec_index(ptr)]
+                pre.prc_mp.dom().contains(ptr) ==>
+                    post.prc_mp.spec_index(ptr).view().quota_4k == pre.prc_mp.spec_index(ptr).view().quota_4k
+                    && post.prc_mp.spec_index(ptr).view().quota_2m == pre.prc_mp.spec_index(ptr).view().quota_2m
+                    && post.prc_mp.spec_index(ptr).view().quota_1g == pre.prc_mp.spec_index(ptr).view().quota_1g
+                    && post.prc_mp.spec_index(ptr).view().children.view() == pre.prc_mp.spec_index(ptr).view().children.view()
+                    && post.prc_mp.spec_index(ptr).view().uppertree_seq.view() == pre.prc_mp.spec_index(ptr).view().uppertree_seq.view()
+                    && post.prc_mp.spec_index(ptr).view().subtree_set.view() == pre.prc_mp.spec_index(ptr).view().subtree_set.view()
+                    && post.prc_mp.spec_index(ptr).view().owned_threads.view() == pre.prc_mp.spec_index(ptr).view().owned_threads.view()
+                    && post.prc_mp.spec_index(ptr).view().pagetable == pre.prc_mp.spec_index(ptr).view().pagetable
+                    && post.prc_mp.spec_index(ptr).view().iommu_table == pre.prc_mp.spec_index(ptr).view().iommu_table
+                    && post.prc_mp.spec_index(ptr).view_rodata() == pre.prc_mp.spec_index(ptr).view_rodata()
+                    && post.prc_mp.spec_index(ptr).being_killed() == pre.prc_mp.spec_index(ptr).being_killed(),
             // cpu_array: per-slot payload `view()`.
             forall|i: usize|
-                #![trigger post.cpu_array.spec_index(i).value.view()]
+                #![trigger post.cpu_arr.spec_index(i).value.view()]
                 index_valid(NUM_CPUS, i) ==>
-                    post.cpu_array.spec_index(i).value.view()
-                        == pre.cpu_array.spec_index(i).value.view(),
+                    post.cpu_arr.spec_index(i).value.view()
+                        == pre.cpu_arr.spec_index(i).value.view(),
         ensures
             kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
     {

@@ -33,16 +33,16 @@ pub open spec fn page_memory_management_context_unchanged(
     pre: KernelK,
     post: KernelK,
 ) -> bool {
-    &&& post.pagetable_map == pre.pagetable_map
-    &&& post.iommu_table_map == pre.iommu_table_map
-    &&& post.container_map == pre.container_map
-    &&& post.pcid_allocator_map == pre.pcid_allocator_map
-    &&& post.process_map == pre.process_map
-    &&& post.thread_map == pre.thread_map
-    &&& post.endpoint_map == pre.endpoint_map
-    &&& post.allocator_4k_map == pre.allocator_4k_map
-    &&& post.allocator_2m_map == pre.allocator_2m_map
-    &&& post.allocator_1g_map == pre.allocator_1g_map
+    &&& post.pt_mp == pre.pt_mp
+    &&& post.it_mp == pre.it_mp
+    &&& post.ctn_mp == pre.ctn_mp
+    &&& post.pcid_allc_mp == pre.pcid_allc_mp
+    &&& post.prc_mp == pre.prc_mp
+    &&& post.thr_mp == pre.thr_mp
+    &&& post.ep_mp == pre.ep_mp
+    &&& post.allc_4k_mp == pre.allc_4k_mp
+    &&& post.allc_2m_mp == pre.allc_2m_mp
+    &&& post.allc_1g_mp == pre.allc_1g_mp
 }
 
 pub proof fn memory_management_inv_preserved_for_page_invariant_fields(
@@ -51,81 +51,81 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(
 )
     requires
         pre.memory_management_inv(),
-        pagetable_perms_wf(pre.pagetable_map),
-        page_invariant_fields_unchanged(pre.page_array, post.page_array),
+        pagetable_perms_wf(pre.pt_mp),
+        page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr),
         page_memory_management_context_unchanged(pre, post),
     ensures
         post.memory_management_inv(),
 {
     assert(allocator_pages_wf(
-        post.page_array,
-        post.allocator_4k_map,
-        post.allocator_2m_map,
-        post.allocator_1g_map,
+        post.pg_arr,
+        post.allc_4k_mp,
+        post.allc_2m_mp,
+        post.allc_1g_mp,
     )) by {
         reveal(allocator_4k_pages_wf);
         reveal(allocator_2m_pages_wf);
         reveal(allocator_1g_pages_wf);
     };
-    assert(container_page_owner_wf(post.container_map, post.page_array)) by {
+    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by {
         reveal(container_page_owner_wf);
     };
-    assert(hugepage_2m_wf(post.page_array)) by {
+    assert(hugepage_2m_wf(post.pg_arr)) by {
         reveal(hugepage_2m_wf);
     };
-    assert(hugepage_1g_wf(post.page_array)) by {
+    assert(hugepage_1g_wf(post.pg_arr)) by {
         reveal(hugepage_1g_wf);
     };
-    assert(page_pagetable_wf(post.pagetable_map, post.page_array)) by {
+    assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
         reveal(pagetable_perms_wf);
         reveal(mapped_4k_page_pagetable_wf);
         reveal(mapped_2m_page_pagetable_wf);
         reveal(mapped_1g_page_pagetable_wf);
     };
     assert(container_process_page_pagetable_wf(
-        post.container_map,
-        post.process_map,
-        post.pagetable_map,
-        post.page_array,
+        post.ctn_mp,
+        post.prc_mp,
+        post.pt_mp,
+        post.pg_arr,
     )) by {
         reveal(container_process_page_pagetable_wf);
     };
-    assert(container_pages_wf(post.page_array, post.container_map)) by {
+    assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by {
         reveal(container_pages_wf);
     };
-    assert(process_pages_wf(post.page_array, post.process_map)) by {
+    assert(process_pages_wf(post.pg_arr, post.prc_mp)) by {
         reveal(process_pages_wf);
     };
-    assert(pagetable_pages_wf(post.pagetable_map, post.page_array)) by {
+    assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by {
         reveal(pagetable_pages_wf);
     };
-    assert(iommu_table_pages_wf(post.iommu_table_map, post.page_array)) by {
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by {
         reveal(iommu_table_pages_wf);
     };
-    assert(thread_pages_wf(post.thread_map, post.page_array)) by {
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_pages_wf);
     };
     assert(pcid_allocator_pages_wf(
-        post.page_array,
-        post.pcid_allocator_map,
+        post.pg_arr,
+        post.pcid_allc_mp,
     )) by {
         reveal(pcid_allocator_pages_wf);
     };
-    assert(thread_staged_pages_4k_wf(post.thread_map, post.page_array)) by {
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_staged_pages_4k_wf);
     };
-    assert(thread_staged_pages_2m_wf(post.thread_map, post.page_array)) by {
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_staged_pages_2m_wf);
     };
-    assert(thread_staged_pages_1g_wf(post.thread_map, post.page_array)) by {
+    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_staged_pages_1g_wf);
     };
-    assert(endpoint_pages_wf(post.endpoint_map, post.page_array)) by {
+    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by {
         reveal(endpoint_pages_wf);
     };
     assert(container_allocator_free_4k_page_wf(
-        post.allocator_4k_map,
-        post.page_array,
+        post.allc_4k_mp,
+        post.pg_arr,
     )) by {
         reveal(allocator_free_page_ptrs_wf);
         reveal(container_allocator_free_4k_page_wf);
@@ -133,8 +133,8 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(
         reveal(container_allocator_cpu_cache_free_4k_page_wf);
     };
     assert(container_allocator_free_2m_page_wf(
-        post.allocator_2m_map,
-        post.page_array,
+        post.allc_2m_mp,
+        post.pg_arr,
     )) by {
         reveal(allocator_free_page_ptrs_wf);
         reveal(container_allocator_free_2m_page_wf);
@@ -142,8 +142,8 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(
         reveal(container_allocator_cpu_cache_free_2m_page_wf);
     };
     assert(container_allocator_free_1g_page_wf(
-        post.allocator_1g_map,
-        post.page_array,
+        post.allc_1g_mp,
+        post.pg_arr,
     )) by {
         reveal(allocator_free_page_ptrs_wf);
         reveal(container_allocator_free_1g_page_wf);
@@ -157,15 +157,15 @@ pub proof fn lemma_no_change_imply_memory_management_inv_for_page_fields_forall(
         forall|pre: KernelK, post: KernelK|
             #![trigger pre.memory_management_inv(), post.memory_management_inv()]
             pre.memory_management_inv()
-            && pagetable_perms_wf(pre.pagetable_map)
-            && page_invariant_fields_unchanged(pre.page_array, post.page_array)
+            && pagetable_perms_wf(pre.pt_mp)
+            && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr)
             && page_memory_management_context_unchanged(pre, post)
             ==> post.memory_management_inv(),
 {
     assert forall|pre: KernelK, post: KernelK| #![auto]
         pre.memory_management_inv()
-        && pagetable_perms_wf(pre.pagetable_map)
-        && page_invariant_fields_unchanged(pre.page_array, post.page_array)
+        && pagetable_perms_wf(pre.pt_mp)
+        && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr)
         && page_memory_management_context_unchanged(pre, post)
     implies post.memory_management_inv() by {
         memory_management_inv_preserved_for_page_invariant_fields(pre, post);

@@ -29,16 +29,16 @@ pub proof fn mapped_4k_page_ref_count_lt_usize_max(
 /// finite physical-page domain backing thread objects.
 #[verifier::external_body]
 pub proof fn lemma_thread_ptr_seq_len_bounded(
-    kernel: &KernelK,
+    krnl: &KernelK,
     threads: Seq<RwLockThreadPtr>,
 )
     requires
-        kernel.inv(),
+        krnl.inv(),
         threads.no_duplicates(),
         forall|thread_ptr: RwLockThreadPtr|
             #![trigger threads.contains(thread_ptr)]
             threads.contains(thread_ptr)
-                ==> kernel.thread_map.dom().contains(thread_ptr),
+                ==> krnl.thr_mp.dom().contains(thread_ptr),
     ensures
         threads.len() <= NUM_PAGES,
 {
@@ -48,14 +48,14 @@ pub proof fn lemma_thread_ptr_seq_len_bounded(
 /// per-thread endpoint descriptor slots.
 #[verifier::external_body]
 pub proof fn endpoint_ref_counter_bounded(
-    kernel: &KernelK,
+    krnl: &KernelK,
     endpoint_ptr: RwLockEndpointPtr,
 )
     requires
-        kernel.inv(),
-        kernel.endpoint_map.dom().contains(endpoint_ptr),
+        krnl.inv(),
+        krnl.ep_mp.dom().contains(endpoint_ptr),
     ensures
-        kernel.endpoint_map.spec_index(endpoint_ptr).view().rf_counter
+        krnl.ep_mp.spec_index(endpoint_ptr).view().rf_counter
             <= NUM_PAGES * MAX_NUM_ENDPOINT_DESCRIPTORS,
 {
 }
@@ -63,14 +63,14 @@ pub proof fn endpoint_ref_counter_bounded(
 /// A well-formed endpoint queue contains distinct pointers to thread pages.
 #[verifier::external_body]
 pub proof fn endpoint_queue_len_bounded(
-    kernel: &KernelK,
+    krnl: &KernelK,
     endpoint_ptr: RwLockEndpointPtr,
 )
     requires
-        kernel.inv(),
-        kernel.endpoint_map.dom().contains(endpoint_ptr),
+        krnl.inv(),
+        krnl.ep_mp.dom().contains(endpoint_ptr),
     ensures
-        kernel.endpoint_map.spec_index(endpoint_ptr).view().queue.length
+        krnl.ep_mp.spec_index(endpoint_ptr).view().queue.length
             <= NUM_PAGES,
 {
 }
@@ -78,14 +78,14 @@ pub proof fn endpoint_queue_len_bounded(
 /// A well-formed scheduler queue contains distinct pointers to thread pages.
 #[verifier::external_body]
 pub proof fn scheduler_queue_len_bounded(
-    kernel: &KernelK,
+    krnl: &KernelK,
     scheduler_ptr: RwLockSchedulerPtr,
 )
     requires
-        kernel.inv(),
-        kernel.scheduler_map.dom().contains(scheduler_ptr),
+        krnl.inv(),
+        krnl.sched_mp.dom().contains(scheduler_ptr),
     ensures
-        kernel.scheduler_map.spec_index(scheduler_ptr).view().queue.length
+        krnl.sched_mp.spec_index(scheduler_ptr).view().queue.length
             <= NUM_PAGES,
 {
 }

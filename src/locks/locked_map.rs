@@ -243,11 +243,12 @@ HAS_KILL_STATE>{
             final(self).dom() =~= old(self).dom().insert(key),
             final(self).view().spec_index(key).is_init(),
             final(self).view().spec_index(key).addr() == key,
-            forall|k:usize|
-                #![auto]
-                old(self).dom().contains(k)
-                ==>
-                final(self).spec_index(k) == old(self).spec_index(k),
+            forall|k: usize| #![auto]
+                old(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
+            forall|k: usize|
+                #![trigger old(self).lock_id_by_key(k)]
+                #![trigger final(self).lock_id_by_key(k)]
+                old(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
             final(self).dom().contains(key),
             final(self).spec_index(key).is_init(),
             final(self).spec_index(key).view() == perm.value().view(),
@@ -329,8 +330,8 @@ NO_KILL_STATE>>::from_usize(key),
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_entry_contains(
-                old(self).lock_id_by_key(key), obj_id.view()),
+            old(lctx).lock_id_set().contains((
+                old(self).lock_id_by_key(key), obj_id.view())),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -440,8 +441,8 @@ HAS_KILL_STATE>{
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_entry_contains(
-                old(self).lock_id_by_key(key), obj_id.view()),
+            old(lctx).lock_id_set().contains((
+                old(self).lock_id_by_key(key), obj_id.view())),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
