@@ -71,6 +71,24 @@ verus! {
                 .direct_free_quota_pending_4k.view())
     }
 
+    pub open spec fn thread_direct_pending_2m_fold_sum(
+        threads: Set<RwLockThreadPtr>,
+        thread_map: ThreadLockedMap,
+    ) -> int {
+        threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
+            sum + thread_map.spec_index(t_ptr).view()
+                .direct_free_quota_pending_2m.view())
+    }
+
+    pub open spec fn thread_direct_pending_1g_fold_sum(
+        threads: Set<RwLockThreadPtr>,
+        thread_map: ThreadLockedMap,
+    ) -> int {
+        threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
+            sum + thread_map.spec_index(t_ptr).view()
+                .direct_free_quota_pending_1g.view())
+    }
+
     pub open spec fn thread_indirect_pending_4k_fold_sum_at_depth(
         threads: Set<RwLockThreadPtr>,
         thread_map: ThreadLockedMap,
@@ -79,6 +97,26 @@ verus! {
         threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
             sum + thread_map.spec_index(t_ptr).view()
                 .indirect_free_quota_pending_4k.view().spec_index(depth))
+    }
+
+    pub open spec fn thread_indirect_pending_2m_fold_sum_at_depth(
+        threads: Set<RwLockThreadPtr>,
+        thread_map: ThreadLockedMap,
+        depth: int,
+    ) -> int {
+        threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
+            sum + thread_map.spec_index(t_ptr).view()
+                .indirect_free_quota_pending_2m.view().spec_index(depth))
+    }
+
+    pub open spec fn thread_indirect_pending_1g_fold_sum_at_depth(
+        threads: Set<RwLockThreadPtr>,
+        thread_map: ThreadLockedMap,
+        depth: int,
+    ) -> int {
+        threads.fold(0, |sum: int, t_ptr: RwLockThreadPtr|
+            sum + thread_map.spec_index(t_ptr).view()
+                .indirect_free_quota_pending_1g.view().spec_index(depth))
     }
 
     #[verifier::opaque]
@@ -132,9 +170,9 @@ verus! {
                     +
                     thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                    thread_direct_pending_2m_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
-                    container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    thread_indirect_pending_2m_fold_sum_at_depth(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(), thread_map, container_map.spec_index(c_ptr).view_rodata().view().depth as int)
                     +
                     allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                     ==
@@ -157,9 +195,9 @@ verus! {
                     +
                     thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
+                    thread_direct_pending_1g_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
                     +
-                    container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr:RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                    thread_indirect_pending_1g_fold_sum_at_depth(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(), thread_map, container_map.spec_index(c_ptr).view_rodata().view().depth as int)
                     +
                     allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
                     ==
