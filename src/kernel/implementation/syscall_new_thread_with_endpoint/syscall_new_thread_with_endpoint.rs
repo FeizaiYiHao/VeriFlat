@@ -30,7 +30,7 @@ verus! {
                 old(krnl).sched_mp.dom().contains(old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler)
             },
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(krnl).cpu_arr.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
             {
                 let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0;
@@ -48,13 +48,15 @@ verus! {
             },
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
             old(krnl).all_objects_unlocked(old(lctx)),
         ensures
             final(steps).steps.len() <= 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            lock_id_aligned(final(krnl), final(lctx)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
+            final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
             !(ret is Success) ==> final(steps).steps.len() == 0,
             ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0; &&& final(steps).steps.len() == 1 &&& final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(krnl)) &&& kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, process_ptr) },
@@ -150,7 +152,6 @@ verus! {
             assert({
                 &&& current_thread_lock_perm.ordering_lock_id().major == THREAD_LOCK_MAJOR
                 &&& krnl.ep_mp.lock_id_by_key(endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
-                &&& lctx.lock_id_acyclic(krnl.ep_mp.lock_id_by_key(endpoint_ptr))
             }) by { reveal(thread_cpu_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
         }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
@@ -160,11 +161,15 @@ verus! {
             assert({
                 &&& krnl.sched_mp.dom().contains(scheduler_ptr)
                 &&& scheduler_lock_id.major == SCHEDULER_LOCK_MAJOR
-                &&& lctx.lock_id_acyclic(scheduler_lock_id)
             }) by { reveal(container_scheduler_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); };
         }
         let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
 
+        assert({
+            &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
+            &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
+            &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
+        }) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::holds_no_allocator_locks); };
         add_new_thread_with_endpoint(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, endpoint_ptr, endpoint_index, Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm), Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm));
         RetValueType::Success
     }

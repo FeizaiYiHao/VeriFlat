@@ -144,6 +144,8 @@ impl Thread{
     ) -> (ret: Self)
         ensures
             ret.inv(),
+            ret.state == (ThreadState::RUNNING { cpu_id: 0 }),
+            ret.current_lock_major() == THREAD_LOCK_MAJOR,
             ret.owning_container == owning_container,
             ret.container_depth == container_depth,
             ret.owning_proc == owning_proc,

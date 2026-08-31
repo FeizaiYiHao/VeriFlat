@@ -81,13 +81,13 @@ use crate::*;
         let page_owner;
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
         {
-            let page = krnl.pg_arr.borrow_mut(page_index, Tracked(&*lctx), page_lock_perm);
+            let page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), page_lock_perm);
             page_owner = page.owning_container;
             page.state = PageState::Mapped4k;
             page.mappings = Ghost(Set::empty().insert((pagetable_ptr, va)));
             page.ref_count = 1;
         } {
-            let thread = krnl.thr_mp.borrow_mut(thread_ptr, Tracked(&*lctx), thread_lock_perm);
+            let thread = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_lock_perm);
             thread.temp_alloc_cache_4k = Ghost(thread.temp_alloc_cache_4k.view().remove(page_ptr));
             thread.quota_4k = thread.quota_4k - 1;
         }
@@ -102,7 +102,7 @@ use crate::*;
             assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip(); };
         }
         {
-            let pagetable = krnl.pt_mp.borrow_mut(pagetable_ptr, Tracked(&mut *lctx), pagetable_lock_perm);
+            let pagetable = krnl.pt_mp.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&mut *lctx), pagetable_lock_perm);
             pagetable.map_4k_page(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, &target_entry, Tracked(&mut *lctx));
         }
 
@@ -168,7 +168,6 @@ use crate::*;
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr, va); };
-            assert(lock_id_aligned(krnl, &*lctx)) by { reveal(lock_id_aligned); };
             assert({
                 let process_ptr = krnl.thr_mp.spec_index(thread_ptr)
                     .view().owning_proc;

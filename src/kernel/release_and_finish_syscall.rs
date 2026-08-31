@@ -59,23 +59,24 @@ verus! {
             old(krnl).inv(),
             lctx.kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            lctx.lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-            ],
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == lctx.thread_id(),
             cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(&lctx),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            old(lctx).cpu_process_thread_lock_scope(set![cpu_id], Set::<RwLockProcessPtr>::empty(), Set::<RwLockThreadPtr>::empty()),
             kernel_objects_unlocked_except(
                 old(krnl), old(lctx).thread_id(), Some(cpu_id),
                 None, None, None, None),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
+            final(lctx).no_locks_held(),
             !final(krnl).cpu_arr.spec_index(cpu_id).view()
                 .locked_by_thread(final(lctx).thread_id()),
             final(krnl).all_objects_unlocked(final(lctx)),
@@ -110,12 +111,6 @@ verus! {
             old(krnl).inv(),
             lctx.kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            lctx.lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-                (old(krnl).prc_mp.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
-            ],
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == lctx.thread_id(),
             cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -127,20 +122,25 @@ verus! {
             old(krnl).prc_mp.dom().contains(process_ptr),
             old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(&lctx),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+            old(lctx).cpu_process_thread_lock_scope(set![cpu_id], set![process_ptr], Set::<RwLockThreadPtr>::empty()),
             kernel_objects_unlocked_except(
                 old(krnl), old(lctx).thread_id(), Some(cpu_id),
                 None, Some(process_ptr), None, None),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
+            final(lctx).no_locks_held(),
             !final(krnl).cpu_arr.spec_index(cpu_id).view()
                 .locked_by_thread(final(lctx).thread_id()),
             !final(krnl).prc_mp.spec_index(process_ptr)
                 .locked_by_thread(final(lctx).thread_id()),
             final(krnl).all_objects_unlocked(final(lctx)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
     {
@@ -174,14 +174,6 @@ verus! {
                 is IPC_ENDPOINT_TRANSIT),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(lctx).lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id),
-                    KernelObjId::Cpu(cpu_id)),
-                (old(krnl).prc_mp.lock_id_by_key(process_ptr),
-                    KernelObjId::Process(process_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(thread_ptr),
-                    KernelObjId::Thread(thread_ptr)),
-            ],
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
             cpu_lock_perm.view().lock_id()
@@ -204,14 +196,21 @@ verus! {
             old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
             old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
+            old(lctx).cpu_process_thread_lock_scope(set![cpu_id], set![process_ptr], set![thread_ptr]),
             kernel_objects_unlocked_except(
                 old(krnl), old(lctx).thread_id(), Some(cpu_id),
                 None, Some(process_ptr), Some(thread_ptr), None),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
+            final(lctx).no_locks_held(),
             !final(krnl).cpu_arr.spec_index(cpu_id).view()
                 .locked_by_thread(final(lctx).thread_id()),
             !final(krnl).prc_mp.spec_index(process_ptr)
@@ -219,7 +218,6 @@ verus! {
             !final(krnl).thr_mp.spec_index(thread_ptr)
                 .locked_by_thread(final(lctx).thread_id()),
             final(krnl).all_objects_unlocked(final(lctx)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
     {

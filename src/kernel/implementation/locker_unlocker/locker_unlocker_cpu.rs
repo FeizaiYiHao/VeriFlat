@@ -13,15 +13,17 @@ impl KernelK {
                 index_valid(NUM_CPUS, cpu_id),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 !old(self).cpu_arr.spec_index(cpu_id).view().locked_by_thread(old(lctx).thread_id()),
-                old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id)),
-                lock_id_aligned(old(self), old(lctx)),
+                old(lctx).no_locks_held(),
+                typed_lock_maps_aligned(old(self), old(lctx)),
+                lock_id_set_aligned(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 // ---- Every held lock still matches lctx (cpu now locked) ----
                 // ---- Dynamic lock ids remain aligned ----
-                lock_id_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
+                lock_id_set_aligned(final(lctx)),
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pt_mp     == old(self).pt_mp,
                 final(self).it_mp     == old(self).it_mp,
@@ -51,9 +53,13 @@ impl KernelK {
                 // ---- The lock perm + lock ensures (forwarded from LockedArray::wlock) ----
                 wlock_ensures(old(self).cpu_arr.spec_index(cpu_id).view(), final(self).cpu_arr.spec_index(cpu_id).view(), old(self).cpu_arr.lock_id_by_index(cpu_id), final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))),
+                typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
+                cpu_lock_held_scope(final(lctx), cpu_id),
+                final(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR),
         {
             proof {
                 assert(old(self).cpu_arr.inv()) by { reveal(cpu_array_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(LocalContext::no_locks_held); reveal(lock_id_set_aligned); };
             }
             let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
             proof {
@@ -66,7 +72,9 @@ impl KernelK {
                 };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
-                assert(lock_id_aligned(self, &*lctx)) by { reveal(lock_id_aligned); };
+                assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
+                assert(cpu_lock_held_scope(lctx, cpu_id)) by { reveal(cpu_lock_held_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::no_locks_held); };
+                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(cpu_array_wf); reveal(LocalContext::no_locks_held); reveal(lock_id_set_aligned); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             ret
@@ -86,14 +94,17 @@ impl KernelK {
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-                lock_id_aligned(old(self), old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+                typed_lock_maps_aligned(old(self), old(lctx)),
+                lock_id_set_aligned(old(lctx)),
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 // ---- Every held lock still matches lctx (cpu now released) ----
                 // ---- Dynamic lock ids remain aligned ----
-                lock_id_aligned(final(self), final(lctx)),
+                typed_lock_maps_aligned(final(self), final(lctx)),
+                lock_id_set_aligned(final(lctx)),
                 // ---- Field framing: only cpu_array's lock state moves ----
                 final(self).pt_mp     == old(self).pt_mp,
                 final(self).it_mp     == old(self).it_mp,
@@ -130,10 +141,12 @@ impl KernelK {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))),
+                typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id)),
         {
             proof {
                 assert(old(self).cpu_arr.inv()) by { reveal(cpu_array_wf); };
-                assert(old(lctx).lock_id_set().contains((old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)))) by { reveal(lock_id_aligned); };
+                assert(old(lctx).lock_entry_contains(old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))) by { reveal(LockedArray::typed_lock_map_aligned); };
+                assert(old(lctx).lock_id_set().contains((old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)))) by { reveal(lock_id_set_aligned); };
             }
             self.cpu_arr.wunlock(cpu_id, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Cpu(cpu_id)));
             // Re-establish inv(). Only `cpu_array[cpu_id]`'s lock state moved
@@ -149,7 +162,7 @@ impl KernelK {
                 };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
-                assert(lock_id_aligned(self, &*lctx)) by { reveal(lock_id_aligned); };
+                assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
         }

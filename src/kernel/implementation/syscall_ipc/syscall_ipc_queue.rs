@@ -16,6 +16,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
         thread_perms_wf(*old(thread_map)),
+        old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         old(thread_map).dom().contains(thread_ptr),
         old(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         thread_lock_perm.view().state() is WriteLock,
@@ -30,6 +31,13 @@ pub(super) fn ipc_block_thread_on_endpoint(
         old(thread_map).spec_index(thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
     ensures
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).typed_lock_map_aligned(
+            lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
+                lock_id: final(thread_map).lock_id_by_key(thread_ptr),
+                mode: lctx.thread_lock_map().index(thread_ptr).mode,
+            }), lctx.thread_id()),
+        lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
         final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
@@ -56,7 +64,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         ) by { reveal(thread_perms_wf); };
     }
     let ret = {
-        let thread_mut = thread_map.borrow_mut(thread_ptr, Tracked(lctx), thread_lock_perm);
+        let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.block_on_endpoint(thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, pt_regs)
     };
     proof {
@@ -77,6 +85,7 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
 )
     requires
         endpoint_perms_wf(*old(endpoint_map)),
+        old(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         old(endpoint_map).dom().contains(endpoint_ptr),
         old(endpoint_map).spec_index(endpoint_ptr).wlocked_by(lctx),
         endpoint_lock_perm.view().state() is WriteLock,
@@ -90,6 +99,7 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
         old(endpoint_map).spec_index(endpoint_ptr).view().queue.length != usize::MAX,
     ensures
         endpoint_perms_wf(*final(endpoint_map)),
+        final(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
         final(endpoint_map).spec_index(endpoint_ptr).wlocked_by(lctx),
         final(endpoint_map).spec_index(endpoint_ptr).locking_thread() == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
@@ -120,7 +130,7 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
         ) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
     }
     {
-        let endpoint_mut = endpoint_map.borrow_mut(endpoint_ptr, Tracked(lctx), endpoint_lock_perm);
+        let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thread_ptr, waiting_state, node_addr, node_perm);
     }
     proof {
@@ -139,6 +149,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
         thread_perms_wf(*old(thread_map)),
+        old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         old(thread_map).dom().contains(thread_ptr),
         old(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         old(thread_map).dom().contains(current_thread_ptr),
@@ -152,6 +163,13 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         endpoint_node_perm.view().value().view() == thread_ptr,
     ensures
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).typed_lock_map_aligned(
+            lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
+                lock_id: final(thread_map).lock_id_by_key(thread_ptr),
+                mode: lctx.thread_lock_map().index(thread_ptr).mode,
+            }), lctx.thread_id()),
+        lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
         final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
@@ -180,7 +198,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         ) by { reveal(thread_perms_wf); };
     }
     let ret = {
-        let thread_mut = thread_map.borrow_mut(thread_ptr, Tracked(lctx), thread_lock_perm);
+        let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_scheduled(thread_ptr, result, endpoint_node_perm)
     };
     proof {
@@ -203,6 +221,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
 )
     requires
         thread_perms_wf(*old(thread_map)),
+        old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         old(thread_map).dom().contains(thread_ptr),
         old(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         old(thread_map).dom().contains(current_thread_ptr),
@@ -217,6 +236,13 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         endpoint_node_perm.view().value().view() == thread_ptr,
     ensures
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).typed_lock_map_aligned(
+            lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
+                lock_id: final(thread_map).lock_id_by_key(thread_ptr),
+                mode: lctx.thread_lock_map().index(thread_ptr).mode,
+            }), lctx.thread_id()),
+        lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
         final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
@@ -241,7 +267,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         }) by { reveal(thread_perms_wf); };
     }
     {
-        let thread_mut = thread_map.borrow_mut(thread_ptr, Tracked(lctx), thread_lock_perm);
+        let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_endpoint_transit(thread_ptr, endpoint_node_perm);
     }
     proof {
@@ -263,6 +289,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
         thread_perms_wf(*old(thread_map)),
+        old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         old(thread_map).dom().contains(thread_ptr),
         old(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         old(thread_map).dom().contains(current_thread_ptr),
@@ -273,6 +300,13 @@ pub(super) fn ipc_schedule_endpoint_transit(
         old(thread_map).spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
     ensures
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).typed_lock_map_aligned(
+            lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
+                lock_id: final(thread_map).lock_id_by_key(thread_ptr),
+                mode: lctx.thread_lock_map().index(thread_ptr).mode,
+            }), lctx.thread_id()),
+        lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
         final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
@@ -302,7 +336,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         }) by { reveal(thread_perms_wf); };
     }
     let ret = {
-        let thread_mut = thread_map.borrow_mut(thread_ptr, Tracked(lctx), thread_lock_perm);
+        let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_transit_to_scheduled(thread_ptr, result)
     };
     proof {
@@ -324,6 +358,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
         endpoint_perms_wf(*old(endpoint_map)),
+        old(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         old(endpoint_map).dom().contains(endpoint_ptr),
         old(endpoint_map).spec_index(endpoint_ptr).wlocked_by(lctx),
         endpoint_lock_perm.view().state() is WriteLock,
@@ -333,6 +368,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
         old(endpoint_map).spec_index(endpoint_ptr).view().queue.view().spec_index(0) == thread_ptr,
     ensures
         endpoint_perms_wf(*final(endpoint_map)),
+        final(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
         final(endpoint_map).spec_index(endpoint_ptr).wlocked_by(lctx),
         final(endpoint_map).spec_index(endpoint_ptr).locking_thread() == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
@@ -375,7 +411,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
         ) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
     }
     let ret = {
-        let endpoint_mut = endpoint_map.borrow_mut(endpoint_ptr, Tracked(lctx), endpoint_lock_perm);
+        let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thread_ptr)
     };
     proof {
@@ -395,6 +431,7 @@ pub(super) fn ipc_enqueue_scheduled_thread(
 )
     requires
         scheduler_perms_wf(*old(scheduler_map)),
+        old(scheduler_map).typed_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
         old(scheduler_map).dom().contains(scheduler_ptr),
         old(scheduler_map).spec_index(scheduler_ptr).wlocked_by(lctx),
         scheduler_lock_perm.view().state() is WriteLock,
@@ -407,6 +444,7 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         old(scheduler_map).spec_index(scheduler_ptr).view().queue.length != usize::MAX,
     ensures
         scheduler_perms_wf(*final(scheduler_map)),
+        final(scheduler_map).typed_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
         final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),
         final(scheduler_map).spec_index(scheduler_ptr).wlocked_by(lctx),
         final(scheduler_map).spec_index(scheduler_ptr).locking_thread() == old(scheduler_map).spec_index(scheduler_ptr).locking_thread(),
@@ -436,7 +474,7 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         ) by { reveal(scheduler_perms_wf); };
     }
     {
-        let scheduler_mut = scheduler_map.borrow_mut(scheduler_ptr, Tracked(lctx), scheduler_lock_perm);
+        let scheduler_mut = scheduler_map.borrow_mut_typed(scheduler_ptr, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), scheduler_lock_perm);
         scheduler_mut.enqueue_scheduled_thread(thread_ptr, node_addr, node_perm);
     }
     proof {

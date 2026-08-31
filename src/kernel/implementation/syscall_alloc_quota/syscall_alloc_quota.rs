@@ -12,17 +12,19 @@ verus! {
                 old(krnl).inv(),
                 old(krnl).cpu_arr.spec_index(cpu_id).view().view().state == CpuState::Running,
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+                old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
                 old(steps).steps.len() == 0,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-                lock_id_aligned(old(krnl), old(lctx)),
+                typed_lock_maps_aligned(old(krnl), old(lctx)),
+                lock_id_set_aligned(old(lctx)),
             ensures
                 final(steps).steps.len() <= 1,
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
                 final(krnl).all_objects_unlocked(final(lctx)),
-                lock_id_aligned(final(krnl), final(lctx)),
-                final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+                typed_lock_maps_aligned(final(krnl), final(lctx)),
+                lock_id_set_aligned(final(lctx)),
+                final(lctx).no_locks_held(),
                 ret is Success || ret is ErrorContainerKilled || ret is ErrorContainerQuotaInsufficient || ret is ErrorProcessKilled || ret is ErrorProcessQuotaOverflow,
                 !(ret is Success) ==> final(steps).steps.len() == 0,
                 ret is Success && alloc_amount == 0 ==> final(steps).steps.len() == 0,
@@ -66,6 +68,7 @@ verus! {
             assert(
                 {   &&& krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)
                     &&& krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()
+                    &&& krnl.allc_4k_mp.spec_index(alloc_ptr_4k).owning_container == container_ptr
                     &&& krnl.allc_4k_mp.spec_index(alloc_ptr_4k).quota.view().container_depth
                         == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
                 }
@@ -85,6 +88,8 @@ verus! {
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
 
+            assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::base_quota_4k_lock_scope); reveal(typed_lock_maps_inserted); broadcast use vstd::map::lemma_map_insert_domain; };
+            assert(process_lock_acquire_scope(krnl, lctx, process_ptr)) by { reveal(process_lock_acquire_scope); };
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(lctx));
             if let (false, _) = process_res {
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
@@ -113,6 +118,7 @@ verus! {
 
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
+                assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])) by { reveal(LocalContext::base_quota_4k_lock_scope); reveal(typed_lock_maps_inserted); broadcast use vstd::map::lemma_map_insert_domain; };
             }
             commit_alloc_quota_4k(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
             return  RetValueType::Success;

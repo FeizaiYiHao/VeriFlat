@@ -66,7 +66,8 @@ verus! {
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
             mmap_4k_allocation_ready(final(krnl), final(lctx)),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
             forall|t: RwLockThreadPtr|
                 #![trigger old(krnl).thr_mp.spec_index(t)]
@@ -155,12 +156,29 @@ verus! {
             },
     {
         let (page_ptr, Tracked(page_lock_perm)) = stage_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+        let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
         install_staged_4k_page_table_page(krnl, level, page_ptr, thread_ptr, pagetable_ptr, indices, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+        let ghost installed_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
+        proof {
+            assert(page_objects_unlocked_except(krnl.pg_arr, lctx.thread_id(), set![page_ptr2page_index(page_ptr)])) by { reveal(page_objects_unlocked_except); };
+        }
         krnl.wunlock_page(page_ptr2page_index(page_ptr), Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
-            assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { assert(PAGE_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && IOMMU_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && ALLOCATED_PAGE_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
+            assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+                map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedHeldLock {
+                    lock_id: staged_page_lock_id, mode: TypedLockMode::Write,
+                }, TypedHeldLock {
+                    lock_id: installed_page_lock_id, mode: TypedLockMode::Write,
+                });
+                map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedHeldLock {
+                    lock_id: installed_page_lock_id, mode: TypedLockMode::Write,
+                });
+            };
+            assert(lctx.lock_id_set() =~= old(lctx).lock_id_set()) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_unchanged); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set()); };
+            assert(old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); };
+            assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); assert(PAGE_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && IOMMU_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && ALLOCATED_PAGE_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
-            assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { assert(PAGE_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && IOMMU_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && ALLOCATED_PAGE_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
+            assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); assert(PAGE_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && IOMMU_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && ALLOCATED_PAGE_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
             assert({
                 &&& krnl.pt_mp.spec_index(pagetable_ptr).inv()
                 &&& krnl.pt_mp.spec_index(pagetable_ptr).view().wf()

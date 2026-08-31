@@ -21,14 +21,18 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
 
 ### Lock model
 
-- `LocalContext` has one ledger: `Set<(LockId, KernelObjId)>`. Do not add
-  typed ledgers, object-only sets, or scalar lock-id sets.
-- `lock_id_aligned(k, lctx)` mirrors each exact `(id, object)` pair to the
-  object's existence, real read/write lock by `lctx.thread_id()`, and current
-  dynamic lock id. There is no separate lock-entry predicate or `LocalContext::wf`.
-- Acquire inserts the exact current pair; unlock removes it; a dynamic-id
-  change replaces the pair during the transition. Prove `lock_id_aligned` in
-  the executable equation.
+- `LocalContext` has typed held-lock maps plus one exact pair ledger:
+  `Set<(LockId, KernelObjId)>`. Do not add object-only sets, scalar lock-id
+  sets, or another pair ledger.
+- `typed_lock_maps_aligned(k, lctx)` aligns each physical object family with
+  its typed map. `lock_id_set_aligned(lctx)` aligns typed entries with exact
+  `(id, object)` pairs; lock mode is represented only in the typed maps.
+- Acquire inserts the exact typed entry and current pair; unlock removes both;
+  a dynamic-id change overwrites the typed entry and replaces the pair during
+  the transition. Producers close both alignments at their wrapper boundary.
+- Lock membership, counts, scopes, and finish conditions read typed maps.
+  Deadlock checks and major bounds quantify only the exact pair set. Syscalls
+  and transitions do not reveal either alignment or rebuild it manually.
 - Thread ownership metadata never disappears. Running, scheduled, and blocked
   states use their established dynamic lock-id majors; `NotApp` changes only
   lock ordering and does not restrict IPC topology.
@@ -155,7 +159,7 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
 - Prove S at the mutation producer from constructor/update/callee facts. One
   scoped reveal opens opaque S; do not unfold `KernelK::inv`, subsystem
   invariants, or old invariant leaves merely to state it. Keep
-  `lock_id_aligned` in exec.
+  `typed_lock_maps_aligned` and `lock_id_set_aligned` in exec.
 - EOF closure may split only its invariant-closing tail into small proof
   blocks/functions. Framing calls there are limited to existing
   `lemma_no_change_imply_*_wf*` and approved fold lemmas. All other new or
