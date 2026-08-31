@@ -173,18 +173,18 @@ pub(super) enum MissingPageTableLevel {
 
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
         let (page_map_ptr, Tracked(page_map_perm)) = {
-            let page = krnl.pg_arr.borrow_mut(page_index,Tracked(&*lctx),page_lock_perm);
+            let page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), page_lock_perm);
             let Tracked(page_perm) = take_perm_4k(page);
             page.state = PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: pagetable_ptr } };
             page_perm_to_page_map(page_ptr, Tracked(page_perm))
         };
 
         {
-            let thread = krnl.thr_mp.borrow_mut(thread_ptr, Tracked(&*lctx), thread_lock_perm);
+            let thread = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_lock_perm);
             thread.temp_alloc_cache_4k = Ghost(thread.temp_alloc_cache_4k.view().remove(page_ptr));
             thread.quota_4k = thread.quota_4k - 1;
         } {
-            let pagetable = krnl.pt_mp.borrow_mut(pagetable_ptr,Tracked(&*lctx),pagetable_lock_perm);
+            let pagetable = krnl.pt_mp.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_lock_perm);
             match level {
                 MissingPageTableLevel::L4 => { pagetable.create_entry_l4(indices.0,indices.1,page_map_ptr,Tracked(page_map_perm),Tracked(&mut *lctx)); },
                 MissingPageTableLevel::L3 => { pagetable.create_entry_l3(indices.0,indices.1,indices.2,parent_page_map_ptr,page_map_ptr,Tracked(page_map_perm),Tracked(&mut *lctx)); },
@@ -251,7 +251,6 @@ pub(super) enum MissingPageTableLevel {
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { tlb_wf_spec_preserved_for_pagetable_mappings_unchanged(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr); };
-            assert(lock_id_aligned(krnl, &*lctx)) by { reveal(lock_id_aligned); };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
         }
     }

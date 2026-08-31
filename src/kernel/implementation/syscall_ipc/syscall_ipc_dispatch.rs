@@ -41,18 +41,20 @@ verus! {
             old(krnl).inv(),
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             old(krnl).all_objects_unlocked(old(lctx)),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
+            final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).steps.len() == 1,
             ret is Success ==> final(steps).steps.len()
@@ -116,7 +118,6 @@ verus! {
                 &&& current_thread_lock_perm.ordering_lock_id().major == THREAD_LOCK_MAJOR
                 &&& krnl.ep_mp.lock_id_by_key(endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
                 &&& kernel_objects_unlocked_except(krnl, lctx.thread_id(), Some(cpu_id), None, Some(process_ptr), Some(current_thread_ptr), None)
-                &&& lctx.lock_id_acyclic(krnl.ep_mp.lock_id_by_key(endpoint_ptr))
             }) by { reveal(thread_endpoint_ref_counter_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
         }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
@@ -170,7 +171,6 @@ verus! {
                 &&& peer_thread_ptr != current_thread_ptr
                 &&& !krnl.thr_mp.spec_index(peer_thread_ptr).wlocked_by(&*lctx)
                 &&& krnl.thr_mp.lock_id_by_key(peer_thread_ptr).major == THREAD_BLOCKED_LOCK_MAJOR
-                &&& lctx.lock_id_acyclic(krnl.thr_mp.lock_id_by_key(peer_thread_ptr))
             }) by { reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(thread_endpoint_queue_wf); };
         }
         let peer_thread_res = krnl.wlock_thread_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));

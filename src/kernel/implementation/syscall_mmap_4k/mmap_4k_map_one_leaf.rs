@@ -28,8 +28,6 @@ verus! {
             mmap_4k_allocation_ready(old(krnl), old(lctx)),
             old(krnl).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()),
             old(krnl).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id()),
-            old(lctx).lock_id_set().contains((old(krnl).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))),
-            old(lctx).lock_id_set().contains((old(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))),
             va_4k_valid(va),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0,
             pei_valid(spec_va2index(va).0),
@@ -47,11 +45,10 @@ verus! {
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
             mmap_4k_allocation_ready(final(krnl), final(lctx)),
             mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr) ==> mmap_4k_lock_scope(final(krnl), final(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
-            final(lctx).lock_id_set().contains((final(krnl).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))),
-            final(lctx).lock_id_set().contains((final(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))),
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+            final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
             final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 1,
             final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             final(krnl).ctn_mp.spec_index(container_ptr) == old(krnl).ctn_mp.spec_index(container_ptr),
@@ -92,16 +89,17 @@ verus! {
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3)->0.perm.kernel_present,
     {
         let (page_ptr, Tracked(page_lock_perm)) = stage_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+        let page_index = page_ptr2page_index(page_ptr);
+        let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
         map_owned_4k_page(krnl, page_ptr, thread_ptr, pagetable_ptr, va, true, false, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
-        krnl.wunlock_page(page_ptr2page_index(page_ptr), Tracked(&mut *lctx), Tracked(page_lock_perm));
+        krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
-            assert({
-                &&& lctx.lock_id_set().contains((krnl.cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)))
-                &&& lctx.lock_id_set().contains((krnl.ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr)))
-                &&& lctx.lock_id_set().contains((krnl.prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)))
-                &&& lctx.lock_id_set().contains((krnl.thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr)))
-                &&& lctx.lock_id_set().contains((krnl.pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr)))
-            }) by { lock_id_fields_eq_imply_eq(); };
+            assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
+                reveal(typed_lock_maps_inserted); reveal(typed_lock_maps_removed); reveal(mmap_4k_allocation_ready);
+                map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
+                map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
+            };
+            assert(mmap_4k_allocation_ready(krnl, lctx)) by { reveal(mmap_4k_allocation_ready); reveal(LocalContext::holds_no_allocator_locks); };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
             assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
             assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm)) by { reveal(cpu_array_wf); reveal(container_thread_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(process_thread_wf); reveal(thread_perms_wf); reveal(pagetable_perms_wf); };

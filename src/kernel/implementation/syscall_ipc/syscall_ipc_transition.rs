@@ -52,12 +52,11 @@ verus! {
             endpoint_lock_perm.view().state() is WriteLock,
             endpoint_lock_perm.view().thread_id() == old(lctx).thread_id(),
             endpoint_lock_perm.view().lock_id() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                (old(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-                (old(krnl).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-            ],
+            old(lctx).base_lock_scope(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr], set![endpoint_ptr]),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
             cpu_objects_unlocked_except(old(krnl).cpu_arr, old(lctx).thread_id(), set![cpu_id]),
             page_objects_unlocked(old(krnl).pg_arr, old(lctx).thread_id()),
             container_objects_unlocked(old(krnl).ctn_mp, old(lctx).thread_id()),
@@ -71,16 +70,18 @@ verus! {
             allocator_objects_unlocked(old(krnl).allc_4k_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             ret == error,
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
     {
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();
@@ -173,14 +174,13 @@ verus! {
                 &&& old(krnl).sched_mp.spec_index(peer_scheduler_ptr).view().owning_container == peer_container
             },
             !old(krnl).sched_mp.spec_index(peer_scheduler_ptr).view().queue.view().contains(peer_thread_ptr),
-            old(lctx).lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                (old(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-                (old(krnl).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr)),
-                (old(krnl).sched_mp.lock_id_by_key(peer_scheduler_ptr), KernelObjId::Scheduler(peer_scheduler_ptr)),
-            ],
+            old(lctx).object_lock_scope(Set::empty(), set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![endpoint_ptr], set![peer_scheduler_ptr], Set::empty(), Set::empty(), Set::empty()),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), peer_scheduler_ptr, TypedLockMode::Write),
             cpu_objects_unlocked_except(old(krnl).cpu_arr, old(lctx).thread_id(), set![cpu_id]),
             page_objects_unlocked(old(krnl).pg_arr, old(lctx).thread_id()),
             container_objects_unlocked(old(krnl).ctn_mp, old(lctx).thread_id()),
@@ -194,16 +194,18 @@ verus! {
             allocator_objects_unlocked(old(krnl).allc_4k_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             ret == result,
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
     {
         let ghost old_peer_thread_lock_id = krnl.thr_mp.lock_id_by_key(peer_thread_ptr);
         let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -269,7 +271,8 @@ verus! {
             assert({
                 &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
                 &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
-                &&& lock_id_aligned(krnl, &*lctx)
+                &&& typed_lock_maps_aligned(krnl, &*lctx)
+                &&& lock_id_set_aligned(&*lctx)
                 &&& cpu_objects_unlocked_except(krnl.cpu_arr, lctx.thread_id(), set![cpu_id])
                 &&& page_objects_unlocked(krnl.pg_arr, lctx.thread_id())
                 &&& container_objects_unlocked(krnl.ctn_mp, lctx.thread_id())
@@ -283,7 +286,7 @@ verus! {
                 &&& allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id())
                 &&& allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id())
                 &&& allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id())
-            }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); reveal(lock_id_aligned); };
+            }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
         }
 
         krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
@@ -352,12 +355,11 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-            old(lctx).lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                (old(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-                (old(krnl).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-            ],
+            old(lctx).base_lock_scope(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr], set![endpoint_ptr]),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
             waiting_state.is_endpoint_waiting(),
             payload.wf(),
             waiting_state is RECEIVING_CALL ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().caller is None,
@@ -381,16 +383,18 @@ verus! {
             allocator_objects_unlocked(old(krnl).allc_4k_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             ret is CpuIdle,
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(steps).steps.len() == old(steps).steps.len() + 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
     {
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();
@@ -417,7 +421,7 @@ verus! {
 
         let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
         {
-            let cpu_mut = krnl.cpu_arr.borrow_mut(cpu_id, Tracked(&*lctx), Tracked(&cpu_lock_perm));
+            let cpu_mut = krnl.cpu_arr.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             cpu_mut.block_current();
         }
 
@@ -463,7 +467,8 @@ verus! {
             assert({
                 &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
                 &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
-                &&& lock_id_aligned(krnl, &*lctx)
+                &&& typed_lock_maps_aligned(krnl, &*lctx)
+                &&& lock_id_set_aligned(&*lctx)
                 &&& cpu_objects_unlocked_except(krnl.cpu_arr, lctx.thread_id(), set![cpu_id])
                 &&& page_objects_unlocked(krnl.pg_arr, lctx.thread_id())
                 &&& container_objects_unlocked(krnl.ctn_mp, lctx.thread_id())
@@ -477,7 +482,7 @@ verus! {
                 &&& allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id())
                 &&& allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id())
                 &&& allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id())
-            }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); reveal(lock_id_aligned); };
+            }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
         }
 
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
@@ -559,13 +564,13 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
-            old(lctx).lock_id_set() =~= set![
-                (old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
-                (old(krnl).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr)),
-                (old(krnl).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)),
-                (old(krnl).thr_mp.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr)),
-            ],
+            old(lctx).base_lock_scope(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![endpoint_ptr]),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
+            old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
             cpu_objects_unlocked_except(old(krnl).cpu_arr, old(lctx).thread_id(), set![cpu_id]),
             page_objects_unlocked(old(krnl).pg_arr, old(lctx).thread_id()),
             container_objects_unlocked(old(krnl).ctn_mp, old(lctx).thread_id()),
@@ -579,16 +584,18 @@ verus! {
             allocator_objects_unlocked(old(krnl).allc_4k_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()),
-            lock_id_aligned(old(krnl), old(lctx)),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            lock_id_set_aligned(old(lctx)),
         ensures
             ret == result,
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(lctx).lock_id_set() =~= Set::<HeldLock>::empty(),
+            final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            lock_id_aligned(final(krnl), final(lctx)),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            lock_id_set_aligned(final(lctx)),
     {
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();
@@ -622,7 +629,6 @@ verus! {
                     .major == SCHEDULER_LOCK_MAJOR
                 &&& !krnl.sched_mp.spec_index(peer_scheduler_ptr)
                     .locked_by_thread(lctx.thread_id())
-                &&& lctx.lock_id_acyclic(krnl.sched_mp.lock_id_by_key(peer_scheduler_ptr))
             }) by { reveal(container_scheduler_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); };
         }
         let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler(peer_scheduler_ptr, Tracked(&mut *lctx));
