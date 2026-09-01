@@ -65,14 +65,6 @@ pub open spec fn share_mapping_4k_held_context(
     &&& target_pagetable_lock_perm.lock_id()
         == krnl.pt_mp.spec_index(target_pagetable)
             .locking_thread()->Write_lock_id
-    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), source_thread, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), target_thread, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_pagetable, TypedLockMode::Write)
-    &&& lctx.lock_entry_contains(krnl.thr_mp.lock_id_by_key(source_thread), KernelObjId::Thread(source_thread))
-    &&& lctx.lock_entry_contains(krnl.thr_mp.lock_id_by_key(target_thread), KernelObjId::Thread(target_thread))
-    &&& lctx.lock_entry_contains(krnl.pt_mp.lock_id_by_key(source_pagetable), KernelObjId::PageTable(source_pagetable))
-    &&& lctx.lock_entry_contains(krnl.pt_mp.lock_id_by_key(target_pagetable), KernelObjId::PageTable(target_pagetable))
 }
 
 pub open spec fn share_mapping_4k_source_range_present(
@@ -340,7 +332,6 @@ fn share_one_mapping_4k(
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
-        old(lctx).lock_entry_contains(old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
         old(krnl).thr_mp.spec_index(target_thread).view().owning_proc == target_process,
         old(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
         old(krnl).prc_mp.dom().contains(target_process),
@@ -355,10 +346,8 @@ fn share_one_mapping_4k(
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         final(krnl).thr_mp.lock_id_by_key(target_thread) == old(krnl).thr_mp.lock_id_by_key(target_thread),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        final(lctx).lock_entry_contains(final(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
         mmap_4k_allocation_ready(final(krnl), final(lctx)),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
@@ -624,7 +613,6 @@ pub fn share_mapping_4k_source_owner_precheck(
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
-        old(lctx).lock_entry_contains(old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
         source_range.wf(),
         old(krnl).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_va2index(source_range.start).0,
         share_mapping_4k_source_range_present(old(krnl), source_pagetable, source_range),
@@ -636,7 +624,6 @@ pub fn share_mapping_4k_source_owner_precheck(
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
@@ -651,7 +638,6 @@ pub fn share_mapping_4k_source_owner_precheck(
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(final(lctx)),
         final(krnl).cpu_arr.lock_id_by_index(cpu_id) == old(krnl).cpu_arr.lock_id_by_index(cpu_id),
-        final(lctx).lock_entry_contains(final(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
         final(krnl).pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
         final(krnl).pt_mp.spec_index(target_pagetable).view() == old(krnl).pt_mp.spec_index(target_pagetable).view(),
         final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
@@ -690,7 +676,6 @@ pub fn share_mapping_4k_source_owner_precheck(
                 .locked_by_thread(lctx.thread_id()),
             krnl.cpu_arr.lock_id_by_index(cpu_id)
                 == old(krnl).cpu_arr.lock_id_by_index(cpu_id),
-            lctx.lock_entry_contains(krnl.cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
             source_range.wf(),
             krnl.pt_mp.spec_index(source_pagetable).view().wf(),
             krnl.pt_mp.spec_index(source_pagetable).view()
@@ -703,7 +688,6 @@ pub fn share_mapping_4k_source_owner_precheck(
             steps.steps.len() == old(steps).steps.len(),
             lctx.thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), lctx),
-            lctx.lock_id_set() == old(lctx).lock_id_set(),
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
             held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx)),
@@ -873,7 +857,6 @@ pub fn share_mapping_4k(
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
-        old(lctx).lock_entry_contains(old(krnl).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
         old(krnl).thr_mp.spec_index(target_thread).view().owning_proc == target_process,
         old(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
         old(krnl).prc_mp.dom().contains(target_process),
@@ -895,7 +878,6 @@ pub fn share_mapping_4k(
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         final(krnl).pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
         final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_after(old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(), old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), source_range, target_range, source_range.len as nat),
@@ -925,7 +907,6 @@ pub fn share_mapping_4k(
             krnl.cpu_arr.spec_index(cpu_id).view().wlocked_by(&*lctx),
             krnl.cpu_arr.spec_index(cpu_id).view()
                 .locked_by_thread(lctx.thread_id()),
-            lctx.lock_entry_contains(krnl.cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
             mmap_4k_allocation_ready(krnl, &*lctx),
             thread_objects_unlocked_except(krnl.thr_mp, lctx.thread_id(), set![source_thread, target_thread]),
             pagetable_objects_unlocked_except(krnl.pt_mp, lctx.thread_id(), set![source_pagetable, target_pagetable]),
@@ -940,7 +921,6 @@ pub fn share_mapping_4k(
             steps.steps.len() == old(steps).steps.len() + i,
             lctx.thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), lctx),
-            lctx.lock_id_set() == old(lctx).lock_id_set(),
             old(krnl).pt_mp.dom().contains(source_pagetable),
             old(krnl).pt_mp.dom().contains(target_pagetable),
             krnl.prc_mp.dom().contains(target_process),

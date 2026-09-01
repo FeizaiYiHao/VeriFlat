@@ -63,8 +63,6 @@ impl KernelK {
                 wlock_ensures(old(self).pt_mp.spec_index(pagetable_ptr), final(self).pt_mp.spec_index(pagetable_ptr), old(self).pt_mp.lock_id_by_key(pagetable_ptr), final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
-                final(lctx).pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
-                final(lctx).lock_entry_contains(final(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr)),
                 final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
                 forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
@@ -100,8 +98,6 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write })) by { reveal(typed_lock_maps_inserted); };
-                assert(lctx.lock_entry_contains(self.pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(typed_lock_maps_inserted); };
                 assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
                 assert(self.pt_mp.lock_id_by_key(pagetable_ptr) == old(self).pt_mp.lock_id_by_key(pagetable_ptr)) by { reveal(wlock_ensures); };
@@ -169,8 +165,6 @@ impl KernelK {
                 wlock_ensures(old(self).pt_mp.spec_index(pagetable_ptr), final(self).pt_mp.spec_index(pagetable_ptr), old(self).pt_mp.lock_id_by_key(pagetable_ptr), final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
-                final(lctx).pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
-                final(lctx).lock_entry_contains(final(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr)),
                 final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
                 forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
@@ -260,8 +254,6 @@ impl KernelK {
                 ret.1.view().state() is WriteLock,
                 ret.1.view().thread_id() == final(lctx).thread_id(),
                 ret.1.view().lock_id() == final(self).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-                final(lctx).pagetable_lock_map().contains_pair(source_pagetable, TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(source_pagetable), mode: TypedLockMode::Write }),
-                final(lctx).pagetable_lock_map().contains_pair(target_pagetable, TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write }),
                 pagetable_objects_unlocked(old(self).pt_mp, old(lctx).thread_id()) ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), set![source_pagetable, target_pagetable]),
         {
             proof {
@@ -281,7 +273,6 @@ impl KernelK {
                     assert(lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map()
                         .insert(source_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(source_pagetable), mode: TypedLockMode::Write })
                         .insert(target_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write })) by { reveal(typed_lock_maps_inserted); };
-                    assert(lctx.pagetable_lock_map().contains_pair(target_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write })) by { broadcast use vstd::map::lemma_map_insert_domain; };
                 }
                 (Tracked(source_perm), Tracked(target_perm))
             } else {
@@ -296,7 +287,6 @@ impl KernelK {
                     assert(lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map()
                         .insert(target_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write })
                         .insert(source_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(source_pagetable), mode: TypedLockMode::Write })) by { reveal(typed_lock_maps_inserted); };
-                    assert(lctx.pagetable_lock_map().contains_pair(target_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write })) by { broadcast use vstd::map::lemma_map_insert_domain; };
                 }
                 (Tracked(source_perm), Tracked(target_perm))
             }
@@ -315,7 +305,6 @@ impl KernelK {
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
-                typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures

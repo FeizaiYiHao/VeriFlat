@@ -59,7 +59,6 @@ impl KernelK {
                 wlock_ensures(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota, final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota, old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), mode: TypedLockMode::Write }),
-                typed_lock_map_contains_mode(final(lctx).allocator_quota_4k_lock_map(), alloc_ptr_4k, TypedLockMode::Write),
         {
             proof {
                 assert(old(self).allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
@@ -104,7 +103,6 @@ impl KernelK {
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.locking_thread()->Write_lock_id,
                 old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.wlocked_by(old(lctx)),
-                typed_lock_map_contains_mode(old(lctx).allocator_quota_4k_lock_map(), alloc_ptr_4k, TypedLockMode::Write),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures

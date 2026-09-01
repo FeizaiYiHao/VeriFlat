@@ -52,8 +52,6 @@ impl KernelK {
                 wlock_ensures(old(self).sched_mp.spec_index(scheduler_ptr), final(self).sched_mp.spec_index(scheduler_ptr), LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, }, final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr), TypedHeldLock { lock_id: final(self).sched_mp.lock_id_by_key(scheduler_ptr), mode: TypedLockMode::Write }),
-                typed_lock_map_contains_mode(final(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
-                final(lctx).lock_entry_contains(final(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr)),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
                 forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
                     #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)]
@@ -78,7 +76,6 @@ impl KernelK {
                     assert(container_thread_scheduler_wf(self.ctn_mp, self.thr_mp, self.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.lock_entry_contains(self.sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))) by { reveal(typed_lock_maps_inserted); };
                 assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 reveal(LocalContext::base_lock_scope);
                 reveal(LocalContext::object_lock_scope);
@@ -100,7 +97,6 @@ impl KernelK {
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
-                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures

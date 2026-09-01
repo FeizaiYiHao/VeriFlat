@@ -61,10 +61,6 @@ verus! {
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 1,
                 old(krnl).thr_mp.lock_id_by_key(current_thread_ptr).major == THREAD_LOCK_MAJOR,
                 kernel_objects_unlocked_except(old(krnl), old(lctx).thread_id(), Some(cpu_id), Some(scheduler_ptr), Some(process_ptr), Some(current_thread_ptr), None),
-                typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
-                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
-                typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
-                typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
                 old(lctx).page_lock_map().dom().is_empty(),
                 old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
                 old(lctx).container_lock_map().dom().is_empty(),
@@ -228,7 +224,6 @@ verus! {
                 final(krnl).sched_mp.lock_id_by_key(scheduler_ptr) == old(krnl).sched_mp.lock_id_by_key(scheduler_ptr),
                 final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == false,
                 final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().wlocked_by(final(lctx)),
-                typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
                 page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
                 final(lctx).page_lock_map() == old(lctx).page_lock_map().insert(page_ptr2page_index(page_ptr), TypedHeldLock {
                     lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write,

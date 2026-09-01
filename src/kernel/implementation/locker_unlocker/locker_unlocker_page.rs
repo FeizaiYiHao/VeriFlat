@@ -82,10 +82,10 @@ impl KernelK {
                 old(self).inv(),
                 index_valid(NUM_PAGES, page_index),
                 old(self).pg_arr.spec_index(page_index).view().being_killed() == false,
+                old(self).pg_arr.spec_index(page_index).view().wlocked_by(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).pg_arr.spec_index(page_index).view().locking_thread()->Write_lock_id,
-                typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures

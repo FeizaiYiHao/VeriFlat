@@ -329,7 +329,6 @@ verus! {
             global_pool_lock_perm.thread_id() == old(lctx).thread_id(),
             global_pool_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.locking_thread()->Write_lock_id,
             old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.wlocked_by(old(lctx)),
-            typed_lock_map_contains_mode(old(lctx).allocator_global_pool_4k_lock_map(), alloc_ptr_4k, TypedLockMode::Write),
             old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().view().len() > 0,
             old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().len() > 0,
             old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,

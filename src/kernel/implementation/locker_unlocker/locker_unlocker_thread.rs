@@ -111,7 +111,6 @@ impl KernelK {
                 // releasing the write lock (see doc comment above).
                 old(self).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
                 old(self).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
-                typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
