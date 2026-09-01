@@ -14,9 +14,12 @@ verus! {
             ==>
             {
                 &&&
-                process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process)
+                container_perms.spec_index(c_ptr).view().owned_processes.view().is_empty()
+                ==> container_perms.spec_index(c_ptr).wlocked()
                 &&&
-                container_perms.spec_index(c_ptr).view().owned_processes.view().contains(container_perms.spec_index(c_ptr).view().root_process)
+                !container_perms.spec_index(c_ptr).view().owned_processes.view().is_empty()
+                ==> process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process)
+                && container_perms.spec_index(c_ptr).view().owned_processes.view().contains(container_perms.spec_index(c_ptr).view().root_process)
                 &&&
                 container_perms.spec_index(c_ptr).view().owned_processes.view().subset_of(process_perms.dom())
             }
@@ -57,7 +60,8 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().owned_processes]
             container_perms.dom().contains(c_ptr)
             ==>
-            process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes.view(), process_perms)
+            container_perms.spec_index(c_ptr).view().owned_processes.view().is_empty()
+            || process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes.view(), process_perms)
     }
     
 }

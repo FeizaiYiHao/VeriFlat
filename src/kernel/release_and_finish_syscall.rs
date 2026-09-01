@@ -112,12 +112,13 @@ verus! {
             cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(&lctx),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
+            old(krnl).prc_mp.dom().contains(process_ptr),
             process_lock_perm.view().state() is WriteLock,
             process_lock_perm.view().thread_id() == lctx.thread_id(),
             process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-            old(krnl).prc_mp.dom().contains(process_ptr),
             old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(&lctx),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
+            old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
             old(lctx).cpu_process_thread_lock_scope(set![cpu_id], set![process_ptr], Set::<RwLockThreadPtr>::empty()),
             kernel_objects_unlocked_except(
                 old(krnl), old(lctx).thread_id(), Some(cpu_id),
@@ -181,6 +182,7 @@ verus! {
                     .locking_thread()->Write_lock_id,
             old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
+            old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
             thread_lock_perm.view().state() is WriteLock,
             thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
             thread_lock_perm.view().lock_id()

@@ -5,8 +5,19 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
+    pub open spec fn process_empty_thread_list_wlocked(process_map: ProcessLockedMap) -> bool {
+        forall|p_ptr:RwLockProcessPtr|
+            #![trigger process_map.spec_index(p_ptr)]
+            process_map.dom().contains(p_ptr)
+            && process_map.spec_index(p_ptr).view().owned_threads.view().len() == 0
+            ==> process_map.spec_index(p_ptr).wlocked()
+    }
+
+    #[verifier::opaque]
     pub open spec fn process_thread_wf(process_map: ProcessLockedMap, 
             thread_map: ThreadLockedMap) -> bool {
+        &&&
+        process_empty_thread_list_wlocked(process_map)
         &&&
         forall|p_ptr:RwLockProcessPtr, t_ptr:RwLockThreadPtr|
             #![trigger process_map.spec_index(p_ptr), thread_map.spec_index(t_ptr)]

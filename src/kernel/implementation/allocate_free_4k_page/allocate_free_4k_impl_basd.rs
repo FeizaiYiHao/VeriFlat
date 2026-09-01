@@ -60,6 +60,7 @@ verus! {
             }),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
+            final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), KernelObjId::Page(page_ptr2page_index(ret.0)))),
             final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             forall|t: RwLockThreadPtr|
                 #![trigger old(krnl).thr_mp.spec_index(t)
@@ -154,6 +155,8 @@ verus! {
                         lock_id: allocator_cache_lock_id(cpu_id), mode: TypedLockMode::Write,
                     });
                 };
+                assert(!old(lctx).page_lock_map().dom().contains(page_ptr2page_index(page_ptr))) by { reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(page_objects_unlocked); };
+                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_inserted); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
                 assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
             }
             return (page_ptr, Tracked(page_lock_perm));
@@ -180,6 +183,8 @@ verus! {
                         lock_id: old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write,
                     });
                 };
+                assert(!old(lctx).page_lock_map().dom().contains(page_ptr2page_index(page_ptr))) by { reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(page_objects_unlocked); };
+                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_inserted); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
                 assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
             }
             return (page_ptr, Tracked(page_lock_perm));
@@ -250,6 +255,7 @@ verus! {
             }),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
+            final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), KernelObjId::Page(page_ptr2page_index(ret.0)))),
             final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             forall|t: RwLockThreadPtr|
                 #![trigger old(krnl).thr_mp.spec_index(t)

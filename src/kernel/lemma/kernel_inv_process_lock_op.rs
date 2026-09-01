@@ -4,8 +4,7 @@ use crate::kernel::*;
 
 verus! {
 
-/// Kernel invariants read process payloads and read-only data, but never the
-/// current process lock owner.
+/// Process invariant fields other than the empty-thread write-lock guard.
 pub open spec fn process_invariant_fields_unchanged(
     pre: ProcessLockedMap,
     post: ProcessLockedMap,
@@ -141,6 +140,7 @@ pub proof fn process_no_change_imply_process_management_inv(
 )
     requires
         pre.process_management_inv(),
+        process_thread_wf(post.prc_mp, post.thr_mp),
         process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),
         process_lock_kernel_context_unchanged(pre, post),
     ensures
@@ -164,9 +164,6 @@ pub proof fn process_no_change_imply_process_management_inv(
     };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by {
         lemma_no_change_imply_process_cpu_wf_forall();
-    };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
-        lemma_no_change_imply_process_thread_wf_forall();
     };
 }
 

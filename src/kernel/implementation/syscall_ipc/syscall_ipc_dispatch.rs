@@ -99,6 +99,9 @@ verus! {
         }
         let current_thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
         if let (false, _) = current_thread_res {
+            proof {
+                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
+            }
             release_cpu_and_process_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm));
             return RetValueType::ErrorThreadKilled;
         }
@@ -107,6 +110,9 @@ verus! {
         let current_thread_ref = krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm));
         let endpoint_option = *current_thread_ref.endpoint_descriptors.get(endpoint_index);
         if let None = endpoint_option {
+            proof {
+                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
+            }
             release_cpu_and_process_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));
             return RetValueType::ErrorInvalidEndpoint;
         }
@@ -154,6 +160,7 @@ verus! {
                     &&& allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id())
                     &&& allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id())
                 }) by { reveal(thread_endpoint_queue_wf); };
+                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
             }
             return ipc_block_current(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, &*pt_regs, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm));
         }
@@ -175,6 +182,9 @@ verus! {
         }
         let peer_thread_res = krnl.wlock_thread_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));
         if let (false, _) = peer_thread_res {
+            proof {
+                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
+            }
             return ipc_release_current_endpoint_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, RetValueType::ErrorIpcPeerKilled, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm));
         }
         let Tracked(peer_thread_lock_perm) = peer_thread_res.1.unwrap();

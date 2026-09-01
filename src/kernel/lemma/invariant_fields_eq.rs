@@ -567,6 +567,7 @@ pub proof fn lemma_no_change_imply_process_thread_wf_forall()
                 process_thread_wf(post, thread_map)
             ]
             process_thread_wf(pre, thread_map)
+            && process_empty_thread_list_wlocked(post)
             && process_quota_4k_framed_fields_unchanged(pre, post)
             ==> process_thread_wf(post, thread_map),
 {

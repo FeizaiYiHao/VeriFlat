@@ -135,6 +135,8 @@ verus! {
             &&&
             container_tree_wf(self.rt_ctn, self.ctn_mp)
             &&&
+            self.ctn_mp.spec_index(self.rt_ctn).view().root_process_in_processes()
+            &&&
             container_process_wf(self.ctn_mp, self.prc_mp)
             &&&
             per_container_process_tree_wf(self.ctn_mp, self.prc_mp)

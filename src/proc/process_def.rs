@@ -80,8 +80,6 @@ impl Process{
         self.pagetable_iommu_table_different()
         &&&
         self.pci_function_ownership_wf()
-        &&&
-        self.at_least_one_thread()
     }
     pub open spec fn pagetable_iommu_table_different(&self) -> bool {
         &&&

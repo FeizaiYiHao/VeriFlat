@@ -397,6 +397,7 @@ pub(super) fn ipc_finish_endpoint_transit(
         old(krnl).prc_mp.dom().contains(process_ptr),
         old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
         old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
+        old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
         process_lock_perm.view().state() is WriteLock,
         process_lock_perm.view().thread_id() == old(lctx).thread_id(),
         process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
@@ -756,6 +757,7 @@ pub(super) fn ipc_rendezvous_endpoint(
             &&& !krnl.sched_mp.spec_index(peer_scheduler_ptr).view()
                 .queue.view().contains(peer_thread_ptr)
         }) by { reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
+        assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
     }
     ipc_finish_endpoint_transit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, payload_endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, result, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(payload_endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm))
 }

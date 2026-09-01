@@ -82,6 +82,7 @@ impl KernelK {
                 assert(container_invariant_fields_unchanged(old(self).ctn_mp, self.ctn_mp)) by { container_lock_op_preserves_invariant_fields(old(self).ctn_mp, self.ctn_mp, container_ptr); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { container_no_change_imply_memory_management_inv(*old(self), *self); };
+                assert(container_process_wf(self.ctn_mp, self.prc_mp)) by { reveal(container_process_wf); };
                 assert(self.process_management_inv()) by { container_no_change_imply_process_management_inv(*old(self), *self); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -118,6 +119,7 @@ impl KernelK {
                 old(self).inv(),
                 old(self).ctn_mp.dom().contains(container_ptr),
                 old(self).ctn_mp.spec_index(container_ptr).being_killed() == false,
+                !old(self).ctn_mp.spec_index(container_ptr).view().owned_processes.view().is_empty(),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
@@ -188,6 +190,7 @@ impl KernelK {
                 assert(container_invariant_fields_unchanged(old(self).ctn_mp, self.ctn_mp)) by { container_lock_op_preserves_invariant_fields(old(self).ctn_mp, self.ctn_mp, container_ptr); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { container_no_change_imply_memory_management_inv(*old(self), *self); };
+                assert(container_process_wf(self.ctn_mp, self.prc_mp)) by { reveal(container_process_wf); };
                 assert(self.process_management_inv()) by { container_no_change_imply_process_management_inv(*old(self), *self); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
