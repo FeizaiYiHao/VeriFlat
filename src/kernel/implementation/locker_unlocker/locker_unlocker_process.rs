@@ -93,6 +93,7 @@ impl KernelK {
                 assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { process_no_change_imply_memory_management_inv(*old(self), *self); };
+                assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
                 assert(self.process_management_inv()) by { process_no_change_imply_process_management_inv(*old(self), *self); };
                 assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
                 assert(process_pci_function_ownership_wf(&self.irt, self.prc_mp)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
@@ -213,6 +214,7 @@ impl KernelK {
                 old(self).inv(),
                 old(self).prc_mp.dom().contains(process_ptr),
                 old(self).prc_mp.spec_index(process_ptr).being_killed() == false,
+                old(self).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
                 old(self).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -283,6 +285,7 @@ impl KernelK {
                 assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { process_no_change_imply_memory_management_inv(*old(self), *self); };
+                assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
                 assert(self.process_management_inv()) by { process_no_change_imply_process_management_inv(*old(self), *self); };
                 assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
                 assert(process_pci_function_ownership_wf(&self.irt, self.prc_mp)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };

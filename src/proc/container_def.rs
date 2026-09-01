@@ -77,7 +77,7 @@ impl Container{
         &&&
         self.owned_cpus.wf()
         &&&
-        self.root_process_in_processes()
+        (self.owned_processes.view().is_empty() || self.root_process_in_processes())
     }
 
     pub open spec fn root_process_in_processes(&self) -> bool {

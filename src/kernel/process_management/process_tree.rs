@@ -335,12 +335,15 @@ verus! {
             #![trigger container_perms.spec_index(c_ptr).view().root_process]
             #![trigger container_perms.spec_index(c_ptr).view().owned_processes]
             container_perms.dom().contains(c_ptr)
-            implies process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes.view(), new_process_perms)
+            implies container_perms.spec_index(c_ptr).view().owned_processes.view().is_empty()
+                || process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes.view(), new_process_perms)
         by {
-            process_no_change_to_tree_fields_imply_wf(
-                container_perms.spec_index(c_ptr).view().root_process,
-                container_perms.spec_index(c_ptr).view().owned_processes.view(),
-                old_process_perms, new_process_perms);
+            if !container_perms.spec_index(c_ptr).view().owned_processes.view().is_empty() {
+                process_no_change_to_tree_fields_imply_wf(
+                    container_perms.spec_index(c_ptr).view().root_process,
+                    container_perms.spec_index(c_ptr).view().owned_processes.view(),
+                    old_process_perms, new_process_perms);
+            }
         };
     }
 

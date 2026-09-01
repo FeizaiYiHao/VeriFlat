@@ -75,6 +75,7 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(cpu.owning_container)
             &&& krnl.prc_mp.dom().contains(cpu.current_process.unwrap())
             &&& krnl.thr_mp.dom().contains(cpu.current_thread.unwrap())
+            &&& krnl.ctn_mp.spec_index(cpu.owning_container).view().owned_processes.view().contains(cpu.current_process.unwrap())
             &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view()
                 .owning_proc == cpu.current_process.unwrap()
             &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view()
@@ -82,7 +83,7 @@ verus! {
             &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view()
                 .state == (ThreadState::RUNNING { cpu_id })
             &&& mmap_4k_no_page_locks(&*lctx)
-        }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(container_thread_wf); };
+        }) by { reveal(container_cpu_wf); reveal(container_process_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(container_thread_wf); };
 
         let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
         let cpu = krnl.cpu_arr.borrow(cpu_id, Tracked(&cpu_lock_perm));
@@ -113,6 +114,9 @@ verus! {
 
         let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
         if let (false, _) = thread_res {
+            proof {
+                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            }
             krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
             krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -168,6 +172,9 @@ verus! {
 
         krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        proof {
+            assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+        }
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

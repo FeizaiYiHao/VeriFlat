@@ -72,6 +72,7 @@ verus! {
             process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
             old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
+            old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
             old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k]),
             old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
@@ -167,6 +168,7 @@ verus! {
                 assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_no_change_imply_container_process_wf_forall(); };
                 assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_no_change_imply_per_container_process_tree_wf_forall(); };
                 assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { lemma_no_change_imply_process_cpu_wf_forall(); };
+                assert(process_empty_thread_list_wlocked(krnl.prc_mp)) by { reveal(process_empty_thread_list_wlocked); reveal(process_thread_wf); };
                 assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { lemma_no_change_imply_process_thread_wf_forall(); };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };

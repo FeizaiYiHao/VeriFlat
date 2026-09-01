@@ -462,6 +462,10 @@ verus! {
         &&& post.pg_arr.spec_index(page_index).view().view().owning_container == pre.pg_arr.spec_index(page_index).view().view().owning_container
         &&& forall|i: PageIndex|
             #![trigger index_valid(NUM_PAGES, i)]
+            index_valid(NUM_PAGES, i) && (post.pg_arr.spec_index(i).view().view().state is Owned2m || pre.pg_arr.spec_index(i).view().view().state is Owned2m) ==>
+                post.pg_arr.spec_index(i).view().view().state == pre.pg_arr.spec_index(i).view().view().state
+        &&& forall|i: PageIndex|
+            #![trigger index_valid(NUM_PAGES, i)]
             index_valid(NUM_PAGES, i) && (post.pg_arr.spec_index(i).view().view().state is Owned1g || pre.pg_arr.spec_index(i).view().view().state is Owned1g) ==>
                 post.pg_arr.spec_index(i).view().view().state == pre.pg_arr.spec_index(i).view().view().state
         &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
@@ -784,6 +788,12 @@ verus! {
             post.process_management_inv(),
     {
         assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(post.rt_ctn, pre.ctn_mp, post.ctn_mp); };
+        assert({
+            &&& pre.ctn_mp.dom().contains(pre.rt_ctn)
+            &&& post.ctn_mp.dom().contains(post.rt_ctn)
+            &&& pre.ctn_mp.spec_index(pre.rt_ctn).view().root_process_in_processes()
+            &&& post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()
+        }) by { reveal(KernelK::inv); reveal(KernelK::process_management_inv); reveal(container_root_wf); };
         assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
             reveal(per_container_process_tree_wf); reveal(container_process_wf);
@@ -812,6 +822,7 @@ verus! {
             seq_push_lemma::<RwLockThreadPtr>();
         };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
+        assert(process_empty_thread_list_wlocked(post.prc_mp)) by { reveal(KernelK::inv); reveal(KernelK::process_management_inv); reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
             assert(pre.prc_mp.spec_index(process_ptr).view().owned_threads.wf()) by { reveal(process_perms_wf); };
             seq_push_lemma::<RwLockThreadPtr>();

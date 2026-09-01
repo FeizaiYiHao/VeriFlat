@@ -115,7 +115,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(
         reveal(thread_staged_pages_4k_wf);
     };
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by {
-        reveal(thread_staged_pages_2m_wf);
+        thread_staged_pages_2m_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
     };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_staged_pages_1g_wf);

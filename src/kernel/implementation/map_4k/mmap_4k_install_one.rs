@@ -174,7 +174,12 @@ verus! {
                     lock_id: installed_page_lock_id, mode: TypedLockMode::Write,
                 });
             };
-            assert(lctx.lock_id_set() =~= old(lctx).lock_id_set()) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_unchanged); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set()); };
+            assert(lctx.lock_id_set() =~= old(lctx).lock_id_set()) by {
+                assert(!old(lctx).lock_id_set().contains((staged_page_lock_id, KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(mmap_4k_allocation_ready); };
+                assert(!old(lctx).lock_id_set().contains((installed_page_lock_id, KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(mmap_4k_allocation_ready); };
+                set_insert_remove_absent_lemma(old(lctx).lock_id_set(), (staged_page_lock_id, KernelObjId::Page(page_ptr2page_index(page_ptr))));
+                set_insert_remove_absent_lemma(old(lctx).lock_id_set(), (installed_page_lock_id, KernelObjId::Page(page_ptr2page_index(page_ptr))));
+            };
             assert(old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); };
             assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); assert(PAGE_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && IOMMU_TABLE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR && ALLOCATED_PAGE_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);

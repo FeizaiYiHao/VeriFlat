@@ -4,8 +4,7 @@ use crate::kernel::*;
 
 verus! {
 
-/// The kernel invariants never read a container lock's current owner.  They
-/// only read the map domain and these four non-lock projections.
+/// Container invariant fields other than the empty-process write-lock guard.
 pub open spec fn container_invariant_fields_unchanged(
     pre: ContainerLockedMap,
     post: ContainerLockedMap,
@@ -130,6 +129,7 @@ pub proof fn container_no_change_imply_process_management_inv(
 )
     requires
         pre.process_management_inv(),
+        container_process_wf(post.ctn_mp, post.prc_mp),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         container_lock_kernel_context_unchanged(pre, post),
     ensures
@@ -155,8 +155,14 @@ pub proof fn container_no_change_imply_process_management_inv(
             post.ctn_mp,
         );
     };
-    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by {
-        reveal(container_process_wf);
+    assert({
+        &&& pre.ctn_mp.dom().contains(pre.rt_ctn)
+        &&& post.ctn_mp.dom().contains(post.rt_ctn)
+        &&& pre.ctn_mp.spec_index(pre.rt_ctn).view().root_process_in_processes()
+        &&& post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()
+    }) by {
+        reveal(container_root_wf);
+        reveal(container_invariant_fields_unchanged);
     };
     assert(per_container_process_tree_wf(
         post.ctn_mp,

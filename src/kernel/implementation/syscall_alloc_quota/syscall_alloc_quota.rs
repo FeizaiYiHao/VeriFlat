@@ -102,6 +102,9 @@ verus! {
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.1.unwrap();
+            proof {
+                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            }
             let process_ref: &Process = krnl.prc_mp.borrow(process_ptr, Tracked(&process_lock_perm));
             let process_quota_4k = process_ref.quota_4k;
             if alloc_amount > usize::MAX - process_quota_4k {
