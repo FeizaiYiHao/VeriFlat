@@ -66,16 +66,6 @@ pub(super) open spec fn ipc_pages_base_roots_context(
     &&& peer_thread_lock_perm.state() is WriteLock
     &&& peer_thread_lock_perm.thread_id() == lctx.thread_id()
     &&& peer_thread_lock_perm.lock_id() == krnl.thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id
-    &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), current_thread_ptr, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_thread_ptr, TypedLockMode::Write)
-    &&& typed_lock_map_contains_mode(lctx.endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write)
-    &&& lctx.lock_entry_contains(krnl.cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))
-    &&& lctx.lock_entry_contains(krnl.prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))
-    &&& lctx.lock_entry_contains(krnl.thr_mp.lock_id_by_key(current_thread_ptr), KernelObjId::Thread(current_thread_ptr))
-    &&& lctx.lock_entry_contains(krnl.thr_mp.lock_id_by_key(peer_thread_ptr), KernelObjId::Thread(peer_thread_ptr))
-    &&& lctx.lock_entry_contains(krnl.ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr))
     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().state is Running
     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().current_thread == Some(current_thread_ptr)

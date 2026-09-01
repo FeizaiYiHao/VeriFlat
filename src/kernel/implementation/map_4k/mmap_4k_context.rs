@@ -73,15 +73,6 @@ pub open spec fn mmap_4k_held_context(
     &&& pagetable_lock_perm.lock_id()
         == krnl.pt_mp.spec_index(pagetable_ptr)
             .locking_thread()->Write_lock_id
-    &&& lctx.cpu_lock_map().contains_pair(cpu_id, TypedHeldLock {
-        lock_id: krnl.cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write,
-    })
-    &&& lctx.thread_lock_map().contains_pair(thread_ptr, TypedHeldLock {
-        lock_id: krnl.thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write,
-    })
-    &&& lctx.pagetable_lock_map().contains_pair(pagetable_ptr, TypedHeldLock {
-        lock_id: krnl.pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write,
-    })
 }
 
 /// Preconditions shared by the two primitives that consume a staged 4K page:
@@ -120,9 +111,6 @@ pub open spec fn staged_4k_page_op_requires(
     &&& krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 1
     &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view()
         .wlocked_by(lctx)
-    &&& lctx.page_lock_map().contains_pair(page_ptr2page_index(page_ptr), TypedHeldLock {
-        lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write,
-    })
     &&& page_lock_perm.state() is WriteLock
     &&& page_lock_perm.thread_id() == lctx.thread_id()
     &&& page_lock_perm.lock_id()
@@ -179,9 +167,6 @@ pub open spec fn staged_4k_page_table_op_requires(
     &&& krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 1
     &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view()
         .wlocked_by(lctx)
-    &&& lctx.page_lock_map().contains_pair(page_ptr2page_index(page_ptr), TypedHeldLock {
-        lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write,
-    })
     &&& page_lock_perm.state() is WriteLock
     &&& page_lock_perm.thread_id() == lctx.thread_id()
     &&& page_lock_perm.lock_id()
