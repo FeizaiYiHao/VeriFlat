@@ -5,45 +5,33 @@ verus! {
     pub open spec fn kernel_objects_unlocked_except(
         krnl: &KernelK,
         thread_id: LockThreadId,
-        cpu_exception: Option<CpuId>,
-        scheduler_exception: Option<RwLockSchedulerPtr>,
-        process_exception: Option<RwLockProcessPtr>,
-        thread_exception: Option<RwLockThreadPtr>,
-        endpoint_exception: Option<RwLockEndpointPtr>,
+        cpu_exceptions: Set<CpuId>,
+        container_exceptions: Set<RwLockContainerPtr>,
+        scheduler_exceptions: Set<RwLockSchedulerPtr>,
+        process_exceptions: Set<RwLockProcessPtr>,
+        thread_exceptions: Set<RwLockThreadPtr>,
+        page_exceptions: Set<PageIndex>,
+        endpoint_exceptions: Set<RwLockEndpointPtr>,
+        pagetable_exceptions: Set<RwLockPageTableRoot>,
+        iommu_table_exceptions: Set<RwLockPageTableRoot>,
+        pcid_allocator_exceptions: Set<RwLockPcidAllocatorPtr>,
+        allocator_4k_exceptions: Set<RwLockPageAllocatorPtr>,
+        allocator_2m_exceptions: Set<RwLockPageAllocatorPtr>,
+        allocator_1g_exceptions: Set<RwLockPageAllocatorPtr>,
     ) -> bool {
-        &&& match cpu_exception {
-            Some(c) => cpu_objects_unlocked_except(
-                krnl.cpu_arr, thread_id, set![c]),
-            None => cpu_objects_unlocked(krnl.cpu_arr, thread_id),
-        }
-        &&& container_objects_unlocked(krnl.ctn_mp, thread_id)
-        &&& match scheduler_exception {
-            Some(s) => scheduler_objects_unlocked_except(
-                krnl.sched_mp, thread_id, set![s]),
-            None => scheduler_objects_unlocked(krnl.sched_mp, thread_id),
-        }
-        &&& match process_exception {
-            Some(p) => process_objects_unlocked_except(
-                krnl.prc_mp, thread_id, set![p]),
-            None => process_objects_unlocked(krnl.prc_mp, thread_id),
-        }
-        &&& match thread_exception {
-            Some(t) => thread_objects_unlocked_except(
-                krnl.thr_mp, thread_id, set![t]),
-            None => thread_objects_unlocked(krnl.thr_mp, thread_id),
-        }
-        &&& page_objects_unlocked(krnl.pg_arr, thread_id)
-        &&& match endpoint_exception {
-            Some(e) => endpoint_objects_unlocked_except(
-                krnl.ep_mp, thread_id, set![e]),
-            None => endpoint_objects_unlocked(krnl.ep_mp, thread_id),
-        }
-        &&& pagetable_objects_unlocked(krnl.pt_mp, thread_id)
-        &&& iommu_table_objects_unlocked(krnl.it_mp, thread_id)
-        &&& pcid_allocator_objects_unlocked(krnl.pcid_allc_mp, thread_id)
-        &&& allocator_objects_unlocked(krnl.allc_4k_mp, thread_id)
-        &&& allocator_objects_unlocked(krnl.allc_2m_mp, thread_id)
-        &&& allocator_objects_unlocked(krnl.allc_1g_mp, thread_id)
+        &&& cpu_objects_unlocked_except(krnl.cpu_arr, thread_id, cpu_exceptions)
+        &&& container_objects_unlocked_except(krnl.ctn_mp, thread_id, container_exceptions)
+        &&& scheduler_objects_unlocked_except(krnl.sched_mp, thread_id, scheduler_exceptions)
+        &&& process_objects_unlocked_except(krnl.prc_mp, thread_id, process_exceptions)
+        &&& thread_objects_unlocked_except(krnl.thr_mp, thread_id, thread_exceptions)
+        &&& page_objects_unlocked_except(krnl.pg_arr, thread_id, page_exceptions)
+        &&& endpoint_objects_unlocked_except(krnl.ep_mp, thread_id, endpoint_exceptions)
+        &&& pagetable_objects_unlocked_except(krnl.pt_mp, thread_id, pagetable_exceptions)
+        &&& iommu_table_objects_unlocked_except(krnl.it_mp, thread_id, iommu_table_exceptions)
+        &&& pcid_allocator_objects_unlocked_except(krnl.pcid_allc_mp, thread_id, pcid_allocator_exceptions)
+        &&& allocator_objects_unlocked_except(krnl.allc_4k_mp, thread_id, allocator_4k_exceptions)
+        &&& allocator_objects_unlocked_except(krnl.allc_2m_mp, thread_id, allocator_2m_exceptions)
+        &&& allocator_objects_unlocked_except(krnl.allc_1g_mp, thread_id, allocator_1g_exceptions)
     }
 
     /// Commit path: allocate 4k page, create thread, release all locks.
@@ -66,8 +54,7 @@ verus! {
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
             old(lctx).cpu_process_thread_lock_scope(set![cpu_id], Set::<RwLockProcessPtr>::empty(), Set::<RwLockThreadPtr>::empty()),
             kernel_objects_unlocked_except(
-                old(krnl), old(lctx).thread_id(), Some(cpu_id),
-                None, None, None, None),
+                old(krnl), old(lctx).thread_id(), set![cpu_id], Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty()),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -121,8 +108,7 @@ verus! {
             old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
             old(lctx).cpu_process_thread_lock_scope(set![cpu_id], set![process_ptr], Set::<RwLockThreadPtr>::empty()),
             kernel_objects_unlocked_except(
-                old(krnl), old(lctx).thread_id(), Some(cpu_id),
-                None, Some(process_ptr), None, None),
+                old(krnl), old(lctx).thread_id(), set![cpu_id], Set::empty(), Set::empty(), set![process_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty()),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -194,8 +180,7 @@ verus! {
             old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             old(lctx).cpu_process_thread_lock_scope(set![cpu_id], set![process_ptr], set![thread_ptr]),
             kernel_objects_unlocked_except(
-                old(krnl), old(lctx).thread_id(), Some(cpu_id),
-                None, Some(process_ptr), Some(thread_ptr), None),
+                old(krnl), old(lctx).thread_id(), set![cpu_id], Set::empty(), Set::empty(), set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty()),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures

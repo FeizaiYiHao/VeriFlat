@@ -82,6 +82,7 @@ pub(super) open spec fn ipc_pages_base_roots_context(
     &&& krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr
 }
 
+#[verifier::spinoff_prover]
 fn ipc_share_pages_locked(
     krnl: &mut KernelK,
     source_range: &VaRange4K,
@@ -112,7 +113,7 @@ fn ipc_share_pages_locked(
     Tracked(peer_thread_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: IpcPagesMapping)
     requires
-        share_mapping_4k_held_context(old(krnl), old(lctx), source_thread, target_thread, source_pagetable, target_pagetable, source_thread_lock_perm, target_thread_lock_perm, source_pagetable_lock_perm, target_pagetable_lock_perm),
+        share_mapping_4k_held_context(old(krnl), old(lctx), source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, source_thread_lock_perm, target_thread_lock_perm, source_pagetable_lock_perm, target_pagetable_lock_perm),
         ipc_pages_base_roots_context(old(krnl), old(lctx), cpu_id, held_process, current_thread_ptr, held_endpoint, peer_thread_ptr, cpu_lock_perm, process_lock_perm, current_thread_lock_perm, endpoint_lock_perm, peer_thread_lock_perm),
         cpu_objects_unlocked_except(old(krnl).cpu_arr, old(lctx).thread_id(), set![cpu_id]),
         container_objects_unlocked(old(krnl).ctn_mp, old(lctx).thread_id()),
@@ -153,7 +154,7 @@ fn ipc_share_pages_locked(
         ret is Ready ==> final(steps).steps.len() == old(steps).steps.len() + source_range.len,
         !(ret is Ready) ==> final(steps).steps.len() == old(steps).steps.len(),
         ret is Ready || ret is SourceUnmapped || ret is OwnerMismatch || ret is NoQuota || ret is Invalid || ret is InUse,
-        share_mapping_4k_held_context(final(krnl), final(lctx), source_thread, target_thread, source_pagetable, target_pagetable, source_thread_lock_perm, target_thread_lock_perm, source_pagetable_lock_perm, target_pagetable_lock_perm),
+        share_mapping_4k_held_context(final(krnl), final(lctx), source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, source_thread_lock_perm, target_thread_lock_perm, source_pagetable_lock_perm, target_pagetable_lock_perm),
         ipc_pages_base_roots_context(final(krnl), final(lctx), cpu_id, held_process, current_thread_ptr, held_endpoint, peer_thread_ptr, cpu_lock_perm, process_lock_perm, current_thread_lock_perm, endpoint_lock_perm, peer_thread_lock_perm),
         cpu_objects_unlocked_except(final(krnl).cpu_arr, final(lctx).thread_id(), set![cpu_id]),
         container_objects_unlocked(final(krnl).ctn_mp, final(lctx).thread_id()),
@@ -234,12 +235,12 @@ fn ipc_share_pages_locked(
         proof {
             assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_thread, source_range)) by {
                 source_range.va_range_lemma();
-                reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(process_pagetable_match); reveal(container_perms_wf); reveal(container_tree_fields_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive); reveal(PageTable::wf_mapping_4k);
+                reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(process_pagetable_match); reveal(container_perms_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
             };
         }
         true
     } else {
-        share_mapping_4k_source_owner_precheck(krnl, source_range, source_thread, target_thread, source_pagetable, target_pagetable, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm))
+        share_mapping_4k_source_owner_precheck(krnl, source_range, source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm))
     };
     proof {
         assert({
@@ -280,6 +281,7 @@ fn ipc_share_pages_locked(
     IpcPagesMapping::Ready
 }
 
+#[verifier::spinoff_prover]
 pub(super) fn ipc_share_pages_mapping(
     krnl: &mut KernelK,
     source_range: &VaRange4K,
@@ -400,11 +402,9 @@ pub(super) fn ipc_share_pages_mapping(
             &&& source_pagetable != target_pagetable
         }) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
         assert({
-            &&& krnl.pt_mp.dom().contains(source_pagetable)
-            &&& krnl.pt_mp.dom().contains(target_pagetable)
             &&& krnl.pt_mp.lock_id_by_key(source_pagetable).major == PAGE_TABLE_LOCK_MAJOR
             &&& krnl.pt_mp.lock_id_by_key(target_pagetable).major == PAGE_TABLE_LOCK_MAJOR
-        }) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
+        }) by { reveal(pagetable_perms_wf); };
     }
 
     proof {
@@ -417,6 +417,7 @@ pub(super) fn ipc_share_pages_mapping(
     proof {
         assert(share_mapping_4k_held_context(
                 krnl, &*lctx, source_thread, target_thread,
+                target_process, target_container,
                 source_pagetable, target_pagetable,
                 if source_thread == current_thread_ptr {
                     current_thread_lock_perm

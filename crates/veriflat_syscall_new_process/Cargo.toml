@@ -1,0 +1,20 @@
+[package]
+name = "veriflat_syscall_new_process"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "../../src/kernel/implementation/veriflat_syscall_new_process.rs"
+
+[dependencies]
+vstd = { path = "../../verus/source/vstd" }
+veriflat_kernel_core = { path = "../veriflat_kernel_core" }
+veriflat_alloc_page = { path = "../veriflat_alloc_page" }
+veriflat_map_4k = { path = "../veriflat_map_4k" }
+
+[package.metadata.verus]
+verify = true
+
+[features]
+default = ["split-crates"]
+split-crates = []

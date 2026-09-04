@@ -9,9 +9,9 @@ pub open spec fn iommu_table_perms_wf(
 ) -> bool {
     &&& iommu_table_map.perms_wf()
     &&& forall|iommu_root: RwLockPageTableRoot|
-        #![trigger iommu_table_map.spec_index(iommu_root).view().inv()]
+        #![auto]
         iommu_table_map.dom().contains(iommu_root)
-        ==> iommu_table_map.spec_index(iommu_root).view().inv()
+        ==> iommu_table_map.spec_index(iommu_root).inv()
 }
 
 }

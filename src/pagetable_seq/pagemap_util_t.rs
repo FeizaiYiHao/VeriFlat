@@ -103,6 +103,101 @@ fn page_map_set_raw(
     pm.set_internal(index, value);
 }
 
+pub fn page_map_copy_kernel_entry_range(
+    source_ptr: PageMapPtr,
+    Tracked(source_perm): Tracked<&PointsTo<PageMap>>,
+    target_ptr: PageMapPtr,
+    Tracked(target_perm): Tracked<&mut PointsTo<PageMap>>,
+    end: usize,
+)
+    requires
+        source_perm.addr() == source_ptr,
+        source_perm.is_init(),
+        source_perm.value().wf(),
+        old(target_perm).addr() == target_ptr,
+        old(target_perm).is_init(),
+        old(target_perm).value().wf(),
+        pei_valid(end),
+        forall|i: usize| #![trigger old(target_perm).value().spec_index(i).is_empty()]
+            pei_valid(i) ==> old(target_perm).value().spec_index(i).is_empty(),
+    ensures
+        final(target_perm).addr() == target_ptr,
+        final(target_perm).is_init(),
+        final(target_perm).value().wf(),
+        forall|i: usize|
+            #![trigger final(target_perm).value().spec_index(i).is_empty()]
+            end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
+        forall|i: usize|
+            #![trigger final(target_perm).value().spec_index(i)]
+            0 <= i < end ==> final(target_perm).value().spec_index(i) =~= source_perm.value().spec_index(i),
+{
+    let source: &PageMap = PPtr::<PageMap>::from_usize(source_ptr).borrow(Tracked(source_perm));
+    for index in 0..end
+        invariant
+            0 <= index <= end,
+            pei_valid(end),
+            source_perm.addr() == source_ptr,
+            source_perm.is_init(),
+            source_perm.value().wf(),
+            source.wf(),
+            source == source_perm.value(),
+            target_perm.addr() == target_ptr,
+            target_perm.is_init(),
+            target_perm.value().wf(),
+            forall|i: usize|
+                #![trigger target_perm.value().spec_index(i).is_empty()]
+                end <= i && pei_valid(i) ==> target_perm.value().spec_index(i).is_empty(),
+            forall|i: usize|
+                #![trigger target_perm.value().spec_index(i)]
+                0 <= i < index ==> target_perm.value().spec_index(i) =~= source_perm.value().spec_index(i),
+    {
+        let raw = *source.ar.get(index);
+        let value = usize2page_entry(raw);
+        assert(mem_valid(value.addr)) by {
+            assert((raw & 0x0000_ffff_ffff_f000u64 as usize) & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector);
+        };
+        assert(value =~= source_perm.value().spec_index(index)) by { reveal(PageMap::wf); };
+        page_map_set_raw(target_ptr, Tracked(&mut *target_perm), index, value);
+    }
+}
+
+impl PageTable<PT_TYPE> {
+    pub fn copy_kernel_entries_to_unpublished_root(
+        &self,
+        target_ptr: PageMapPtr,
+        Tracked(target_perm): Tracked<&mut PointsTo<PageMap>>,
+    )
+        requires
+            self.wf(),
+            old(target_perm).addr() == target_ptr,
+            old(target_perm).is_init(),
+            old(target_perm).value().wf(),
+            forall|i: usize| #![trigger old(target_perm).value().spec_index(i).is_empty()]
+                pei_valid(i) ==> old(target_perm).value().spec_index(i).is_empty(),
+        ensures
+            final(target_perm).addr() == target_ptr,
+            final(target_perm).is_init(),
+            final(target_perm).value().wf(),
+        forall|i: usize|
+                #![trigger final(target_perm).value().spec_index(i).is_empty()]
+                self.kernel_l4_end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
+            forall|i: usize|
+                #![trigger final(target_perm).value().spec_index(i)]
+                0 <= i < self.kernel_l4_end ==> final(target_perm).value().spec_index(i) =~= self.kernel_entries.view().spec_index(i as int),
+    {
+        assert({
+            &&& self.l4_table.view().dom().contains(self.cr3)
+            &&& self.l4_table.view().spec_index(self.cr3).addr() == self.cr3
+            &&& self.l4_table.view().spec_index(self.cr3).is_init()
+            &&& self.l4_table.view().spec_index(self.cr3).value().wf()
+        }) by { reveal(PageTable::wf_l4); };
+        assert(pei_valid(self.kernel_l4_end)) by { reveal(PageTable::kernel_entries_wf); };
+        let tracked source_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
+        page_map_copy_kernel_entry_range(self.cr3, Tracked(source_perm), target_ptr, Tracked(&mut *target_perm), self.kernel_l4_end);
+        proof { reveal(PageTable::kernel_entries_wf); }
+    }
+}
+
 /// The single PageMap write gate for a page-table page that is already published.
 ///
 /// Every published PageMap write closes the current kernel atomic section:

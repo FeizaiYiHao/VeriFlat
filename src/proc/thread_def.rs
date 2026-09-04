@@ -56,8 +56,8 @@ pub struct Thread {
     pub indirect_free_quota_pending_1g: Ghost<Seq<usize>>,
 }
 
-pub type ThreadRwLock = RwLock<Thread, (), (), (), THREAD_HAS_KILL_STATE>;
-pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), (), THREAD_HAS_KILL_STATE>;
+pub type ThreadRwLock = RwLock<Thread, (), (), THREAD_HAS_KILL_STATE>;
+pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
     #[verifier::opaque]

@@ -69,10 +69,6 @@ verus! {
             }) by { reveal(container_process_wf); reveal(container_perms_wf); };
             let scheduler_ptr = krnl.ctn_mp.borrow_rodata(proc_container).borrow().scheduler;
 
-            proof {
-                let process_lock_id = krnl.prc_mp.lock_id_by_key(process_ptr);
-                assert(process_lock_id.spec_gt(krnl.cpu_arr.lock_id_by_index(cpu_id))) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); };
-            }
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
             if let (false, _) = process_res {
                 release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
@@ -80,16 +76,7 @@ verus! {
             }
             let Tracked(process_lock_perm) = process_res.1.unwrap();
 
-            proof {
-                assert({
-                    &&& krnl.thr_mp.dom().contains(current_thread_ptr)
-                    &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr
-                    &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == proc_container
-                    &&& krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
-                    &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
-                    &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr).spec_gt(krnl.prc_mp.lock_id_by_key(process_ptr))
-                }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf); };
-            }
+            assert(krnl.thr_mp.dom().contains(current_thread_ptr) && krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr && krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == proc_container) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
             let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
             if let (false, _) = thread_res {
                 proof {
@@ -109,15 +96,7 @@ verus! {
                 return RetValueType::ErrorNoQuota;
             }
 
-            proof {
-                let scheduler_lock_id = krnl.sched_mp.lock_id_by_key(scheduler_ptr);
-                assert({
-                    &&& krnl.sched_mp.dom().contains(scheduler_ptr)
-                    &&& scheduler_lock_id.major == SCHEDULER_LOCK_MAJOR
-                    &&& process_lock_perm.ordering_lock_id().major == PROCESS_LOCK_MAJOR
-                    &&& current_thread_lock_perm.ordering_lock_id().major == THREAD_LOCK_MAJOR
-                }) by { reveal(container_scheduler_wf); reveal(scheduler_perms_wf); reveal(process_perms_wf); reveal(thread_cpu_wf); reveal(thread_perms_wf); };
-            }
+            assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); };
             let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
 
             proof {

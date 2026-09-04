@@ -13,6 +13,7 @@ use super::syscall_ipc_transition::{
 
 verus! {
 
+#[verifier::spinoff_prover]
 pub(super) fn ipc_copy_endpoint_reference(
     krnl: &mut KernelK,
     receiver_thread_ptr: RwLockThreadPtr,
@@ -146,6 +147,7 @@ pub(super) fn ipc_copy_endpoint_reference(
     }
 }
 
+#[verifier::spinoff_prover]
 pub(super) fn ipc_begin_endpoint_transfer(
     krnl: &mut KernelK,
     Tracked(lctx): Tracked<&mut LocalContext>,
@@ -365,6 +367,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
     }
 }
 
+#[verifier::spinoff_prover]
 pub(super) fn ipc_finish_endpoint_transit(
     krnl: &mut KernelK,
     Tracked(lctx): Tracked<&mut LocalContext>,
@@ -542,6 +545,7 @@ pub(super) fn ipc_finish_endpoint_transit(
     result
 }
 
+#[verifier::spinoff_prover]
 pub(super) fn ipc_rendezvous_endpoint(
     krnl: &mut KernelK,
     Tracked(lctx): Tracked<&mut LocalContext>,

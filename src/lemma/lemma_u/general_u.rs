@@ -103,6 +103,7 @@ pub proof fn seq_push_head_lemma<A>()
         s.insert_ensures(0, v);
         let s2 = s.insert(0, v);
         let i = choose|i: int| 0 <= i < s.len() && s.spec_index(i) == x;
+        assert(0 <= i + 1 < s2.len() && 0 < s2.len()) by { reveal(Seq::contains); };
         assert(s2.spec_index(i + 1) == x);
         assert(s2.spec_index(0) == v);
     }
@@ -1006,23 +1007,6 @@ pub proof fn seq_index_lemma<A>()
             assert(s.no_duplicates());
         }
     }
-}
-
-spec fn sum_fn(s: int, i: int) -> int {
-    s + i
-}
-
-proof fn sum_fold_drop_last(s: Seq<int>)
-    requires
-        s.len() > 0,
-    ensures
-        s.fold_left(0int, |sum: int, i: int| sum + i)
-            == s.drop_last().fold_left(0int, |sum: int, i: int| sum + i) + s.last(),
-{
-    let f = |sum: int, i: int| sum + i;
-    // by definition: s.fold_left(0, f) = f(s.drop_last().fold_left(0, f), s.last())
-    //                                  = s.drop_last().fold_left(0, f) + s.last()
-    assert(s.fold_left(0int, f) == f(s.drop_last().fold_left(0int, f), s.last()));
 }
 
 proof fn sum_fold_update_helper(s: Seq<int>, i: int, v: int)

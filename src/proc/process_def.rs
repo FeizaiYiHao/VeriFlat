@@ -16,13 +16,16 @@ pub struct Process {
 
     pub parent_linkedlist_node: ExternalNode<RwLockProcessPtr>,
     pub children: LinkedList<RwLockProcessPtr, 233>,
-    pub uppertree_seq: ArrayVec<RwLockContainerPtr, MAX_PROCESS_TREE_DEPTH>,
-    pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
 
     pub owned_threads: LinkedList<RwLockThreadPtr, 233>,
 }
 
-pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, (), (), PROCESS_HAS_KILL_STATE>;
+pub struct ProcessGhost {
+    pub uppertree_seq: Ghost<Seq<RwLockProcessPtr>>,
+    pub subtree_set: Ghost<Set<RwLockProcessPtr>>,
+}
+
+pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
     pub pagetable: PageTableU,
@@ -35,7 +38,7 @@ pub ghost struct ProcessU {
     pub parent: Option<RwLockProcessPtr>,
     pub children: Seq<RwLockProcessPtr>,
     pub depth: usize,
-    pub uppertree_seq: Seq<RwLockContainerPtr>,
+    pub uppertree_seq: Seq<RwLockProcessPtr>,
     pub subtree_set: Set<RwLockProcessPtr>,
 
     pub owned_threads: Seq<RwLockThreadPtr>,
@@ -67,6 +70,47 @@ impl LockInvTrait for Process {
 }
  
 impl Process{
+    pub fn new_fresh(
+        process_ptr: RwLockProcessPtr,
+        pcid: Pcid,
+        pagetable: RwLockPageTableRoot,
+        container_depth: usize,
+        depth: usize,
+    ) -> (ret: Self)
+        requires
+            pcid != KERNEL_DEFAULT_PCID,
+        ensures
+            ret.inv(),
+            ret.pcid == pcid,
+            ret.pagetable == pagetable,
+            ret.iommu_table is None,
+            ret.pci_function_ref_counter == 0,
+            ret.owned_pci_functions.view() == Set::<PciBdf>::empty(),
+            ret.quota_4k == 0,
+            ret.quota_2m == 0,
+            ret.quota_1g == 0,
+            ret.parent_linkedlist_node.is_init(),
+            ret.children.view() == Seq::<RwLockProcessPtr>::empty(),
+            ret.owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
+    {
+        let parent_linkedlist_node = ExternalNode::new(process_ptr);
+        let children = LinkedList::new(Some(container_depth), Some(depth));
+        let owned_threads = LinkedList::new(Some(container_depth), Some(depth));
+        Self {
+            pcid,
+            pagetable,
+            iommu_table: None,
+            pci_function_ref_counter: 0,
+            owned_pci_functions: Ghost(Set::empty()),
+            quota_4k: 0,
+            quota_2m: 0,
+            quota_1g: 0,
+            parent_linkedlist_node,
+            children,
+            owned_threads,
+        }
+    }
+
     pub open spec fn wf(&self) -> bool {
         &&&
         self.pcid != KERNEL_DEFAULT_PCID
@@ -74,8 +118,6 @@ impl Process{
         self.children.inv()
         &&&
         self.owned_threads.wf()
-        &&&
-        self.uppertree_seq.wf()
         &&&
         self.pagetable_iommu_table_different()
         &&&

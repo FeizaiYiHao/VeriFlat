@@ -30,6 +30,8 @@ pub(super) enum MissingPageTableLevel {
         level: MissingPageTableLevel,
         page_ptr: PagePtr,
         thread_ptr: RwLockThreadPtr,
+        process_ptr: RwLockProcessPtr,
+        container_ptr: RwLockContainerPtr,
         pagetable_ptr: RwLockPageTableRoot,
         indices: (L4Index, L3Index, L2Index),
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -38,7 +40,7 @@ pub(super) enum MissingPageTableLevel {
         pagetable_lock_perm: Tracked<&LockPerm>,
     )
         requires
-            staged_4k_page_table_op_requires(old(krnl), old(lctx), page_ptr, thread_ptr, pagetable_ptr, indices, page_lock_perm.view(), thread_lock_perm.view(), pagetable_lock_perm.view()),
+            staged_4k_page_table_op_requires(old(krnl), old(lctx), page_ptr, thread_ptr, process_ptr, container_ptr, pagetable_ptr, indices, page_lock_perm.view(), thread_lock_perm.view(), pagetable_lock_perm.view()),
             match level {
                 MissingPageTableLevel::L4 =>
                     old(krnl).pt_mp.spec_index(pagetable_ptr).view()

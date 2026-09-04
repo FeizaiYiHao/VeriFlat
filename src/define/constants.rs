@@ -109,7 +109,6 @@ pub const CONTAINER_ENDPOINT_LIST_LEN: usize = 10;
 pub const MAX_CONTAINER_SCHEDULER_LEN: usize = 10;
 
 pub const MAX_CONTAINER_TREE_DEPTH: usize = 1024;
-pub const MAX_PROCESS_TREE_DEPTH: usize = 233;
 pub const MAX_NUM_CONTAINERS: usize = 1024;
 
 pub const PT_TYPE: PTType = true;

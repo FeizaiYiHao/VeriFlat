@@ -144,7 +144,7 @@ verus! {
 
         let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
         proof {
-            assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, &thread_lock_perm, &pagetable_lock_perm)) by { reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(pagetable_perms_wf); reveal(container_allocator_wf); };
+            assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, &thread_lock_perm, &pagetable_lock_perm)) by { reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(pagetable_perms_wf); reveal(container_allocator_wf); reveal(process_pagetable_match); };
             assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); reveal(page_array_wf); reveal(allocator_perms_wf); };
         }
 

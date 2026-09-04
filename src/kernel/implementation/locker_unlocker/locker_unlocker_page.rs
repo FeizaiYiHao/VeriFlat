@@ -48,6 +48,10 @@ impl KernelK {
                     mode: TypedLockMode::Write,
                 }),
                 page_objects_unlocked(old(self).pg_arr, old(lctx).thread_id()) ==> page_objects_unlocked_except(final(self).pg_arr, final(lctx).thread_id(), set![page_index]),
+                forall|exceptions: Set<PageIndex>|
+                    #![trigger page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions)]
+                    page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions)
+                    ==> page_objects_unlocked_except(final(self).pg_arr, final(lctx).thread_id(), exceptions.insert(page_index)),
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -125,6 +129,11 @@ impl KernelK {
                 // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
                 wunlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view()),
                 page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), set![page_index]) ==> page_objects_unlocked(final(self).pg_arr, final(lctx).thread_id()),
+                forall|exceptions: Set<PageIndex>|
+                    #![trigger page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions.insert(page_index))]
+                    !exceptions.contains(page_index)
+                    && page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions.insert(page_index))
+                    ==> page_objects_unlocked_except(final(self).pg_arr, final(lctx).thread_id(), exceptions),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))),
                 unlock_ensures(old(lctx), final(lctx), (), lock_perm.view().lock_id(), KernelObjId::Page(page_index), old(self).pg_arr.lock_id_by_index(page_index)),
         {

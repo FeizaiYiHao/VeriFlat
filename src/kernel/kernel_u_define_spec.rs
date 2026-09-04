@@ -58,6 +58,7 @@ verus! {
                 krnl.prc_mp.dom(),
                 |ptr: RwLockProcessPtr| {
                     let p = krnl.prc_mp.spec_index(ptr).view();
+                    let p_ghost = krnl.prc_mp.spec_index(ptr).view_ghost();
                     let p_ro = krnl.prc_mp.spec_index(ptr).view_rodata().view();
                     ProcessU {
                         pagetable: pagetable_map_user_view(krnl.pt_mp)
@@ -75,8 +76,8 @@ verus! {
                         parent: p_ro.parent,
                         children: p.children.view(),
                         depth: p_ro.depth,
-                        uppertree_seq: p.uppertree_seq.view(),
-                        subtree_set: p.subtree_set.view(),
+                        uppertree_seq: p_ghost.uppertree_seq.view(),
+                        subtree_set: p_ghost.subtree_set.view(),
                         owned_threads: p.owned_threads.view(),
                         killed: krnl.prc_mp.spec_index(ptr).being_killed(),
                     }
@@ -89,10 +90,10 @@ verus! {
     /// projections, NOT whole fields. So the user-view projections of two
     /// `KernelK`s are equal whenever they agree on exactly those projections:
     ///   - per cpu slot, the payload `value.view()`;
-    ///   - per process, `view()` / `view_rodata()` / `being_killed()`, plus the
-    ///     process domain;
-    ///   - per pagetable entry, `view().user_view()`; directory topology and
-    ///     lock state are irrelevant.
+    ///   - per process, `view()` / `view_rodata()` / `view_ghost()` /
+    ///     `being_killed()`, plus the process domain;
+    ///   - per CPU/IOMMU pagetable entry, `view().user_view()`; directory
+    ///     topology and lock state are irrelevant.
     /// Stated per-element (not as `process_map == ..` / `pagetable_map == ..`)
     /// so a caller that moved lock state on a held pagetable / process — which
     /// leaves the WHOLE map unequal but every `.view()` intact — can still use
@@ -104,6 +105,7 @@ verus! {
             // Domain equality alone does not constrain `Map::spec_index` at a
             // process-referenced key unless that key is known to be present.
             process_pagetable_match(pre.prc_mp, pre.pt_mp),
+            process_iommu_table_match(pre.prc_mp, pre.it_mp),
             // pagetable_map: only the abstract mapping projection is read.
             post.pt_mp.dom() =~= pre.pt_mp.dom(),
             forall|pt: RwLockPageTableRoot|
@@ -111,14 +113,17 @@ verus! {
                 pre.pt_mp.dom().contains(pt) ==>
                     post.pt_mp.spec_index(pt).view().user_view()
                         == pre.pt_mp.spec_index(pt).view().user_view(),
-            // No implemented operation moves an IOMMU-table lock yet, so the
-            // current framing surface preserves the whole map. This can be
-            // weakened to per-entry views when those operations are added.
-            post.it_mp == pre.it_mp,
+            post.it_mp.dom() =~= pre.it_mp.dom(),
+            forall|pt: RwLockPageTableRoot|
+                #![trigger post.it_mp.spec_index(pt).view().user_view()]
+                pre.it_mp.dom().contains(pt) ==>
+                    post.it_mp.spec_index(pt).view().user_view()
+                        == pre.it_mp.spec_index(pt).view().user_view(),
             post.irt == pre.irt,
             // process_map: same domain, and per process only the fields
-            // `ProcessU` projects are read — quota/tree fields off `view()`,
-            // `parent`/`depth` off `view_rodata()`, and `being_killed()`. NOT
+            // `ProcessU` projects are read — quota/children fields off `view()`,
+            // tree closure fields off `view_ghost()`, `parent`/`depth` off
+            // `view_rodata()`, and `being_killed()`. NOT
             // the whole `view()`: other kernel-only fields are unprojected.
             post.prc_mp.dom() =~= pre.prc_mp.dom(),
             forall|ptr: RwLockProcessPtr|
@@ -128,8 +133,8 @@ verus! {
                     && post.prc_mp.spec_index(ptr).view().quota_2m == pre.prc_mp.spec_index(ptr).view().quota_2m
                     && post.prc_mp.spec_index(ptr).view().quota_1g == pre.prc_mp.spec_index(ptr).view().quota_1g
                     && post.prc_mp.spec_index(ptr).view().children.view() == pre.prc_mp.spec_index(ptr).view().children.view()
-                    && post.prc_mp.spec_index(ptr).view().uppertree_seq.view() == pre.prc_mp.spec_index(ptr).view().uppertree_seq.view()
-                    && post.prc_mp.spec_index(ptr).view().subtree_set.view() == pre.prc_mp.spec_index(ptr).view().subtree_set.view()
+                    && post.prc_mp.spec_index(ptr).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(ptr).view_ghost().uppertree_seq.view()
+                    && post.prc_mp.spec_index(ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(ptr).view_ghost().subtree_set.view()
                     && post.prc_mp.spec_index(ptr).view().owned_threads.view() == pre.prc_mp.spec_index(ptr).view().owned_threads.view()
                     && post.prc_mp.spec_index(ptr).view().pagetable == pre.prc_mp.spec_index(ptr).view().pagetable
                     && post.prc_mp.spec_index(ptr).view().iommu_table == pre.prc_mp.spec_index(ptr).view().iommu_table
@@ -149,6 +154,7 @@ verus! {
         assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
         assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => {
             reveal(process_pagetable_match);
+            reveal(process_iommu_table_match);
         });
     }
 

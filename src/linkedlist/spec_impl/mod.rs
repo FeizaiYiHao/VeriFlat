@@ -18,7 +18,6 @@ pub struct LinkedList<T, const MAJOR: LockMajorId>{
     pub head: Option<usize>,
     pub tail: Option<usize>,
     pub map: Ghost<Map<usize, T>>,
-    pub reverse_map: Ghost<Map<T, usize>>,
 
     pub container_depth: Option<usize>,
 
@@ -111,10 +110,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
     pub open spec fn map(&self) ->  Map<usize, T>{
         self.map.view()
-    }
-
-    pub open spec fn revese_map(&self) ->  Map<T, usize>{
-        self.reverse_map.view()
     }
 
     pub open spec fn spec_len(&self) -> usize{
@@ -322,39 +317,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.map().spec_index(i) != self.map().spec_index(j)
     }
 
-    #[verifier::opaque]
-    pub open spec fn wf_reverse_map(&self) -> bool{
-        // &&&
-        // self.revese_map().dom() == self.map().values()
-        // &&&
-        // forall|i:T, j:T|
-        //     #![trigger self.revese_map()[i], self.revese_map()[j]]
-        //     self.revese_map().dom().contains(i) && self.revese_map().dom().contains(j) && i != j
-        //     ==>
-        //     self.revese_map()[i] != self.revese_map()[j] 
-        &&&
-        forall|addr:usize|
-            #![trigger self.map().dom().contains(addr)]
-            #![trigger self.map().spec_index(addr)]
-            self.map().dom().contains(addr) 
-            ==>
-            self.revese_map().dom().contains(self.map().spec_index(addr))
-            &&
-            self.revese_map().spec_index(self.map().spec_index(addr)) == addr
-        &&&
-            forall|v:T|
-                #![trigger self.revese_map().dom().contains(v)]
-                #![trigger self.revese_map().spec_index(v)]
-                #![trigger self.perms.dom().contains(self.revese_map().spec_index(v))]
-            self.revese_map().dom().contains(v) 
-            ==>
-            // self.perms.dom().contains(self.revese_map()[v])
-            // &&
-            self.map().dom().contains(self.revese_map().spec_index(v))
-            &&
-            self.map().spec_index(self.revese_map().spec_index(v)) == v
-    }
-
     pub open spec fn wf(&self) -> bool{
         &&&
         self.wf_perms()
@@ -374,8 +336,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         self.wf_map()
         &&&
         self.value_list_unique()
-        &&&
-        self.wf_reverse_map()
     }
 }
 
@@ -384,6 +344,12 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     pub fn new(container_depth: Option<usize>, minor: Option<usize>) -> (ret: Self)
         ensures
             ret.wf(),
+            ret.view() == Seq::<T>::empty(),
+            ret.dom() == Set::<usize>::empty(),
+            ret.map() == Map::<usize, T>::empty(),
+            ret.length == 0,
+            ret.container_depth == container_depth,
+            ret.minor == minor,
     {
         proof{
             reveal(LinkedList::wf_perms);
@@ -395,7 +361,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         Self {
             perms: Tracked(Map::<usize, PointsTo<Node<T>>>::tracked_empty()),
@@ -405,7 +370,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             head: None,
             tail: None,
             map: Ghost(Map::empty()),
-            reverse_map: Ghost(Map::empty()),
             container_depth: container_depth,
             minor:minor,
         }
@@ -450,7 +414,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         let mut perm = perm;
         if self.length == 0 {
@@ -462,7 +425,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.tail = Some(addr);
             self.head = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            self.reverse_map = Ghost(self.reverse_map.view().insert(perm.view().value().view(), addr));
             proof{
                 self.perms.borrow_mut().tracked_insert(addr, perm.get());
             }
@@ -478,13 +440,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_prev());
             assert(self.wf_next());
             assert(self.value_list_unique());
-            assert(self.wf_reverse_map()) by {
-                broadcast use vstd::map::group_map_lemmas;
-                let v = perm.view().value().view();
-                if old(self).revese_map().dom().contains(v) {
-                    assert(old(self).map().dom().contains(old(self).revese_map().spec_index(v)));
-                }
-            }
             assert(self.wf());
         }else {
             proof{
@@ -505,7 +460,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
             self.tail = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            self.reverse_map = Ghost(self.reverse_map.view().insert(perm.view().value().view(), addr));
             proof{
                 self.perms.borrow_mut().tracked_insert(addr, perm.get());
             }
@@ -528,7 +482,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_prev());
             assert(self.wf_next());
             assert(self.value_list_unique());
-            assert(self.wf_reverse_map());
             assert(self.wf());
         }
     }
@@ -561,7 +514,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         let mut perm = perm;
         if self.length == 0 {
@@ -573,7 +525,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.tail = Some(addr);
             self.head = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            self.reverse_map = Ghost(self.reverse_map.view().insert(perm.view().value().view(), addr));
             proof{
                 self.perms.borrow_mut().tracked_insert(addr, perm.get());
             }
@@ -589,13 +540,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_prev());
             assert(self.wf_next());
             assert(self.value_list_unique());
-            assert(self.wf_reverse_map()) by {
-                broadcast use vstd::map::group_map_lemmas;
-                let v = perm.view().value().view();
-                if old(self).revese_map().dom().contains(v) {
-                    assert(old(self).map().dom().contains(old(self).revese_map().spec_index(v)));
-                }
-            }
             assert(self.wf());
         }else {
             proof{
@@ -616,7 +560,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
             self.head = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            self.reverse_map = Ghost(self.reverse_map.view().insert(perm.view().value().view(), addr));
             proof{
                 self.perms.borrow_mut().tracked_insert(addr, perm.get());
             }
@@ -639,7 +582,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_prev());
             assert(self.wf_next());
             assert(self.value_list_unique());
-            assert(self.wf_reverse_map());
             assert(self.wf());
         }
     }
@@ -673,7 +615,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         let head_addr = self.head.unwrap();
         let tracked head_perm = self.perms.borrow().tracked_borrow(head_addr);
@@ -732,7 +673,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         if self.length != 1 {
             proof{
@@ -754,7 +694,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             }
             self.addr_list = Ghost(self.addr_list.view().skip(1));
             self.value_list = Ghost(self.value_list.view().skip(1));
-            self.reverse_map = Ghost(self.reverse_map.view().remove(self.map.view().spec_index(old_head_addr)));
             self.map = Ghost(self.map.view().remove(old_head_addr));
 
             assert(self.wf_perms());
@@ -765,7 +704,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_prev());
             assert(self.wf_next());
             assert(self.value_list_unique());
-            assert(self.wf_reverse_map());
             assert(self.wf());
 
             (old_head_addr, Tracked(old_head_perm))
@@ -777,7 +715,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.length = 0;
             self.head = None;
             self.tail = None;
-            self.reverse_map = Ghost(self.reverse_map.view().remove(self.map.view().spec_index(old_head_addr)));
             self.map = Ghost(self.map.view().remove(old_head_addr));
 
             assert(self.wf_perms());
@@ -788,7 +725,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf_prev());
             assert(self.wf_next());
             assert(self.value_list_unique());
-            assert(self.wf_reverse_map());
             assert(self.wf());
 
             (old_head_addr, Tracked(old_head_perm))
@@ -829,7 +765,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         proof {
             seq_subrange_split_lemma::<usize>();
@@ -839,7 +774,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         }
 
         let ghost prefix_set = old(self).addr_list.view().subrange(0, i as int).to_set();
-        let ghost prefix_value_set = old(self).value_list.view().subrange(0, i as int).to_set();
         let head0 = self.head;
 
         // traverse to the prefix tail (index i-1); reads only
@@ -894,7 +828,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         self.addr_list = Ghost(old(self).addr_list.view().subrange(i as int, old(self).length as int));
         self.value_list = Ghost(old(self).value_list.view().subrange(i as int, old(self).length as int));
         self.map = Ghost(old(self).map.view().remove_keys(prefix_set));
-        self.reverse_map = Ghost(old(self).reverse_map.view().remove_keys(prefix_value_set));
         self.length = self.length - i;
 
         // build ret (prefix)
@@ -906,7 +839,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             head: head0,
             tail: Some(prefix_tail_addr),
             map: Ghost(old(self).map.view().restrict(prefix_set)),
-            reverse_map: Ghost(old(self).reverse_map.view().restrict(prefix_value_set)),
             container_depth: self.container_depth,
             minor: self.minor,
         };
@@ -921,7 +853,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         assert(ret.wf_next());
         assert(ret.wf_map());
         assert(ret.value_list_unique());
-        assert(ret.wf_reverse_map());
         assert(ret.wf());
 
         // ---- self.wf() (suffix) ----
@@ -934,7 +865,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         assert(self.wf_next());
         assert(self.wf_map());
         assert(self.value_list_unique());
-        assert(self.wf_reverse_map());
         assert(self.wf());
 
         ret
@@ -966,7 +896,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-            reveal(LinkedList::wf_reverse_map);
         }
         self.perms = prefix.perms;
         self.addr_list = prefix.addr_list;
@@ -975,7 +904,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         self.head = prefix.head;
         self.tail = prefix.tail;
         self.map = prefix.map;
-        self.reverse_map = prefix.reverse_map;
 
         assert(self.wf_perms());
         assert(self.wf_addr_list());
@@ -986,11 +914,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         assert(self.wf_next());
         assert(self.wf_map());
         assert(self.value_list_unique());
-        assert(self.wf_reverse_map()) by {
-            assert(self.map() == prefix.map());
-            assert(self.revese_map() == prefix.revese_map());
-            assert(prefix.wf_reverse_map());
-        }
         assert(self.wf());
     }
 

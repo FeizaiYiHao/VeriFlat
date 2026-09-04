@@ -123,7 +123,7 @@ verus! {
                 &&& krnl.ep_mp.dom().contains(endpoint_ptr)
                 &&& current_thread_lock_perm.ordering_lock_id().major == THREAD_LOCK_MAJOR
                 &&& krnl.ep_mp.lock_id_by_key(endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
-                &&& kernel_objects_unlocked_except(krnl, lctx.thread_id(), Some(cpu_id), None, Some(process_ptr), Some(current_thread_ptr), None)
+                &&& kernel_objects_unlocked_except(krnl, lctx.thread_id(), set![cpu_id], Set::empty(), Set::empty(), set![process_ptr], set![current_thread_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty())
             }) by { reveal(thread_endpoint_ref_counter_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
         }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));

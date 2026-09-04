@@ -19,6 +19,8 @@ pub open spec fn process_invariant_fields_unchanged(
                 == pre.spec_index(p_ptr).view()
             &&& post.spec_index(p_ptr).view_rodata()
                 == pre.spec_index(p_ptr).view_rodata()
+            &&& post.spec_index(p_ptr).view_ghost()
+                == pre.spec_index(p_ptr).view_ghost()
         }
 }
 
@@ -33,6 +35,8 @@ pub proof fn process_lock_op_preserves_invariant_fields(
             == pre.spec_index(changed).view(),
         post.spec_index(changed).view_rodata()
             == pre.spec_index(changed).view_rodata(),
+        post.spec_index(changed).view_ghost()
+            == pre.spec_index(changed).view_ghost(),
     ensures
         process_invariant_fields_unchanged(pre, post),
 {

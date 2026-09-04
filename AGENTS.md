@@ -189,6 +189,15 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
 
 - In Windows-hosted sessions run builds in WSL at
   `/home/xiangdc/VeriFlat`.
+- During development, use the split Cargo-Verus workspace. Start with
+  `./verify-workspace.sh --package <package>` and narrow further with
+  `--verify-only-module`/`--verify-function` when appropriate. Do not use the
+  monolithic build for routine proof iteration; reserve it for final
+  cross-crate closure and same-scope performance measurements.
+- Changing only Verus CLI selection or profiling arguments may reuse a Cargo
+  artifact produced with earlier arguments. If a real cold rerun is required,
+  invalidate only the affected package under `target/verus-partial`; never
+  treat a cached no-op as fresh verification.
 - Focused/workspace: `./verify-workspace.sh --package <package>` and
   `./verify-workspace.sh`. Monolith:
   `./verify.sh --num-threads 32 --time`. Report each run number.

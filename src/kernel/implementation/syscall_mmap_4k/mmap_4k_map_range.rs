@@ -55,6 +55,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
     )
         requires
             mmap_4k_held_context(old(krnl), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm),
+            old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             mmap_4k_allocation_ready(old(krnl), old(lctx)),
             mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr),
@@ -130,6 +131,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
                 krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
                 krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
                 krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
+                krnl.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
                 old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k >= 4 * range.len,
                 krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 4 * (range.len - i),
                 krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 4 * i,

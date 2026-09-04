@@ -28,17 +28,9 @@ pub struct ContainerRO {
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
 }
 
-/// User-view-visible ghost slot of a container's `RwLock` (`UGhostT`). Holds the
-/// container's direct `owned_threads` set, mutated lock-free via
-/// `LockedMap::update_user_ghost` when a thread joins its direct container.
-pub struct ContainerGhostU {
+/// Lock-free ghost state associated with a container's `RwLock`.
+pub struct ContainerGhost {
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
-}
-
-/// Kernel-view-only ghost slot of a container's `RwLock` (`KGhostT`). Holds the
-/// container's `owned_indirect_threads` set, mutated lock-free via
-/// `LockedMap::update_kernel_ghost` when a thread joins one of its descendants.
-pub struct ContainerGhostK {
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
 }
 

@@ -23,7 +23,7 @@ verus! {
                 container_perms.spec_index(c_ptr).view().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().current_process.unwrap())
                 &&
                 cpu_array.spec_index(cpu_i).view().view().current_thread is Some ==>
-                container_perms.spec_index(c_ptr).view_user_ghost().owned_threads.contains(cpu_array.spec_index(cpu_i).view().view().current_thread.unwrap())
+                container_perms.spec_index(c_ptr).view_ghost().owned_threads.contains(cpu_array.spec_index(cpu_i).view().view().current_thread.unwrap())
             }
         &&&
         forall|cpu_i:CpuId|

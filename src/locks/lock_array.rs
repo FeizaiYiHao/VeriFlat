@@ -8,14 +8,14 @@ use crate::primitive::*;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
-    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT, const N: usize, const HAS_KILL_STATE: bool>{
-        array: Array<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>, N>,
+    pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool>{
+        array: Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>,
         
-        user_seq: Ghost<Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>>,
+        user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
     }
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT,
         const HAS_KILL_STATE: bool, const N: usize>
-        LockedArray<T, ROT, KGhostT, UGhostT, N, HAS_KILL_STATE> {
+        LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
         pub closed spec fn array_wf(&self) -> bool{
             &&&
             self.array.wf()
@@ -28,10 +28,10 @@ verus! {
             self.view().len() == N
         }
 
-        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>>{
+        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>{
             self.array.view()
         }
-        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, KGhostT, UGhostT, HAS_KILL_STATE>
+        pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
         {
@@ -184,8 +184,7 @@ verus! {
                 final(self).spec_index(index).view().is_init(),
                 final(self).spec_index(index).view().wlocked_by(lctx),
                 final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
-                final(self).spec_index(index).view().view_kernel_ghost() == old(self).spec_index(index).view().view_kernel_ghost(),
-                final(self).spec_index(index).view().view_user_ghost() == old(self).spec_index(index).view().view_user_ghost(),
+                final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
                 final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
                 final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
 
@@ -219,8 +218,7 @@ verus! {
                 final(self).spec_index(index).view().wlocked_by(lctx),
                 final(self).spec_index(index).view().write_lock_perm_match(lp.view()),
                 final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
-                final(self).spec_index(index).view().view_kernel_ghost() == old(self).spec_index(index).view().view_kernel_ghost(),
-                final(self).spec_index(index).view().view_user_ghost() == old(self).spec_index(index).view().view_user_ghost(),
+                final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
                 final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
                 final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
                 *ret == old(self).spec_index(index).view().view(),
@@ -245,9 +243,9 @@ verus! {
         }
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT,
         const N: usize>
-        LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
+        LockedArray<T, ROT, GhostT, N, NO_KILL_STATE>{
         pub open spec fn lock_id_by_index(&self, index:usize) -> LockId
             recommends
                 0 <= index < N,
@@ -256,9 +254,9 @@ verus! {
         }
     }
 
-    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, KGhostT, UGhostT,
+    impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT,
         const N: usize>
-        LockedArray<T, ROT, KGhostT, UGhostT, N, NO_KILL_STATE>{
+        LockedArray<T, ROT, GhostT, N, NO_KILL_STATE>{
         #[verifier(external_body)]
         pub fn wlock(&mut self, index:usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret:Tracked<LockPerm>)
             requires
