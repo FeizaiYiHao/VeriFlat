@@ -165,8 +165,8 @@ verus! {
                         lock_id: allocator_cache_lock_id(cpu_id), mode: TypedLockMode::Write,
                     });
                 };
-                assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); reveal(typed_lock_maps_inserted); };
-                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_inserted); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
+                assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks);  };
+                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned);  vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
                 assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
             }
             return (page_ptr, Tracked(page_lock_perm));
@@ -193,8 +193,8 @@ verus! {
                         lock_id: old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write,
                     });
                 };
-                assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); reveal(typed_lock_maps_inserted); };
-                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_inserted); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
+                assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks);  };
+                assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned);  vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
                 assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
             }
             return (page_ptr, Tracked(page_lock_perm));
@@ -393,8 +393,8 @@ verus! {
                 reveal(LocalContext::holds_no_allocator_locks);
             };
             assert(krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)).major == OWNED_PAGE_LOCK_MAJOR) by { reveal(page_array_wf); };
-            assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned); reveal(typed_lock_maps_inserted); vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
-            assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); assert(OWNED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+            assert(lctx.lock_id_set() =~= old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))) by { reveal(lock_id_set_aligned);  vstd::set::axiom_set_ext_equal(lctx.lock_id_set(), old(lctx).lock_id_set().insert((krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))); };
+            assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by {  assert(OWNED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
         }

@@ -187,7 +187,6 @@ verus! {
                     ==> page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), exceptions.insert(page_ptr2page_index(page_ptr))),
                 thread_objects_unlocked_except(old(krnl).thr_mp, old(lctx).thread_id(), set![staging_thread_ptr]) ==> thread_objects_unlocked_except(final(krnl).thr_mp, final(lctx).thread_id(), set![staging_thread_ptr, page_ptr]),
         {
-            hide(new_thread_kernel_transition_framing);
             proof {
                 assert(
                     krnl.prc_mp.view().spec_index(process_ptr).is_init()
@@ -259,7 +258,7 @@ verus! {
             }
             proof {
                 assert(krnl.thr_mp.view().dom().contains(staging_thread_ptr)) by { vstd::set::axiom_set_ext_equal(krnl.thr_mp.dom(), old(krnl).thr_mp.dom().insert(page_ptr)); };
-                assert(krnl.thr_mp.view().spec_index(staging_thread_ptr).is_init() && krnl.thr_mp.view().spec_index(staging_thread_ptr).addr() == staging_thread_ptr) by { reveal(thread_perms_wf); reveal(LockedMap::perms_wf); };
+                assert(krnl.thr_mp.view().spec_index(staging_thread_ptr).is_init() && krnl.thr_mp.view().spec_index(staging_thread_ptr).addr() == staging_thread_ptr) by { reveal(thread_perms_wf);  };
             }
             let staging_thread_mut = krnl.thr_mp.borrow_mut_typed(staging_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
             staging_thread_mut.temp_alloc_cache_4k = Ghost(staging_thread_mut.temp_alloc_cache_4k.view().remove(page_ptr));
@@ -276,7 +275,7 @@ verus! {
                 assert(
                     krnl.thr_mp.view().spec_index(page_ptr).is_init()
                     && krnl.thr_mp.view().spec_index(page_ptr).addr() == page_ptr
-                ) by { reveal(thread_perms_wf); reveal(LockedMap::perms_wf); };
+                ) by { reveal(thread_perms_wf);  };
                 assert(!krnl.sched_mp.spec_index(scheduler_ptr).view().queue.view().contains(page_ptr)) by { reveal(container_thread_scheduler_wf); };
             }
             let thread_mut = krnl.thr_mp.borrow_mut_typed(page_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_perm));
@@ -307,7 +306,6 @@ verus! {
                 add_thread_to_container_sets(&mut krnl.ctn_mp, container_ptr, page_ptr, uppers);
                 lctx.update_lock_id(KernelObjId::Thread(page_ptr), fresh_thread_lock_id, krnl.thr_mp.lock_id_by_key(page_ptr));
                 assert(new_thread_kernel_transition_framing(*old(krnl), *krnl, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, page_ptr, proc_pagetable)) by {
-                    reveal(new_thread_kernel_transition_framing);
                     reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(scheduler_perms_wf);
                     reveal(thread_free_quota_pending_empty_unless_wlocked);
                     seq_push_lemma::<RwLockThreadPtr>();
@@ -637,7 +635,6 @@ verus! {
         assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
         assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
             pre.ctn_mp.spec_index(container_ptr).view().uppertree_seq.view().to_set_ensures();
-            reveal(KernelK::inv); reveal(KernelK::memory_management_inv); reveal(KernelK::process_management_inv);
             reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf);
             reveal(container_process_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(thread_perms_wf);
             lemma_process_effective_quota_4k_fold_sum_eq_forall();
@@ -693,7 +690,7 @@ verus! {
             &&& post.ctn_mp.dom().contains(post.rt_ctn)
             &&& pre.ctn_mp.spec_index(pre.rt_ctn).view().root_process_in_processes()
             &&& post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()
-        }) by { reveal(KernelK::inv); reveal(KernelK::process_management_inv); reveal(container_root_wf); };
+        }) by { reveal(container_root_wf); };
         assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
             reveal(per_container_process_tree_wf); reveal(container_process_wf);
@@ -722,7 +719,7 @@ verus! {
             seq_push_lemma::<RwLockThreadPtr>();
         };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
-        assert(process_empty_thread_list_wlocked(post.prc_mp)) by { reveal(KernelK::inv); reveal(KernelK::process_management_inv); reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
+        assert(process_empty_thread_list_wlocked(post.prc_mp)) by { reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
             assert(pre.prc_mp.spec_index(process_ptr).view().owned_threads.wf()) by { reveal(process_perms_wf); };
             seq_push_lemma::<RwLockThreadPtr>();

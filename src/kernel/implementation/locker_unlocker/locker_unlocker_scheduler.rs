@@ -64,7 +64,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).sched_mp.perms_wf()) by { reveal(scheduler_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by { reveal(LocalContext::lock_id_acyclic); reveal(LocalContext::held_lock_majors_lt); reveal(scheduler_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by {   reveal(scheduler_perms_wf); };
             }
             let ret = self.sched_mp.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
@@ -76,9 +76,7 @@ impl KernelK {
                     assert(container_thread_scheduler_wf(self.ctn_mp, self.thr_mp, self.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                reveal(LocalContext::base_lock_scope);
-                reveal(LocalContext::object_lock_scope);
+                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by {  reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 broadcast use vstd::map::lemma_map_insert_domain;
             }
             ret
@@ -166,7 +164,6 @@ impl KernelK {
                     assert(container_thread_scheduler_wf(self.ctn_mp, self.thr_mp, self.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                reveal(LocalContext::object_lock_scope);
                 broadcast use vstd::map::lemma_map_remove_domain;
                 broadcast use vstd::set::lemma_set_insert_same;
                 broadcast use vstd::set::lemma_set_insert_different;

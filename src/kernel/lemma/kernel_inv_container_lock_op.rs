@@ -158,7 +158,6 @@ pub proof fn container_no_change_imply_process_management_inv(
         &&& post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()
     }) by {
         reveal(container_root_wf);
-        reveal(container_invariant_fields_unchanged);
     };
     assert(per_container_process_tree_wf(
         post.ctn_mp,

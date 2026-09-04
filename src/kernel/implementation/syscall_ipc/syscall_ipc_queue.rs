@@ -126,14 +126,14 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
             old(endpoint_map).perms_wf()
             && old(endpoint_map).spec_index(endpoint_ptr).is_init()
             && old(endpoint_map).spec_index(endpoint_ptr).view().inv()
-        ) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+        ) by { reveal(endpoint_perms_wf);  };
     }
     {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thread_ptr, waiting_state, node_addr, node_perm);
     }
     proof {
-        assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+        assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf);  };
     }
 }
 
@@ -404,14 +404,14 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
             old(endpoint_map).perms_wf()
             && old(endpoint_map).spec_index(endpoint_ptr).is_init()
             && old(endpoint_map).spec_index(endpoint_ptr).view().inv()
-        ) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+        ) by { reveal(endpoint_perms_wf);  };
     }
     let ret = {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thread_ptr)
     };
     proof {
-        assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+        assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf);  };
     }
     ret
 }

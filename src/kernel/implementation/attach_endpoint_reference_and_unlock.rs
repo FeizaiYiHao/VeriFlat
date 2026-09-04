@@ -120,7 +120,7 @@ verus! {
                 &&& krnl.ep_mp.view().spec_index(endpoint_ptr).addr() == endpoint_ptr
                 &&& krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).inv()
-            }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+            }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf);  };
             assert({
                 &&& !krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((thread_ptr, 0))
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).view().rf_counter < usize::MAX
@@ -145,7 +145,7 @@ verus! {
         proof {
             assert(krnl.subsystems_inv()) by {
                 assert(thread_perms_wf(krnl.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-                assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+                assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf);  };
                 reveal(KernelK::default_pagetable_wf);
             };
             assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };

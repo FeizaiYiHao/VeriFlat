@@ -166,7 +166,7 @@ verus! {
         }
 
         proof {
-            assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+            assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { reveal(endpoint_perms_wf);  };
         }
         let (_, peer_thread_ptr) = endpoint_ref.queue.peek_head();
 

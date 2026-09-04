@@ -89,7 +89,6 @@ pub proof fn lemma_no_change_imply_endpoint_perms_wf_forall()
             ==> endpoint_perms_wf(post),
 {
     reveal(endpoint_perms_wf);
-    reveal(endpoints_inv);
 }
 
 pub proof fn lemma_no_change_imply_endpoint_pages_wf_forall()

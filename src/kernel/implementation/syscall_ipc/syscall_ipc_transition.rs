@@ -218,7 +218,7 @@ verus! {
                 &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(peer_node_addr)
                 &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().spec_index(peer_node_addr) == peer_thread_ptr
                 &&& endpoint_node_perm.addr() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr()
-            }) by { reveal(thread_endpoint_queue_wf); reveal(endpoint_perms_wf); reveal(endpoints_inv); reveal(LinkedList::wf_map); };
+            }) by { reveal(thread_endpoint_queue_wf); reveal(endpoint_perms_wf);  reveal(LinkedList::wf_map); };
         }
         let (scheduler_node_addr, scheduler_node_perm) = ipc_schedule_endpoint_waiter(&mut krnl.thr_mp, Tracked(&*lctx), peer_thread_ptr, current_thread_ptr, result, Tracked(endpoint_node_perm), Tracked(&peer_thread_lock_perm));
         ipc_enqueue_scheduled_thread(&mut krnl.sched_mp, Tracked(&*lctx), peer_scheduler_ptr, peer_thread_ptr, scheduler_node_addr, scheduler_node_perm, Tracked(&peer_scheduler_lock_perm));
@@ -231,7 +231,7 @@ verus! {
                     &&& thread_perms_wf(krnl.thr_mp)
                     &&& endpoint_perms_wf(krnl.ep_mp)
                     &&& scheduler_perms_wf(krnl.sched_mp)
-                }) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(endpoint_perms_wf); reveal(endpoints_inv); reveal(scheduler_perms_wf); };
+                }) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(endpoint_perms_wf);  reveal(scheduler_perms_wf); };
                 reveal(KernelK::default_pagetable_wf);
             };
             assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
@@ -254,7 +254,7 @@ verus! {
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
                     seq_skip_lemma::<RwLockThreadPtr>();
                     seq_remove_lemma_2::<RwLockThreadPtr>();
-                    reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(endpoints_inv); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
+                    reveal(thread_perms_wf); reveal(endpoint_perms_wf);  reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
                 };
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
                 assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by {
@@ -426,7 +426,7 @@ verus! {
                     &&& cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())
                     &&& thread_perms_wf(krnl.thr_mp)
                     &&& endpoint_perms_wf(krnl.ep_mp)
-                }) by { reveal(cpu_array_wf); reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+                }) by { reveal(cpu_array_wf); reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(endpoint_perms_wf);  };
                 reveal(KernelK::default_pagetable_wf);
             };
             assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
@@ -434,7 +434,7 @@ verus! {
                 assert({
                     &&& krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors
                     &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.wf()
-                }) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+                }) by { reveal(endpoint_perms_wf);  };
                 assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
@@ -452,7 +452,7 @@ verus! {
                 }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
                     seq_push_lemma::<RwLockThreadPtr>();
-                    reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(endpoints_inv); reveal(LinkedList::wf_value_list); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
+                    reveal(thread_perms_wf); reveal(endpoint_perms_wf);  reveal(LinkedList::wf_value_list); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
                 };
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
             };

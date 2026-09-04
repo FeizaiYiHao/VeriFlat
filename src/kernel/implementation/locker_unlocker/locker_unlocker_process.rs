@@ -84,7 +84,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).prc_mp.perms_wf()) by { reveal(process_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(process_lock_acquire_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::object_lock_scope); reveal(LocalContext::base_quota_4k_lock_scope); reveal(lock_id_set_aligned); reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {     reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
             }
             let res = self.prc_mp.wlock_unless_killed(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)));
 
@@ -100,9 +100,8 @@ impl KernelK {
                 assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(process_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(process_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 if res.0 {
-                    reveal(process_lock_acquire_scope);
                     if exists|cpu_id: CpuId|
                         #![trigger old(self).cpu_arr.spec_index(cpu_id)]
                     {
@@ -120,7 +119,7 @@ impl KernelK {
                         assert({
                             &&& lctx.base_lock_scope(set![cpu_id], Set::empty(), set![process_ptr], Set::empty(), Set::empty())
                             &&& self.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                        }) by { reveal(typed_lock_maps_inserted); reveal(LocalContext::base_lock_scope); broadcast use vstd::map::lemma_map_insert_domain; };
+                        }) by {   broadcast use vstd::map::lemma_map_insert_domain; };
                     } else if exists|cpu_id: CpuId, container_ptr: RwLockContainerPtr, pcid_allocators: Set<RwLockPcidAllocatorPtr>|
                         #![trigger old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())]
                     {
@@ -167,7 +166,7 @@ impl KernelK {
                             &&& index_valid(NUM_CPUS, cpu_id)
                             &&& self.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
                             &&& self.cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                        }) by { reveal(typed_lock_maps_inserted); reveal(LocalContext::object_lock_scope); broadcast use vstd::map::lemma_map_insert_domain; };
+                        }) by {   broadcast use vstd::map::lemma_map_insert_domain; };
                     } else {
                         let cpu_id = choose|cpu_id: CpuId|
                             #![trigger old(self).cpu_arr.spec_index(cpu_id)]
@@ -206,9 +205,8 @@ impl KernelK {
                             &&& self.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
                             &&& self.cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
                             &&& self.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                        }) by { reveal(typed_lock_maps_inserted); reveal(LocalContext::base_quota_4k_lock_scope); broadcast use vstd::map::lemma_map_insert_domain; };
+                        }) by {   broadcast use vstd::map::lemma_map_insert_domain; };
                     }
-                    assert(process_lock_held_scope(self, lctx, process_ptr)) by { reveal(process_lock_held_scope); };
                 }
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }

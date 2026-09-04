@@ -61,17 +61,12 @@ impl KernelK {
         }
         self.it_mp.wunlock(iommu_table_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::IommuTable(iommu_table_ptr)));
         proof {
-            assert(self.it_mp.spec_index(iommu_table_ptr).inv() && self.it_mp.spec_index(iommu_table_ptr).view() == old(self).it_mp.spec_index(iommu_table_ptr).view()) by { reveal(wunlock_ensures); };
-            assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf); reveal(LockedMap::unchanged_except); };
+            assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf);  };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { reveal(iommu_table_pages_wf); reveal(process_iommu_table_match); reveal(LockedMap::unchanged_except); reveal(wunlock_ensures); };
-            assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(LockedMap::unchanged_except); reveal(wunlock_ensures); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(LockedMap::unchanged_except); reveal(wunlock_ensures); };
-            assert(self.inv()) by { reveal(KernelK::inv); };
+            assert(self.memory_management_inv()) by { reveal(iommu_table_pages_wf); reveal(process_iommu_table_match);   };
+            assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf);   };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec);   };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            reveal(LocalContext::object_lock_scope);
-            reveal(iommu_table_objects_unlocked_except);
-            reveal(LockedMap::unchanged_except);
             broadcast use vstd::map::lemma_map_remove_domain;
             broadcast use vstd::set::lemma_set_remove_same;
             broadcast use vstd::set::lemma_set_remove_different;

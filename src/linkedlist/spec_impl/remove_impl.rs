@@ -30,22 +30,83 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     {
         proof{
             reveal(LinkedList::wf_perms);
-            reveal(LinkedList::wf_addr_list);
-            reveal(LinkedList::wf_value_list);
-            reveal(LinkedList::wf_head);
-            reveal(LinkedList::wf_tail);
-            reveal(LinkedList::wf_prev);
-            reveal(LinkedList::wf_next);
-            reveal(LinkedList::wf_map);
-            reveal(LinkedList::value_list_unique);
         }
             proof {
                 seq_remove_lemma::<usize>();
-                seq_remove_lemma::<T>();
                 seq_remove_lemma_2::<usize>();
                 seq_remove_lemma_2::<T>();
             }
             let ghost_index = Ghost(self.addr_list.view().index_of(addr));
+            proof {
+                assert(self.addr_list.view().contains(addr)) by {
+                    reveal(LinkedList::wf_perms);
+                };
+                assert(
+                    self.addr_list.view().len() == self.length
+                    && 0 <= ghost_index.view() < self.length
+                    && self.addr_list.view().spec_index(ghost_index.view()) == addr
+                ) by {
+                    reveal(LinkedList::wf_addr_list);
+                    let k = choose|k: int|
+                        0 <= k < self.addr_list.view().len()
+                        && self.addr_list.view().spec_index(k) == addr;
+                    assert(self.addr_list.view().spec_index(k) == addr) by {
+                        reveal(LinkedList::wf_perms);
+                    };
+                };
+                assert(0 < ghost_index.view()) by {
+                    reveal(LinkedList::wf_head);
+                };
+                assert(ghost_index.view() + 1 < self.length) by {
+                    reveal(LinkedList::wf_tail);
+                };
+                assert(
+                    self.map().dom() == self.perms.view().dom()
+                    && self.map().spec_index(addr)
+                        == self.perms.view().spec_index(addr).value().view()
+                ) by {
+                    reveal(LinkedList::wf_map);
+                };
+                assert(
+                    self.value_list.view().len() == self.length
+                    && self.value_list.view().spec_index(ghost_index.view())
+                        == self.map().spec_index(addr)
+                ) by {
+                    reveal(LinkedList::wf_value_list);
+                };
+                assert(
+                    self.perms.view().spec_index(addr).value().prev is Some
+                    && self.perms.view().spec_index(addr).value().prev.unwrap()
+                        == self.addr_list.view().spec_index(ghost_index.view() - 1)
+                ) by {
+                    reveal(LinkedList::wf_prev);
+                };
+                assert(
+                    self.perms.view().spec_index(addr).value().next is Some
+                    && self.perms.view().spec_index(addr).value().next.unwrap()
+                        == self.addr_list.view().spec_index(ghost_index.view() + 1)
+                ) by {
+                    reveal(LinkedList::wf_next);
+                };
+                assert(
+                    self.addr_list.view().spec_index(ghost_index.view() - 1) != addr
+                    && self.addr_list.view().spec_index(ghost_index.view() + 1) != addr
+                    && self.addr_list.view().spec_index(ghost_index.view() - 1)
+                        != self.addr_list.view().spec_index(ghost_index.view() + 1)
+                ) by {
+                    reveal(LinkedList::wf_addr_list);
+                };
+                assert(
+                    self.perms.view().dom().contains(
+                        self.addr_list.view().spec_index(ghost_index.view() - 1),
+                    )
+                    && self.perms.view().dom().contains(
+                        self.addr_list.view().spec_index(ghost_index.view() + 1),
+                    )
+                ) by {
+                    reveal(LinkedList::wf_perms);
+                };
+            }
 
             let tracked old_perm = self.perms.borrow_mut().tracked_remove(addr);
             let old_node: &Node<T> = PPtr::<Node<T>>::from_usize(addr).borrow(Tracked(&old_perm));
@@ -69,11 +130,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.map = Ghost(self.map.view().remove(addr));
             self.length = self.length - 1;
 
-            assert(self.wf_perms());
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.wf_tail());
+            assert(self.wf_perms()) by {
+                reveal(LinkedList::wf_perms);
+                assert(old(self).addr_list.view().no_duplicates()) by {
+                    reveal(LinkedList::wf_addr_list);
+                };
+            };
+            assert(self.wf_addr_list()) by { reveal(LinkedList::wf_addr_list); };
+            assert(self.wf_value_list()) by {
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+            };
             assert(self.addr_list.view() == old(self).addr_list.view().subrange(0, ghost_index.view()).add(old(self).addr_list.view().subrange(ghost_index.view() + 1, old(self).length as int)));
             assert(
                 forall|i:int|
@@ -82,7 +149,23 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                     ==>
                     self.addr_list.view().spec_index(i) == old(self).addr_list.view().spec_index(i + 1)
             );
+            assert(
+                self.addr_list.view().spec_index(0)
+                == old(self).addr_list.view().spec_index(0)
+            ) by {
+                seq_remove_lemma::<usize>();
+            };
+            assert(self.wf_head()) by {
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_head);
+            };
+            assert(self.wf_tail()) by {
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_tail);
+            };
             assert(self.wf_prev()) by {
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_prev);
                 assert(        
                     forall|i:int|
                         #![trigger self.addr_list.view().spec_index(i)]
@@ -117,6 +200,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                     );
             };
             assert(self.wf_next()) by {
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_next);
                 assert(        
                     forall|i:int|
                         #![trigger self.addr_list.view().spec_index(i)]
@@ -151,14 +236,28 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                     );
             };
             assert(self.map().dom() == self.perms.view().dom());
+            assert(self.wf_map()) by {
+                reveal(LinkedList::wf_map);
+                assert(
+                    forall|addr:usize|
+                        #![trigger self.map().spec_index(addr)]
+                        self.map().dom().contains(addr)
+                        ==>
+                        self.map().spec_index(addr)
+                            == self.perms.view().spec_index(addr).value().view()
+                );
+            };
+            assert(self.value_list_unique()) by {
+                reveal(LinkedList::value_list_unique);
+                old(self).value_list.view().remove_ensures(ghost_index.view());
+            };
             assert(
-                forall|addr:usize|
-                    #![trigger self.map().spec_index(addr)]
-                    self.map().dom().contains(addr) 
-                    ==>
-                    self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
-            );
-            assert(self.value_list_unique());
+                old(self).view().no_duplicates()
+                ==> self.view()
+                    == old(self).view().remove_value(old(self).map().spec_index(addr))
+            ) by {
+                seq_remove_lemma::<T>();
+            };
             assert(self.wf());
 
         (addr, Tracked(old_perm))

@@ -62,7 +62,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by { reveal(container_lock_held_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::object_lock_scope); reveal(lock_id_set_aligned); reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_allocator_wf); reveal(container_perms_wf); reveal(allocator_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by {    reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_allocator_wf); reveal(container_perms_wf); reveal(allocator_perms_wf); };
             }
             let ret = self.allc_4k_mp.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 

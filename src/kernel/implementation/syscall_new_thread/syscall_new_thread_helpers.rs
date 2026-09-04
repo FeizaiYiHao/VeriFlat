@@ -113,7 +113,7 @@ verus! {
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
-                assert(lctx.no_locks_held()) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::holds_no_allocator_locks); };
+                assert(lctx.no_locks_held()) by {  reveal(LocalContext::holds_no_allocator_locks); };
                 steps.end_kernel_step(&*krnl, &*lctx);
             }
         }

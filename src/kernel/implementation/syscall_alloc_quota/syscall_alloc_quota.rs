@@ -88,8 +88,7 @@ verus! {
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
 
-            assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::base_quota_4k_lock_scope); reveal(typed_lock_maps_inserted); broadcast use vstd::map::lemma_map_insert_domain; };
-            assert(process_lock_acquire_scope(krnl, lctx, process_ptr)) by { reveal(process_lock_acquire_scope); };
+            assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {    broadcast use vstd::map::lemma_map_insert_domain; };
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(lctx));
             if let (false, _) = process_res {
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
@@ -121,7 +120,7 @@ verus! {
 
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
-                assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])) by { reveal(LocalContext::base_quota_4k_lock_scope); reveal(typed_lock_maps_inserted); broadcast use vstd::map::lemma_map_insert_domain; };
+                assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {   broadcast use vstd::map::lemma_map_insert_domain; };
             }
             commit_alloc_quota_4k(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
             return  RetValueType::Success;

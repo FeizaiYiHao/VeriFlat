@@ -177,12 +177,10 @@ verus! {
             reveal(LinkedList::wf_value_list); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
         };
         assert(krnl.pg_arr.spec_index(page_index).view().view().state is Free4k) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
-        assert(krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by { reveal(Page::free_page_lock_major); };
         assert(!lctx.page_lock_map().dom().contains(page_index)) by {
             if lctx.page_lock_map().dom().contains(page_index) {
-                assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == krnl.pg_arr.lock_id_by_index(page_index)) by { reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LocalContext::typed_lock_entry); };
+                assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == krnl.pg_arr.lock_id_by_index(page_index)) by {  reveal(LockedArray::typed_lock_map_aligned);  };
                 assert(lctx.lock_id_set().contains((krnl.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)))) by { reveal(lock_id_set_aligned); };
-                assert(krnl.pg_arr.lock_id_by_index(page_index).major < FREE_PAGE_LOCK_MAJOR) by { reveal(LocalContext::held_lock_majors_lt); };
             }
         };
         // Lock the page slot after deriving its ordering id from the cache head.
@@ -473,12 +471,10 @@ verus! {
             reveal(LinkedList::wf_value_list); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf);
         };
         assert(krnl.pg_arr.spec_index(page_index).view().view().state is Free4k) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
-        assert(krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by { reveal(Page::free_page_lock_major); };
         assert(!lctx.page_lock_map().dom().contains(page_index)) by {
             if lctx.page_lock_map().dom().contains(page_index) {
-                assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == krnl.pg_arr.lock_id_by_index(page_index)) by { reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LocalContext::typed_lock_entry); };
+                assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == krnl.pg_arr.lock_id_by_index(page_index)) by {  reveal(LockedArray::typed_lock_map_aligned);  };
                 assert(lctx.lock_id_set().contains((krnl.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)))) by { reveal(lock_id_set_aligned); };
-                assert(krnl.pg_arr.lock_id_by_index(page_index).major < FREE_PAGE_LOCK_MAJOR) by { reveal(LocalContext::held_lock_majors_lt); };
             }
         };
         // Lock the page slot after deriving its ordering id from the pool head.

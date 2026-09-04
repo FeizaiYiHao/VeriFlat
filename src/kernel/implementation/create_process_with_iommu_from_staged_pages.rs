@@ -320,15 +320,15 @@ pub fn create_process_with_iommu_from_staged_pages(
     proof {
         page_ptr_valid_imply_page_index_valid();
         page_ptr_roundtrip();
-        assert(krnl.pg_arr.inv()) by { reveal(KernelK::inv); reveal(KernelK::subsystems_inv); reveal(page_array_wf); };
-        assert(krnl.pt_mp.perms_wf()) by { reveal(KernelK::inv); reveal(KernelK::subsystems_inv); reveal(pagetable_perms_wf); };
-        assert(krnl.it_mp.perms_wf()) by { reveal(KernelK::inv); reveal(KernelK::subsystems_inv); reveal(iommu_table_perms_wf); };
+        assert(krnl.pg_arr.inv()) by { reveal(page_array_wf); };
+        assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
+        assert(krnl.it_mp.perms_wf()) by { reveal(iommu_table_perms_wf); };
         assert(krnl.pg_arr.spec_index(l4_page_index).view().is_init() && krnl.pg_arr.spec_index(l4_page_index).view().view().inv() && krnl.pg_arr.spec_index(l4_page_index).view().view().addr == l4_page_ptr && krnl.pg_arr.spec_index(l4_page_index).view().view().perm_4k.view().is_some()) by { reveal(page_array_wf); };
         assert(krnl.pg_arr.spec_index(pagetable_page_index).view().is_init() && krnl.pg_arr.spec_index(pagetable_page_index).view().view().inv() && krnl.pg_arr.spec_index(pagetable_page_index).view().view().addr == pagetable_page_ptr && krnl.pg_arr.spec_index(pagetable_page_index).view().view().perm_4k.view().is_some()) by { reveal(page_array_wf); };
         assert(krnl.pg_arr.spec_index(process_page_index).view().is_init() && krnl.pg_arr.spec_index(process_page_index).view().view().inv() && krnl.pg_arr.spec_index(process_page_index).view().view().addr == process_page_ptr && krnl.pg_arr.spec_index(process_page_index).view().view().perm_4k.view().is_some()) by { reveal(page_array_wf); };
         assert(krnl.pg_arr.spec_index(iommu_table_page_index).view().is_init() && krnl.pg_arr.spec_index(iommu_table_page_index).view().view().inv() && krnl.pg_arr.spec_index(iommu_table_page_index).view().view().addr == iommu_table_page_ptr && krnl.pg_arr.spec_index(iommu_table_page_index).view().view().perm_4k.view().is_some()) by { reveal(page_array_wf); };
         assert(krnl.pg_arr.spec_index(iommu_l4_page_index).view().is_init() && krnl.pg_arr.spec_index(iommu_l4_page_index).view().view().inv() && krnl.pg_arr.spec_index(iommu_l4_page_index).view().view().addr == iommu_l4_page_ptr && krnl.pg_arr.spec_index(iommu_l4_page_index).view().view().perm_4k.view().is_some()) by { reveal(page_array_wf); };
-        assert(krnl.dflt_pt.view().wf()) by { reveal(KernelK::inv); reveal(KernelK::subsystems_inv); reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.dflt_pt.view().wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { reveal(PageTable::kernel_entries_wf); };
     }
     let ghost old_l4_page_lock_id = krnl.pg_arr.lock_id_by_index(l4_page_index);
@@ -368,7 +368,6 @@ pub fn create_process_with_iommu_from_staged_pages(
     let cr3 = l4_ptr;
     let mut process_value = Process::new_fresh(process_page_ptr, pcid, pagetable_page_ptr, krnl.ctn_mp.borrow_rodata(container_ptr).borrow().depth, parent_depth + 1);
     process_value.iommu_table = Some(iommu_table_page_ptr);
-    proof { assert(process_value.inv()) by { reveal(Process::wf); reveal(Process::pagetable_iommu_table_different); }; }
     let process_rodata = ReadOnlyNode::new(ProcessRO { owning_container: container_ptr, container_depth: krnl.ctn_mp.borrow_rodata(container_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1, pagetable: pagetable_page_ptr, cr3, pcid }, Ghost(process_page_ptr));
     let process_ghost = ProcessGhost { uppertree_seq: Ghost(krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr)), subtree_set: Ghost(Set::empty()) };
     let ghost old_process_page_lock_id = krnl.pg_arr.lock_id_by_index(process_page_index);
@@ -387,7 +386,7 @@ pub fn create_process_with_iommu_from_staged_pages(
     let ghost ancestors = krnl.prc_mp.spec_index(process_page_ptr).view_ghost().uppertree_seq.view();
     proof {
         assert(ancestors.to_set().subset_of(krnl.prc_mp.dom())) by { ancestors.to_set_ensures(); reveal(process_uppertree_seq_wf); };
-        assert(!ancestors.to_set().contains(process_page_ptr)) by { ancestors.to_set_ensures(); reveal(process_tree_fields_wf); };
+        assert(!ancestors.to_set().contains(process_page_ptr)) by { ancestors.to_set_ensures();  };
         process_insert_child_into_ancestor_subtree_sets(&mut krnl.prc_mp, ancestors, process_page_ptr);
     }
     let container_mut = krnl.ctn_mp.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_lock_perm));
@@ -399,7 +398,7 @@ pub fn create_process_with_iommu_from_staged_pages(
     staging_thread_mut.quota_4k = staging_thread_mut.quota_4k - 5;
 
     proof {
-        assert(process_add_child_ensures(old(krnl).ctn_mp.spec_index(container_ptr).view().root_process, old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view(), old(krnl).prc_mp, krnl.prc_mp, parent_ptr, process_page_ptr)) by { reveal(process_add_child_ensures); reveal(process_perms_wf); reveal(LinkedList::wf_value_list); seq_push_lemma::<RwLockProcessPtr>(); };
+        assert(process_add_child_ensures(old(krnl).ctn_mp.spec_index(container_ptr).view().root_process, old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view(), old(krnl).prc_mp, krnl.prc_mp, parent_ptr, process_page_ptr)) by {  reveal(process_perms_wf); reveal(LinkedList::wf_value_list); seq_push_lemma::<RwLockProcessPtr>(); };
         process_add_child_preserves_tree_wf(old(krnl).ctn_mp.spec_index(container_ptr).view().root_process, old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view(), old(krnl).prc_mp, krnl.prc_mp, parent_ptr, process_page_ptr);
         assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(page_array_wf); reveal(pagetable_perms_wf); reveal(iommu_table_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(pcid_allocator_perms_wf); reveal(LinkedList::wf_value_list); };
         assert(krnl.memory_management_inv()) by {
@@ -422,7 +421,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
         assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
         assert(iommu_tlb_wf_spec(krnl.iommu_tlb, &krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
-        assert(krnl.inv()) by { reveal(KernelK::inv); };
     }
     (process_page_ptr, pagetable_page_ptr, iommu_table_page_ptr, Tracked(process_lock_perm), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm))
 }
