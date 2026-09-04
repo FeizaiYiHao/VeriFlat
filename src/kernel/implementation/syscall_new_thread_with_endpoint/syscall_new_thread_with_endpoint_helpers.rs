@@ -137,7 +137,7 @@ verus! {
 
         proof {
             assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { reveal(container_endpoint_wf); };
-            assert(krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+            assert(krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { reveal(endpoint_perms_wf);  };
         }
         attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, cpu_id, scheduler_ptr, process_ptr, current_thread_ptr, page_index, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
         krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
@@ -147,7 +147,7 @@ verus! {
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
         proof {
-            assert(lctx.no_locks_held()) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::holds_no_allocator_locks); };
+            assert(lctx.no_locks_held()) by {  reveal(LocalContext::holds_no_allocator_locks); };
             steps.end_kernel_step(&*krnl, &*lctx);
         }
     }

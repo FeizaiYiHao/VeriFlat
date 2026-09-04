@@ -405,14 +405,14 @@ pub(super) fn ipc_share_pages_mapping(
             &&& krnl.pt_mp.lock_id_by_key(source_pagetable).major == PAGE_TABLE_LOCK_MAJOR
             &&& krnl.pt_mp.lock_id_by_key(target_pagetable).major == PAGE_TABLE_LOCK_MAJOR
         }) by { reveal(pagetable_perms_wf); };
-    }
-
-    proof {
         assert({
             &&& !krnl.pt_mp.spec_index(source_pagetable).locked_by_thread(lctx.thread_id())
             &&& !krnl.pt_mp.spec_index(target_pagetable).locked_by_thread(lctx.thread_id())
-        }) by { reveal(pagetable_objects_unlocked); };
+        }) by {
+            reveal(LockedMap::typed_lock_map_aligned);
+        };
     }
+
     let (Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm)) = krnl.wlock_pagetable_pair(source_pagetable, target_pagetable, Tracked(&mut *lctx));
     proof {
         assert(share_mapping_4k_held_context(

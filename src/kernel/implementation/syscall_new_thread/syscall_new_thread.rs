@@ -105,7 +105,7 @@ verus! {
                     &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
                     &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
                     &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
-                }) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::holds_no_allocator_locks); };
+                }) by {  reveal(LocalContext::holds_no_allocator_locks); };
             }
             add_new_thread_to_proc_container_and_scheduler(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, proc_container, scheduler_ptr, Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm), Tracked(scheduler_lock_perm));
             return RetValueType::Success;

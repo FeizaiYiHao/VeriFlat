@@ -231,7 +231,7 @@ verus! {
             process_tree_wf(root_process, process_tree_dom, new_process_perms),
     {
         assert(process_tree_wf(root_process, process_tree_dom, new_process_perms)) by {
-            reveal(process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
+             reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
             reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
         };
     }
@@ -305,7 +305,7 @@ verus! {
             process_root_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
     {
         assert(process_root_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_root_wf);
+              reveal(process_root_wf);
         };
     }
 
@@ -323,7 +323,7 @@ verus! {
             process_children_parent_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
     {
         assert(process_children_parent_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_children_parent_wf);
+              reveal(process_children_parent_wf);
             seq_push_lemma::<RwLockProcessPtr>();
         };
     }
@@ -342,7 +342,7 @@ verus! {
             process_linkedlist_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
     {
         assert(process_linkedlist_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf);
+              reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf);
             seq_push_lemma::<RwLockProcessPtr>();
         };
     }
@@ -361,10 +361,9 @@ verus! {
             process_children_depth_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
     {
         assert(process_children_depth_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_children_depth_wf);
+              reveal(process_children_depth_wf);
             assert(process_tree_fields_wf(old_process_perms)) by { reveal(process_perms_wf); };
             assert(process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
-            reveal(process_tree_fields_wf);
             seq_push_lemma::<RwLockProcessPtr>();
             seq_push_unique_lemma::<RwLockProcessPtr>();
         };
@@ -385,10 +384,9 @@ verus! {
     {
         assert(process_subtree_set_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
             process_add_child_preserves_uppertree_seq_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf);
+              reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf);
             assert(process_tree_fields_wf(old_process_perms)) by { reveal(process_perms_wf); };
             assert(process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
-            reveal(process_tree_fields_wf);
             seq_push_lemma::<RwLockProcessPtr>();
             seq_push_unique_lemma::<RwLockProcessPtr>();
         };
@@ -410,10 +408,9 @@ verus! {
         assert(process_uppertree_seq_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
             seq_push_lemma::<RwLockProcessPtr>();
             seq_push_unique_lemma::<RwLockProcessPtr>();
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_uppertree_seq_wf);
+              reveal(process_uppertree_seq_wf);
             assert(process_tree_fields_wf(old_process_perms)) by { reveal(process_perms_wf); };
             assert(process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
-            reveal(process_tree_fields_wf);
         };
     }
 
@@ -431,10 +428,9 @@ verus! {
             process_subtree_set_exclusive(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
     {
         assert(process_subtree_set_exclusive(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_add_child_ensures); reveal(process_tree_wf); reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
+              reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
             assert(process_tree_fields_wf(old_process_perms)) by { reveal(process_perms_wf); };
             assert(process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
-            reveal(process_tree_fields_wf);
             seq_push_lemma::<RwLockProcessPtr>();
             seq_push_unique_lemma::<RwLockProcessPtr>();
         };
@@ -461,7 +457,6 @@ verus! {
             process_add_child_preserves_subtree_set_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
             process_add_child_preserves_uppertree_seq_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
             process_add_child_preserves_subtree_set_exclusive(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-            reveal(process_tree_wf);
         };
     }
 
@@ -548,7 +543,7 @@ verus! {
                 ==>
                 process_tree_wf(root_process, process_tree_dom, new_process_perms),
     {
-        reveal(process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
+         reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
         reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
     }
 
@@ -573,7 +568,7 @@ verus! {
             per_container_process_tree_wf(container_perms, new_process_perms),
     {
         assert(per_container_process_tree_wf(container_perms, new_process_perms)) by {
-            reveal(per_container_process_tree_wf); reveal(container_process_wf); reveal(process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
+            reveal(per_container_process_tree_wf); reveal(container_process_wf);  reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
             reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
         };
     }
@@ -605,14 +600,13 @@ pub fn process_tree_check_is_ancestor(
         reveal(process_subtree_set_exclusive);
         assert(process_perms.perms_wf()) by { reveal(process_perms_wf); };
         assert(process_tree_fields_wf(*process_perms)) by { reveal(process_perms_wf); };
-        assert(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().len() == process_perms.spec_index(child_ptr).view_rodata().view().depth) by { reveal(process_perms_wf); reveal(process_tree_fields_wf); };
+        assert(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().len() == process_perms.spec_index(child_ptr).view_rodata().view().depth) by { reveal(process_perms_wf);  };
     }
     let depth = process_perms.borrow_rodata(child_ptr).borrow().depth;
     if depth == 0 {
         assert(child_ptr == root_process) by { reveal(process_root_wf); };
         assert(process_perms.dom().contains(child_ptr)) by { reveal(process_root_wf); };
         assert(process_perms.spec_index(child_ptr).view_rodata().view().depth == 0) by { reveal(process_perms_wf); };
-        assert(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().len() == 0) by { reveal(process_tree_fields_wf); };
         assert(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(a_ptr) == false) by { reveal(Seq::contains); };
         return false;
     }
@@ -631,7 +625,6 @@ pub fn process_tree_check_is_ancestor(
                 process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(j) != a_ptr
     {
         let current_ro = process_perms.borrow_rodata(current_p_ptr);
-        assert(process_perms.spec_index(current_p_ptr).view_rodata().view().depth == depth - i) by { reveal(process_tree_fields_wf); };
         assert(current_p_ptr != root_process) by { reveal(process_root_wf); };
         assert(current_ro.view().parent is Some) by { reveal(process_children_parent_wf); };
         assert(process_perms.spec_index(current_ro.view().parent.unwrap()).view_rodata().view().depth == depth - i - 1) by { reveal(process_children_depth_wf); };

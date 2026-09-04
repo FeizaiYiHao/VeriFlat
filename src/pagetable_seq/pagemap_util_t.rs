@@ -156,7 +156,6 @@ pub fn page_map_copy_kernel_entry_range(
         assert(mem_valid(value.addr)) by {
             assert((raw & 0x0000_ffff_ffff_f000u64 as usize) & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector);
         };
-        assert(value =~= source_perm.value().spec_index(index)) by { reveal(PageMap::wf); };
         page_map_set_raw(target_ptr, Tracked(&mut *target_perm), index, value);
     }
 }

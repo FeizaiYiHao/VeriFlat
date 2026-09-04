@@ -74,7 +74,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).ctn_mp.perms_wf()) by { reveal(container_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(container_lock_acquire_scope); reveal(LocalContext::base_lock_scope); reveal(lock_id_set_aligned); reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by {   reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
             }
             let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
             proof {
@@ -87,9 +87,8 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 if res.0 {
-                    assert(container_lock_held_scope(self, lctx, container_ptr)) by { reveal(container_lock_acquire_scope); reveal(container_lock_held_scope); reveal(cpu_lock_held_scope); reveal(LocalContext::base_lock_scope); };
                 }
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(container_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(container_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             res

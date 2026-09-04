@@ -59,7 +59,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).cpu_arr.inv()) by { reveal(cpu_array_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(LocalContext::no_locks_held); reveal(lock_id_set_aligned); };
+                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {  reveal(lock_id_set_aligned); };
             }
             let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
             proof {
@@ -73,8 +73,7 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-                assert(cpu_lock_held_scope(lctx, cpu_id)) by { reveal(cpu_lock_held_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::no_locks_held); };
-                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(cpu_array_wf); reveal(LocalContext::no_locks_held); reveal(lock_id_set_aligned); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(cpu_array_wf);  reveal(lock_id_set_aligned); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             ret

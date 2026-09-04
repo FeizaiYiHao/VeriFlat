@@ -48,7 +48,6 @@ pub proof fn lemma_no_change_imply_pagetable_perms_wf_forall()
             ==> pagetable_perms_wf(post),
 {
     reveal(pagetable_perms_wf);
-    reveal(pagetables_inv);
 }
 
 pub proof fn lemma_no_change_imply_process_pagetable_match_for_pagetable_fields_forall()

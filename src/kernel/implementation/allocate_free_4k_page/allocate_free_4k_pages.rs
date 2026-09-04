@@ -225,21 +225,19 @@ pub fn allocate_free_4k_pages<const N: usize>(
         let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         proof {
             assert(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr)))) by {
-                reveal(typed_lock_maps_inserted);
                 seq_push_lemma::<PagePtr>();
-                assert_sets_equal!(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr))), page_index => { reveal(page_ptrs_to_indices); broadcast use Seq::lemma_push_map_commute; pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set_ensures(); pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).push(page_ptr2page_index(page_ptr)).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; broadcast use vstd::set::lemma_set_union; });
+                assert_sets_equal!(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr))), page_index => {  broadcast use Seq::lemma_push_map_commute; pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set_ensures(); pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).push(page_ptr2page_index(page_ptr)).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; broadcast use vstd::set::lemma_set_union; });
             };
             assert(!pages.view().contains(page_ptr)) by { pages.view().to_set_ensures(); };
             assert(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == pages.view().push(page_ptr).to_set()) by { map_insert_seq_push_domain(page_lock_perms, pages.view(), page_ptr, page_lock_perm); };
             assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().push(page_ptr).to_set())) by { set_union_seq_push_insert(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), pages.view(), page_ptr); };
-            assert(allocated_4k_page_lock_perms_wf(page_lock_perms.insert(page_ptr, page_lock_perm), &*krnl, &*lctx, thread_ptr, container_ptr)) by { reveal(allocated_4k_page_lock_perms_wf); reveal(held_pages_unchanged_except); page_ptr2page_index_injective(); broadcast use vstd::map::lemma_map_insert_same; broadcast use vstd::map::axiom_map_insert_different; broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+            assert(allocated_4k_page_lock_perms_wf(page_lock_perms.insert(page_ptr, page_lock_perm), &*krnl, &*lctx, thread_ptr, container_ptr)) by {   page_ptr2page_index_injective(); broadcast use vstd::map::lemma_map_insert_same; broadcast use vstd::map::axiom_map_insert_different; broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
             page_lock_perms.tracked_insert(page_ptr, page_lock_perm);
         }
         pages.push_unique(page_ptr);
         proof {
             assert(krnl.thr_mp.spec_index(thread_ptr).view().stable_allocation_root_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view())) by { reveal(Thread::stable_allocation_root_equal); };
             assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())) by { seq_push_lemma::<PagePtr>(); pages.view().to_set_ensures(); vstd::set::axiom_set_ext_equal(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())); };
-            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) == thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) - (i + 1)) by { reveal(thread_effective_quota_4k); };
         }
         i = i + 1;
     }

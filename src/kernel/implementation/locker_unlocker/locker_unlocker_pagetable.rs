@@ -98,13 +98,8 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(LocalContext::held_lock_majors_lt); assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
-                assert(self.pt_mp.lock_id_by_key(pagetable_ptr) == old(self).pt_mp.lock_id_by_key(pagetable_ptr)) by { reveal(wlock_ensures); };
-                reveal(LocalContext::base_lock_scope);
-                reveal(LocalContext::object_lock_scope);
-                reveal(pagetable_objects_unlocked_except);
-                reveal(LockedMap::unchanged_except);
+                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by {  reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by {  assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
                 broadcast use vstd::map::lemma_map_insert_domain;
                 broadcast use vstd::set::lemma_set_insert_same;
                 broadcast use vstd::set::lemma_set_insert_different;
@@ -177,7 +172,7 @@ impl KernelK {
                     ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
         {
             proof {
-                assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LocalContext::held_lock_majors_lt); reveal(pagetable_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {   reveal(pagetable_perms_wf); };
             }
             self.wlock_pagetable_with_acyclic(pagetable_ptr, Tracked(&mut *lctx))
         }
@@ -258,37 +253,23 @@ impl KernelK {
         {
             proof {
                 assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {
-                    reveal(pagetable_pair_lock_acquire_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::object_lock_scope); reveal(LocalContext::held_lock_majors_lt); reveal(lock_id_set_aligned); reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(pcid_allocator_perms_wf);
+                        reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(pcid_allocator_perms_wf);
                 };
             }
             if source_pagetable < target_pagetable {
                 let Tracked(source_perm) = self.wlock_pagetable(source_pagetable, Tracked(&mut *lctx));
                 proof {
-                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(target_pagetable))) by { reveal(LocalContext::lock_id_acyclic); reveal(LocalContext::held_lock_majors_lt); reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(target_pagetable))) by {   reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 }
                 let Tracked(target_perm) = self.wlock_pagetable_with_acyclic(target_pagetable, Tracked(&mut *lctx));
-                proof {
-                    assert(self.pt_mp.lock_id_by_key(source_pagetable) == old(self).pt_mp.lock_id_by_key(source_pagetable)) by { reveal(LockedMap::unchanged_except); };
-                    assert(self.pt_mp.lock_id_by_key(target_pagetable) == old(self).pt_mp.lock_id_by_key(target_pagetable)) by { reveal(LockedMap::unchanged_except); };
-                    assert(lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map()
-                        .insert(source_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(source_pagetable), mode: TypedLockMode::Write })
-                        .insert(target_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write })) by { reveal(typed_lock_maps_inserted); };
-                }
-                (Tracked(source_perm), Tracked(target_perm))
+(Tracked(source_perm), Tracked(target_perm))
             } else {
                 let Tracked(target_perm) = self.wlock_pagetable(target_pagetable, Tracked(&mut *lctx));
                 proof {
-                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(source_pagetable))) by { reveal(LocalContext::lock_id_acyclic); reveal(LocalContext::held_lock_majors_lt); reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(source_pagetable))) by {   reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 }
                 let Tracked(source_perm) = self.wlock_pagetable_with_acyclic(source_pagetable, Tracked(&mut *lctx));
-                proof {
-                    assert(self.pt_mp.lock_id_by_key(source_pagetable) == old(self).pt_mp.lock_id_by_key(source_pagetable)) by { reveal(LockedMap::unchanged_except); };
-                    assert(self.pt_mp.lock_id_by_key(target_pagetable) == old(self).pt_mp.lock_id_by_key(target_pagetable)) by { reveal(LockedMap::unchanged_except); };
-                    assert(lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map()
-                        .insert(target_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(target_pagetable), mode: TypedLockMode::Write })
-                        .insert(source_pagetable, TypedHeldLock { lock_id: self.pt_mp.lock_id_by_key(source_pagetable), mode: TypedLockMode::Write })) by { reveal(typed_lock_maps_inserted); };
-                }
-                (Tracked(source_perm), Tracked(target_perm))
+(Tracked(source_perm), Tracked(target_perm))
             }
         }
 
@@ -381,9 +362,6 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                reveal(LocalContext::object_lock_scope);
-                reveal(pagetable_objects_unlocked_except);
-                reveal(LockedMap::unchanged_except);
                 broadcast use vstd::map::lemma_map_remove_domain;
                 broadcast use vstd::set::lemma_set_insert_same;
                 broadcast use vstd::set::lemma_set_insert_different;

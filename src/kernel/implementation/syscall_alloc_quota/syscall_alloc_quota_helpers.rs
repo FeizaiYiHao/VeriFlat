@@ -181,7 +181,7 @@ verus! {
         krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(&mut *lctx), quota_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
         proof {
-            assert(lctx.no_locks_held()) by { reveal(LocalContext::no_locks_held); reveal(LocalContext::base_quota_4k_lock_scope); reveal(typed_lock_maps_removed); broadcast use vstd::map::lemma_map_remove_domain; };
+            assert(lctx.no_locks_held()) by {    broadcast use vstd::map::lemma_map_remove_domain; };
             if alloc_amount == 0 {
                 assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl),krnl); };
             }

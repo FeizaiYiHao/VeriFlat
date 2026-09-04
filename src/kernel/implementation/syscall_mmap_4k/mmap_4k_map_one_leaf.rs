@@ -97,11 +97,10 @@ verus! {
         krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-                reveal(typed_lock_maps_inserted); reveal(typed_lock_maps_removed); reveal(mmap_4k_allocation_ready);
                 map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
                 map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
             };
-            assert(mmap_4k_allocation_ready(krnl, lctx)) by { reveal(mmap_4k_allocation_ready); reveal(LocalContext::holds_no_allocator_locks); };
+            assert(mmap_4k_allocation_ready(krnl, lctx)) by {  reveal(LocalContext::holds_no_allocator_locks); };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
             assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
             assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm)) by { reveal(cpu_array_wf); reveal(container_thread_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(process_thread_wf); reveal(thread_perms_wf); reveal(pagetable_perms_wf); };
