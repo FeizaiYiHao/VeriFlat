@@ -89,29 +89,10 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().stable_allocation_root_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
             final(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr,
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)
-                    .locked_by_thread(old(lctx).thread_id())]
-                #![trigger final(krnl).thr_mp.spec_index(t)
-                    .locked_by_thread(final(lctx).thread_id())]
-                (old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(old(lctx).thread_id()))
-                == (final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(final(lctx).thread_id())),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)]
-                #![trigger final(krnl).thr_mp.spec_index(t)]
-                t != thread_ptr
-                    && old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(old(lctx).thread_id())
-                ==> final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t)
-                        == old(krnl).thr_mp.spec_index(t)
-                    && final(krnl).thr_mp.lock_id_by_key(t)
-                        == old(krnl).thr_mp.lock_id_by_key(t),
+            held_threads_unchanged_except(
+                old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
+                set![thread_ptr],
+            ),
             final(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).locked_by_thread(final(lctx).thread_id()),
             thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
@@ -306,6 +287,14 @@ verus! {
             };
         }
         assert(krnl.thr_mp.spec_index(thread_ptr).view().stable_allocation_root_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view())) by { reveal(Thread::stable_allocation_root_equal); reveal(thread_perms_wf); };
+        proof {
+            held_pages_unchanged_except_for_entries_unchanged_except(
+                old(krnl).pg_arr, krnl.pg_arr, old(lctx), page_index,
+            );
+            held_threads_unchanged_except_for_unchanged_except(
+                old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr,
+            );
+        }
         (page_ptr, Tracked(page_lock_perm))
     }
 
@@ -379,29 +368,10 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().stable_allocation_root_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
             final(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr,
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)
-                    .locked_by_thread(old(lctx).thread_id())]
-                #![trigger final(krnl).thr_mp.spec_index(t)
-                    .locked_by_thread(final(lctx).thread_id())]
-                (old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(old(lctx).thread_id()))
-                == (final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(final(lctx).thread_id())),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)]
-                #![trigger final(krnl).thr_mp.spec_index(t)]
-                t != thread_ptr
-                    && old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(old(lctx).thread_id())
-                ==> final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t)
-                        == old(krnl).thr_mp.spec_index(t)
-                    && final(krnl).thr_mp.lock_id_by_key(t)
-                        == old(krnl).thr_mp.lock_id_by_key(t),
+            held_threads_unchanged_except(
+                old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
+                set![thread_ptr],
+            ),
             final(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).locked_by_thread(final(lctx).thread_id()),
             thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
@@ -603,6 +573,14 @@ verus! {
             };
         }
         assert(krnl.thr_mp.spec_index(thread_ptr).view().stable_allocation_root_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view())) by { reveal(Thread::stable_allocation_root_equal); reveal(thread_perms_wf); };
+        proof {
+            held_pages_unchanged_except_for_entries_unchanged_except(
+                old(krnl).pg_arr, krnl.pg_arr, old(lctx), page_index,
+            );
+            held_threads_unchanged_except_for_unchanged_except(
+                old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr,
+            );
+        }
         (page_ptr, Tracked(page_lock_perm))
     }
 

@@ -94,46 +94,20 @@ verus! {
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
             mmap_4k_allocation_ready(final(krnl), final(lctx)),
+            final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
-            final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)]
-                #![trigger final(krnl).thr_mp.spec_index(t)]
-                (old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t).locked_by_thread(old(lctx).thread_id()))
-                == (final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t).locked_by_thread(final(lctx).thread_id())),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)]
-                #![trigger final(krnl).thr_mp.spec_index(t)]
-                t != thread_ptr && old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t).locked_by_thread(old(lctx).thread_id())
-                ==> final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t) == old(krnl).thr_mp.spec_index(t)
-                    && final(krnl).thr_mp.lock_id_by_key(t)
-                        == old(krnl).thr_mp.lock_id_by_key(t),
-            forall|p: RwLockPageTableRoot|
-                #![trigger old(krnl).pt_mp.spec_index(p)]
-                #![trigger final(krnl).pt_mp.spec_index(p)]
-                (old(krnl).pt_mp.dom().contains(p)
-                    && old(krnl).pt_mp.spec_index(p).locked_by_thread(old(lctx).thread_id()))
-                == (final(krnl).pt_mp.dom().contains(p)
-                    && final(krnl).pt_mp.spec_index(p).locked_by_thread(final(lctx).thread_id())),
-            forall|p: RwLockPageTableRoot|
-                #![trigger old(krnl).pt_mp.spec_index(p)]
-                #![trigger final(krnl).pt_mp.spec_index(p)]
-                p != pagetable_ptr && old(krnl).pt_mp.dom().contains(p)
-                    && old(krnl).pt_mp.spec_index(p).locked_by_thread(old(lctx).thread_id())
-                ==> final(krnl).pt_mp.dom().contains(p)
-                    && final(krnl).pt_mp.spec_index(p) == old(krnl).pt_mp.spec_index(p)
-                    && final(krnl).pt_mp.lock_id_by_key(p)
-                        == old(krnl).pt_mp.lock_id_by_key(p),
             held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+            held_threads_unchanged_except(
+                old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr],
+            ),
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+            held_pagetables_unchanged_except(
+                old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr],
+            ),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
             allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
@@ -168,6 +142,7 @@ verus! {
                 krnl.pt_mp.perms_wf()
                     && krnl.pt_mp.spec_index(pagetable_ptr).inv()
             ) by { reveal(pagetable_perms_wf); };
+            broadcast use group_held_objects_unchanged_transitive;
         }
         let l4_present;
         {

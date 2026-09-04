@@ -612,6 +612,80 @@ pub open spec fn typed_lock_maps_inserted(
         },
         _ => old.allocator_1g_lock_maps(),
     }
+    &&& new.typed_lock_entry(obj_id) == Some(entry)
+    &&& (forall|other_obj_id: KernelObjId|
+        #![trigger old.typed_lock_entry(other_obj_id)]
+        #![trigger new.typed_lock_entry(other_obj_id)]
+        other_obj_id != obj_id
+        ==> new.typed_lock_entry(other_obj_id)
+            == old.typed_lock_entry(other_obj_id))
+}
+
+pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
+    old: &LocalContext,
+    new: &LocalContext,
+    obj_id: KernelObjId,
+    entry: TypedHeldLock,
+    major: LockMajorId,
+)
+    requires
+        old.held_lock_majors_lt(major),
+        old.typed_lock_entry(obj_id) is None,
+        typed_lock_maps_inserted(old, new, obj_id, entry),
+        lock_id_set_aligned(old),
+        lock_id_set_aligned(new),
+        entry.lock_id.major < major,
+    ensures
+        new.held_lock_majors_lt(major),
+{
+    reveal(lock_id_set_aligned);
+}
+
+broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
+    old: &LocalContext,
+    new: &LocalContext,
+    major: LockMajorId,
+    held: HeldLock,
+)
+    requires
+        #[trigger] old.held_lock_majors_lt(major),
+        #[trigger] typed_lock_maps_unchanged(old, new),
+        #[trigger] lock_id_set_aligned(old),
+        #[trigger] lock_id_set_aligned(new),
+    ensures
+        #[trigger] new.lock_id_set().contains(held) ==> held.0.major < major,
+{
+    if new.lock_id_set().contains(held) {
+        let obj_id = held.1;
+        let entry = new.typed_lock_entry(obj_id)->0;
+        assert({
+            &&& new.lock_entry_contains(held.0, obj_id)
+            &&& entry.lock_id == held.0
+            &&& old.typed_lock_entry(obj_id) == Some(entry)
+            &&& old.lock_id_set().contains((entry.lock_id, obj_id))
+            &&& held.0.major < major
+        }) by {
+            reveal(lock_id_set_aligned);
+        };
+    }
+}
+
+pub proof fn held_lock_majors_lt_preserved_for_typed_maps_unchanged(
+    old: &LocalContext,
+    new: &LocalContext,
+    major: LockMajorId,
+)
+    requires
+        old.held_lock_majors_lt(major),
+        typed_lock_maps_unchanged(old, new),
+        lock_id_set_aligned(old),
+        lock_id_set_aligned(new),
+    ensures
+        new.held_lock_majors_lt(major),
+{
+    assert(new.held_lock_majors_lt(major)) by {
+        broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged;
+    };
 }
 
 pub open spec fn typed_lock_maps_removed(

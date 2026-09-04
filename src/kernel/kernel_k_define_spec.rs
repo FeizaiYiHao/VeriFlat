@@ -543,13 +543,13 @@ verus! {
                     old(lctx)),
                 held_allocator_objects_unchanged(
                     old(self).allc_4k_mp, final(self).allc_4k_mp,
-                    old(lctx)),
+                    old(lctx), PageSize::SZ4k),
                 held_allocator_objects_unchanged(
                     old(self).allc_2m_mp, final(self).allc_2m_mp,
-                    old(lctx)),
+                    old(lctx), PageSize::SZ2m),
                 held_allocator_objects_unchanged(
                     old(self).allc_1g_mp, final(self).allc_1g_mp,
-                    old(lctx)),
+                    old(lctx), PageSize::SZ1g),
                 // Deliberately omitted from the old boundary contract:
                 // - root-container equality across interleaving;
                 // The default page table is read-only and is framed directly.

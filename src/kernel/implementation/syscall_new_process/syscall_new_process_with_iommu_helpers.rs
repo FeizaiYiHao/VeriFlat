@@ -79,11 +79,6 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         final(lctx).page_lock_map().dom() == set![page_ptr2page_index(ret.0), page_ptr2page_index(ret.1), page_ptr2page_index(ret.2), page_ptr2page_index(ret.3), page_ptr2page_index(ret.4)],
         page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), set![page_ptr2page_index(ret.0), page_ptr2page_index(ret.1), page_ptr2page_index(ret.2), page_ptr2page_index(ret.3), page_ptr2page_index(ret.4)]),
         thread_objects_unlocked_except(final(krnl).thr_mp, final(lctx).thread_id(), set![current_thread_ptr]),
-        forall|exceptions: Set<RwLockPageTableRoot>|
-            #![trigger pagetable_objects_unlocked_except(old(krnl).pt_mp, old(lctx).thread_id(), exceptions)]
-            #![trigger pagetable_objects_unlocked_except(final(krnl).pt_mp, final(lctx).thread_id(), exceptions)]
-            pagetable_objects_unlocked_except(old(krnl).pt_mp, old(lctx).thread_id(), exceptions)
-            ==> pagetable_objects_unlocked_except(final(krnl).pt_mp, final(lctx).thread_id(), exceptions),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![ret.0, ret.1, ret.2, ret.3, ret.4],
         final(krnl).thr_mp.dom().contains(current_thread_ptr),
         !final(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
@@ -299,7 +294,24 @@ pub(super) fn create_initial_thread_with_iommu_endpoint_and_finish_new_process(
     let tracked iommu_table_lock_perm = iommu_table_lock_perm.get();
 let (thread_page_ptr, Tracked(thread_page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
     proof {
-        assert(endpoint_objects_unlocked_except(krnl.ep_mp, lctx.thread_id(), set![endpoint_ptr])) by { endpoint_objects_unlocked_except_preserved_for_held_unchanged(old(krnl).ep_mp, krnl.ep_mp, &*lctx, set![endpoint_ptr]); };
+        assert(kernel_objects_unlocked_except(
+            krnl, lctx.thread_id(),
+            set![cpu_id],
+            set![container_ptr],
+            set![scheduler_ptr],
+            set![child_ptr],
+            set![current_thread_ptr],
+            set![page_ptr2page_index(thread_page_ptr)],
+            set![endpoint_ptr],
+            set![source_pagetable_ptr, target_pagetable_ptr],
+            set![iommu_table_ptr],
+            Set::empty(),
+            Set::empty(),
+            Set::empty(),
+            Set::empty(),
+        )) by {
+            broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+        };
         assert(krnl.it_mp.dom().contains(iommu_table_ptr) && krnl.it_mp.spec_index(iommu_table_ptr).wlocked_by(lctx) && krnl.it_mp.spec_index(iommu_table_ptr).view().is_empty() && iommu_table_lock_perm.lock_id() == krnl.it_mp.spec_index(iommu_table_ptr).locking_thread()->Write_lock_id) by {   reveal(LockedMap::typed_lock_map_aligned); };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
     }
@@ -478,7 +490,30 @@ pub(super) fn commit_new_process_with_iommu_and_endpoint(
     let tracked endpoint_lock_perm = endpoint_lock_perm.get();
 let (process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, Tracked(process_page_lock_perm), Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(iommu_table_page_lock_perm), Tracked(iommu_l4_page_lock_perm)) = allocate_new_process_with_iommu_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), current_thread_ptr, container_ptr, cpu_id, Tracked(&current_thread_lock_perm));
     proof {
-        assert(endpoint_objects_unlocked_except(krnl.ep_mp, lctx.thread_id(), set![endpoint_ptr])) by { endpoint_objects_unlocked_except_preserved_for_held_unchanged(old(krnl).ep_mp, krnl.ep_mp, &*lctx, set![endpoint_ptr]); };
+        assert(kernel_objects_unlocked_except(
+            krnl, lctx.thread_id(),
+            set![cpu_id],
+            set![container_ptr],
+            Set::empty(),
+            set![parent_ptr],
+            set![current_thread_ptr],
+            set![
+                page_ptr2page_index(process_page_ptr),
+                page_ptr2page_index(pagetable_page_ptr),
+                page_ptr2page_index(l4_page_ptr),
+                page_ptr2page_index(iommu_table_page_ptr),
+                page_ptr2page_index(iommu_l4_page_ptr),
+            ],
+            set![endpoint_ptr],
+            set![source_pagetable_ptr],
+            Set::empty(),
+            set![pcid_allocator_ptr],
+            Set::empty(),
+            Set::empty(),
+            Set::empty(),
+        )) by {
+            broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+        };
         assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by {  reveal(PageTable::wf_mapping_4k); reveal(mapped_4k_page_pagetable_wf); source_range.va_range_lemma(); };
         assert(!krnl.prc_mp.dom().contains(process_page_ptr)) by { page_ptr_roundtrip(); reveal(process_pages_wf); };
         assert(!krnl.pt_mp.dom().contains(pagetable_page_ptr)) by { page_ptr_roundtrip(); reveal(pagetable_pages_wf); };

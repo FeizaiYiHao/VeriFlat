@@ -336,7 +336,29 @@ pub(super) fn publish_staged_process_with_iommu(
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().wf() && krnl.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start)) by { source_range.va_range_lemma(); };
         assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by {  reveal(PageTable::wf_mapping_4k); reveal(mapped_4k_page_pagetable_wf); source_range.va_range_lemma(); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start)) by { reveal(KernelK::default_pagetable_wf);   source_range.va_range_lemma(); };
-        assert(kernel_objects_unlocked_except(krnl, lctx.thread_id(), set![cpu_id], set![container_ptr], Set::empty(), set![child_ptr], set![current_thread_ptr], Set::empty(), endpoint_exceptions, set![source_pagetable_ptr, target_pagetable_ptr], set![iommu_table_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty())) by {                 page_ptr2page_index_injective(); };
+        assert(kernel_objects_unlocked_except(
+            krnl, lctx.thread_id(),
+            set![cpu_id],
+            set![container_ptr],
+            Set::empty(),
+            set![child_ptr],
+            set![current_thread_ptr],
+            Set::empty(),
+            endpoint_exceptions,
+            set![source_pagetable_ptr, target_pagetable_ptr],
+            set![iommu_table_ptr],
+            Set::empty(),
+            Set::empty(),
+            Set::empty(),
+            Set::empty(),
+        )) by {
+            reveal(LockedArray::typed_lock_map_aligned);
+            reveal(LockedMap::typed_lock_map_aligned);
+            reveal(UnLockedMap::typed_quota_lock_map_aligned);
+            reveal(UnLockedMap::typed_cache_lock_map_aligned);
+            reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+            page_ptr2page_index_injective();
+        };
     }
     (child_ptr, target_pagetable_ptr, iommu_table_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm))
 }
