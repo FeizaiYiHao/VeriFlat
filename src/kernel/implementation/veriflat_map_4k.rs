@@ -20,6 +20,7 @@ pub use map_4k::share_mapping_4k::{
     share_mapping_4k_build_and_share,
     share_mapping_4k_held_context,
     share_mapping_4k_range_owner_compatible,
+    share_mapping_4k_target_map_after,
     share_mapping_4k_source_owner_precheck,
     share_mapping_4k_source_precheck,
     share_mapping_4k_source_range_present,

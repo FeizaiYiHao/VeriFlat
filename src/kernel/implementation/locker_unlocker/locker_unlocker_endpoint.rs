@@ -54,7 +54,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).ep_mp.perms_wf()) by { reveal(endpoint_perms_wf); };
-                assert(old(lctx).held_lock_majors_lt(ENDPOINT_LOCK_MAJOR)) by { reveal(endpoint_lock_acquire_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::object_lock_scope); reveal(LocalContext::held_lock_majors_lt); reveal(lock_id_set_aligned); reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); };
+                assert(old(lctx).held_lock_majors_lt(ENDPOINT_LOCK_MAJOR)) by { reveal(endpoint_lock_acquire_scope); reveal(LocalContext::base_lock_scope); reveal(LocalContext::object_lock_scope); reveal(LocalContext::held_lock_majors_lt); reveal(lock_id_set_aligned); reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); };
                 assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LocalContext::held_lock_majors_lt); reveal(endpoint_perms_wf); };
             }
             let ret = self.ep_mp.wlock(endpoint_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(endpoint_ptr)));

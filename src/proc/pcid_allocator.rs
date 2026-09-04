@@ -37,6 +37,42 @@ impl PcidAllocator {
             self.id_to_proc.view().spec_index(id as int).contains(process_ptr) == false
     }
 
+    pub open spec fn pcid_is_free(&self, id: Pcid) -> bool {
+        &&& usize_in_range::<PCID_MAX>(id)
+        &&& id != KERNEL_DEFAULT_PCID
+        &&& self.ref_counters.spec_index(id) == 0
+    }
+
+    pub fn find_lowest_free_nonzero(&self) -> (ret: Option<Pcid>)
+        requires
+            self.wf(),
+        ensures
+            ret is Some ==> self.pcid_is_free(ret->Some_0),
+            ret is Some ==> forall|id: Pcid|
+                #![trigger self.ref_counters.spec_index(id)]
+                KERNEL_DEFAULT_PCID < id < ret->Some_0 ==> !self.pcid_is_free(id),
+            ret is None ==> forall|id: Pcid|
+                #![trigger self.ref_counters.spec_index(id)]
+                usize_in_range::<PCID_MAX>(id) ==> !self.pcid_is_free(id),
+    {
+        let mut id = KERNEL_DEFAULT_PCID + 1;
+        while id < PCID_MAX
+            invariant
+                self.wf(),
+                KERNEL_DEFAULT_PCID < id <= PCID_MAX,
+                forall|candidate: Pcid|
+                    #![trigger self.ref_counters.spec_index(candidate)]
+                    KERNEL_DEFAULT_PCID < candidate < id ==> !self.pcid_is_free(candidate),
+            decreases PCID_MAX - id,
+        {
+            if *self.ref_counters.get(id) == 0 {
+                return Some(id);
+            }
+            id = id + 1;
+        }
+        None
+    }
+
     pub open spec fn alloc_ensures(
         &self,
         old: &Self,
@@ -152,7 +188,6 @@ const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<u
 const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [();
     (core::mem::size_of::<RwLock<
         PcidAllocator,
-        (),
         (),
         (),
         PCID_ALLOCATOR_HAS_KILL_STATE,

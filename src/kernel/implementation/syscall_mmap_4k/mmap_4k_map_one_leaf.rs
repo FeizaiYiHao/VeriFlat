@@ -24,6 +24,7 @@ verus! {
     )
         requires
             mmap_4k_held_context(old(krnl), old(lctx), alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm),
+            old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             mmap_4k_allocation_ready(old(krnl), old(lctx)),
             old(krnl).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()),
@@ -49,6 +50,7 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
+            final(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
             final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 1,
             final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             final(krnl).ctn_mp.spec_index(container_ptr) == old(krnl).ctn_mp.spec_index(container_ptr),

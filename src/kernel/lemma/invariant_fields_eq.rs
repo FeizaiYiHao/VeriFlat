@@ -217,10 +217,10 @@ pub open spec fn process_quota_4k_framed_fields_unchanged(
                 == pre.spec_index(p_ptr).view().parent_linkedlist_node
             &&& post.spec_index(p_ptr).view().children
                 == pre.spec_index(p_ptr).view().children
-            &&& post.spec_index(p_ptr).view().uppertree_seq
-                == pre.spec_index(p_ptr).view().uppertree_seq
-            &&& post.spec_index(p_ptr).view().subtree_set
-                == pre.spec_index(p_ptr).view().subtree_set
+            &&& post.spec_index(p_ptr).view_ghost().uppertree_seq
+                == pre.spec_index(p_ptr).view_ghost().uppertree_seq
+            &&& post.spec_index(p_ptr).view_ghost().subtree_set
+                == pre.spec_index(p_ptr).view_ghost().subtree_set
             &&& post.spec_index(p_ptr).view().owned_threads
                 == pre.spec_index(p_ptr).view().owned_threads
         }

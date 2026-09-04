@@ -314,6 +314,8 @@ pub enum RetValueType {
     ErrorProcessKilled,
     /// The currently running thread is being torn down.
     ErrorThreadKilled,
+    /// The container's PCID allocator has no free nonzero PCID.
+    ErrorNoPcid,
     // ---- IPC failure modes ----
     ErrorInvalidEndpoint,
     ErrorIpcTypeMismatch,

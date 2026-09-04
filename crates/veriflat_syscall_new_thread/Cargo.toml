@@ -13,3 +13,7 @@ veriflat_alloc_page = { path = "../veriflat_alloc_page" }
 
 [package.metadata.verus]
 verify = true
+
+[features]
+default = ["split-crates"]
+split-crates = []

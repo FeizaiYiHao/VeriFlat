@@ -135,6 +135,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_new_process"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
 name = "veriflat_syscall_new_thread"
 version = "0.1.0"
 dependencies = [

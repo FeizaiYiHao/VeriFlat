@@ -19,10 +19,8 @@ pub open spec fn container_invariant_fields_unchanged(
                 == pre.spec_index(c_ptr).view()
             &&& post.spec_index(c_ptr).view_rodata()
                 == pre.spec_index(c_ptr).view_rodata()
-            &&& post.spec_index(c_ptr).view_kernel_ghost()
-                == pre.spec_index(c_ptr).view_kernel_ghost()
-            &&& post.spec_index(c_ptr).view_user_ghost()
-                == pre.spec_index(c_ptr).view_user_ghost()
+            &&& post.spec_index(c_ptr).view_ghost()
+                == pre.spec_index(c_ptr).view_ghost()
         }
 }
 
@@ -39,10 +37,8 @@ pub proof fn container_lock_op_preserves_invariant_fields(
             == pre.spec_index(changed).view(),
         post.spec_index(changed).view_rodata()
             == pre.spec_index(changed).view_rodata(),
-        post.spec_index(changed).view_kernel_ghost()
-            == pre.spec_index(changed).view_kernel_ghost(),
-        post.spec_index(changed).view_user_ghost()
-            == pre.spec_index(changed).view_user_ghost(),
+        post.spec_index(changed).view_ghost()
+            == pre.spec_index(changed).view_ghost(),
     ensures
         container_invariant_fields_unchanged(pre, post),
 {

@@ -9,9 +9,9 @@ verus! {
             thread_map: ThreadLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|
-            #![trigger container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t_ptr)]
+            #![trigger container_map.spec_index(c_ptr).view_ghost().owned_threads.view().contains(t_ptr)]
             // #![trigger container_map.spec_index(c_ptr), thread_map.spec_index(t_ptr)]
-            container_map.dom().contains(c_ptr) && container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().contains(t_ptr)
+            container_map.dom().contains(c_ptr) && container_map.spec_index(c_ptr).view_ghost().owned_threads.view().contains(t_ptr)
             ==>
             thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().owning_container == c_ptr
             &&
@@ -26,14 +26,14 @@ verus! {
             ==>
             container_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_container)
             &&
-            container_map.spec_index(thread_map.spec_index(t_ptr).view().owning_container).view_user_ghost().owned_threads.view().contains(t_ptr)
+            container_map.spec_index(thread_map.spec_index(t_ptr).view().owning_container).view_ghost().owned_threads.view().contains(t_ptr)
         &&&
         forall|c_ptr:RwLockContainerPtr, t_ptr:RwLockThreadPtr|
-            // #![trigger container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().contains(t_ptr)]
+            // #![trigger container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().contains(t_ptr)]
             // #![trigger thread_map.spec_index(t_ptr).view().upper_container_seq.view().contains(c_ptr)]
             #![trigger container_map.dom().contains(c_ptr), thread_map.dom().contains(t_ptr)]
             #![trigger container_map.spec_index(c_ptr), thread_map.spec_index(t_ptr)]
-            container_map.dom().contains(c_ptr) && container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().contains(t_ptr)
+            container_map.dom().contains(c_ptr) && container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().contains(t_ptr)
             ==>
             thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().upper_container_seq.view().contains(c_ptr)
         &&&
@@ -45,7 +45,7 @@ verus! {
             ==>
             container_map.dom().contains(c_ptr)
             &&
-            container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().contains(t_ptr)
+            container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().contains(t_ptr)
     }
 
 }

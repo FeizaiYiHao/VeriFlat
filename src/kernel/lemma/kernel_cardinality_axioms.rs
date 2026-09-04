@@ -25,22 +25,20 @@ pub proof fn mapped_4k_page_ref_count_lt_usize_max(
 {
 }
 
-/// A duplicate-free sequence drawn from the thread map is bounded by the
-/// finite physical-page domain backing thread objects.
+/// A duplicate-free sequence drawn from the process/thread object maps is
+/// bounded by the finite physical-page domain backing both object families.
 #[verifier::external_body]
-pub proof fn lemma_thread_ptr_seq_len_bounded(
+pub proof fn lemma_kernel_object_ptr_seq_len_bounded(
     krnl: &KernelK,
-    threads: Seq<RwLockThreadPtr>,
+    ptrs: Seq<PagePtr>,
 )
     requires
         krnl.inv(),
-        threads.no_duplicates(),
-        forall|thread_ptr: RwLockThreadPtr|
-            #![trigger threads.contains(thread_ptr)]
-            threads.contains(thread_ptr)
-                ==> krnl.thr_mp.dom().contains(thread_ptr),
+        ptrs.no_duplicates(),
+        forall|ptr: PagePtr| #![trigger ptrs.contains(ptr)]
+            ptrs.contains(ptr) ==> krnl.prc_mp.dom().contains(ptr) || krnl.thr_mp.dom().contains(ptr),
     ensures
-        threads.len() <= NUM_PAGES,
+        ptrs.len() <= NUM_PAGES,
 {
 }
 

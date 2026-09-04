@@ -44,7 +44,7 @@ verus! {
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
             thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             old(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(old(lctx)),
-            page_objects_unlocked(old(krnl).pg_arr, old(lctx).thread_id()),
+            page_objects_unlocked_except(old(krnl).pg_arr, old(lctx).thread_id(), old(lctx).page_lock_map().dom()),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
             old(lctx).held_lock_majors_lt(FREE_PAGE_LOCK_MAJOR),
@@ -71,6 +71,7 @@ verus! {
             final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
             final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(ret.0)),
+            held_pages_unchanged_except(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx), set![page_ptr2page_index(ret.0)]),
             // ---- user view unchanged: staging is krnl-internal ----
             kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
             // ---- cache + thread lock state preserved, phase still Acquire ----
@@ -117,7 +118,9 @@ verus! {
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
             // ---- page slot left write-locked, perm handed back ----
             index_valid(NUM_PAGES, page_ptr2page_index(ret.0)),
-            page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), set![page_ptr2page_index(ret.0)]),
+            old(lctx).page_lock_map().dom().is_empty() ==> page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), set![page_ptr2page_index(ret.0)]),
+            page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), old(lctx).page_lock_map().dom().insert(page_ptr2page_index(ret.0))),
+            !old(lctx).page_lock_map().dom().contains(page_ptr2page_index(ret.0)),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().wlocked_by(final(lctx)),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().locked_by_thread(final(lctx).thread_id()),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
@@ -172,6 +175,15 @@ verus! {
         }) by {
             page_ptr_valid_imply_page_index_valid();
             reveal(LinkedList::wf_value_list); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
+        };
+        assert(krnl.pg_arr.spec_index(page_index).view().view().state is Free4k) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
+        assert(krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by { reveal(Page::free_page_lock_major); };
+        assert(!lctx.page_lock_map().dom().contains(page_index)) by {
+            if lctx.page_lock_map().dom().contains(page_index) {
+                assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == krnl.pg_arr.lock_id_by_index(page_index)) by { reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LocalContext::typed_lock_entry); };
+                assert(lctx.lock_id_set().contains((krnl.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)))) by { reveal(lock_id_set_aligned); };
+                assert(krnl.pg_arr.lock_id_by_index(page_index).major < FREE_PAGE_LOCK_MAJOR) by { reveal(LocalContext::held_lock_majors_lt); };
+            }
         };
         // Lock the page slot after deriving its ordering id from the cache head.
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
@@ -337,7 +349,7 @@ verus! {
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
             thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             old(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(old(lctx)),
-            page_objects_unlocked(old(krnl).pg_arr, old(lctx).thread_id()),
+            page_objects_unlocked_except(old(krnl).pg_arr, old(lctx).thread_id(), old(lctx).page_lock_map().dom()),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
             old(lctx).held_lock_majors_lt(FREE_PAGE_LOCK_MAJOR),
@@ -352,6 +364,7 @@ verus! {
             final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
             final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(ret.0)),
+            held_pages_unchanged_except(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx), set![page_ptr2page_index(ret.0)]),
             // ---- user view unchanged: staging is krnl-internal ----
             kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
             // ---- global_pool + process lock state preserved, phase still Acquire ----
@@ -397,7 +410,9 @@ verus! {
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
             // ---- page slot left write-locked, perm handed back ----
             index_valid(NUM_PAGES, page_ptr2page_index(ret.0)),
-            page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), set![page_ptr2page_index(ret.0)]),
+            old(lctx).page_lock_map().dom().is_empty() ==> page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), set![page_ptr2page_index(ret.0)]),
+            page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), old(lctx).page_lock_map().dom().insert(page_ptr2page_index(ret.0))),
+            !old(lctx).page_lock_map().dom().contains(page_ptr2page_index(ret.0)),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().wlocked_by(final(lctx)),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().locked_by_thread(final(lctx).thread_id()),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
@@ -456,6 +471,15 @@ verus! {
         }) by {
             page_ptr_valid_imply_page_index_valid();
             reveal(LinkedList::wf_value_list); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf);
+        };
+        assert(krnl.pg_arr.spec_index(page_index).view().view().state is Free4k) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
+        assert(krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by { reveal(Page::free_page_lock_major); };
+        assert(!lctx.page_lock_map().dom().contains(page_index)) by {
+            if lctx.page_lock_map().dom().contains(page_index) {
+                assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == krnl.pg_arr.lock_id_by_index(page_index)) by { reveal(typed_lock_maps_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LocalContext::typed_lock_entry); };
+                assert(lctx.lock_id_set().contains((krnl.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)))) by { reveal(lock_id_set_aligned); };
+                assert(krnl.pg_arr.lock_id_by_index(page_index).major < FREE_PAGE_LOCK_MAJOR) by { reveal(LocalContext::held_lock_majors_lt); };
+            }
         };
         // Lock the page slot after deriving its ordering id from the pool head.
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));

@@ -51,15 +51,22 @@ pub open spec fn mmap_4k_held_context(
     &&& krnl.prc_mp.dom().contains(process_ptr)
     &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view()
         .owning_container == container_ptr
+    &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view()
+        .pagetable == pagetable_ptr
     &&& krnl.thr_mp.dom().contains(thread_ptr)
     &&& krnl.thr_mp.spec_index(thread_ptr).wlocked_by(lctx)
     &&& krnl.thr_mp.spec_index(thread_ptr).being_killed() == false
-    &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_proc
-        == process_ptr
     &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container
         == container_ptr
-    &&& krnl.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr
-        == pagetable_ptr
+    &&& {
+        ||| {
+            &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_proc
+                == process_ptr
+            &&& krnl.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr
+                == pagetable_ptr
+        }
+        ||| krnl.prc_mp.spec_index(process_ptr).wlocked_by(lctx)
+    }
     &&& thread_lock_perm.state() is WriteLock
     &&& thread_lock_perm.thread_id() == lctx.thread_id()
     &&& thread_lock_perm.lock_id()
@@ -136,6 +143,8 @@ pub open spec fn staged_4k_page_table_op_requires(
     lctx: &LocalContext,
     page_ptr: PagePtr,
     thread_ptr: RwLockThreadPtr,
+    process_ptr: RwLockProcessPtr,
+    container_ptr: RwLockContainerPtr,
     pagetable_ptr: RwLockPageTableRoot,
     indices: (L4Index, L3Index, L2Index),
     page_lock_perm: &LockPerm,
@@ -149,6 +158,13 @@ pub open spec fn staged_4k_page_table_op_requires(
     &&& page_ptr_valid(page_ptr)
     &&& krnl.thr_mp.dom().contains(thread_ptr)
     &&& krnl.thr_mp.spec_index(thread_ptr).being_killed() == false
+    &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container
+        == container_ptr
+    &&& krnl.prc_mp.dom().contains(process_ptr)
+    &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view()
+        .owning_container == container_ptr
+    &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view()
+        .pagetable == pagetable_ptr
     &&& krnl.pt_mp.dom().contains(pagetable_ptr)
     &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end
         <= indices.0
@@ -160,8 +176,6 @@ pub open spec fn staged_4k_page_table_op_requires(
     &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view()
         .owning_container
         == krnl.thr_mp.spec_index(thread_ptr).view().owning_container
-    &&& krnl.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr
-        == pagetable_ptr
     &&& krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()
         .contains(page_ptr)
     &&& krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 1

@@ -219,6 +219,27 @@ pub open spec fn held_pages_unchanged(
         }
 }
 
+pub open spec fn held_pages_unchanged_except(
+    pre: PageLockedArray,
+    post: PageLockedArray,
+    lctx: &LocalContext,
+    exceptions: Set<PageIndex>,
+) -> bool {
+    forall|i: PageIndex|
+        #![trigger pre.spec_index(i)]
+        #![trigger post.spec_index(i)]
+        {
+            let pre_held = index_valid(NUM_PAGES, i)
+                && pre.spec_index(i).view().locked_by_thread(lctx.thread_id());
+            let post_held = index_valid(NUM_PAGES, i)
+                && post.spec_index(i).view().locked_by_thread(lctx.thread_id());
+            !exceptions.contains(i) ==> {
+                &&& pre_held == post_held
+                &&& pre_held ==> post.spec_index(i).view() == pre.spec_index(i).view()
+            }
+        }
+}
+
 pub open spec fn held_cpus_unchanged(
     pre: CpuLockedArray,
     post: CpuLockedArray,

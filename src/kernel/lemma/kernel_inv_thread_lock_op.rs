@@ -298,51 +298,51 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
         implies
         {
             &&& thread_effective_quota_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     post_thread_map,
                 )
                 == thread_effective_quota_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     pre_thread_map,
                 )
             &&& thread_direct_pending_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost()
+                    container_map.spec_index(c_ptr).view_ghost()
                         .owned_threads.view(),
                     post_thread_map,
                 )
                 == thread_direct_pending_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost()
+                    container_map.spec_index(c_ptr).view_ghost()
                         .owned_threads.view(),
                     pre_thread_map,
                 )
             &&& thread_indirect_pending_4k_fold_sum_at_depth(
-                    container_map.spec_index(c_ptr).view_kernel_ghost()
+                    container_map.spec_index(c_ptr).view_ghost()
                         .owned_indirect_threads.view(),
                     post_thread_map,
                     container_map.spec_index(c_ptr).view_rodata().view().depth as int,
                 )
                 == thread_indirect_pending_4k_fold_sum_at_depth(
-                    container_map.spec_index(c_ptr).view_kernel_ghost()
+                    container_map.spec_index(c_ptr).view_ghost()
                         .owned_indirect_threads.view(),
                     pre_thread_map,
                     container_map.spec_index(c_ptr).view_rodata().view().depth as int,
                 )
         }
     by {
-        assert(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
-        assert(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         lemma_thread_direct_pending_4k_fold_eq(
-            container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+            container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
             pre_thread_map,
             post_thread_map,
         );
         lemma_thread_effective_quota_4k_fold_eq(
-            container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+            container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
             pre_thread_map,
             post_thread_map,
         );
         lemma_thread_indirect_pending_4k_fold_eq_at_depth(
-            container_map.spec_index(c_ptr).view_kernel_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view(),
             pre_thread_map,
             post_thread_map,
@@ -436,28 +436,28 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
         implies
         {
             &&& thread_effective_quota_2m_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     post_thread_map,
                 )
                 == thread_effective_quota_2m_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     pre_thread_map,
                 )
-            &&& container_map.spec_index(c_ptr).view_user_ghost()
+            &&& container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
                         sum + post_thread_map.spec_index(t_ptr).view()
                             .direct_free_quota_pending_2m.view(),
                 )
-                == container_map.spec_index(c_ptr).view_user_ghost()
+                == container_map.spec_index(c_ptr).view_ghost()
                     .owned_threads.view().fold(
                         0,
                         |sum: int, t_ptr: RwLockThreadPtr|
                             sum + pre_thread_map.spec_index(t_ptr).view()
                                 .direct_free_quota_pending_2m.view(),
                     )
-            &&& container_map.spec_index(c_ptr).view_kernel_ghost()
+            &&& container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
@@ -467,7 +467,7 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
                                     .view_rodata().view().depth as int,
                             ),
                 )
-                == container_map.spec_index(c_ptr).view_kernel_ghost()
+                == container_map.spec_index(c_ptr).view_ghost()
                     .owned_indirect_threads.view().fold(
                         0,
                         |sum: int, t_ptr: RwLockThreadPtr|
@@ -479,22 +479,22 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
                     )
         }
     by {
-        assert(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
-        assert(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         lemma_thread_direct_pending_2m_fold_eq(
-            container_map.spec_index(c_ptr).view_user_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view(),
             pre_thread_map,
             post_thread_map,
         );
         lemma_thread_effective_quota_2m_fold_eq(
-            container_map.spec_index(c_ptr).view_user_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view(),
             pre_thread_map,
             post_thread_map,
         );
         lemma_thread_indirect_pending_2m_fold_eq_at_depth(
-            container_map.spec_index(c_ptr).view_kernel_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view(),
             pre_thread_map,
             post_thread_map,
@@ -586,28 +586,28 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
         implies
         {
             &&& thread_effective_quota_1g_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     post_thread_map,
                 )
                 == thread_effective_quota_1g_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     pre_thread_map,
                 )
-            &&& container_map.spec_index(c_ptr).view_user_ghost()
+            &&& container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
                         sum + post_thread_map.spec_index(t_ptr).view()
                             .direct_free_quota_pending_1g.view(),
                 )
-                == container_map.spec_index(c_ptr).view_user_ghost()
+                == container_map.spec_index(c_ptr).view_ghost()
                     .owned_threads.view().fold(
                         0,
                         |sum: int, t_ptr: RwLockThreadPtr|
                             sum + pre_thread_map.spec_index(t_ptr).view()
                                 .direct_free_quota_pending_1g.view(),
                     )
-            &&& container_map.spec_index(c_ptr).view_kernel_ghost()
+            &&& container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
@@ -617,7 +617,7 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
                                     .view_rodata().view().depth as int,
                             ),
                 )
-                == container_map.spec_index(c_ptr).view_kernel_ghost()
+                == container_map.spec_index(c_ptr).view_ghost()
                     .owned_indirect_threads.view().fold(
                         0,
                         |sum: int, t_ptr: RwLockThreadPtr|
@@ -629,22 +629,22 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
                     )
         }
     by {
-        assert(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
-        assert(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         lemma_thread_direct_pending_1g_fold_eq(
-            container_map.spec_index(c_ptr).view_user_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view(),
             pre_thread_map,
             post_thread_map,
         );
         lemma_thread_effective_quota_1g_fold_eq(
-            container_map.spec_index(c_ptr).view_user_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view(),
             pre_thread_map,
             post_thread_map,
         );
         lemma_thread_indirect_pending_1g_fold_eq_at_depth(
-            container_map.spec_index(c_ptr).view_kernel_ghost()
+            container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view(),
             pre_thread_map,
             post_thread_map,

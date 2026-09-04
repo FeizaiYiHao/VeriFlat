@@ -9,6 +9,7 @@ use super::syscall_ipc_queue::{
 };
 verus! {
 
+    #[verifier::spinoff_prover]
     pub(super) fn ipc_release_current_endpoint_and_finish(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -94,6 +95,7 @@ verus! {
         }
         error
     }
+    #[verifier::spinoff_prover]
     pub(super) fn ipc_finish_waiting_peer(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -234,11 +236,11 @@ verus! {
             };
             assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
             assert(krnl.process_management_inv()) by {
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
-                    &&& thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)
                     &&& thread_caller_callee_wf(krnl.thr_mp)
-                }) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
+                }) by { reveal(container_endpoint_wf); reveal(thread_caller_callee_wf); };
                 assert({
                     &&& container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)
                     &&& container_thread_wf(krnl.ctn_mp, krnl.thr_mp)
@@ -293,6 +295,7 @@ verus! {
         result
     }
 
+    #[verifier::spinoff_prover]
     pub(super) fn ipc_block_current(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -432,11 +435,11 @@ verus! {
                     &&& krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors
                     &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.wf()
                 }) by { reveal(endpoint_perms_wf); reveal(endpoints_inv); };
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
-                    &&& thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)
                     &&& thread_caller_callee_wf(krnl.thr_mp)
-                }) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
+                }) by { reveal(container_endpoint_wf); reveal(thread_caller_callee_wf); };
                 assert({
                     &&& container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)
                     &&& container_thread_wf(krnl.ctn_mp, krnl.thr_mp)
@@ -490,6 +493,7 @@ verus! {
         RetValueType::CpuIdle
     }
 
+    #[verifier::spinoff_prover]
     pub(super) fn ipc_schedule_waiting_peer_and_finish(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,

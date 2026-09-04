@@ -30,6 +30,13 @@ pub use pagetable_seq::*;
 pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_basd::allocate_free_4k_page;
+pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::{
+    allocate_free_4k_pages,
+    allocated_4k_page_lock_perms_wf,
+    page_ptrs_to_indices,
+};
+pub use kernel::implementation::create_process_from_staged_pages::*;
+pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_context::{
     mmap_4k_allocation_ready,
     mmap_4k_held_context,

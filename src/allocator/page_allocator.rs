@@ -6,9 +6,9 @@ use vstd::simple_pptr::*;
 verus! {
 
 pub struct PageAllocator{
-    pub cpu_caches: LockedArray<AllocatorCache, (), (), (), NUM_CPUS, NO_KILL_STATE>,
-    pub global_pool: RwLock<GlobalPool, (), (), (), NO_KILL_STATE>,
-    pub quota: RwLock<AllocatorQuota, (), (), (), NO_KILL_STATE>,
+    pub cpu_caches: LockedArray<AllocatorCache, (), (), NUM_CPUS, NO_KILL_STATE>,
+    pub global_pool: RwLock<GlobalPool, (), (), NO_KILL_STATE>,
+    pub quota: RwLock<AllocatorQuota, (), (), NO_KILL_STATE>,
     pub total_free_pages: Ghost<usize>,
 
     pub owning_container: RwLockContainerPtr,
@@ -65,7 +65,7 @@ impl PageAllocator{
     }
 
     pub open spec fn total_free_pages_wf(&self) -> bool{
-        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
+        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
     }
 
     pub open spec fn cpu_caches_unlocked(&self) -> bool {

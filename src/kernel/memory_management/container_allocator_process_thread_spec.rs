@@ -136,15 +136,15 @@ verus! {
                 ==>
                 process_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
+                    thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
                     thread_direct_pending_4k_fold_sum(
-                        container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                        container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                         thread_map,
                     )
                     +
                     thread_indirect_pending_4k_fold_sum_at_depth(
-                        container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(),
+                        container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view(),
                         thread_map,
                         container_map.spec_index(c_ptr).view_rodata().view().depth as int,
                     )
@@ -168,11 +168,11 @@ verus! {
                 ==>
                 process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
+                    thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
-                    thread_direct_pending_2m_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
+                    thread_direct_pending_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
-                    thread_indirect_pending_2m_fold_sum_at_depth(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(), thread_map, container_map.spec_index(c_ptr).view_rodata().view().depth as int)
+                    thread_indirect_pending_2m_fold_sum_at_depth(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view(), thread_map, container_map.spec_index(c_ptr).view_rodata().view().depth as int)
                     +
                     allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                     ==
@@ -193,11 +193,11 @@ verus! {
                 ==>
                 process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
                     +
-                    thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
+                    thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
-                    thread_direct_pending_1g_fold_sum(container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(), thread_map)
+                    thread_direct_pending_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
-                    thread_indirect_pending_1g_fold_sum_at_depth(container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view(), thread_map, container_map.spec_index(c_ptr).view_rodata().view().depth as int)
+                    thread_indirect_pending_1g_fold_sum_at_depth(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view(), thread_map, container_map.spec_index(c_ptr).view_rodata().view().depth as int)
                     +
                     allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
                     ==

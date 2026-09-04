@@ -38,11 +38,11 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fi
         implies
             container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(new_process_map.spec_index(p_ptr))})
                 + thread_effective_quota_2m_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     thread_map,
                 )
-                + container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
-                + container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+                + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                 + allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
                 == allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
         by {
@@ -91,11 +91,11 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fi
         implies
             container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(new_process_map.spec_index(p_ptr))})
                 + thread_effective_quota_1g_fold_sum(
-                    container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view(),
+                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
                     thread_map,
                 )
-                + container_map.spec_index(c_ptr).view_user_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
-                + container_map.spec_index(c_ptr).view_kernel_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+                + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
+                + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
                 + allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
                 == allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view()
         by {
@@ -266,22 +266,22 @@ pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
         container_thread_wf(pre_ctn, pre_thr),
         pre_ctn.dom().contains(dc),
         post_ctn.dom() == pre_ctn.dom(),
-        post_ctn.spec_index(dc).view_user_ghost().owned_threads.view() =~= pre_ctn.spec_index(dc).view_user_ghost().owned_threads.view().insert(new_t),
+        post_ctn.spec_index(dc).view_ghost().owned_threads.view() =~= pre_ctn.spec_index(dc).view_ghost().owned_threads.view().insert(new_t),
         forall|c: RwLockContainerPtr|
-            #![trigger pre_ctn.spec_index(c).view_user_ghost().owned_threads]
-            #![trigger post_ctn.spec_index(c).view_user_ghost().owned_threads]
+            #![trigger pre_ctn.spec_index(c).view_ghost().owned_threads]
+            #![trigger post_ctn.spec_index(c).view_ghost().owned_threads]
             pre_ctn.dom().contains(c) && c != dc ==>
-                post_ctn.spec_index(c).view_user_ghost().owned_threads == pre_ctn.spec_index(c).view_user_ghost().owned_threads,
+                post_ctn.spec_index(c).view_ghost().owned_threads == pre_ctn.spec_index(c).view_ghost().owned_threads,
         forall|c: RwLockContainerPtr|
-            #![trigger pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads]
-            #![trigger post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads]
+            #![trigger pre_ctn.spec_index(c).view_ghost().owned_indirect_threads]
+            #![trigger post_ctn.spec_index(c).view_ghost().owned_indirect_threads]
             uppers.contains(c) ==>
-                post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view() =~= pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view().insert(new_t),
+                post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view() =~= pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().insert(new_t),
         forall|c: RwLockContainerPtr|
-            #![trigger pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads]
-            #![trigger post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads]
+            #![trigger pre_ctn.spec_index(c).view_ghost().owned_indirect_threads]
+            #![trigger post_ctn.spec_index(c).view_ghost().owned_indirect_threads]
             pre_ctn.dom().contains(c) && !uppers.contains(c) ==>
-                post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads == pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads,
+                post_ctn.spec_index(c).view_ghost().owned_indirect_threads == pre_ctn.spec_index(c).view_ghost().owned_indirect_threads,
         forall|c: RwLockContainerPtr| #![auto]
             pre_ctn.dom().contains(c) ==>
                 post_ctn.spec_index(c).view() == pre_ctn.spec_index(c).view()
@@ -315,10 +315,10 @@ pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
         forall|c: RwLockContainerPtr|
             #![trigger post_ctn.dom().contains(c)]
             post_ctn.dom().contains(c) ==> {
-                let pre_direct = pre_ctn.spec_index(c).view_user_ghost().owned_threads.view();
-                let post_direct = post_ctn.spec_index(c).view_user_ghost().owned_threads.view();
-                let pre_indirect = pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view();
-                let post_indirect = post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view();
+                let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
+                let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
+                let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+                let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
                 let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
                 &&& thread_effective_quota_4k_fold_sum(post_direct, post_thr) == thread_effective_quota_4k_fold_sum(pre_direct, pre_thr)
                 &&& thread_direct_pending_4k_fold_sum(post_direct, post_thr) == thread_direct_pending_4k_fold_sum(pre_direct, pre_thr)
@@ -334,10 +334,10 @@ pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
     assert forall|c: RwLockContainerPtr|
         #![trigger post_ctn.dom().contains(c)]
         post_ctn.dom().contains(c) implies {
-            let pre_direct = pre_ctn.spec_index(c).view_user_ghost().owned_threads.view();
-            let post_direct = post_ctn.spec_index(c).view_user_ghost().owned_threads.view();
-            let pre_indirect = pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view();
-            let post_indirect = post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view();
+            let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
+            let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
+            let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+            let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
             let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
             &&& thread_effective_quota_4k_fold_sum(post_direct, post_thr) == thread_effective_quota_4k_fold_sum(pre_direct, pre_thr)
             &&& thread_direct_pending_4k_fold_sum(post_direct, post_thr) == thread_direct_pending_4k_fold_sum(pre_direct, pre_thr)
@@ -351,10 +351,10 @@ pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
         }
     by {
         reveal(container_thread_wf);
-        let pre_direct = pre_ctn.spec_index(c).view_user_ghost().owned_threads.view();
-        let post_direct = post_ctn.spec_index(c).view_user_ghost().owned_threads.view();
-        let pre_indirect = pre_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view();
-        let post_indirect = post_ctn.spec_index(c).view_kernel_ghost().owned_indirect_threads.view();
+        let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
+        let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
+        let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+        let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
         let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
         if c == dc {
             vstd::set::axiom_set_ext_equal(post_direct, pre_direct.insert(new_t));
@@ -410,9 +410,9 @@ pub proof fn lemma_thread_pending_4k_folds_eq_forall(
             #![trigger container_map.dom().contains(c_ptr)]
             container_map.dom().contains(c_ptr) ==> {
                 let direct = container_map.spec_index(c_ptr)
-                    .view_user_ghost().owned_threads.view();
+                    .view_ghost().owned_threads.view();
                 let indirect = container_map.spec_index(c_ptr)
-                    .view_kernel_ghost().owned_indirect_threads.view();
+                    .view_ghost().owned_indirect_threads.view();
                 let depth = container_map.spec_index(c_ptr)
                     .view_rodata().view().depth as int;
                 &&& thread_direct_pending_4k_fold_sum(direct, post)
@@ -425,9 +425,9 @@ pub proof fn lemma_thread_pending_4k_folds_eq_forall(
             #![trigger container_map.dom().contains(c_ptr)]
             container_map.dom().contains(c_ptr) implies {
                 let direct = container_map.spec_index(c_ptr)
-                    .view_user_ghost().owned_threads.view();
+                    .view_ghost().owned_threads.view();
                 let indirect = container_map.spec_index(c_ptr)
-                    .view_kernel_ghost().owned_indirect_threads.view();
+                    .view_ghost().owned_indirect_threads.view();
                 let depth = container_map.spec_index(c_ptr)
                     .view_rodata().view().depth as int;
                 &&& thread_direct_pending_4k_fold_sum(direct, post)
@@ -437,9 +437,9 @@ pub proof fn lemma_thread_pending_4k_folds_eq_forall(
             }
         by {
             let direct = container_map.spec_index(c_ptr)
-                .view_user_ghost().owned_threads.view();
+                .view_ghost().owned_threads.view();
             let indirect = container_map.spec_index(c_ptr)
-                .view_kernel_ghost().owned_indirect_threads.view();
+                .view_ghost().owned_indirect_threads.view();
             let depth = container_map.spec_index(c_ptr)
                 .view_rodata().view().depth as int;
             assert(direct.subset_of(pre.dom())) by {

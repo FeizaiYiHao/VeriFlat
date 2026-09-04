@@ -31,8 +31,7 @@ pub open spec fn process_pcid_allocator_wf(
     &&& forall|allocator_ptr: RwLockPcidAllocatorPtr,
         pcid: Pcid,
         p_ptr: RwLockProcessPtr|
-        #![trigger pcid_allocator_map.spec_index(allocator_ptr)
-            .view().id_to_proc.view().spec_index(pcid as int).contains(p_ptr)]
+        #![trigger process_map.dom().contains(p_ptr), pcid_allocator_map.dom().contains(allocator_ptr), pcid_valid(pcid)]
         pcid_allocator_map.dom().contains(allocator_ptr)
         && pcid_valid(pcid)
         && pcid_allocator_map.spec_index(allocator_ptr)

@@ -6,6 +6,7 @@ members = [
     "crates/veriflat_map_4k",
     "crates/veriflat_syscall_alloc_quota",
     "crates/veriflat_syscall_new_thread",
+    "crates/veriflat_syscall_new_process",
     "crates/veriflat_syscall_mmap_4k",
     "crates/veriflat_syscall_ipc",
 ]
