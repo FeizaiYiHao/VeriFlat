@@ -178,6 +178,16 @@ fn ipc_share_pages_locked(
             &&& krnl.thr_mp.perms_wf()
             &&& krnl.thr_mp.spec_index(target_thread).inv()
         }) by { reveal(pagetable_perms_wf); reveal(thread_perms_wf); };
+        assert({
+            &&& lctx.cpu_lock_map().dom().contains(cpu_id)
+            &&& lctx.process_lock_map().dom().contains(held_process)
+            &&& lctx.thread_lock_map().dom().contains(current_thread_ptr)
+            &&& lctx.thread_lock_map().dom().contains(peer_thread_ptr)
+            &&& lctx.endpoint_lock_map().dom().contains(held_endpoint)
+        }) by {
+            reveal(LockedArray::typed_lock_map_aligned);
+            reveal(LockedMap::typed_lock_map_aligned);
+        };
     }
     let source_pt = krnl.pt_mp.borrow(source_pagetable, Tracked(source_pagetable_lock_perm));
     if source_start_indices.0 < source_pt.kernel_l4_end {
@@ -244,11 +254,64 @@ fn ipc_share_pages_locked(
     };
     proof {
         assert({
-            &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr)
-            &&& krnl.thr_mp.lock_id_by_key(peer_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(peer_thread_ptr)
+            &&& held_processes_unchanged(
+                old(krnl).prc_mp, krnl.prc_mp, old(lctx),
+            )
+            &&& held_endpoints_unchanged(
+                old(krnl).ep_mp, krnl.ep_mp, old(lctx),
+            )
+            &&& held_cpus_unchanged(
+                old(krnl).cpu_arr, krnl.cpu_arr, old(lctx),
+            )
         }) by {
-            reveal(thread_perms_wf);
-            lock_id_fields_eq_imply_eq();
+            broadcast use group_held_objects_unchanged_transitive;
+        };
+        cpu_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, cpu_id,
+        );
+        process_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, held_process,
+        );
+        thread_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, current_thread_ptr,
+        );
+        thread_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, peer_thread_ptr,
+        );
+        endpoint_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, held_endpoint,
+        );
+        assert({
+            &&& cpu_objects_unlocked_except(
+                krnl.cpu_arr, lctx.thread_id(), set![cpu_id],
+            )
+            &&& container_objects_unlocked(krnl.ctn_mp, lctx.thread_id())
+            &&& process_objects_unlocked_except(
+                krnl.prc_mp, lctx.thread_id(), set![held_process],
+            )
+            &&& endpoint_objects_unlocked_except(
+                krnl.ep_mp, lctx.thread_id(), set![held_endpoint],
+            )
+            &&& iommu_table_objects_unlocked(krnl.it_mp, lctx.thread_id())
+            &&& scheduler_objects_unlocked(krnl.sched_mp, lctx.thread_id())
+            &&& pcid_allocator_objects_unlocked(
+                krnl.pcid_allc_mp, lctx.thread_id(),
+            )
+        }) by {
+            broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+            broadcast use container_objects_unlocked_preserved_for_typed_maps_unchanged;
+            broadcast use iommu_table_objects_unlocked_preserved_for_typed_maps_unchanged;
+            broadcast use scheduler_objects_unlocked_preserved_for_typed_maps_unchanged;
+            broadcast use pcid_allocator_objects_unlocked_preserved_for_typed_maps_unchanged;
+        };
+        assert(ipc_pages_base_roots_context(
+            krnl, lctx, cpu_id, held_process, current_thread_ptr,
+            held_endpoint, peer_thread_ptr, cpu_lock_perm,
+            process_lock_perm, current_thread_lock_perm,
+            endpoint_lock_perm, peer_thread_lock_perm,
+        )) by {
+            reveal(LockedMap::typed_lock_map_aligned);
+            reveal(LockedArray::typed_lock_map_aligned);
         };
     }
     if !owners_compatible {
@@ -273,10 +336,38 @@ fn ipc_share_pages_locked(
     }
     share_mapping_4k_build_and_share(krnl, source_range, target_range, target_allocator, source_thread, target_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
     proof {
-        assert(krnl.thr_mp.lock_id_by_key(source_thread) == old(krnl).thr_mp.lock_id_by_key(source_thread)) by {
-            reveal(thread_perms_wf);
-            lock_id_fields_eq_imply_eq();
+        process_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, held_process,
+        );
+        endpoint_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, held_endpoint,
+        );
+        assert({
+            &&& cpu_objects_unlocked_except(
+                krnl.cpu_arr, lctx.thread_id(), set![cpu_id],
+            )
+            &&& container_objects_unlocked(krnl.ctn_mp, lctx.thread_id())
+            &&& process_objects_unlocked_except(
+                krnl.prc_mp, lctx.thread_id(), set![held_process],
+            )
+            &&& endpoint_objects_unlocked_except(
+                krnl.ep_mp, lctx.thread_id(), set![held_endpoint],
+            )
+            &&& iommu_table_objects_unlocked(krnl.it_mp, lctx.thread_id())
+            &&& scheduler_objects_unlocked(krnl.sched_mp, lctx.thread_id())
+            &&& pcid_allocator_objects_unlocked(
+                krnl.pcid_allc_mp, lctx.thread_id(),
+            )
+        }) by {
+            broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+            broadcast use container_objects_unlocked_preserved_for_typed_maps_unchanged;
+            broadcast use iommu_table_objects_unlocked_preserved_for_typed_maps_unchanged;
+            broadcast use scheduler_objects_unlocked_preserved_for_typed_maps_unchanged;
+            broadcast use pcid_allocator_objects_unlocked_preserved_for_typed_maps_unchanged;
         };
+        thread_lock_id_preserved_for_typed_maps_unchanged(
+            old(krnl), krnl, old(lctx), lctx, source_thread,
+        );
     }
     IpcPagesMapping::Ready
 }

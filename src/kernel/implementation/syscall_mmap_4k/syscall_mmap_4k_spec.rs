@@ -31,18 +31,34 @@ pub(super) open spec fn mmap_4k_lock_scope(
     pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
     &&& cpu_objects_unlocked_except(krnl.cpu_arr, lctx.thread_id(), set![cpu_id])
-    &&& page_objects_unlocked(krnl.pg_arr, lctx.thread_id())
+    &&& page_objects_unlocked_except(
+        krnl.pg_arr, lctx.thread_id(), Set::empty(),
+    )
     &&& container_objects_unlocked_except(krnl.ctn_mp, lctx.thread_id(), set![container_ptr])
     &&& process_objects_unlocked_except(krnl.prc_mp, lctx.thread_id(), set![process_ptr])
     &&& thread_objects_unlocked_except(krnl.thr_mp, lctx.thread_id(), set![thread_ptr])
-    &&& endpoint_objects_unlocked(krnl.ep_mp, lctx.thread_id())
+    &&& endpoint_objects_unlocked_except(
+        krnl.ep_mp, lctx.thread_id(), Set::empty(),
+    )
     &&& pagetable_objects_unlocked_except(krnl.pt_mp, lctx.thread_id(), set![pagetable_ptr])
-    &&& iommu_table_objects_unlocked(krnl.it_mp, lctx.thread_id())
-    &&& scheduler_objects_unlocked(krnl.sched_mp, lctx.thread_id())
-    &&& pcid_allocator_objects_unlocked(krnl.pcid_allc_mp, lctx.thread_id())
-    &&& allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id())
-    &&& allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id())
-    &&& allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id())
+    &&& iommu_table_objects_unlocked_except(
+        krnl.it_mp, lctx.thread_id(), Set::empty(),
+    )
+    &&& scheduler_objects_unlocked_except(
+        krnl.sched_mp, lctx.thread_id(), Set::empty(),
+    )
+    &&& pcid_allocator_objects_unlocked_except(
+        krnl.pcid_allc_mp, lctx.thread_id(), Set::empty(),
+    )
+    &&& allocator_objects_unlocked_except(
+        krnl.allc_4k_mp, lctx.thread_id(), Set::empty(),
+    )
+    &&& allocator_objects_unlocked_except(
+        krnl.allc_2m_mp, lctx.thread_id(), Set::empty(),
+    )
+    &&& allocator_objects_unlocked_except(
+        krnl.allc_1g_mp, lctx.thread_id(), Set::empty(),
+    )
 }
 
 } // verus!

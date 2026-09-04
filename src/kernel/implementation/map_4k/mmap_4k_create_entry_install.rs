@@ -66,6 +66,14 @@ pub(super) enum MissingPageTableLevel {
             staged_4k_page_op_ensures(final(krnl), final(lctx), old(krnl), old(lctx), page_ptr, thread_ptr, pagetable_ptr, page_lock_perm.view(), thread_lock_perm.view(), pagetable_lock_perm.view()),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
+            held_threads_unchanged_except(
+                old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
+                set![thread_ptr],
+            ),
+            held_pagetables_unchanged_except(
+                old(krnl).pt_mp, final(krnl).pt_mp, old(lctx),
+                set![pagetable_ptr],
+            ),
             forall|t: RwLockThreadPtr|
                 #![trigger old(krnl).thr_mp.spec_index(t)]
                 #![trigger final(krnl).thr_mp.spec_index(t)]
@@ -254,6 +262,12 @@ pub(super) enum MissingPageTableLevel {
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { tlb_wf_spec_preserved_for_pagetable_mappings_unchanged(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr); };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
+            held_threads_unchanged_except_for_unchanged_except(
+                old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr,
+            );
+            held_pagetables_unchanged_except_for_unchanged_except(
+                old(krnl).pt_mp, krnl.pt_mp, old(lctx), pagetable_ptr,
+            );
         }
     }
 

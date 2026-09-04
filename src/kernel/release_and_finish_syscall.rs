@@ -2,6 +2,498 @@ use vstd::prelude::*;
 use crate::*;
 verus! {
 
+    pub broadcast proof fn cpu_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<CpuId>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.cpu_lock_map() == pre_lctx.cpu_lock_map(),
+            #[trigger] cpu_objects_unlocked_except(
+                pre.cpu_arr, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            cpu_objects_unlocked_except(
+                post.cpu_arr, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedArray::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn page_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<PageIndex>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.page_lock_map() == pre_lctx.page_lock_map(),
+            #[trigger] page_objects_unlocked_except(
+                pre.pg_arr, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            page_objects_unlocked_except(
+                post.pg_arr, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedArray::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn container_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockContainerPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.container_lock_map() == pre_lctx.container_lock_map(),
+            #[trigger] container_objects_unlocked_except(
+                pre.ctn_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            container_objects_unlocked_except(
+                post.ctn_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn container_objects_unlocked_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.container_lock_map() == pre_lctx.container_lock_map(),
+            #[trigger] container_objects_unlocked(
+                pre.ctn_mp, pre_lctx.thread_id(),
+            ),
+        ensures
+            container_objects_unlocked(
+                post.ctn_mp, post_lctx.thread_id(),
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn scheduler_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockSchedulerPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.scheduler_lock_map() == pre_lctx.scheduler_lock_map(),
+            #[trigger] scheduler_objects_unlocked_except(
+                pre.sched_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            scheduler_objects_unlocked_except(
+                post.sched_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn scheduler_objects_unlocked_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.scheduler_lock_map() == pre_lctx.scheduler_lock_map(),
+            #[trigger] scheduler_objects_unlocked(
+                pre.sched_mp, pre_lctx.thread_id(),
+            ),
+        ensures
+            scheduler_objects_unlocked(
+                post.sched_mp, post_lctx.thread_id(),
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn process_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockProcessPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.process_lock_map() == pre_lctx.process_lock_map(),
+            #[trigger] process_objects_unlocked_except(
+                pre.prc_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            process_objects_unlocked_except(
+                post.prc_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn thread_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockThreadPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.thread_lock_map() == pre_lctx.thread_lock_map(),
+            #[trigger] thread_objects_unlocked_except(
+                pre.thr_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            thread_objects_unlocked_except(
+                post.thr_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub proof fn thread_lock_id_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        thread_ptr: RwLockThreadPtr,
+    )
+        requires
+            pre.inv(),
+            post.inv(),
+            typed_lock_maps_aligned(pre, pre_lctx),
+            typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.thread_lock_map() == pre_lctx.thread_lock_map(),
+            pre_lctx.thread_lock_map().dom().contains(thread_ptr),
+        ensures
+            post.thr_mp.lock_id_by_key(thread_ptr)
+                == pre.thr_mp.lock_id_by_key(thread_ptr),
+    {
+        reveal(thread_perms_wf);
+        reveal(LockedMap::typed_lock_map_aligned);
+        lock_id_fields_eq_imply_eq();
+    }
+
+    pub proof fn cpu_lock_id_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        cpu_id: CpuId,
+    )
+        requires
+            typed_lock_maps_aligned(pre, pre_lctx),
+            typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.cpu_lock_map() == pre_lctx.cpu_lock_map(),
+            pre_lctx.cpu_lock_map().dom().contains(cpu_id),
+        ensures
+            post.cpu_arr.lock_id_by_index(cpu_id)
+                == pre.cpu_arr.lock_id_by_index(cpu_id),
+    {
+        reveal(LockedArray::typed_lock_map_aligned);
+    }
+
+    pub proof fn process_lock_id_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        process_ptr: RwLockProcessPtr,
+    )
+        requires
+            pre.inv(),
+            post.inv(),
+            typed_lock_maps_aligned(pre, pre_lctx),
+            typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.process_lock_map() == pre_lctx.process_lock_map(),
+            pre_lctx.process_lock_map().dom().contains(process_ptr),
+        ensures
+            post.prc_mp.lock_id_by_key(process_ptr)
+                == pre.prc_mp.lock_id_by_key(process_ptr),
+    {
+        reveal(process_perms_wf);
+        reveal(LockedMap::typed_lock_map_aligned);
+        lock_id_fields_eq_imply_eq();
+    }
+
+    pub proof fn endpoint_lock_id_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        endpoint_ptr: RwLockEndpointPtr,
+    )
+        requires
+            pre.inv(),
+            post.inv(),
+            typed_lock_maps_aligned(pre, pre_lctx),
+            typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.endpoint_lock_map() == pre_lctx.endpoint_lock_map(),
+            pre_lctx.endpoint_lock_map().dom().contains(endpoint_ptr),
+        ensures
+            post.ep_mp.lock_id_by_key(endpoint_ptr)
+                == pre.ep_mp.lock_id_by_key(endpoint_ptr),
+    {
+        reveal(endpoint_perms_wf);
+        reveal(LockedMap::typed_lock_map_aligned);
+        lock_id_fields_eq_imply_eq();
+    }
+
+    pub broadcast proof fn endpoint_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockEndpointPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.endpoint_lock_map() == pre_lctx.endpoint_lock_map(),
+            #[trigger] endpoint_objects_unlocked_except(
+                pre.ep_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            endpoint_objects_unlocked_except(
+                post.ep_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn pagetable_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockPageTableRoot>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.pagetable_lock_map()
+                == pre_lctx.pagetable_lock_map(),
+            #[trigger] pagetable_objects_unlocked_except(
+                pre.pt_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            pagetable_objects_unlocked_except(
+                post.pt_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn iommu_table_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockPageTableRoot>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.iommu_table_lock_map()
+                == pre_lctx.iommu_table_lock_map(),
+            #[trigger] iommu_table_objects_unlocked_except(
+                pre.it_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            iommu_table_objects_unlocked_except(
+                post.it_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn iommu_table_objects_unlocked_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.iommu_table_lock_map()
+                == pre_lctx.iommu_table_lock_map(),
+            #[trigger] iommu_table_objects_unlocked(
+                pre.it_mp, pre_lctx.thread_id(),
+            ),
+        ensures
+            iommu_table_objects_unlocked(
+                post.it_mp, post_lctx.thread_id(),
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn pcid_allocator_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockPcidAllocatorPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.pcid_allocator_lock_map()
+                == pre_lctx.pcid_allocator_lock_map(),
+            #[trigger] pcid_allocator_objects_unlocked_except(
+                pre.pcid_allc_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            pcid_allocator_objects_unlocked_except(
+                post.pcid_allc_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn pcid_allocator_objects_unlocked_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.pcid_allocator_lock_map()
+                == pre_lctx.pcid_allocator_lock_map(),
+            #[trigger] pcid_allocator_objects_unlocked(
+                pre.pcid_allc_mp, pre_lctx.thread_id(),
+            ),
+        ensures
+            pcid_allocator_objects_unlocked(
+                post.pcid_allc_mp, post_lctx.thread_id(),
+            ),
+    {
+        reveal(LockedMap::typed_lock_map_aligned);
+    }
+
+    pub broadcast proof fn allocator_4k_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockPageAllocatorPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.allocator_quota_4k_lock_map()
+                == pre_lctx.allocator_quota_4k_lock_map(),
+            post_lctx.allocator_cache_4k_lock_map()
+                == pre_lctx.allocator_cache_4k_lock_map(),
+            post_lctx.allocator_global_pool_4k_lock_map()
+                == pre_lctx.allocator_global_pool_4k_lock_map(),
+            #[trigger] allocator_objects_unlocked_except(
+                pre.allc_4k_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            allocator_objects_unlocked_except(
+                post.allc_4k_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(UnLockedMap::typed_quota_lock_map_aligned);
+        reveal(UnLockedMap::typed_cache_lock_map_aligned);
+        reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    }
+
+    pub broadcast proof fn allocator_2m_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockPageAllocatorPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.allocator_2m_lock_maps()
+                == pre_lctx.allocator_2m_lock_maps(),
+            #[trigger] allocator_objects_unlocked_except(
+                pre.allc_2m_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            allocator_objects_unlocked_except(
+                post.allc_2m_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(UnLockedMap::typed_quota_lock_map_aligned);
+        reveal(UnLockedMap::typed_cache_lock_map_aligned);
+        reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    }
+
+    pub broadcast proof fn allocator_1g_objects_unlocked_except_preserved_for_typed_maps_unchanged(
+        pre: &KernelK,
+        post: &KernelK,
+        pre_lctx: &LocalContext,
+        post_lctx: &LocalContext,
+        exceptions: Set<RwLockPageAllocatorPtr>,
+    )
+        requires
+            #[trigger] typed_lock_maps_aligned(pre, pre_lctx),
+            #[trigger] typed_lock_maps_aligned(post, post_lctx),
+            post_lctx.allocator_1g_lock_maps()
+                == pre_lctx.allocator_1g_lock_maps(),
+            #[trigger] allocator_objects_unlocked_except(
+                pre.allc_1g_mp, pre_lctx.thread_id(), exceptions,
+            ),
+        ensures
+            allocator_objects_unlocked_except(
+                post.allc_1g_mp, post_lctx.thread_id(), exceptions,
+            ),
+    {
+        reveal(UnLockedMap::typed_quota_lock_map_aligned);
+        reveal(UnLockedMap::typed_cache_lock_map_aligned);
+        reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    }
+
+    pub broadcast group group_object_types_unlocked_except_preserved_for_typed_maps_unchanged {
+        cpu_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        page_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        container_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        scheduler_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        process_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        thread_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        endpoint_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        pagetable_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        iommu_table_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        pcid_allocator_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        allocator_4k_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        allocator_2m_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+        allocator_1g_objects_unlocked_except_preserved_for_typed_maps_unchanged,
+    }
+
     pub open spec fn kernel_objects_unlocked_except(
         krnl: &KernelK,
         thread_id: LockThreadId,
@@ -63,8 +555,6 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             final(lctx).no_locks_held(),
-            !final(krnl).cpu_arr.spec_index(cpu_id).view()
-                .locked_by_thread(final(lctx).thread_id()),
             final(krnl).all_objects_unlocked(final(lctx)),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
@@ -117,10 +607,6 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             final(lctx).no_locks_held(),
-            !final(krnl).cpu_arr.spec_index(cpu_id).view()
-                .locked_by_thread(final(lctx).thread_id()),
-            !final(krnl).prc_mp.spec_index(process_ptr)
-                .locked_by_thread(final(lctx).thread_id()),
             final(krnl).all_objects_unlocked(final(lctx)),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
@@ -189,12 +675,6 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             final(lctx).no_locks_held(),
-            !final(krnl).cpu_arr.spec_index(cpu_id).view()
-                .locked_by_thread(final(lctx).thread_id()),
-            !final(krnl).prc_mp.spec_index(process_ptr)
-                .locked_by_thread(final(lctx).thread_id()),
-            !final(krnl).thr_mp.spec_index(thread_ptr)
-                .locked_by_thread(final(lctx).thread_id()),
             final(krnl).all_objects_unlocked(final(lctx)),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),

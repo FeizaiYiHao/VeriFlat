@@ -59,8 +59,8 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             mmap_4k_allocation_ready(old(krnl), old(lctx)),
             mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr),
-            old(krnl).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()),
-            old(krnl).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id()),
+            old(lctx).container_lock_map().dom().contains(container_ptr),
+            old(lctx).process_lock_map().dom().contains(process_ptr),
             range.wf(),
             range.len > 0,
             old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
@@ -119,10 +119,8 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
                 0 <= i <= range.len,
                 steps.steps.len() == old(steps).steps.len() + i,
                 typed_lock_maps_unchanged(old(lctx), lctx),
-                krnl.ctn_mp.spec_index(container_ptr)
-                    .locked_by_thread(lctx.thread_id()),
-                krnl.prc_mp.spec_index(process_ptr)
-                    .locked_by_thread(lctx.thread_id()),
+                lctx.container_lock_map().dom().contains(container_ptr),
+                lctx.process_lock_map().dom().contains(process_ptr),
                 old(krnl).thr_mp.dom().contains(thread_ptr),
                 old(krnl).prc_mp.dom().contains(process_ptr),
                 old(krnl).ctn_mp.dom().contains(container_ptr),
@@ -207,10 +205,19 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(
                     reveal(PageTable::wf_mapping_4k);
                     spec_va_4k_index_roundtrip();
                 };
+                assert(lctx.cpu_lock_map().dom().contains(cpu_id)) by {
+                    reveal(LockedArray::typed_lock_map_aligned);
+                };
             }
             mmap_4k_build_one_structure(krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, 1 + 4 * (range.len - i - 1), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
             proof {
                 assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
+                assert(mmap_4k_lock_scope(
+                    krnl, lctx, cpu_id, container_ptr, process_ptr,
+                    thread_ptr, pagetable_ptr,
+                )) by {
+                    broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+                };
             }
             map_one_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, current_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
             proof {

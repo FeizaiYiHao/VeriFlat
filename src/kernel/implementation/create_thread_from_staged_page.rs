@@ -61,6 +61,7 @@ verus! {
             ensures
                 final(krnl).inv(),
                 ret.0 == page_ptr,
+                ret.0 != staging_thread_ptr,
                 ret.1.view().state() is WriteLock,
                 ret.1.view().thread_id() == final(lctx).thread_id(),
                 ret.1.view().lock_id() == final(krnl).thr_mp.spec_index(page_ptr).locking_thread()->Write_lock_id,

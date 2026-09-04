@@ -34,8 +34,6 @@ verus! {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(ret.0)), TypedHeldLock {
                 lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), mode: TypedLockMode::Write,
             }),
-            final(lctx).lock_id_set() =~= old(lctx).lock_id_set().insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), KernelObjId::Page(page_ptr2page_index(ret.0)))),
-            final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
             allocator_objects_unlocked(final(krnl).allc_4k_mp, final(lctx).thread_id()),
@@ -51,29 +49,10 @@ verus! {
             held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)
-                    .locked_by_thread(old(lctx).thread_id())]
-                #![trigger final(krnl).thr_mp.spec_index(t)
-                    .locked_by_thread(final(lctx).thread_id())]
-                (old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(old(lctx).thread_id()))
-                == (final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(final(lctx).thread_id())),
-            forall|t: RwLockThreadPtr|
-                #![trigger old(krnl).thr_mp.spec_index(t)]
-                #![trigger final(krnl).thr_mp.spec_index(t)]
-                t != thread_ptr
-                    && old(krnl).thr_mp.dom().contains(t)
-                    && old(krnl).thr_mp.spec_index(t)
-                        .locked_by_thread(old(lctx).thread_id())
-                ==> final(krnl).thr_mp.dom().contains(t)
-                    && final(krnl).thr_mp.spec_index(t)
-                        == old(krnl).thr_mp.spec_index(t)
-                    && final(krnl).thr_mp.lock_id_by_key(t)
-                        == old(krnl).thr_mp.lock_id_by_key(t),
+            held_threads_unchanged_except(
+                old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
+                set![thread_ptr],
+            ),
             allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
             allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_1g_mp, final(lctx).thread_id()),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned4k { thread_ptr }),
@@ -96,8 +75,15 @@ verus! {
     {
         let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         proof {
-            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
-            assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm)) by { reveal(container_process_wf); reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(container_allocator_wf); };
+            assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, thread_lock_perm, pagetable_lock_perm)) by {
+                reveal(LockedMap::typed_lock_map_aligned);
+                reveal(LockedArray::typed_lock_map_aligned);
+                reveal(container_process_wf);
+                reveal(process_thread_wf);
+                reveal(process_pagetable_match);
+                reveal(pagetable_perms_wf);
+                reveal(container_allocator_wf);
+            };
             assert({
                 &&& krnl.thr_mp.spec_index(thread_ptr).view()
                     .upper_container_seq

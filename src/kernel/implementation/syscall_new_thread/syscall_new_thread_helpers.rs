@@ -97,6 +97,24 @@ verus! {
             let page_index = page_ptr2page_index(page_ptr);
 
             proof {
+                assert(kernel_objects_unlocked_except(
+                    krnl, lctx.thread_id(),
+                    set![cpu_id],
+                    Set::empty(),
+                    set![scheduler_ptr],
+                    set![process_ptr],
+                    set![current_thread_ptr],
+                    set![page_index],
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                )) by {
+                    broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+                };
                 assert(page_ptr != current_thread_ptr) by { reveal(thread_pages_wf); };
                 assert({
                     &&& krnl.ctn_mp.dom().contains(container_ptr)
