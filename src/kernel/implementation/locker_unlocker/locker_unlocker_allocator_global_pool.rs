@@ -18,10 +18,8 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
-                // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-                // ---- Every held lock still matches lctx (global pool now locked) ----
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
                 forall|thread_ptr: RwLockThreadPtr|
@@ -84,7 +82,6 @@ impl KernelK {
                     ==> final(self).prc_mp.dom().contains(process_ptr)
                         && final(self).prc_mp.spec_index(process_ptr).wlocked_by(final(lctx))
                         && final(self).prc_mp.spec_index(process_ptr).locked_by(final(lctx)),
-                // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pt_mp     == old(self).pt_mp,
                 final(self).it_mp     == old(self).it_mp,
                 final(self).irt     == old(self).irt,
@@ -102,7 +99,6 @@ impl KernelK {
                 final(self).allc_2m_mp  == old(self).allc_2m_mp,
                 final(self).allc_1g_mp  == old(self).allc_1g_mp,
                 final(self).dflt_pt == old(self).dflt_pt,
-                // ---- allocator_4k_map: dom unchanged; only the targeted entry's global_pool lock state changed ----
                 final(self).allc_4k_mp.dom() == old(self).allc_4k_mp.dom(),
                 final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
@@ -110,10 +106,8 @@ impl KernelK {
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).total_free_pages == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).total_free_pages,
-                // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-                // ---- The lock perm + lock ensures (forwarded from UnLockedMap::wlock_global_pool) ----
                 wlock_ensures(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool, final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool, LockId{ container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().container_depth(), process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().process_depth(), major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().current_lock_major(), minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().lock_minor(), }, final(lctx), ret.view()),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.locked_by_thread(final(lctx).thread_id()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, alloc_ptr_4k))),
@@ -131,7 +125,7 @@ impl KernelK {
 
             proof {
                 assert(allocator_perms_wf(self.allc_4k_mp)) by { reveal(allocator_perms_wf); };
-                assert(allocator_4k_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_4k_global_pool_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
+                assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_global_pool_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
                     assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
@@ -162,10 +156,8 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
-                // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
-                // ---- Every held lock still matches lctx (global pool now released) ----
                 forall|thread_ptr: RwLockThreadPtr|
                     #![trigger old(self).thr_mp.spec_index(thread_ptr)
                         .locked_by_thread(old(lctx).thread_id())]
@@ -226,10 +218,8 @@ impl KernelK {
                     ==> final(self).prc_mp.dom().contains(process_ptr)
                         && final(self).prc_mp.spec_index(process_ptr).wlocked_by(final(lctx))
                         && final(self).prc_mp.spec_index(process_ptr).locked_by(final(lctx)),
-                // ---- Dynamic lock ids remain aligned ----
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
-                // ---- Field framing: only allocator_4k_map's global_pool lock state moves ----
                 final(self).pt_mp     == old(self).pt_mp,
                 final(self).it_mp     == old(self).it_mp,
                 final(self).irt     == old(self).irt,
@@ -247,7 +237,6 @@ impl KernelK {
                 final(self).allc_2m_mp  == old(self).allc_2m_mp,
                 final(self).allc_1g_mp  == old(self).allc_1g_mp,
                 final(self).dflt_pt == old(self).dflt_pt,
-                // ---- allocator_4k_map: dom unchanged; only the targeted entry's global_pool lock state changed (now unlocked) ----
                 final(self).allc_4k_mp.dom() == old(self).allc_4k_mp.dom(),
                 final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
@@ -255,15 +244,9 @@ impl KernelK {
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).total_free_pages == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).total_free_pages,
-                // ---- LocalContext: lock dropped; thread preserved ----
-                // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
-                // `unlock_ensures` transitions it Acquire -> Release, so restating
-                // `== old` would contradict it and make the postcondition `false`
-                // in an Acquire section (same trap as the NOTE on
-                // `LockedArray::wunlock`). user_view is separately preserved.
+                // `unlock_ensures` owns the Acquire -> Release phase transition.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
-                // ---- wunlock ensures (forwarded from UnLockedMap::wunlock_global_pool) ----
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id() == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(),
                 !final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.wlocked_by_thread(final(lctx).thread_id()),
                 !final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.locked(),
@@ -284,7 +267,7 @@ impl KernelK {
 
             proof {
                 assert(allocator_perms_wf(self.allc_4k_mp)) by { reveal(allocator_perms_wf); };
-                assert(allocator_4k_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_4k_global_pool_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
+                assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_global_pool_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
                     assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };

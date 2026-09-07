@@ -47,7 +47,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
             let owner = post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container;
             let mapping_process = post_pagetable_map.spec_index(pagetable_ptr).view().proc_ptr;
             ||| process_map.spec_index(mapping_process).view_rodata().view().owning_container == owner
-            ||| container_map.spec_index(owner).view().subtree_set.view().contains(
+            ||| container_map.spec_index(owner).view_ghost().subtree_set.view().contains(
                 process_map.spec_index(mapping_process).view_rodata().view().owning_container,
             )
         },

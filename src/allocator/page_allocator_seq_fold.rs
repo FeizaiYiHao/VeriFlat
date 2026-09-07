@@ -4,13 +4,6 @@ use crate::*;
 
 verus! {
 
-/// Congruence for the `total_free_pages_wf` fold: two cache sequences with
-/// equal length and pointwise-equal `view().linked_list.len()` produce the
-/// same sum. Used to lift the fold across a cache lock/unlock, which changes
-/// only an element's lock state (its payload `view()` is preserved by
-/// `wlock_ensures`/`wunlock_ensures`), leaving every per-element length equal.
-/// The lambda body matches `total_free_pages_wf` verbatim so it unifies at the
-/// call sites. Recursive calls consume `drop_last` semantics directly.
 pub proof fn lemma_cache_len_fold_congruence(
     s1: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
     s2: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
@@ -25,17 +18,11 @@ pub proof fn lemma_cache_len_fold_congruence(
             == s2.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}),
     decreases s1.len(),
 {
-    let f = |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()};
-    if s1.len() == 0 {
-    } else {
+    if s1.len() != 0 {
         lemma_cache_len_fold_congruence(s1.drop_last(), s2.drop_last());
     }
 }
 
-/// Fold delta: two cache sequences equal everywhere except index `j`, where
-/// `s2[j]`'s linked-list length is `s1[j]`'s minus 1, fold to sums differing by
-/// 1. Used to re-balance `total_free_pages_wf` after popping one page from
-/// `cpu_caches[j]` (cache length −1, matched by ghost total_free_pages −1).
 pub proof fn lemma_cache_len_fold_change_one(
     s1: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
     s2: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
@@ -53,22 +40,13 @@ pub proof fn lemma_cache_len_fold_change_one(
             == s2.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) + 1,
     decreases s1.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
-    // s1 nonempty (j is a valid index); peel the last element off each fold.
     if j == s1.len() - 1 {
-        // Change is at the last element; prefixes are pointwise-equal length.
         lemma_cache_len_fold_congruence(s1.drop_last(), s2.drop_last());
     } else {
-        // Change is in the prefix; last elements have equal length.
         lemma_cache_len_fold_change_one(s1.drop_last(), s2.drop_last(), j);
     }
 }
 
-/// Array-facing wrapper for `lemma_cache_len_fold_change_one`: takes the two
-/// `cpu_caches` arrays directly (not their `view()`), so the "unchanged
-/// elsewhere" hypothesis is `new_arr.entries_unchanged_except(old_arr, j)` — the exact
-/// term `LockedArray::borrow_mut` delivers, no call-site `spec_index → view`
-/// bridge. The `spec_index → view()` congruence lives here, once.
 pub proof fn lemma_cache_len_fold_change_one_array(
     old_arr: LockedArray<AllocatorCache, (), (), NUM_CPUS, NO_KILL_STATE>,
     new_arr: LockedArray<AllocatorCache, (), (), NUM_CPUS, NO_KILL_STATE>,
@@ -102,8 +80,6 @@ pub proof fn lemma_cache_len_fold_change_one_array(
     };
 }
 
-/// The `total_free_pages_wf` fold is nonnegative — every summand is a
-/// `usize` length. Peeled-last induction; used to bound the fold from below.
 pub proof fn lemma_cache_len_fold_nonneg(
     s: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
 )
@@ -111,16 +87,11 @@ pub proof fn lemma_cache_len_fold_nonneg(
         s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= 0,
     decreases s.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
-    if s.len() == 0 {
-    } else {
+    if s.len() != 0 {
         lemma_cache_len_fold_nonneg(s.drop_last());
     }
 }
 
-/// Lower bound: the `total_free_pages_wf` fold is at least any single cache's
-/// length. Used to prove `total_free_pages >= 1` before decrementing on a pop
-/// (the popped cache is nonempty, so the fold — and thus the total — is >= 1).
 pub proof fn lemma_cache_len_fold_ge_elem(
     s: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
     j: int,
@@ -131,7 +102,6 @@ pub proof fn lemma_cache_len_fold_ge_elem(
         s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()}) >= s.spec_index(j).view().linked_list.len(),
     decreases s.len(),
 {
-    let f = |sum: int, c: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + c.view().linked_list.len()};
     if j == s.len() - 1 {
         lemma_cache_len_fold_nonneg(s.drop_last());
     } else {
@@ -139,8 +109,6 @@ pub proof fn lemma_cache_len_fold_ge_elem(
     }
 }
 
-/// If every cache list is empty, their `total_free_pages_wf` fold is zero.
-/// This is the all-zero counterpart of the generic cache-fold bounds above.
 pub proof fn lemma_cache_len_fold_all_zero(
     s: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
 )

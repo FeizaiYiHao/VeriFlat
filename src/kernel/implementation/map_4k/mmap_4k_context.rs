@@ -12,12 +12,10 @@ pub open spec fn mmap_4k_no_page_locks(lctx: &LocalContext) -> bool {
 /// The owner-lock context is ready to enter the 4K allocator only when no
 /// page or allocator locks are held and every held owner lock orders below it.
 pub open spec fn mmap_4k_allocation_ready(
-    krnl: &KernelK,
+    _krnl: &KernelK,
     lctx: &LocalContext,
 ) -> bool {
     &&& mmap_4k_no_page_locks(lctx)
-    &&& page_objects_unlocked(krnl.pg_arr, lctx.thread_id())
-    &&& allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id())
     &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
     &&& lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)
 }

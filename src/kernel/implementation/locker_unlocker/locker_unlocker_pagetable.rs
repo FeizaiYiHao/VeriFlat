@@ -3,12 +3,6 @@ use crate::*;
 
 verus! {
 
-pub open spec fn pagetable_pair_lock_acquire_scope(lctx: &LocalContext) -> bool {
-    &&& lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)
-    &&& exists|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-        lctx.base_lock_scope(cpus, containers, processes, threads, endpoints)
-}
-
 impl KernelK {
         fn wlock_pagetable_with_acyclic(
             &mut self,
@@ -70,8 +64,8 @@ impl KernelK {
                     old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
                     ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.insert(pagetable_ptr), iommu_tables),
                 forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)
+                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
+                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
                     ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
                 forall|other_pagetable: RwLockPageTableRoot|
                     #![trigger final(lctx).lock_id_set().contains((final(self).pt_mp.lock_id_by_key(other_pagetable), KernelObjId::PageTable(other_pagetable)))]
@@ -98,8 +92,8 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by {  reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by {  assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
+                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
                 broadcast use vstd::map::lemma_map_insert_domain;
                 broadcast use vstd::set::lemma_set_insert_same;
                 broadcast use vstd::set::lemma_set_insert_different;
@@ -167,12 +161,12 @@ impl KernelK {
                     old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
                     ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.insert(pagetable_ptr), iommu_tables),
                 forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)
+                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
+                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
                     ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
         {
             proof {
-                assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {   reveal(pagetable_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by { reveal(pagetable_perms_wf); };
             }
             self.wlock_pagetable_with_acyclic(pagetable_ptr, Tracked(&mut *lctx))
         }
@@ -191,7 +185,11 @@ impl KernelK {
                 wlock_requires(old(self).pt_mp.spec_index(source_pagetable), old(lctx)),
                 wlock_requires(old(self).pt_mp.spec_index(target_pagetable), old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) || pagetable_pair_lock_acquire_scope(old(lctx)),
+                old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) || {
+                    &&& old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)
+                    &&& exists|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
+                        old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
+                },
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -243,6 +241,10 @@ impl KernelK {
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
                 final(self).pt_mp.spec_index(source_pagetable).wlocked_by(final(lctx)),
                 final(self).pt_mp.spec_index(target_pagetable).wlocked_by(final(lctx)),
+                forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
+                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
+                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
+                    ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![source_pagetable, target_pagetable], Set::empty()),
                 ret.0.view().state() is WriteLock,
                 ret.0.view().thread_id() == final(lctx).thread_id(),
                 ret.0.view().lock_id() == final(self).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
@@ -253,20 +255,20 @@ impl KernelK {
         {
             proof {
                 assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {
-                        reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(pcid_allocator_perms_wf);
+                        reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(pcid_allocator_perms_wf);
                 };
             }
             if source_pagetable < target_pagetable {
                 let Tracked(source_perm) = self.wlock_pagetable(source_pagetable, Tracked(&mut *lctx));
                 proof {
-                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(target_pagetable))) by {   reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(target_pagetable))) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 }
                 let Tracked(target_perm) = self.wlock_pagetable_with_acyclic(target_pagetable, Tracked(&mut *lctx));
 (Tracked(source_perm), Tracked(target_perm))
             } else {
                 let Tracked(target_perm) = self.wlock_pagetable(target_pagetable, Tracked(&mut *lctx));
                 proof {
-                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(source_pagetable))) by {   reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(source_pagetable))) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 }
                 let Tracked(source_perm) = self.wlock_pagetable_with_acyclic(source_pagetable, Tracked(&mut *lctx));
 (Tracked(source_perm), Tracked(target_perm))

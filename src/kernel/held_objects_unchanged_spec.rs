@@ -229,7 +229,29 @@ pub open spec fn held_pages_unchanged_except(
         lctx.page_lock_map().dom().contains(i) && !exceptions.contains(i) ==> {
             &&& index_valid(NUM_PAGES, i)
             &&& post.spec_index(i).view() == pre.spec_index(i).view()
-        }
+    }
+}
+
+pub proof fn held_pages_unchanged_except_for_changed_set(
+    pre: PageLockedArray,
+    post: PageLockedArray,
+    lctx: &LocalContext,
+    changed: Set<PageIndex>,
+)
+    requires
+        pre.typed_lock_map_aligned(
+            lctx.page_lock_map(), lctx.thread_id(),
+        ),
+        forall|index: PageIndex|
+            #![trigger post.spec_index(index)]
+            #![trigger pre.spec_index(index)]
+            index_valid(NUM_PAGES, index) && !changed.contains(index)
+            ==> post.spec_index(index) == pre.spec_index(index),
+    ensures
+        held_pages_unchanged_except(pre, post, lctx, changed),
+{
+    reveal(LockedArray::typed_lock_map_aligned);
+    reveal(held_pages_unchanged_except);
 }
 
 pub open spec fn held_cpus_unchanged(

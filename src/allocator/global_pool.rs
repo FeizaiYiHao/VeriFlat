@@ -76,11 +76,15 @@ impl GlobalPool {
             ret.1 == self.linked_list.map().spec_index(ret.0),
     { self.linked_list.peek_head() }
 
+    pub fn get(&self, index: usize) -> (ret: PagePtr)
+        requires self.linked_list.wf(), index < self.linked_list.len(),
+        ensures ret == self.linked_list.view().spec_index(index as int),
+    { self.linked_list.get(index) }
+
     pub proof fn lemma_len_view(&self)
         requires self.linked_list.wf(),
         ensures self.linked_list.view().len() == self.linked_list.len(),
     { self.linked_list.lemma_len_view(); }
-
 }
 
 } // verus!

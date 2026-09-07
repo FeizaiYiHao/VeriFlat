@@ -90,8 +90,6 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
             final(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr,
             final(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq == old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq,
-            allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
-            allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_1g_mp, final(lctx).thread_id()),
             final(krnl).pt_mp.spec_index(pagetable_ptr).inv(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
@@ -182,9 +180,9 @@ verus! {
                 ) by (compute);
             };
             if old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) {
-                held_lock_majors_lt_preserved_for_typed_maps_unchanged(
-                    old(lctx), lctx, MAPPED_PAGE_LOCK_MAJOR,
-                );
+                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by {
+                    broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged;
+                };
             }
         }
     }

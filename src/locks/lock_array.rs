@@ -16,6 +16,22 @@ verus! {
     impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT,
         const HAS_KILL_STATE: bool, const N: usize>
         LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
+        pub fn from_array(
+            array: Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>,
+        ) -> (ret: Self)
+            requires
+                array.wf(),
+            ensures
+                ret.inv(),
+                ret.view() == array.view(),
+        {
+            let ghost user_seq = array.view();
+            Self {
+                array,
+                user_seq: Ghost(user_seq),
+            }
+        }
+
         pub closed spec fn array_wf(&self) -> bool{
             &&&
             self.array.wf()

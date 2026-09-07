@@ -4,10 +4,6 @@ verus! {
 
 use crate::*;
 
-pub open spec fn paddrs_equal(u: PAddr, v: PAddr) -> bool {
-    u == v
-}
-
 impl PageTable<PT_TYPE> {
     pub open spec fn spec_4k_entry_useable(
         &self,

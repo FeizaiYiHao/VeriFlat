@@ -247,25 +247,6 @@ pub open spec fn allocator_objects_unlocked(
             .locked_by_thread(thread_id) == false
 }
 
-pub open spec fn allocator_objects_unlocked_except(
-    alloc_map: PageAllocatorUnLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockPageAllocatorPtr>,
-) -> bool {
-    &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).global_pool]
-        alloc_map.dom().contains(alloc_ptr) && !exceptions.contains(alloc_ptr)
-        ==> !alloc_map.spec_index(alloc_ptr).global_pool.locked_by_thread(thread_id)
-    &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).quota]
-        alloc_map.dom().contains(alloc_ptr) && !exceptions.contains(alloc_ptr)
-        ==> !alloc_map.spec_index(alloc_ptr).quota.locked_by_thread(thread_id)
-    &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
-        #![trigger alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
-        alloc_map.dom().contains(alloc_ptr) && !exceptions.contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i)
-        ==> !alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by_thread(thread_id)
-}
-
 pub open spec fn allocator_objects_unlocked_except_quota(
     alloc_map: PageAllocatorUnLockedMap,
     thread_id: LockThreadId,
@@ -291,27 +272,6 @@ pub open spec fn allocator_objects_unlocked_except_quota(
 }
 
 impl KernelK{
-    pub open spec fn get_process_pagetable(&self, process_ptr:RwLockProcessPtr) -> PageTable<PT_TYPE>
-        recommends
-            self.prc_mp.dom().contains(process_ptr)
-    {
-        self.pt_mp.spec_index(self.prc_mp.spec_index(process_ptr).view().pagetable).view()
-    }
-
-    pub open spec fn get_process_iommu_table(
-        &self,
-        process_ptr: RwLockProcessPtr,
-    ) -> Option<PageTable<IOMMU_TYPE>>
-        recommends
-            self.prc_mp.dom().contains(process_ptr),
-    {
-        match self.prc_mp.spec_index(process_ptr).view().iommu_table {
-            Some(iommu_root) => Some(
-                self.it_mp.spec_index(iommu_root).view(),
-            ),
-            None => None,
-        }
-    }
     pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool{
         &&& cpu_objects_unlocked(self.cpu_arr, lctx.thread_id())
         &&& page_objects_unlocked(self.pg_arr, lctx.thread_id())

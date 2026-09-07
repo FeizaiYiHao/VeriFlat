@@ -58,25 +58,30 @@ impl KernelK {
                     old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
                     ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers.insert(scheduler_ptr), pcid_allocators, pagetables, iommu_tables),
                 forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)
+                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
+                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
                     ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, set![scheduler_ptr], Set::empty(), Set::empty(), Set::empty()),
         {
             proof {
                 assert(old(self).sched_mp.perms_wf()) by { reveal(scheduler_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by {   reveal(scheduler_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by { reveal(scheduler_perms_wf); };
             }
             let ret = self.sched_mp.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
                 assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
                 assert(scheduler_invariant_fields_unchanged(old(self).sched_mp, self.sched_mp)) by { scheduler_lock_op_preserves_invariant_fields(old(self).sched_mp, self.sched_mp, scheduler_ptr); };
+                assert(self.memory_management_inv()) by {
+                    assert(scheduler_pages_wf(self.sched_mp, self.pg_arr)) by {
+                        reveal(scheduler_pages_wf);
+                    };
+                };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.process_management_inv()) by {
                     assert(container_scheduler_wf(self.ctn_mp, self.sched_mp)) by { reveal(container_scheduler_wf); };
                     assert(container_thread_scheduler_wf(self.ctn_mp, self.thr_mp, self.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by {  reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 broadcast use vstd::map::lemma_map_insert_domain;
             }
             ret
@@ -158,6 +163,11 @@ impl KernelK {
             proof {
                 assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
                 assert(scheduler_invariant_fields_unchanged(old(self).sched_mp, self.sched_mp)) by { scheduler_lock_op_preserves_invariant_fields(old(self).sched_mp, self.sched_mp, scheduler_ptr); };
+                assert(self.memory_management_inv()) by {
+                    assert(scheduler_pages_wf(self.sched_mp, self.pg_arr)) by {
+                        reveal(scheduler_pages_wf);
+                    };
+                };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.process_management_inv()) by {
                     assert(container_scheduler_wf(self.ctn_mp, self.sched_mp)) by { reveal(container_scheduler_wf); };

@@ -7,7 +7,8 @@ verus! {
 // -------------------- Begin of const ------------------------
 pub const CPU_LOCK_MAJOR_RUNNING:LockMajorId = 1;
 pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
-pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 3;
+// An Off CPU is terminal after its owning container proves the slot closed.
+pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 30001;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
 pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;

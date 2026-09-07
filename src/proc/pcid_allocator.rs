@@ -15,6 +15,24 @@ pub struct PcidAllocator {
 }
 
 impl PcidAllocator {
+    pub fn new_empty(owning_container: RwLockContainerPtr, container_depth: usize) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.owning_container.view() == owning_container,
+            ret.container_depth.view() == container_depth,
+            forall|id: Pcid| #![auto] pcid_valid(id) ==> {
+                &&& ret.ref_counters.spec_index(id) == 0
+                &&& ret.id_to_proc.view().spec_index(id as int) == Set::<RwLockProcessPtr>::empty()
+            },
+    {
+        Self {
+            owning_container: Ghost(owning_container),
+            container_depth: Ghost(container_depth),
+            ref_counters: Array::new_with_init_value(0),
+            id_to_proc: Ghost(Seq::new(PCID_MAX as nat, |_id: int| Set::<RwLockProcessPtr>::empty())),
+        }
+    }
+
     pub open spec fn wf(&self) -> bool {
         &&& self.ref_counters.wf()
         &&& self.id_to_proc.view().len() == PCID_MAX

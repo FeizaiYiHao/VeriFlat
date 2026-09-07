@@ -4,10 +4,7 @@ use crate::*;
 
 use super::mmap_4k_map_range::mmap_4k_map_leaf_range;
 use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
-use super::syscall_mmap_4k_spec::{
-    mmap_4k_lock_scope,
-    mmap_4k_syscall_range_mapped,
-};
+use super::syscall_mmap_4k_spec::mmap_4k_syscall_range_mapped;
 
 verus! {
 
@@ -101,6 +98,19 @@ verus! {
         }
         let Tracked(container_lock_perm) = container_res.1.unwrap();
 
+        assert(may_acquire_process_lock(krnl, lctx, process_ptr)) by {
+            reveal(may_acquire_process_lock);
+            reveal(cpus_belong_to_container);
+            reveal(cpus_are_online);
+            reveal(cpus_run_process_or_none);
+            reveal(some_cpu_runs_process);
+            reveal(LocalContext::holds_exact_base_locks);
+            reveal(LocalContext::object_lock_scope);
+            reveal(cpu_array_wf);
+            reveal(container_cpu_wf);
+            reveal(process_cpu_wf);
+            reveal(container_process_wf);
+        };
         let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
         if let (false, _) = process_res {
             krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
@@ -179,6 +189,10 @@ verus! {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(lctx.no_locks_held()) by {
+                reveal(LocalContext::holds_no_allocator_locks);
+            };
+            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
             steps.end_kernel_step(&*krnl, &*lctx);
         }
         result

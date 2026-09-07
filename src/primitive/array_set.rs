@@ -7,9 +7,10 @@ use vstd::set_lib::*;
 /// A set of integers from 0 to N - 1.
 pub struct ArraySet<const N: usize> {
     pub data: Array<bool, N>,
+    pub closed: Array<bool, N>,
     pub len: usize,
-
     pub set: Ghost<Set<usize>>,
+    pub closed_set: Ghost<Set<usize>>,
 }
 
 impl <const N: usize> ArraySet<N> {
@@ -18,22 +19,28 @@ impl <const N: usize> ArraySet<N> {
         ensures
             ret.wf(),
             ret.view() == Set::<usize>::empty(),
+            ret.closed_view() == Set::<usize>::empty(),
     {
-        let mut ret = Self{
+        let mut ret = Self {
             data: Array::new(),
+            closed: Array::new(),
             len: 0,
-            set:Ghost(Set::<usize>::empty()),
+            set: Ghost(Set::<usize>::empty()),
+            closed_set: Ghost(Set::<usize>::empty()),
         };
         for i in 0..N
             invariant
                 0<=i<=N,
                 ret.data.wf(),
+                ret.closed.wf(),
                 ret.len == 0,
                 ret.set.view() == Set::<usize>::empty(),
-                forall|j:int|
-                    0<=j<i ==> ret.data.view().spec_index(j) == false,
+                ret.closed_set.view() == Set::<usize>::empty(),
+                forall|j:int| 0<=j<i ==> ret.data.view().spec_index(j) == false,
+                forall|j:int| 0<=j<i ==> ret.closed.view().spec_index(j) == false,
         {
-            ret.data.set(i,false);
+            ret.data.set(i, false);
+            ret.closed.set(i, false);
         }
         ret
     }
@@ -44,24 +51,53 @@ impl <const N: usize> ArraySet<N> {
         ensures
             final(self).wf(),
             final(self).view() == Set::<usize>::empty(),
+            final(self).closed_view() == Set::<usize>::empty(),
     {
-            self.len = 0;
-            self.set = Ghost(Set::<usize>::empty());
+        self.len = 0;
+        self.set = Ghost(Set::<usize>::empty());
+        self.closed_set = Ghost(Set::<usize>::empty());
         for i in 0..N
             invariant
                 0<=i<=N,
                 self.data.wf(),
+                self.closed.wf(),
                 self.len == 0,
                 self.set.view() == Set::<usize>::empty(),
-                forall|j:int|
-                    0<=j<i ==> self.data.view().spec_index(j) == false,
+                self.closed_set.view() == Set::<usize>::empty(),
+                forall|j:int| 0<=j<i ==> self.data.view().spec_index(j) == false,
+                forall|j:int| 0<=j<i ==> self.closed.view().spec_index(j) == false,
         {
-            self.data.set(i,false);
+            self.data.set(i, false);
+            self.closed.set(i, false);
         }
     }
 
     pub closed spec fn view(&self) -> Set<usize>{
         self.set.view()
+    }
+
+    pub closed spec fn closed_view(&self) -> Set<usize> {
+        self.closed_set.view()
+    }
+
+    pub fn contains(&self, v: usize) -> (ret: bool)
+        requires
+            self.wf(),
+            0 <= v < N,
+        ensures
+            ret == self.view().contains(v),
+    {
+        *self.data.get(v)
+    }
+
+    pub fn is_closed(&self, v: usize) -> (ret: bool)
+        requires
+            self.wf(),
+            0 <= v < N,
+        ensures
+            ret == self.closed_view().contains(v),
+    {
+        *self.closed.get(v)
     }
 
     #[verifier(when_used_as_spec(spec_len))]
@@ -96,6 +132,8 @@ impl <const N: usize> ArraySet<N> {
         &&&
         self.data.wf()
         &&&
+        self.closed.wf()
+        &&&
         0 <= self.len <= N
         &&&
         forall|i:usize| 
@@ -108,6 +146,18 @@ impl <const N: usize> ArraySet<N> {
             #![trigger self.set.view().contains(i)]
             self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
         &&&
+        forall|i:usize|
+            #![trigger self.closed.view().spec_index(i as int)]
+            #![trigger self.closed_set.view().contains(i)]
+            0 <= i < N && self.closed.view().spec_index(i as int) ==> self.closed_set.view().contains(i)
+        &&&
+        forall|i:usize|
+            #![trigger self.closed.view().spec_index(i as int)]
+            #![trigger self.closed_set.view().contains(i)]
+            self.closed_set.view().contains(i) ==> 0 <= i < N && self.closed.view().spec_index(i as int)
+        &&&
+        self.closed_set.view().subset_of(self.set.view())
+        &&&
         self.len == self.set.view().len()
     }
 
@@ -119,14 +169,31 @@ impl <const N: usize> ArraySet<N> {
         ensures
             final(self).wf(),
             final(self).view() == old(self).view().insert(v),
+            final(self).closed_view() == old(self).closed_view(),
     {
-        proof {
-            // Prove that self.len < N using our helper lemma
-            Self::lemma_set_missing_element_size(self.set.view(), v, N);
-        }
+        proof { Self::lemma_set_missing_element_size(self.set.view(), v, N); }
 
         self.data.set(v, true);
+        self.closed.set(v, false);
         self.set = Ghost(self.set.view().insert(v));
+        self.len = self.len + 1;
+    }
+
+    pub fn insert_closed(&mut self, v: usize)
+        requires
+            old(self).wf(),
+            old(self).view().contains(v) == false,
+            0 <= v < N,
+        ensures
+            final(self).wf(),
+            final(self).view() == old(self).view().insert(v),
+            final(self).closed_view() == old(self).closed_view().insert(v),
+    {
+        proof { Self::lemma_set_missing_element_size(self.set.view(), v, N); }
+        self.data.set(v, true);
+        self.closed.set(v, true);
+        self.set = Ghost(self.set.view().insert(v));
+        self.closed_set = Ghost(self.closed_set.view().insert(v));
         self.len = self.len + 1;
     }
 
@@ -137,13 +204,41 @@ impl <const N: usize> ArraySet<N> {
         ensures
             final(self).wf(),
             final(self).view() == old(self).view().remove(v),
+            final(self).closed_view() == old(self).closed_view().remove(v),
     {
         self.data.set(v, false);
+        self.closed.set(v, false);
         self.len = self.len - 1;
         self.set = Ghost(self.set.view().remove(v));
+        self.closed_set = Ghost(self.closed_set.view().remove(v));
     }
 
+    pub fn mark_closed(&mut self, v: usize)
+        requires
+            old(self).wf(),
+            old(self).view().contains(v),
+            !old(self).closed_view().contains(v),
+        ensures
+            final(self).wf(),
+            final(self).view() == old(self).view(),
+            final(self).closed_view() == old(self).closed_view().insert(v),
+    {
+        self.closed.set(v, true);
+        self.closed_set = Ghost(self.closed_set.view().insert(v));
+    }
 
+    pub fn mark_open(&mut self, v: usize)
+        requires
+            old(self).wf(),
+            old(self).closed_view().contains(v),
+        ensures
+            final(self).wf(),
+            final(self).view() == old(self).view(),
+            final(self).closed_view() == old(self).closed_view().remove(v),
+    {
+        self.closed.set(v, false);
+        self.closed_set = Ghost(self.closed_set.view().remove(v));
+    }
     // Helper lemma: a finite set contained in [0, m) has at most m elements
     proof fn lemma_finite_set_bounded_size(s: Set<usize>, m: usize)
         requires

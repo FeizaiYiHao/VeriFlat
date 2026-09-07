@@ -5,8 +5,9 @@ verus! {
 
 /// Fields read by memory-management invariants when an operation changes only
 /// thread/endpoint protocol state. Thread and endpoint domains remain semantic
-/// memory-management inputs; scheduler, CPU, lock, queue, descriptor, and
-/// reference-counter fields are deliberately outside this relation.
+/// memory-management inputs. The scheduler domain is also an input because
+/// scheduler objects have backing pages; scheduler payload, CPU, lock, queue,
+/// descriptor, and reference-counter fields remain outside this relation.
 pub open spec fn thread_endpoint_memory_management_fields_unchanged(
     pre: KernelK,
     post: KernelK,
@@ -22,6 +23,7 @@ pub open spec fn thread_endpoint_memory_management_fields_unchanged(
     &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.thr_mp.dom() =~= pre.thr_mp.dom()
     &&& post.ep_mp.dom() =~= pre.ep_mp.dom()
+    &&& post.sched_mp.dom() =~= pre.sched_mp.dom()
     &&& forall|thread_ptr: RwLockThreadPtr|
         #![trigger pre.thr_mp.spec_index(thread_ptr)]
         #![trigger post.thr_mp.spec_index(thread_ptr)]
@@ -86,6 +88,9 @@ pub proof fn thread_endpoint_no_change_imply_memory_management_inv(
     ensures
         post.memory_management_inv(),
 {
+    assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by {
+        reveal(scheduler_pages_wf);
+    };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_pages_wf);
     };

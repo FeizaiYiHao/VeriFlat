@@ -49,12 +49,9 @@ impl LockUserVisibilityTrait for Cpu{
 impl Cpu{
     pub open spec fn wf(&self) -> bool{
         &&&
-        self.state is Off
-        // || self.state is Killing
-        // || self.state is Killed 
-        == (self.current_process is None && self.current_thread is None)
-        &&&
-        self.current_process is None == self.current_thread is None
+        self.state is Off ==> (self.current_process is None && self.current_thread is None)
+        &&& self.state is Running ==> (self.current_process is Some && self.current_thread is Some)
+        &&& self.current_process is None == self.current_thread is None
         &&&
         self.tlb_dirty_bitmap.inv()
     }
@@ -205,11 +202,11 @@ impl LockMajorTrait for Cpu {
 
 impl LockOwnerIdTrait for Cpu {
     open spec fn container_depth(&self) -> LockOwnerId {
-        LockOwnerId::Some(self.container_depth)
+        if self.state is Off { LockOwnerId::NotApp } else { LockOwnerId::Some(self.container_depth) }
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::Some(self.process_depth)
+        if self.current_process is Some { LockOwnerId::Some(self.process_depth) } else { LockOwnerId::NotApp }
     }
 }
 

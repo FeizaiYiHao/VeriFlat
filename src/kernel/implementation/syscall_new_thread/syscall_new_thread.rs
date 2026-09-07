@@ -6,8 +6,7 @@ use super::syscall_new_thread_helpers::{
 };
 
 verus! {
-        /// syscall_new_thread: create a new thread in the running process on
-        /// `cpu_id`. Lock order: cpu -> process -> current thread -> scheduler.
+        /// Create a thread in the process running on `cpu_id`.
         pub fn syscall_new_thread(
             krnl: &mut KernelK,
             Tracked(lctx): Tracked<&mut LocalContext>,
@@ -69,6 +68,20 @@ verus! {
             }) by { reveal(container_process_wf); reveal(container_perms_wf); };
             let scheduler_ptr = krnl.ctn_mp.borrow_rodata(proc_container).borrow().scheduler;
 
+            proof {
+                assert(may_acquire_process_lock(krnl, lctx, process_ptr)) by {
+                    reveal(may_acquire_process_lock);
+                    reveal(cpus_belong_to_container);
+                    reveal(cpus_are_online);
+                    reveal(cpus_run_process_or_none);
+                    reveal(some_cpu_runs_process);
+                    reveal(LocalContext::holds_exact_base_locks);
+                    reveal(cpu_array_wf);
+                    reveal(container_cpu_wf);
+                    reveal(process_cpu_wf);
+                    reveal(container_process_wf);
+                };
+            }
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
             if let (false, _) = process_res {
                 release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
@@ -105,7 +118,7 @@ verus! {
                     &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
                     &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
                     &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
-                }) by {  reveal(LocalContext::holds_no_allocator_locks); };
+                }) by { reveal(LocalContext::holds_no_allocator_locks); };
             }
             add_new_thread_to_proc_container_and_scheduler(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, proc_container, scheduler_ptr, Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm), Tracked(scheduler_lock_perm));
             return RetValueType::Success;

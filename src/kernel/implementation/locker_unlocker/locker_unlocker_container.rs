@@ -13,7 +13,23 @@ impl KernelK {
                 old(self).ctn_mp.dom().contains(container_ptr),
                 !old(self).ctn_mp.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                container_lock_acquire_scope(old(self), old(lctx), container_ptr),
+                old(lctx).holds_exact_base_locks(
+                    old(lctx).cpu_lock_map().dom(),
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                    Set::empty(),
+                ),
+                !old(lctx).cpu_lock_map().dom().is_empty(),
+                cpus_belong_to_container(
+                    old(self),
+                    old(lctx).cpu_lock_map().dom(),
+                    container_ptr,
+                ),
+                cpus_are_online(
+                    old(self),
+                    old(lctx).cpu_lock_map().dom(),
+                ),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -69,12 +85,28 @@ impl KernelK {
                     &&& wlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr), final(lctx), ret.1.unwrap().view())
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr)))
                     &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(container_ptr), TypedHeldLock { lock_id: final(self).ctn_mp.lock_id_by_key(container_ptr), mode: TypedLockMode::Write })
-                    &&& container_lock_held_scope(final(self), final(lctx), container_ptr)
+                    &&& final(lctx).holds_exact_base_locks(
+                        final(lctx).cpu_lock_map().dom(),
+                        set![container_ptr],
+                        Set::empty(),
+                        Set::empty(),
+                        Set::empty(),
+                    )
+                    &&& !final(lctx).cpu_lock_map().dom().is_empty()
+                    &&& cpus_belong_to_container(
+                        final(self),
+                        final(lctx).cpu_lock_map().dom(),
+                        container_ptr,
+                    )
+                    &&& cpus_are_online(
+                        final(self),
+                        final(lctx).cpu_lock_map().dom(),
+                    )
                 },
         {
             proof {
                 assert(old(self).ctn_mp.perms_wf()) by { reveal(container_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by {   reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(cpus_belong_to_container); reveal(cpus_are_online); };
             }
             let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
             proof {
@@ -87,8 +119,20 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 if res.0 {
+                    assert(lctx.cpu_lock_map() == old(lctx).cpu_lock_map()) by {
+                        reveal(typed_lock_maps_inserted);
+                    };
+                    let cpus = old(lctx).cpu_lock_map().dom();
+                    assert({
+                        &&& lctx.holds_exact_base_locks(cpus, set![container_ptr], Set::empty(), Set::empty(), Set::empty())
+                        &&& !cpus.is_empty()
+                        &&& cpus_belong_to_container(self, cpus, container_ptr)
+                        &&& cpus_are_online(self, cpus)
+                    }) by {
+                        broadcast use vstd::map::lemma_map_insert_domain;
+                    };
                 }
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(container_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(container_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             res

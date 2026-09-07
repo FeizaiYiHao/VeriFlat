@@ -97,7 +97,7 @@ verus! {
                     thread_map.spec_index(t_ptr).view().owning_container
                 |||
                 container_map.spec_index(endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap()).view().owning_container)
-                    .view().subtree_set.view().contains(thread_map.spec_index(t_ptr).view().owning_container)
+                    .view_ghost().subtree_set.view().contains(thread_map.spec_index(t_ptr).view().owning_container)
             }
             
     }

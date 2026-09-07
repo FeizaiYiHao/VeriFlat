@@ -26,8 +26,13 @@
 # Proof discipline
 
 - No bare `assert(condition);`, empty `by {}`, proof workaround
-  `assume(...)`, `assume(false)`, or `#[verifier::external_body]`.
-  Authorized temporary diagnostics must be removed immediately.
+  `assume(...)`, or `assume(false)`. Do not add `#[verifier::external_body]`
+  outside the explicitly approved page-retype TCB boundary:
+  `retype_4k_page_perm_to_allocator` and
+  `retype_page_perm_2m_to_rwlock`. Keep those primitives limited to consuming
+  an owned page permission and constructing the corresponding kernel object;
+  new variants or callers require explicit authorization. Authorized temporary
+  diagnostics must be removed immediately.
 - Scope each opaque reveal to the assertion that consumes it. Do not
   redundantly reveal a non-opaque open spec. An EOF S may be opaque-open and
   revealed once at its producer and once per closure VC when fail-on-delete
@@ -39,6 +44,8 @@
 - Approved folds are
   `lemma_{process,thread}_effective_quota_4k_fold_{sum_eq,change_by}_forall`,
   `lemma_process_effective_quota_{2m,1g}_fold_sum_eq_forall`,
+  `lemma_thread_effective_quota_2m_fold_{sum_eq,change_by}_forall`,
+  `lemma_thread_pending_{4k,2m}_folds_eq_forall`,
   and `lemma_container_thread_quota_folds_insert_zero_forall`. Keep them
   inside the consuming scoped assertion.
 - Do not leave bare lemma calls that seed later solver context. Do not add

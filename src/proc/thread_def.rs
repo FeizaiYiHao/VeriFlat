@@ -171,6 +171,49 @@ impl Thread{
     {
         unimplemented!()
     }
+
+    pub fn new_scheduled(
+        thread_ptr: RwLockThreadPtr,
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+        owning_proc: RwLockProcessPtr,
+        process_depth: usize,
+        proc_pagetable_ptr: RwLockPageTableRoot,
+        upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
+    ) -> (ret: (Self, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        ensures
+            ret.0.inv(),
+            ret.0.state is SCHEDULED,
+            ret.0.current_lock_major() == THREAD_SCHEDULED_LOCK_MAJOR,
+            ret.0.owning_container == owning_container,
+            ret.0.container_depth == container_depth,
+            ret.0.owning_proc == owning_proc,
+            ret.0.process_depth == process_depth,
+            ret.0.proc_pagetable_ptr == proc_pagetable_ptr,
+            ret.0.upper_container_seq.view() == upper_container_seq.view(),
+            ret.0.caller is None,
+            ret.0.callee is None,
+            ret.0.proc_linkedlist_node.is_init(),
+            !ret.0.scheduler_linkedlist_node.is_init(),
+            ret.1 == ret.0.scheduler_linkedlist_node.addr(),
+            ret.2.view().is_init(),
+            ret.2.view().addr() == ret.1,
+            ret.2.view().value().view() == thread_ptr,
+            ret.0.blocking_endpoint_ptr is None,
+            ret.0.blocking_endpoint_index is None,
+            forall|edp_index: EndpointIdx| #![auto] ret.0.endpoint_descriptors.view().spec_index(edp_index as int) is None,
+            ret.0.free_quota_pending_clean(),
+            ret.0.temp_alloc_clean(),
+            ret.0.quota_4k == 0,
+            ret.0.quota_2m == 0,
+            ret.0.quota_1g == 0,
+    {
+        let mut thread = Self::new_fresh(owning_container, container_depth, owning_proc, process_depth, proc_pagetable_ptr, upper_container_seq);
+        let (node_addr, mut node_perm) = thread.scheduler_linkedlist_node.take();
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        thread.state = ThreadState::SCHEDULED;
+        (thread, node_addr, node_perm)
+    }
 }
 
 impl Thread {

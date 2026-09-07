@@ -4,6 +4,7 @@ pub mod page_array_spec;
 pub mod pages_container_spec;
 pub mod pages_process_spec;
 pub mod pages_thread_spec;
+pub mod pages_scheduler_spec;
 pub mod pages_pcid_allocator_spec;
 pub mod pages_owned_spec;
 pub mod pages_endpoint_spec;
@@ -21,6 +22,7 @@ pub mod allocator_spec;
 pub mod huge_page_spec;
 
 pub use pages_thread_spec::*;
+pub use pages_scheduler_spec::*;
 pub use pages_pcid_allocator_spec::*;
 pub use pages_owned_spec::*;
 pub use pages_endpoint_spec::*;

@@ -117,6 +117,22 @@ pub fn syscall_new_process(
     }
     let pcid = pcid_option.unwrap();
 
+    proof {
+        assert(may_acquire_process_lock(krnl, lctx, parent_ptr)) by {
+            reveal(may_acquire_process_lock);
+            reveal(holds_pcid_allocator_lock_with_cpu_context);
+            reveal(cpus_belong_to_container);
+            reveal(cpus_are_online);
+            reveal(cpus_run_process_or_none);
+            reveal(some_cpu_runs_process);
+            reveal(LocalContext::holds_exact_base_locks);
+            reveal(LocalContext::object_lock_scope);
+            reveal(cpu_array_wf);
+            reveal(container_cpu_wf);
+            reveal(process_cpu_wf);
+            reveal(container_process_wf);
+        };
+    }
     let process_res = krnl.wlock_process_unless_killed(parent_ptr, Tracked(&mut *lctx));
     if let (false, _) = process_res {
         krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
@@ -148,7 +164,7 @@ pub fn syscall_new_process(
     let Tracked(current_thread_lock_perm) = thread_res.1.unwrap();
     let source_pagetable_ptr = krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm)).proc_pagetable_ptr;
     proof {
-        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !krnl.pt_mp.spec_index(source_pagetable_ptr).locked_by_thread(lctx.thread_id())) by { reveal(process_thread_wf); reveal(process_pagetable_match);   };
+        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !krnl.pt_mp.spec_index(source_pagetable_ptr).locked_by_thread(lctx.thread_id())) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
     }
     let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
     let source_start_indices = va2index(va);
@@ -193,7 +209,8 @@ pub fn syscall_new_process(
     }
 
     proof {
-        assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by {  reveal(LocalContext::holds_no_allocator_locks); };
+        assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by { reveal(LocalContext::holds_no_allocator_locks); };
+        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })) by { reveal(thread_cpu_wf); };
     }
     commit_new_process(krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, pcid, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm));
     RetValueType::Success

@@ -2,8 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
-    /// Add the first endpoint descriptor and its reverse reference together.
     pub fn attach_endpoint_reference_and_unlock(
         krnl: &mut KernelK,
         thread_ptr: RwLockThreadPtr,
@@ -38,7 +36,7 @@ verus! {
             old(krnl).ctn_mp.dom().contains(old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container),
             {
                 ||| old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
-                ||| old(krnl).ctn_mp.spec_index(old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container).view().subtree_set.view().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container)
+                ||| old(krnl).ctn_mp.spec_index(old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container)
             },
             old(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(old(lctx)),
             thread_lock_perm.state() is WriteLock,
@@ -51,8 +49,8 @@ verus! {
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
-            thread_objects_unlocked_except(old(krnl).thr_mp, old(lctx).thread_id(), set![current_thread_ptr, thread_ptr]),
-            endpoint_objects_unlocked_except(old(krnl).ep_mp, old(lctx).thread_id(), set![endpoint_ptr]),
+            old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, thread_ptr],
+            old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
         ensures
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
@@ -108,11 +106,19 @@ verus! {
             final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
-            thread_objects_unlocked_except(final(krnl).thr_mp, final(lctx).thread_id(), set![current_thread_ptr]),
-            endpoint_objects_unlocked(final(krnl).ep_mp, final(lctx).thread_id()),
             kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
     {
         proof {
+            assert(thread_objects_unlocked_except(krnl.thr_mp, lctx.thread_id(), set![current_thread_ptr, thread_ptr])) by {
+                reveal(thread_objects_unlocked_except);
+                reveal(typed_lock_maps_aligned);
+                reveal(LockedMap::typed_lock_map_aligned);
+            };
+            assert(endpoint_objects_unlocked_except(krnl.ep_mp, lctx.thread_id(), set![endpoint_ptr])) by {
+                reveal(endpoint_objects_unlocked_except);
+                reveal(typed_lock_maps_aligned);
+                reveal(LockedMap::typed_lock_map_aligned);
+            };
             assert({
                 &&& krnl.thr_mp.view().spec_index(thread_ptr).is_init()
                 &&& krnl.thr_mp.view().spec_index(thread_ptr).addr() == thread_ptr
@@ -120,7 +126,7 @@ verus! {
                 &&& krnl.ep_mp.view().spec_index(endpoint_ptr).addr() == endpoint_ptr
                 &&& krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).inv()
-            }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf);  };
+            }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
             assert({
                 &&& !krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((thread_ptr, 0))
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).view().rf_counter < usize::MAX
@@ -145,7 +151,7 @@ verus! {
         proof {
             assert(krnl.subsystems_inv()) by {
                 assert(thread_perms_wf(krnl.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-                assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf);  };
+                assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
                 reveal(KernelK::default_pagetable_wf);
             };
             assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
@@ -189,5 +195,4 @@ verus! {
             };
         }
     }
-
 }

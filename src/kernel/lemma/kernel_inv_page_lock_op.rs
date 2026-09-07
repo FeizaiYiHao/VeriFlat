@@ -36,6 +36,7 @@ pub open spec fn page_memory_management_context_unchanged(
     &&& post.pt_mp == pre.pt_mp
     &&& post.it_mp == pre.it_mp
     &&& post.ctn_mp == pre.ctn_mp
+    &&& post.sched_mp == pre.sched_mp
     &&& post.pcid_allc_mp == pre.pcid_allc_mp
     &&& post.prc_mp == pre.prc_mp
     &&& post.thr_mp == pre.thr_mp
@@ -104,6 +105,9 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(
     };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by {
         reveal(thread_pages_wf);
+    };
+    assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by {
+        reveal(scheduler_pages_wf);
     };
     assert(pcid_allocator_pages_wf(
         post.pg_arr,

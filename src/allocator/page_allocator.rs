@@ -14,8 +14,6 @@ pub struct PageAllocator{
     pub owning_container: RwLockContainerPtr,
 }
 
-// The allocator fold lemmas live alongside the allocator.
-
 impl LockInvTrait for PageAllocator{
     open spec fn inv(&self) -> bool {
         &&&
@@ -24,29 +22,212 @@ impl LockInvTrait for PageAllocator{
 }
 
 impl PageAllocator{
-    pub open spec fn wf(&self) -> bool{
-        &&&
-        self.cpu_caches.inv()
-        &&&
-        self.global_pool.inv()
-        &&&
-        self.cpu_caches_wf()
-        &&&
-        self.quota_minor_wf()
-        &&&
-        self.global_pool_minor_wf()
-        &&&
-        self.total_free_pages_wf()
+    pub fn new_with_global_pool(
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+        linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
+        quota_value: usize,
+    ) -> (ret: Self)
+        requires
+            linked_list.wf(),
+            linked_list.view().no_duplicates(),
+            linked_list.container_depth == Some(container_depth),
+            linked_list.minor == Some(owning_container),
+        ensures
+            ret.inv(),
+            ret.owning_container == owning_container,
+            ret.total_free_pages.view() == linked_list.view().len(),
+            ret.quota.view().view() == quota_value,
+            ret.quota.view().container_depth == container_depth,
+            ret.quota.view().lock_minor() == owning_container,
+            !ret.quota.locked(),
+            ret.global_pool.view().view() == linked_list.view(),
+            ret.global_pool.view().map() == linked_list.map(),
+            !ret.global_pool.locked(),
+            forall|cpu_id: CpuId| #![auto]
+                index_valid(NUM_CPUS, cpu_id)
+                ==> {
+                    &&& ret.cpu_caches.spec_index(cpu_id).view().view()
+                        .linked_list.view() == Seq::<PagePtr>::empty()
+                    &&& ret.cpu_caches.spec_index(cpu_id).view().view()
+                        .linked_list.map() == Map::<usize, PagePtr>::empty()
+                    &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
+                },
+    {
+        proof {
+            reveal(LinkedList::wf_value_list);
+        }
+        let mut cache_array:
+            Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS>
+                = Array::new();
+        let mut cpu_id = 0;
+        while cpu_id < NUM_CPUS
+            invariant
+                cache_array.wf(),
+                0 <= cpu_id <= NUM_CPUS,
+                forall|i: CpuId| #![auto]
+                    index_valid(NUM_CPUS, i) && i < cpu_id
+                    ==> {
+                        &&& cache_array.spec_index(i).inv()
+                        &&& cache_array.spec_index(i).view().linked_list.view()
+                            == Seq::<PagePtr>::empty()
+                        &&& cache_array.spec_index(i).view().linked_list.map()
+                            == Map::<usize, PagePtr>::empty()
+                        &&& !cache_array.spec_index(i).locked()
+                    },
+                forall|i: int|
+                    #![trigger cache_array.view().spec_index(i)]
+                    0 <= i < cpu_id
+                    ==> cache_array.view().spec_index(i).view()
+                        .linked_list.view().len() == 0,
+            decreases NUM_CPUS - cpu_id,
+        {
+            let cache = AllocatorCache {
+                linked_list: LinkedList::new(
+                    Some(container_depth),
+                    Some(cpu_id),
+                ),
+            };
+            cache_array.set(
+                cpu_id,
+                RwLock::new_unlocked(cache, (), Ghost(())),
+            );
+            cpu_id = cpu_id + 1;
+        }
+        let total_free_pages = linked_list.length;
+        let cpu_caches = LockedArray::from_array(cache_array);
+        let global_pool = RwLock::new_unlocked(
+            GlobalPool { linked_list },
+            (),
+            Ghost(()),
+        );
+        let quota = RwLock::new_unlocked(
+            AllocatorQuota {
+                value: quota_value,
+                minor: Ghost(owning_container),
+                container_depth,
+            },
+            (),
+            Ghost(()),
+        );
+        let ret = Self {
+            cpu_caches,
+            global_pool,
+            quota,
+            total_free_pages: Ghost(total_free_pages),
+            owning_container,
+        };
+        proof {
+            lemma_cache_len_fold_all_zero(ret.cpu_caches.view());
+            ret.global_pool.view().lemma_len_view();
+        }
+        ret
+    }
+
+    pub fn new_empty(
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+    ) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.owning_container == owning_container,
+            ret.total_free_pages.view() == 0,
+            ret.quota.view().view() == 0,
+            ret.quota.view().container_depth == container_depth,
+            ret.quota.view().lock_minor() == owning_container,
+            !ret.quota.locked(),
+            ret.global_pool.view().view() == Seq::<PagePtr>::empty(),
+            ret.global_pool.view().map() == Map::<usize, PagePtr>::empty(),
+            !ret.global_pool.locked(),
+            forall|cpu_id: CpuId| #![auto]
+                index_valid(NUM_CPUS, cpu_id)
+                ==> {
+                    &&& ret.cpu_caches.spec_index(cpu_id).view().view()
+                        .linked_list.view() == Seq::<PagePtr>::empty()
+                    &&& ret.cpu_caches.spec_index(cpu_id).view().view()
+                        .linked_list.map() == Map::<usize, PagePtr>::empty()
+                    &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
+                },
+    {
+        let mut cache_array:
+            Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS>
+                = Array::new();
+        let mut cpu_id = 0;
+        while cpu_id < NUM_CPUS
+            invariant
+                cache_array.wf(),
+                0 <= cpu_id <= NUM_CPUS,
+                forall|i: CpuId| #![auto]
+                    index_valid(NUM_CPUS, i) && i < cpu_id
+                    ==> {
+                        &&& cache_array.spec_index(i).inv()
+                        &&& cache_array.spec_index(i).view().linked_list.view() == Seq::<PagePtr>::empty()
+                        &&& cache_array.spec_index(i).view().linked_list.map() == Map::<usize, PagePtr>::empty()
+                        &&& !cache_array.spec_index(i).locked()
+                    },
+                forall|i: int| #![trigger cache_array.view().spec_index(i)]
+                    0 <= i < cpu_id
+                    ==> cache_array.view().spec_index(i).view()
+                        .linked_list.view().len() == 0,
+            decreases NUM_CPUS - cpu_id,
+        {
+            let cache = AllocatorCache {
+                linked_list: LinkedList::new(
+                    Some(container_depth),
+                    Some(cpu_id),
+                ),
+            };
+            cache_array.set(
+                cpu_id,
+                RwLock::new_unlocked(cache, (), Ghost(())),
+            );
+            cpu_id = cpu_id + 1;
+        }
+        let cpu_caches = LockedArray::from_array(cache_array);
+        let global_pool = RwLock::new_unlocked(
+            GlobalPool {
+                linked_list: LinkedList::new(
+                    Some(container_depth),
+                    Some(owning_container),
+                ),
+            },
+            (),
+            Ghost(()),
+        );
+        let quota = RwLock::new_unlocked(
+            AllocatorQuota {
+                value: 0,
+                minor: Ghost(owning_container),
+                container_depth,
+            },
+            (),
+            Ghost(()),
+        );
+        let ret = Self {
+            cpu_caches,
+            global_pool,
+            quota,
+            total_free_pages: Ghost(0),
+            owning_container,
+        };
+        proof {
+            lemma_cache_len_fold_all_zero(ret.cpu_caches.view());
+        }
+        ret
+    }
+
+    pub open spec fn wf(&self) -> bool {
+        &&& self.cpu_caches.inv()
+        &&& self.global_pool.inv()
+        &&& self.cpu_caches_wf()
+        &&& self.quota_minor_wf()
+        &&& self.global_pool_minor_wf()
+        &&& self.total_free_pages_wf()
     }
 
     pub open spec fn cpu_caches_wf(&self) -> bool {
-        &&&
-        forall|cpu_i:CpuId|
-        #![trigger index_valid(NUM_CPUS, cpu_i)]
-        // #![trigger self.cpu_caches.spec_index(cpu_i).inv()]
-        index_valid(NUM_CPUS, cpu_i)
-        ==>
-        self.cpu_caches.spec_index(cpu_i).inv()
+        forall|cpu_i: CpuId| #![trigger index_valid(NUM_CPUS, cpu_i)]
+            index_valid(NUM_CPUS, cpu_i) ==> self.cpu_caches.spec_index(cpu_i).inv()
     }
 
     /// The quota's intrinsic minor lock id is the owning container pointer.
@@ -64,57 +245,13 @@ impl PageAllocator{
         self.global_pool.view().lock_minor() == self.owning_container
     }
 
-    pub open spec fn total_free_pages_wf(&self) -> bool{
+    pub open spec fn total_free_pages_wf(&self) -> bool {
         self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
     }
 
-    pub open spec fn cpu_caches_unlocked(&self) -> bool {
-        &&&
-         forall|cpu_i: CpuId|
-        #![auto]
-        index_valid(NUM_CPUS, cpu_i)
-        ==>
-        self.cpu_caches.spec_index(cpu_i).view().locked() == false
-    }
-
-    pub open spec fn global_pool_unlocked(&self) -> bool{
-        self.global_pool.locked() == false
-    }
-
-    // pub open spec fn quota_unlocked(&self) -> bool{
-    //     self.quota.locked() == false
-    // }
-
-    // pub open spec fn internal_lock_id_wf(&self) -> bool{
-    //     &&&
-    //     self.quota.view().container_depth() == self.global_pool.view().container_depth()
-    //     &&&
-    //     forall|cpu_i:CpuId|
-    //         #![trigger self.cpu_caches.spec_index(cpu_i).container_depth()]
-    //         #![trigger self.cpu_caches.spec_index(cpu_i).process_depth()]
-    //         index_valid(NUM_CPUS, cpu_i)
-    //         ==>
-    //         self.cpu_caches.spec_index(cpu_i).container_depth() == self.quota.view().container_depth()
-    //         &&
-    //         self.cpu_caches.spec_index(cpu_i).process_depth() == self.quota.view().process_depth()
-    // }
 }
 
 impl PageAllocator{
-    /// Acquire the inner `quota` write lock.
-    ///
-    /// The caller passes the allocator's `page_size` class and pointer
-    /// (`alloc_ptr`) so the wrapper can build the right `KernelObjId`. The
-    /// rest of the lock id (container/process/major/minor) is inferred by
-    /// the underlying primitive from the quota's traits.
-    ///
-    /// The acyclicity obligation is passed through to the caller, as for a
-    /// direct `RwLock::wlock`.
-    ///
-    /// `wf()` re-establishes for free: only `quota`'s lock state moves
-    /// (`wlock_ensures` preserves `quota.view()`), and the only fold conjunct
-    /// `total_free_pages_wf` folds over `cpu_caches` + `global_pool` — both
-    /// untouched here — so no fold lemma is needed.
     pub fn wlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
@@ -122,12 +259,10 @@ impl PageAllocator{
             old(lctx).lock_id_acyclic(old(self).quota.lock_id()),
         ensures
             final(self).wf(),
-            // Quota lock acquired.
             wlock_ensures(old(self).quota, final(self).quota, old(self).quota.lock_id(), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), final(self).quota.view(),
                 old(self).quota.lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
-            // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).global_pool == old(self).global_pool,
             final(self).owning_container == old(self).owning_container,
@@ -139,17 +274,6 @@ impl PageAllocator{
 }
 
 impl PageAllocator{
-    /// Release the inner `quota` write lock.
-    ///
-    /// The caller passes `page_size` and `alloc_ptr` so the wrapper can
-    /// remove the matching pair from the LocalContext lock-entry set. The
-    /// dynamic lock id must match the entry for this object — same contract
-    /// as `RwLock::wunlock`.
-    ///
-    /// `wf()` re-establishes for free: only `quota`'s lock state moves
-    /// (`wunlock_ensures` preserves `quota.view()`), and the only fold conjunct
-    /// `total_free_pages_wf` folds over `cpu_caches` + `global_pool` — both
-    /// untouched here — so no fold lemma is needed.
     pub fn wunlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
@@ -176,7 +300,6 @@ impl PageAllocator{
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()),
                 old(self).quota.lock_id(),
             ),
-            // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).global_pool == old(self).global_pool,
             final(self).owning_container == old(self).owning_container,
@@ -187,9 +310,6 @@ impl PageAllocator{
 }
 
 impl PageAllocator{
-    /// Acquire the per-cpu `cpu_caches[cpu_id]` write lock. Mirrors `wlock_quota`
-    /// but for the array element; builds `KernelObjId::AllocatorCache`. The lock
-    /// id is inferred from the array element's traits.
     pub fn wlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
@@ -216,7 +336,6 @@ impl PageAllocator{
                 minor: old(self).cpu_caches.spec_index(cpu_id).lock_minor(),
             }, KernelObjId::AllocatorCache(
                 page_size.view(), alloc_ptr.view(), cpu_id)),
-            // Other fields untouched.
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
             final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
@@ -240,12 +359,6 @@ impl PageAllocator{
         ret
     }
 
-    /// Release the per-cpu `cpu_caches[cpu_id]` write lock.
-    ///
-    /// `total_free_pages_wf` folds over live cache lengths, and `wunlock`
-    /// preserves the cache's payload `view()` (only lock state changes), so
-    /// the fold — and thus `wf()` — is preserved across unlock with no
-    /// caller-side length-consistency obligation.
     pub fn wunlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
@@ -271,7 +384,6 @@ impl PageAllocator{
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id),
                 old(self).cpu_caches.spec_index(cpu_id).lock_id(),
             ),
-            // Other fields untouched.
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
             final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
@@ -294,9 +406,6 @@ impl PageAllocator{
         }
     }
 
-    /// Acquire the inner `global_pool` write lock. Mirrors `wlock_quota`;
-    /// builds `KernelObjId::AllocatorGlobalPoll`. The lock id is inferred
-    /// from the global pool's traits.
     pub fn wlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
@@ -322,7 +431,6 @@ impl PageAllocator{
                 minor: old(self).global_pool.view().lock_minor(),
             }, KernelObjId::AllocatorGlobalPoll(
                 page_size.view(), alloc_ptr.view())),
-            // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
@@ -337,7 +445,6 @@ impl PageAllocator{
         self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view())))
     }
 
-    /// Release the inner `global_pool` write lock. Mirrors `wunlock_quota`.
     pub fn wunlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
@@ -361,7 +468,6 @@ impl PageAllocator{
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view()),
                 old(self).global_pool.lock_id(),
             ),
-            // Other fields untouched.
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
@@ -384,17 +490,14 @@ impl PageAllocator{
             old(self).cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
         ensures
             final(self).wf(),
-            // ---- popped node ----
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
             ret.1.view().value().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().spec_index(0),
             old(self).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(ret.0),
             old(self).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(ret.0) == ret.1.view().value().view(),
-            // ---- cache shrank by the popped head, total rebalanced ----
             final(self).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
             final(self).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).cpu_caches.spec_index(cpu_id).view().view().map().remove(ret.0),
             final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
-            // ---- lock state of the touched cache preserved, others untouched ----
             final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
             final(self).cpu_caches.spec_index(cpu_id).view().is_init(),
             final(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
@@ -427,11 +530,6 @@ impl PageAllocator{
         (node_addr, node_perm)
     }
 
-    // Global-pool twin of `pop_cache_page`: pop the head off the write-locked
-    // `global_pool` list and rebalance `total_free_pages`. Conservation is
-    // simpler than the cache case -- `total_free_pages_wf` folds `global_pool.len()
-    // + fold(cpu_caches)`, and here `global_pool.len()` drops by 1 while the whole
-    // `cpu_caches` array is byte-unchanged (so its fold is congruent).
     pub fn pop_global_pool_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
         requires
             old(self).wf(),
@@ -443,17 +541,14 @@ impl PageAllocator{
             old(self).global_pool.view().len() > 0,
         ensures
             final(self).wf(),
-            // ---- popped node ----
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
             ret.1.view().value().view() == old(self).global_pool.view().view().spec_index(0),
             old(self).global_pool.view().map().dom().contains(ret.0),
             old(self).global_pool.view().map().spec_index(ret.0) == ret.1.view().value().view(),
-            // ---- pool shrank by the popped head, total rebalanced ----
             final(self).global_pool.view().view() == old(self).global_pool.view().view().skip(1),
             final(self).global_pool.view().map() == old(self).global_pool.view().map().remove(ret.0),
             final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
-            // ---- lock state of global_pool preserved, others untouched ----
             final(self).global_pool.is_init(),
             final(self).global_pool.wlocked_by(lctx),
             final(self).global_pool.write_lock_perm_match(lock_perm.view()),
@@ -485,9 +580,6 @@ impl PageAllocator{
         (node_addr, node_perm)
     }
 
-    /// Move the global-pool head into one write-locked CPU cache.  The total
-    /// number of free pages is unchanged: the pool loses one entry and the
-    /// selected cache gains that same entry.
     pub fn move_global_pool_head_to_cache(
         &mut self,
         cpu_id: CpuId,
@@ -566,15 +658,11 @@ impl PageAllocator{
             let cache_mut = self.cpu_caches.borrow_mut(
                 cpu_id, Tracked(lctx), Tracked(cache_lock_perm),
             );
-            assert(cache_mut.linked_list.length != usize::MAX) by {
-                reveal(LinkedList::wf_value_list);
-            };
+            assert(cache_mut.linked_list.length != usize::MAX) by { reveal(LinkedList::wf_value_list); };
             cache_mut.linked_list.push_head(node_addr, Tracked(node_perm));
         }
         proof {
-            lemma_cache_len_fold_change_one_array(
-                self.cpu_caches, old_caches, cpu_id,
-            );
+            lemma_cache_len_fold_change_one_array(self.cpu_caches, old_caches, cpu_id);
             assert(
                 old(self).global_pool.view().len()
                     == self.global_pool.view().len() + 1

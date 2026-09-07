@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
 verus! {
-
 pub(super) fn ipc_block_thread_on_endpoint(
     thread_map: &mut ThreadLockedMap,
     Tracked(lctx): Tracked<&LocalContext>,
@@ -55,20 +54,12 @@ pub(super) fn ipc_block_thread_on_endpoint(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof {
-        assert(
-            old(thread_map).perms_wf()
-            && old(thread_map).spec_index(thread_ptr).is_init()
-            && old(thread_map).spec_index(thread_ptr).view().inv()
-        ) by { reveal(thread_perms_wf); };
-    }
+    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.block_on_endpoint(thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, pt_regs)
     };
-    proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-    }
+    proof { assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); }; }
     ret
 }
 
@@ -121,20 +112,12 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
                 old(endpoint_map).spec_index(endpoint_ptr).view().queue_state
             },
 {
-    proof {
-        assert(
-            old(endpoint_map).perms_wf()
-            && old(endpoint_map).spec_index(endpoint_ptr).is_init()
-            && old(endpoint_map).spec_index(endpoint_ptr).view().inv()
-        ) by { reveal(endpoint_perms_wf);  };
-    }
+    proof { assert(old(endpoint_map).perms_wf() && old(endpoint_map).spec_index(endpoint_ptr).is_init() && old(endpoint_map).spec_index(endpoint_ptr).view().inv()) by { reveal(endpoint_perms_wf); }; }
     {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thread_ptr, waiting_state, node_addr, node_perm);
     }
-    proof {
-        assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf);  };
-    }
+    proof { assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf); }; }
 }
 
 pub(super) fn ipc_schedule_endpoint_waiter(
@@ -188,13 +171,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof {
-        assert(
-            old(thread_map).perms_wf()
-            && old(thread_map).spec_index(thread_ptr).is_init()
-            && old(thread_map).spec_index(thread_ptr).view().inv()
-        ) by { reveal(thread_perms_wf); };
-    }
+    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_scheduled(thread_ptr, result, endpoint_node_perm)
@@ -256,13 +233,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         final(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node == old(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node,
         final(thread_map).spec_index(thread_ptr).view().ipc_payload == old(thread_map).spec_index(thread_ptr).view().ipc_payload,
 {
-    proof {
-        assert({
-            &&& old(thread_map).perms_wf()
-            &&& old(thread_map).spec_index(thread_ptr).is_init()
-            &&& old(thread_map).spec_index(thread_ptr).view().inv()
-        }) by { reveal(thread_perms_wf); };
-    }
+    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
     {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_endpoint_transit(thread_ptr, endpoint_node_perm);
@@ -324,13 +295,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof {
-        assert({
-            &&& old(thread_map).perms_wf()
-            &&& old(thread_map).spec_index(thread_ptr).is_init()
-            &&& old(thread_map).spec_index(thread_ptr).view().inv()
-        }) by { reveal(thread_perms_wf); };
-    }
+    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_transit_to_scheduled(thread_ptr, result)
@@ -399,20 +364,12 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
                 &&& final(endpoint_map).spec_index(endpoint_ptr).view().queue.map().spec_index(node_addr) == old(endpoint_map).spec_index(endpoint_ptr).view().queue.map().spec_index(node_addr)
             },
 {
-    proof {
-        assert(
-            old(endpoint_map).perms_wf()
-            && old(endpoint_map).spec_index(endpoint_ptr).is_init()
-            && old(endpoint_map).spec_index(endpoint_ptr).view().inv()
-        ) by { reveal(endpoint_perms_wf);  };
-    }
+    proof { assert(old(endpoint_map).perms_wf() && old(endpoint_map).spec_index(endpoint_ptr).is_init() && old(endpoint_map).spec_index(endpoint_ptr).view().inv()) by { reveal(endpoint_perms_wf); }; }
     let ret = {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thread_ptr)
     };
-    proof {
-        assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf);  };
-    }
+    proof { assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf); }; }
     ret
 }
 
@@ -462,20 +419,12 @@ pub(super) fn ipc_enqueue_scheduled_thread(
                 &&& final(scheduler_map).spec_index(scheduler_ptr).view().queue.map().spec_index(old_node_addr) == old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().spec_index(old_node_addr)
             },
 {
-    proof {
-        assert(
-            old(scheduler_map).perms_wf()
-            && old(scheduler_map).spec_index(scheduler_ptr).is_init()
-            && old(scheduler_map).spec_index(scheduler_ptr).view().inv()
-        ) by { reveal(scheduler_perms_wf); };
-    }
+    proof { assert(old(scheduler_map).perms_wf() && old(scheduler_map).spec_index(scheduler_ptr).is_init() && old(scheduler_map).spec_index(scheduler_ptr).view().inv()) by { reveal(scheduler_perms_wf); }; }
     {
         let scheduler_mut = scheduler_map.borrow_mut_typed(scheduler_ptr, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), scheduler_lock_perm);
         scheduler_mut.enqueue_scheduled_thread(thread_ptr, node_addr, node_perm);
     }
-    proof {
-        assert(scheduler_perms_wf(*scheduler_map)) by { reveal(scheduler_perms_wf); };
-    }
+    proof { assert(scheduler_perms_wf(*scheduler_map)) by { reveal(scheduler_perms_wf); }; }
 }
 
 } // verus!

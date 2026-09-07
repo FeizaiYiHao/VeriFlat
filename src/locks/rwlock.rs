@@ -161,6 +161,39 @@ pub struct RwLock<T, ROT, GhostT, const HAS_KILL_STATE: bool>{
 }
 
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
+    pub fn new_unlocked(
+        value: T,
+        read_only_value: ROT,
+        Ghost(ghost_value): Ghost<GhostT>,
+    ) -> (ret: Self)
+        where
+            T: LockInvTrait,
+        requires
+            value.inv(),
+        ensures
+            ret.inv(),
+            ret.view() == value,
+            ret.view_rodata() == read_only_value,
+            ret.view_ghost() == ghost_value,
+            ret.locking_thread() is None,
+            !ret.locked(),
+            !ret.being_killed(),
+    {
+        Self {
+            lock: RwLockInner {
+                lock: AtomicBool::new(false),
+                writing: false,
+                num_of_reader: 0,
+                killer_info: None,
+            },
+            value,
+            read_only_value,
+            ghost_value: Ghost(ghost_value),
+            is_init: Ghost(true),
+            locking_thread: Ghost(RwLockState::None),
+        }
+    }
+
     pub closed spec fn locking_thread(&self) -> RwLockState
     {
         self.locking_thread.view()
@@ -249,12 +282,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
             false
         }
     }
-    pub open spec fn being_killed_by(&self, lctx:&LocalContext) -> bool{
-        &&&
-        self.killer_info_inner() is Some
-        &&&
-        self.killer_info_inner().unwrap().cpu_id == lctx.thread_id()
-    }
     pub closed spec fn is_init(&self) -> bool {
         self.is_init.view()
     }
@@ -312,6 +339,7 @@ impl<T, ROT, GhostT>
     {
         self.lock.wunlock();
     }
+
 }
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
