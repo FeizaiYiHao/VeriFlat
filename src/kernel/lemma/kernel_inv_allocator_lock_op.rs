@@ -6,7 +6,7 @@ verus! {
 
 /// Semantic allocator fields read by kernel invariants.  Internal quota,
 /// cache, and global-pool lock owners are deliberately excluded.
-pub open spec fn allocator_4k_invariant_fields_unchanged(
+pub open spec fn allocator_invariant_fields_unchanged(
     pre: PageAllocatorUnLockedMap,
     post: PageAllocatorUnLockedMap,
 ) -> bool {
@@ -37,7 +37,7 @@ pub open spec fn allocator_4k_invariant_fields_unchanged(
         }
 }
 
-pub proof fn allocator_4k_cache_lock_op_preserves_invariant_fields(
+pub proof fn allocator_cache_lock_op_preserves_invariant_fields(
     pre: PageAllocatorUnLockedMap,
     post: PageAllocatorUnLockedMap,
     changed_allocator: RwLockPageAllocatorPtr,
@@ -59,11 +59,11 @@ pub proof fn allocator_4k_cache_lock_op_preserves_invariant_fields(
             changed_cpu,
         ),
     ensures
-        allocator_4k_invariant_fields_unchanged(pre, post),
+        allocator_invariant_fields_unchanged(pre, post),
 {
 }
 
-pub proof fn allocator_4k_quota_lock_op_preserves_invariant_fields(
+pub proof fn allocator_quota_lock_op_preserves_invariant_fields(
     pre: PageAllocatorUnLockedMap,
     post: PageAllocatorUnLockedMap,
     changed: RwLockPageAllocatorPtr,
@@ -82,11 +82,11 @@ pub proof fn allocator_4k_quota_lock_op_preserves_invariant_fields(
         post.spec_index(changed).quota.view()
             == pre.spec_index(changed).quota.view(),
     ensures
-        allocator_4k_invariant_fields_unchanged(pre, post),
+        allocator_invariant_fields_unchanged(pre, post),
 {
 }
 
-pub proof fn allocator_4k_global_pool_lock_op_preserves_invariant_fields(
+pub proof fn allocator_global_pool_lock_op_preserves_invariant_fields(
     pre: PageAllocatorUnLockedMap,
     post: PageAllocatorUnLockedMap,
     changed: RwLockPageAllocatorPtr,
@@ -105,7 +105,7 @@ pub proof fn allocator_4k_global_pool_lock_op_preserves_invariant_fields(
         post.spec_index(changed).global_pool.view()
             == pre.spec_index(changed).global_pool.view(),
     ensures
-        allocator_4k_invariant_fields_unchanged(pre, post),
+        allocator_invariant_fields_unchanged(pre, post),
 {
 }
 

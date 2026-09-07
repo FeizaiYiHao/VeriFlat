@@ -9,8 +9,6 @@ use core::mem::offset_of;
 pub struct Container {
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
-    pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
-    pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
 
     pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed
     pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
@@ -30,6 +28,8 @@ pub struct ContainerRO {
 
 /// Lock-free ghost state associated with a container's `RwLock`.
 pub struct ContainerGhost {
+    pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
+    pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
 }
@@ -63,6 +63,30 @@ impl LockInvTrait for Container {
 }
 
 impl Container{
+    pub fn new_staged(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.parent_linkedlist_node.is_init(),
+            ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
+            ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
+            ret.root_process == root_process,
+            ret.owned_processes.view() == Set::<RwLockProcessPtr>::empty(),
+            ret.owned_cpus.view() == Set::<CpuId>::empty(),
+            ret.owned_cpus.closed_view() == Set::<CpuId>::empty(),
+            ret.owned_endpoints.view() == Set::<RwLockEndpointPtr>::empty(),
+            ret.owned_pages.view() == Set::<PagePtr>::empty(),
+    {
+        Self {
+            parent_linkedlist_node: ExternalNode::new(container_ptr),
+            children: LinkedList::new(Some(depth), Some(container_ptr)),
+            root_process,
+            owned_processes: Ghost(Set::empty()),
+            owned_cpus: ArraySet::new(),
+            owned_endpoints: Ghost(Set::empty()),
+            owned_pages: Ghost(Set::empty()),
+        }
+    }
+
     pub open spec fn wf(&self) -> bool {
         &&&
         self.children.inv()

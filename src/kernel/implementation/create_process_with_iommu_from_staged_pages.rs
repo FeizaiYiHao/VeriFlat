@@ -277,18 +277,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
         final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
         final(krnl).dflt_pt == old(krnl).dflt_pt,
-        container_objects_unlocked_except(old(krnl).ctn_mp, old(lctx).thread_id(), set![container_ptr]) ==> container_objects_unlocked_except(final(krnl).ctn_mp, final(lctx).thread_id(), set![container_ptr]),
-        process_objects_unlocked_except(old(krnl).prc_mp, old(lctx).thread_id(), set![parent_ptr]) ==> process_objects_unlocked_except(final(krnl).prc_mp, final(lctx).thread_id(), set![parent_ptr, process_page_ptr]),
-        thread_objects_unlocked_except(old(krnl).thr_mp, old(lctx).thread_id(), set![staging_thread_ptr]) ==> thread_objects_unlocked_except(final(krnl).thr_mp, final(lctx).thread_id(), set![staging_thread_ptr]),
-        page_objects_unlocked_except(old(krnl).pg_arr, old(lctx).thread_id(), set![page_ptr2page_index(process_page_ptr), page_ptr2page_index(pagetable_page_ptr), page_ptr2page_index(l4_page_ptr), page_ptr2page_index(iommu_table_page_ptr), page_ptr2page_index(iommu_l4_page_ptr)]) ==> page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), set![page_ptr2page_index(process_page_ptr), page_ptr2page_index(pagetable_page_ptr), page_ptr2page_index(l4_page_ptr), page_ptr2page_index(iommu_table_page_ptr), page_ptr2page_index(iommu_l4_page_ptr)]),
-        pagetable_objects_unlocked(old(krnl).pt_mp, old(lctx).thread_id()) ==> pagetable_objects_unlocked_except(final(krnl).pt_mp, final(lctx).thread_id(), set![pagetable_page_ptr]),
-        iommu_table_objects_unlocked(old(krnl).it_mp, old(lctx).thread_id()) ==> iommu_table_objects_unlocked_except(final(krnl).it_mp, final(lctx).thread_id(), set![iommu_table_page_ptr]),
-        forall|exceptions: Set<RwLockPageTableRoot>|
-            #![trigger pagetable_objects_unlocked_except(old(krnl).pt_mp, old(lctx).thread_id(), exceptions)]
-            !exceptions.contains(pagetable_page_ptr)
-            && pagetable_objects_unlocked_except(old(krnl).pt_mp, old(lctx).thread_id(), exceptions)
-            ==> pagetable_objects_unlocked_except(final(krnl).pt_mp, final(lctx).thread_id(), exceptions.insert(pagetable_page_ptr)),
-        pcid_allocator_objects_unlocked_except(old(krnl).pcid_allc_mp, old(lctx).thread_id(), set![pcid_allocator_ptr]) ==> pcid_allocator_objects_unlocked_except(final(krnl).pcid_allc_mp, final(lctx).thread_id(), set![pcid_allocator_ptr]),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
@@ -386,7 +374,7 @@ pub fn create_process_with_iommu_from_staged_pages(
     let ghost ancestors = krnl.prc_mp.spec_index(process_page_ptr).view_ghost().uppertree_seq.view();
     proof {
         assert(ancestors.to_set().subset_of(krnl.prc_mp.dom())) by { ancestors.to_set_ensures(); reveal(process_uppertree_seq_wf); };
-        assert(!ancestors.to_set().contains(process_page_ptr)) by { ancestors.to_set_ensures();  };
+        assert(!ancestors.to_set().contains(process_page_ptr)) by { ancestors.to_set_ensures(); };
         process_insert_child_into_ancestor_subtree_sets(&mut krnl.prc_mp, ancestors, process_page_ptr);
     }
     let container_mut = krnl.ctn_mp.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_lock_perm));
@@ -398,7 +386,7 @@ pub fn create_process_with_iommu_from_staged_pages(
     staging_thread_mut.quota_4k = staging_thread_mut.quota_4k - 5;
 
     proof {
-        assert(process_add_child_ensures(old(krnl).ctn_mp.spec_index(container_ptr).view().root_process, old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view(), old(krnl).prc_mp, krnl.prc_mp, parent_ptr, process_page_ptr)) by {  reveal(process_perms_wf); reveal(LinkedList::wf_value_list); seq_push_lemma::<RwLockProcessPtr>(); };
+        assert(process_add_child_ensures(old(krnl).ctn_mp.spec_index(container_ptr).view().root_process, old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view(), old(krnl).prc_mp, krnl.prc_mp, parent_ptr, process_page_ptr)) by { reveal(process_perms_wf); reveal(LinkedList::wf_value_list); seq_push_lemma::<RwLockProcessPtr>(); };
         process_add_child_preserves_tree_wf(old(krnl).ctn_mp.spec_index(container_ptr).view().root_process, old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view(), old(krnl).prc_mp, krnl.prc_mp, parent_ptr, process_page_ptr);
         assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(page_array_wf); reveal(pagetable_perms_wf); reveal(iommu_table_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(pcid_allocator_perms_wf); reveal(LinkedList::wf_value_list); };
         assert(krnl.memory_management_inv()) by {

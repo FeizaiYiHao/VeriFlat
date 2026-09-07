@@ -9,23 +9,6 @@ pub open spec fn page_ptrs_to_indices(pages: Seq<PagePtr>) -> Set<PageIndex> {
     pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set()
 }
 
-proof fn map_insert_seq_push_domain<K, V>(map: Map<K, V>, seq: Seq<K>, key: K, value: V)
-    requires
-        map.dom() == seq.to_set(),
-    ensures
-        map.insert(key, value).dom() == seq.push(key).to_set(),
-{
-    broadcast use vstd::map::lemma_map_insert_domain;
-    assert_sets_equal!(map.insert(key, value).dom() == seq.push(key).to_set(), x => { seq_push_lemma::<K>(); seq.to_set_ensures(); seq.push(key).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; });
-}
-
-proof fn set_union_seq_push_insert<A>(base: Set<A>, seq: Seq<A>, key: A)
-    ensures
-        base.union(seq.to_set()).insert(key) == base.union(seq.push(key).to_set()),
-{
-    assert_sets_equal!(base.union(seq.to_set()).insert(key) == base.union(seq.push(key).to_set()), x => { seq_push_lemma::<A>(); seq.to_set_ensures(); seq.push(key).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; broadcast use vstd::set::lemma_set_union; });
-}
-
 pub open spec fn allocated_4k_page_lock_perms_wf(
     perms: Map<PagePtr, LockPerm>,
     krnl: &KernelK,
@@ -69,8 +52,6 @@ pub fn allocate_free_4k_pages<const N: usize>(
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) >= N,
         old(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(old(lctx)),
-        page_objects_unlocked_except(old(krnl).pg_arr, old(lctx).thread_id(), old(lctx).page_lock_map().dom()),
-        allocator_objects_unlocked(old(krnl).allc_4k_mp, old(lctx).thread_id()),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
@@ -91,6 +72,8 @@ pub fn allocate_free_4k_pages<const N: usize>(
         final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,
         final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m,
         final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g,
+        final(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m,
+        final(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g,
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
         final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
         thread_effective_quota_4k(final(krnl).thr_mp.spec_index(thread_ptr)) == thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) - N,
@@ -116,18 +99,9 @@ pub fn allocate_free_4k_pages<const N: usize>(
         lock_id_set_aligned(final(lctx)),
         final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-        page_objects_unlocked_except(final(krnl).pg_arr, final(lctx).thread_id(), final(lctx).page_lock_map().dom()),
-        allocator_objects_unlocked(final(krnl).allc_4k_mp, final(lctx).thread_id()),
-        allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
-        allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_1g_mp, final(lctx).thread_id()),
         held_threads_unchanged_except(
             old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
             set![thread_ptr],
-        ),
-        thread_objects_unlocked_except(
-            old(krnl).thr_mp, old(lctx).thread_id(), set![thread_ptr],
-        ) ==> thread_objects_unlocked_except(
-            final(krnl).thr_mp, final(lctx).thread_id(), set![thread_ptr],
         ),
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
@@ -168,6 +142,8 @@ pub fn allocate_free_4k_pages<const N: usize>(
             krnl.thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,
             krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m,
             krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g,
+            krnl.thr_mp.spec_index(thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m,
+            krnl.thr_mp.spec_index(thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g,
             krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
             krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
             thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) == thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) - i,
@@ -195,18 +171,9 @@ pub fn allocate_free_4k_pages<const N: usize>(
             lock_id_set_aligned(&*lctx),
             lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             lctx.holds_no_allocator_locks(PageSize::SZ4k),
-            page_objects_unlocked_except(krnl.pg_arr, lctx.thread_id(), lctx.page_lock_map().dom()),
-            allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id()),
-            allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id()),
-            allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id()),
             held_threads_unchanged_except(
                 old(krnl).thr_mp, krnl.thr_mp, old(lctx),
                 set![thread_ptr],
-            ),
-            thread_objects_unlocked_except(
-                old(krnl).thr_mp, old(lctx).thread_id(), set![thread_ptr],
-            ) ==> thread_objects_unlocked_except(
-                krnl.thr_mp, lctx.thread_id(), set![thread_ptr],
             ),
             steps.steps == old(steps).steps,
             steps.snap_shot == kernel_k_to_kernel_u(*krnl),
@@ -223,24 +190,18 @@ pub fn allocate_free_4k_pages<const N: usize>(
     {
         let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         proof {
-            assert(
-                thread_objects_unlocked_except(
-                    old(krnl).thr_mp, old(lctx).thread_id(),
-                    set![thread_ptr],
-                ) ==> thread_objects_unlocked_except(
-                    krnl.thr_mp, lctx.thread_id(),
-                    set![thread_ptr],
-                )
-            ) by {
-                broadcast use thread_objects_unlocked_except_preserved_for_typed_maps_unchanged;
-            };
             assert(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr)))) by {
                 seq_push_lemma::<PagePtr>();
                 assert_sets_equal!(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr))), page_index => {  broadcast use Seq::lemma_push_map_commute; pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set_ensures(); pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).push(page_ptr2page_index(page_ptr)).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; broadcast use vstd::set::lemma_set_union; });
             };
             assert(!pages.view().contains(page_ptr)) by { pages.view().to_set_ensures(); };
-            assert(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == pages.view().push(page_ptr).to_set()) by { map_insert_seq_push_domain(page_lock_perms, pages.view(), page_ptr, page_lock_perm); };
-            assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().push(page_ptr).to_set())) by { set_union_seq_push_insert(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), pages.view(), page_ptr); };
+            assert(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == pages.view().push(page_ptr).to_set()) by {
+                broadcast use vstd::map::lemma_map_insert_domain;
+                assert_sets_equal!(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == pages.view().push(page_ptr).to_set(), x => { seq_push_lemma::<PagePtr>(); pages.view().to_set_ensures(); pages.view().push(page_ptr).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; });
+            };
+            assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().push(page_ptr).to_set())) by {
+                assert_sets_equal!(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set()).insert(page_ptr) == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().push(page_ptr).to_set()), x => { seq_push_lemma::<PagePtr>(); pages.view().to_set_ensures(); pages.view().push(page_ptr).to_set_ensures(); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; broadcast use vstd::set::lemma_set_union; });
+            };
             assert(allocated_4k_page_lock_perms_wf(page_lock_perms.insert(page_ptr, page_lock_perm), &*krnl, &*lctx, thread_ptr, container_ptr)) by {   page_ptr2page_index_injective(); broadcast use vstd::map::lemma_map_insert_same; broadcast use vstd::map::axiom_map_insert_different; broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
             page_lock_perms.tracked_insert(page_ptr, page_lock_perm);
         }

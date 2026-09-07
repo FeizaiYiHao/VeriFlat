@@ -169,10 +169,6 @@ impl LocalContext {
         self.lock_id_set
     }
 
-    pub open spec fn held_lock_id_set(&self) -> Set<HeldLock> {
-        self.lock_id_set()
-    }
-
     pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState {
         self.state.kernel_view_locking_state
     }
@@ -255,10 +251,6 @@ impl LocalContext {
         }
     }
 
-    pub open spec fn lock_obj_contains(&self, obj_id: KernelObjId) -> bool {
-        self.typed_lock_entry(obj_id) is Some
-    }
-
     pub open spec fn no_locks_held(&self) -> bool {
         &&& self.page_lock_map().dom().is_empty()
         &&& self.cpu_lock_map().dom().is_empty()
@@ -281,16 +273,16 @@ impl LocalContext {
         &&& self.allocator_global_pool_1g_lock_map().dom().is_empty()
     }
 
-    pub open spec fn cpu_process_thread_lock_scope(
+    pub open spec fn holds_exact_cpu_process_thread_locks(
         &self,
         cpus: Set<CpuId>,
         processes: Set<RwLockProcessPtr>,
         threads: Set<RwLockThreadPtr>,
     ) -> bool {
-        self.base_lock_scope(cpus, Set::empty(), processes, threads, Set::empty())
+        self.holds_exact_base_locks(cpus, Set::empty(), processes, threads, Set::empty())
     }
 
-    pub open spec fn base_lock_scope(
+    pub open spec fn holds_exact_base_locks(
         &self,
         cpus: Set<CpuId>,
         containers: Set<RwLockContainerPtr>,
@@ -335,7 +327,7 @@ impl LocalContext {
         &&& self.allocator_global_pool_1g_lock_map().dom().is_empty()
     }
 
-    pub open spec fn base_quota_4k_lock_scope(
+    pub open spec fn holds_exact_base_and_4k_quota_locks(
         &self,
         cpus: Set<CpuId>,
         containers: Set<RwLockContainerPtr>,
@@ -641,7 +633,7 @@ pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
     reveal(lock_id_set_aligned);
 }
 
-broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
+pub broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
     old: &LocalContext,
     new: &LocalContext,
     major: LockMajorId,
@@ -670,22 +662,276 @@ broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
     }
 }
 
-pub proof fn held_lock_majors_lt_preserved_for_typed_maps_unchanged(
+pub open spec fn typed_lock_map_entries_old_or_low<K>(
+    old: Map<K, TypedHeldLock>,
+    new: Map<K, TypedHeldLock>,
+    major: LockMajorId,
+) -> bool {
+    forall|key: K|
+        #![trigger new.dom().contains(key)]
+        new.dom().contains(key)
+        ==> {
+            let entry = new.spec_index(key);
+            ||| old.dom().contains(key)
+                && old.spec_index(key) == entry
+            ||| entry.lock_id.major < major
+        }
+}
+
+pub open spec fn typed_lock_maps_old_or_low(
     old: &LocalContext,
     new: &LocalContext,
+    major: LockMajorId,
+) -> bool {
+    &&& typed_lock_map_entries_old_or_low(old.page_lock_map(), new.page_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.cpu_lock_map(), new.cpu_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.container_lock_map(), new.container_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.process_lock_map(), new.process_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.thread_lock_map(), new.thread_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.endpoint_lock_map(), new.endpoint_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.scheduler_lock_map(), new.scheduler_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.pcid_allocator_lock_map(), new.pcid_allocator_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.pagetable_lock_map(), new.pagetable_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.iommu_table_lock_map(), new.iommu_table_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_quota_4k_lock_map(), new.allocator_quota_4k_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_cache_4k_lock_map(), new.allocator_cache_4k_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_global_pool_4k_lock_map(), new.allocator_global_pool_4k_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_quota_2m_lock_map(), new.allocator_quota_2m_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_cache_2m_lock_map(), new.allocator_cache_2m_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_global_pool_2m_lock_map(), new.allocator_global_pool_2m_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_quota_1g_lock_map(), new.allocator_quota_1g_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_cache_1g_lock_map(), new.allocator_cache_1g_lock_map(), major)
+    &&& typed_lock_map_entries_old_or_low(old.allocator_global_pool_1g_lock_map(), new.allocator_global_pool_1g_lock_map(), major)
+}
+
+proof fn held_lock_major_lt_from_typed_map<K>(
+    old: &LocalContext,
+    new: &LocalContext,
+    old_map: Map<K, TypedHeldLock>,
+    new_map: Map<K, TypedHeldLock>,
+    key: K,
+    obj_id: KernelObjId,
+    lock_id: LockId,
     major: LockMajorId,
 )
     requires
         old.held_lock_majors_lt(major),
-        typed_lock_maps_unchanged(old, new),
         lock_id_set_aligned(old),
         lock_id_set_aligned(new),
+        typed_lock_map_entries_old_or_low(old_map, new_map, major),
+        new.lock_id_set().contains((lock_id, obj_id)),
+        new_map.dom().contains(key) ==> new.typed_lock_entry(obj_id) == Some(new_map.spec_index(key)),
+        !new_map.dom().contains(key) ==> new.typed_lock_entry(obj_id) is None,
+        old_map.dom().contains(key) ==> old.typed_lock_entry(obj_id) == Some(old_map.spec_index(key)),
+        !old_map.dom().contains(key) ==> old.typed_lock_entry(obj_id) is None,
     ensures
-        new.held_lock_majors_lt(major),
+        lock_id.major < major,
 {
-    assert(new.held_lock_majors_lt(major)) by {
-        broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged;
-    };
+    assert(new.lock_entry_contains(lock_id, obj_id)) by { reveal(lock_id_set_aligned); };
+    let entry = new_map.spec_index(key);
+    assert(entry.lock_id == lock_id) by { reveal(LocalContext::lock_entry_contains); };
+    if old_map.dom().contains(key) && old_map.spec_index(key) == entry {
+        assert(old.lock_id_set().contains((entry.lock_id, obj_id))) by { reveal(lock_id_set_aligned); };
+        assert(entry.lock_id.major < major) by { reveal(LocalContext::held_lock_majors_lt); };
+    } else {
+        assert(entry.lock_id.major < major) by { reveal(typed_lock_map_entries_old_or_low); };
+    }
+}
+
+pub broadcast proof fn held_lock_major_lt_for_old_or_low_typed_maps(
+    old: &LocalContext,
+    new: &LocalContext,
+    major: LockMajorId,
+    held: HeldLock,
+)
+    requires
+        #[trigger] old.held_lock_majors_lt(major),
+        #[trigger] lock_id_set_aligned(old),
+        #[trigger] lock_id_set_aligned(new),
+        #[trigger] typed_lock_maps_old_or_low(old, new, major),
+    ensures
+        #[trigger] new.lock_id_set().contains(held)
+            ==> held.0.major < major,
+{
+    if new.lock_id_set().contains(held) {
+        match held.1 {
+                KernelObjId::Page(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.page_lock_map(), new.page_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::Cpu(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.cpu_lock_map(), new.cpu_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::Container(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.container_lock_map(), new.container_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::Process(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.process_lock_map(), new.process_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::Thread(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.thread_lock_map(), new.thread_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::Endpoint(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.endpoint_lock_map(), new.endpoint_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::Scheduler(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.scheduler_lock_map(), new.scheduler_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::PcidAllocator(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.pcid_allocator_lock_map(),
+                        new.pcid_allocator_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::PageTable(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.pagetable_lock_map(), new.pagetable_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::IommuTable(key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.iommu_table_lock_map(),
+                        new.iommu_table_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorQuota(PageSize::SZ4k, key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_quota_4k_lock_map(),
+                        new.allocator_quota_4k_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorQuota(PageSize::SZ2m, key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_quota_2m_lock_map(),
+                        new.allocator_quota_2m_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorQuota(PageSize::SZ1g, key) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_quota_1g_lock_map(),
+                        new.allocator_quota_1g_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorCache(
+                    PageSize::SZ4k, key, cpu_id,
+                ) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_cache_4k_lock_map(),
+                        new.allocator_cache_4k_lock_map(),
+                        (key, cpu_id), held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorCache(
+                    PageSize::SZ2m, key, cpu_id,
+                ) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_cache_2m_lock_map(),
+                        new.allocator_cache_2m_lock_map(),
+                        (key, cpu_id), held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorCache(
+                    PageSize::SZ1g, key, cpu_id,
+                ) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_cache_1g_lock_map(),
+                        new.allocator_cache_1g_lock_map(),
+                        (key, cpu_id), held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorGlobalPoll(
+                    PageSize::SZ4k, key,
+                ) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_global_pool_4k_lock_map(),
+                        new.allocator_global_pool_4k_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorGlobalPoll(
+                    PageSize::SZ2m, key,
+                ) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_global_pool_2m_lock_map(),
+                        new.allocator_global_pool_2m_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+                KernelObjId::AllocatorGlobalPoll(
+                    PageSize::SZ1g, key,
+                ) => {
+                    reveal(LocalContext::typed_lock_entry);
+                    held_lock_major_lt_from_typed_map(
+                        old, new,
+                        old.allocator_global_pool_1g_lock_map(),
+                        new.allocator_global_pool_1g_lock_map(),
+                        key, held.1, held.0, major,
+                    );
+                },
+        }
+    }
 }
 
 pub open spec fn typed_lock_maps_removed(

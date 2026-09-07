@@ -46,6 +46,8 @@ pub use kernel::implementation::attach_endpoint_reference_and_unlock::*;
 pub use kernel::implementation::create_thread_from_staged_page::*;
 pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
+pub use kernel::implementation::lock_owned_2m_page_tails::*;
+pub use kernel::implementation::create_container_from_staged_pages::*;
 
 verus! {
 global size_of usize == 8;

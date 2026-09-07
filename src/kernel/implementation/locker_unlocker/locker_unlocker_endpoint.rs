@@ -13,7 +13,7 @@ impl KernelK {
                 old(self).ep_mp.dom().contains(endpoint_ptr),
                 wlock_requires(old(self).ep_mp.spec_index(endpoint_ptr), old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                endpoint_lock_acquire_scope(old(self), old(lctx)),
+                may_acquire_endpoint_lock(old(self), old(lctx)),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -48,14 +48,14 @@ impl KernelK {
                 final(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR),
                 final(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
                 forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints)
-                    ==> final(lctx).base_lock_scope(cpus, containers, processes, threads, endpoints.insert(endpoint_ptr)),
+                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
+                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
+                    ==> final(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints.insert(endpoint_ptr)),
         {
             proof {
                 assert(old(self).ep_mp.perms_wf()) by { reveal(endpoint_perms_wf); };
-                assert(old(lctx).held_lock_majors_lt(ENDPOINT_LOCK_MAJOR)) by {     reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by {   reveal(endpoint_perms_wf); };
+                assert(old(lctx).held_lock_majors_lt(ENDPOINT_LOCK_MAJOR)) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(thread_cpu_wf); reveal(cpus_are_online); };
+                assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(endpoint_perms_wf); };
             }
             let ret = self.ep_mp.wlock(endpoint_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(endpoint_ptr)));
             proof {
@@ -74,8 +74,8 @@ impl KernelK {
                     assert(container_thread_endpoint_wf(self.ctn_mp, self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_container_thread_endpoint_wf_forall(); };
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < PAGE_TABLE_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                assert(lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)) by {  reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < SCHEDULER_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < PAGE_TABLE_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < SCHEDULER_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 broadcast use vstd::map::lemma_map_insert_domain;
             }
             ret

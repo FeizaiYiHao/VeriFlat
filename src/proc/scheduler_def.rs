@@ -67,6 +67,21 @@ impl LockUserVisibilityTrait for Scheduler {
 }
 
 impl Scheduler {
+    pub fn new_empty(scheduler_ptr: RwLockSchedulerPtr, owning_container: RwLockContainerPtr, container_depth: usize) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.owning_container == owning_container,
+            ret.queue.view() == Seq::<RwLockThreadPtr>::empty(),
+            ret.queue.map() == Map::<usize, RwLockThreadPtr>::empty(),
+            ret.queue.container_depth == Some(container_depth),
+            ret.queue.lock_minor() == scheduler_ptr,
+    {
+        Self {
+            queue: LinkedList::new(Some(container_depth), Some(scheduler_ptr)),
+            owning_container,
+        }
+    }
+
     pub fn enqueue_scheduled_thread(
         &mut self,
         thread_ptr: RwLockThreadPtr,

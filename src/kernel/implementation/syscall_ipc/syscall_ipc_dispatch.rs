@@ -1,18 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
-use super::syscall_ipc_transition::{
-    ipc_block_current, ipc_schedule_waiting_peer_and_finish,
-    ipc_release_current_endpoint_and_finish,
-};
-use super::syscall_ipc_endpoint::{
-    ipc_rendezvous_endpoint,
-};
-use super::syscall_ipc_pages::{
-    ipc_rendezvous_pages,
-};
+use super::syscall_ipc_transition::{ipc_block_current, ipc_schedule_waiting_peer_and_finish};
+use super::syscall_ipc_endpoint::ipc_rendezvous_endpoint;
+use super::syscall_ipc_pages::ipc_rendezvous_pages;
 
 verus! {
-
     pub(super) fn syscall_ipc_ordinary(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -78,6 +70,9 @@ verus! {
                 &&& krnl.prc_mp.dom().contains(process_ptr)
                 &&& krnl.prc_mp.lock_id_by_key(process_ptr).spec_gt(krnl.cpu_arr.lock_id_by_index(cpu_id))
             }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(process_perms_wf); };
+            assert(may_acquire_process_lock(krnl, lctx, process_ptr)) by {
+                reveal(may_acquire_process_lock); reveal(cpus_belong_to_container); reveal(cpus_are_online); reveal(cpus_run_process_or_none); reveal(some_cpu_runs_process); reveal(LocalContext::holds_exact_base_locks); reveal(cpu_array_wf); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf);
+            };
         }
         let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
         if let (false, _) = process_res {
@@ -96,17 +91,47 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
                 &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr).spec_gt(krnl.prc_mp.lock_id_by_key(process_ptr))
             }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf); };
+            assert(lctx.holds_exact_base_locks(
+                set![cpu_id],
+                Set::empty(),
+                set![process_ptr],
+                Set::empty(),
+                Set::empty(),
+            )) by {
+                reveal(holds_process_lock_with_cpu_context);
+                reveal(LocalContext::holds_exact_base_locks);
+                reveal(LocalContext::object_lock_scope);
+                reveal(typed_lock_maps_inserted);
+                broadcast use vstd::map::lemma_map_insert_domain;
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
         }
+        let ghost lctx_before_current_thread_lock = *lctx;
         let current_thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
         if let (false, _) = current_thread_res {
-            proof {
-                assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
-            }
+            proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); }; }
             release_cpu_and_process_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm));
             return RetValueType::ErrorThreadKilled;
         }
         let Tracked(current_thread_lock_perm) = current_thread_res.1.unwrap();
 
+        proof {
+            assert(lctx.holds_exact_base_locks(
+                set![cpu_id],
+                Set::empty(),
+                set![process_ptr],
+                set![current_thread_ptr],
+                Set::empty(),
+            )) by {
+                reveal(LocalContext::holds_exact_base_locks);
+                reveal(LocalContext::object_lock_scope);
+                reveal(typed_lock_maps_inserted);
+                broadcast use vstd::map::lemma_map_insert_domain;
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
+        }
         let current_thread_ref = krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm));
         let endpoint_option = *current_thread_ref.endpoint_descriptors.get(endpoint_index);
         if let None = endpoint_option {
@@ -123,8 +148,25 @@ verus! {
                 &&& krnl.ep_mp.dom().contains(endpoint_ptr)
                 &&& current_thread_lock_perm.ordering_lock_id().major == THREAD_LOCK_MAJOR
                 &&& krnl.ep_mp.lock_id_by_key(endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
-                &&& kernel_objects_unlocked_except(krnl, lctx.thread_id(), set![cpu_id], Set::empty(), Set::empty(), set![process_ptr], set![current_thread_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty(), Set::empty())
-            }) by { reveal(thread_endpoint_ref_counter_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
+                &&& may_acquire_endpoint_lock(krnl, lctx)
+                &&& wlock_requires(krnl.ep_mp.spec_index(endpoint_ptr), lctx)
+            }) by {
+                reveal(thread_endpoint_ref_counter_wf);
+                reveal(process_perms_wf);
+                reveal(thread_perms_wf);
+                reveal(endpoint_perms_wf);
+                reveal(may_acquire_endpoint_lock);
+                reveal(holds_process_lock_with_cpu_context);
+                reveal(LocalContext::holds_exact_base_locks);
+                reveal(LocalContext::object_lock_scope);
+                reveal(typed_lock_maps_inserted);
+                reveal(typed_lock_maps_aligned);
+                reveal(LockedMap::typed_lock_map_aligned);
+                reveal(wlock_requires);
+                broadcast use vstd::map::lemma_map_insert_domain;
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
         }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
 
@@ -144,29 +186,14 @@ verus! {
 
         if queue_len == 0 || queue_is_send == waiting_is_send {
             proof {
-                assert({
-                    &&& !krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(current_thread_ptr)
-                    &&& cpu_objects_unlocked_except(krnl.cpu_arr, lctx.thread_id(), set![cpu_id])
-                    &&& page_objects_unlocked(krnl.pg_arr, lctx.thread_id())
-                    &&& container_objects_unlocked(krnl.ctn_mp, lctx.thread_id())
-                    &&& process_objects_unlocked_except(krnl.prc_mp, lctx.thread_id(), set![process_ptr])
-                    &&& thread_objects_unlocked_except(krnl.thr_mp, lctx.thread_id(), set![current_thread_ptr])
-                    &&& endpoint_objects_unlocked_except(krnl.ep_mp, lctx.thread_id(), set![endpoint_ptr])
-                    &&& pagetable_objects_unlocked(krnl.pt_mp, lctx.thread_id())
-                    &&& iommu_table_objects_unlocked(krnl.it_mp, lctx.thread_id())
-                    &&& scheduler_objects_unlocked(krnl.sched_mp, lctx.thread_id())
-                    &&& pcid_allocator_objects_unlocked(krnl.pcid_allc_mp, lctx.thread_id())
-                    &&& allocator_objects_unlocked(krnl.allc_4k_mp, lctx.thread_id())
-                    &&& allocator_objects_unlocked(krnl.allc_2m_mp, lctx.thread_id())
-                    &&& allocator_objects_unlocked(krnl.allc_1g_mp, lctx.thread_id())
-                }) by { reveal(thread_endpoint_queue_wf); };
+                assert(!krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(current_thread_ptr)) by { reveal(thread_endpoint_queue_wf); };
                 assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
             }
             return ipc_block_current(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, &*pt_regs, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm));
         }
 
         proof {
-            assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { reveal(endpoint_perms_wf);  };
+            assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { reveal(endpoint_perms_wf); };
         }
         let (_, peer_thread_ptr) = endpoint_ref.queue.peek_head();
 
@@ -185,7 +212,15 @@ verus! {
             proof {
                 assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
             }
-            return ipc_release_current_endpoint_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, RetValueType::ErrorIpcPeerKilled, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm));
+            krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
+            krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
+            krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            proof {
+                no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
+                steps.end_kernel_step(&*krnl, &*lctx);
+            }
+            return RetValueType::ErrorIpcPeerKilled;
         }
         let Tracked(peer_thread_lock_perm) = peer_thread_res.1.unwrap();
         let peer_thread_ref = krnl.thr_mp.borrow(peer_thread_ptr, Tracked(&peer_thread_lock_perm));
@@ -249,5 +284,4 @@ verus! {
 
         ipc_schedule_waiting_peer_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, rendezvous_result, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm))
     }
-
 } // verus!

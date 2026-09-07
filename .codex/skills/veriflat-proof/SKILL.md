@@ -10,7 +10,7 @@ hide a difficult callsite inside a new operation-specific helper.
 
 ## References
 
-- Before editing Verus spec, proof, or exec code, read
+- Before editing, reviewing, or diagnosing Verus spec, proof, or exec code, read
   [references/style-and-discipline.md](references/style-and-discipline.md).
 - When diagnosing a verification failure, trigger issue, opaque predicate, or
   cumulative solver cost, also read

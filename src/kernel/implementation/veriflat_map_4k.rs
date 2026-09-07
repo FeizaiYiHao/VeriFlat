@@ -17,6 +17,8 @@ pub use map_4k::mmap_4k_context::{
 pub use map_4k::mmap_4k_stage_page::stage_mmap_4k_page;
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use map_4k::share_mapping_4k::{
+    empty_4k_directory_page_count,
+    empty_4k_directory_page_count_spec,
     share_mapping_4k_build_and_share,
     share_mapping_4k_held_context,
     share_mapping_4k_range_owner_compatible,

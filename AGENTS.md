@@ -27,8 +27,8 @@ that its `SKILL.md` routes to for the current task.
 
 - Use `$veriflat-kernel-model` for locks, `LocalContext`, kernel transitions,
   `mmap_4k`, IPC, and the current syscall model.
-- Use `$veriflat-proof` for Verus spec/proof/exec edits, proof debugging,
-  invariant closure, trigger work, or proof-performance changes.
+- Use `$veriflat-proof` for Verus spec/proof/exec edits or reviews, proof
+  debugging, invariant closure, trigger work, or proof-performance changes.
 - Use `$veriflat-build` for crate/module/API boundaries, Cargo-Verus workspace
   changes, verification runs, measurements, and final handoff.
 

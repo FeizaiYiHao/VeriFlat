@@ -7,6 +7,8 @@ pub mod syscall_new_thread_with_endpoint;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_process;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_new_container;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_mmap_4k;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_ipc;
@@ -15,7 +17,11 @@ pub mod attach_endpoint_reference_and_unlock;
 pub mod create_thread_from_staged_page;
 pub mod create_process_from_staged_pages;
 pub mod create_process_with_iommu_from_staged_pages;
+pub mod create_container_from_staged_pages;
+pub mod lock_owned_2m_page_tails;
 #[cfg(not(feature = "split-crates"))]
 pub mod map_4k;
 #[cfg(not(feature = "split-crates"))]
 pub mod allocate_free_4k_page;
+#[cfg(not(feature = "split-crates"))]
+pub mod allocate_free_2m_page;

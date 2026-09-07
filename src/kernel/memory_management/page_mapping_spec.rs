@@ -135,7 +135,7 @@ verus! {
                     ==
                     page_array.spec_index(p_i).view().view().owning_container
                 |||
-                container_map.spec_index(page_array.spec_index(p_i).view().view().owning_container).view()
+                container_map.spec_index(page_array.spec_index(p_i).view().view().owning_container).view_ghost()
                     .subtree_set.view().contains(process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view_rodata().view().owning_container)
             }
     }

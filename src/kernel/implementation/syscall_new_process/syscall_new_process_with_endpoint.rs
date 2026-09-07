@@ -117,6 +117,22 @@ pub fn syscall_new_process_with_endpoint(
         return RetValueType::ErrorNoPcid;
     }
     let pcid = pcid_option.unwrap();
+    proof {
+        assert(may_acquire_process_lock(krnl, lctx, parent_ptr)) by {
+            reveal(may_acquire_process_lock);
+            reveal(holds_pcid_allocator_lock_with_cpu_context);
+            reveal(cpus_belong_to_container);
+            reveal(cpus_are_online);
+            reveal(cpus_run_process_or_none);
+            reveal(some_cpu_runs_process);
+            reveal(LocalContext::holds_exact_base_locks);
+            reveal(LocalContext::object_lock_scope);
+            reveal(cpu_array_wf);
+            reveal(container_cpu_wf);
+            reveal(process_cpu_wf);
+            reveal(container_process_wf);
+        };
+    }
     let process_res = krnl.wlock_process_unless_killed(parent_ptr, Tracked(&mut *lctx));
     if let (false, _) = process_res {
         krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
@@ -128,7 +144,27 @@ pub fn syscall_new_process_with_endpoint(
     let Tracked(parent_lock_perm) = process_res.1.unwrap();
     proof {
         assert(krnl.thr_mp.dom().contains(current_thread_ptr) && krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr && krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+        assert(lctx.object_lock_scope(
+            Set::empty(),
+            set![cpu_id],
+            set![container_ptr],
+            set![parent_ptr],
+            Set::empty(),
+            Set::empty(),
+            Set::empty(),
+            set![pcid_allocator_ptr],
+            Set::empty(),
+            Set::empty(),
+        )) by {
+            reveal(holds_process_lock_with_cpu_context);
+            reveal(LocalContext::object_lock_scope);
+            reveal(typed_lock_maps_inserted);
+            broadcast use vstd::map::lemma_map_insert_domain;
+            broadcast use vstd::set::lemma_set_insert_same;
+            broadcast use vstd::set::lemma_set_insert_different;
+        };
     }
+    let ghost lctx_before_current_thread_lock = *lctx;
     let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
     if let (false, _) = thread_res {
         proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); }; }
@@ -140,6 +176,26 @@ pub fn syscall_new_process_with_endpoint(
         return RetValueType::ErrorThreadKilled;
     }
     let Tracked(current_thread_lock_perm) = thread_res.1.unwrap();
+    proof {
+        assert(lctx.object_lock_scope(
+            Set::empty(),
+            set![cpu_id],
+            set![container_ptr],
+            set![parent_ptr],
+            set![current_thread_ptr],
+            Set::empty(),
+            Set::empty(),
+            set![pcid_allocator_ptr],
+            Set::empty(),
+            Set::empty(),
+        )) by {
+            reveal(LocalContext::object_lock_scope);
+            reveal(typed_lock_maps_inserted);
+            broadcast use vstd::map::lemma_map_insert_domain;
+            broadcast use vstd::set::lemma_set_insert_same;
+            broadcast use vstd::set::lemma_set_insert_different;
+        };
+    }
     let thread_ref = krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm));
     let endpoint_option = *thread_ref.endpoint_descriptors.get(endpoint_index);
     let source_pagetable_ptr = thread_ref.proc_pagetable_ptr;
@@ -159,11 +215,11 @@ pub fn syscall_new_process_with_endpoint(
     proof {
         assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((current_thread_ptr, endpoint_index))) by { reveal(thread_endpoint_ref_counter_wf); };
         assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { reveal(container_endpoint_wf); };
-        assert({ ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view().subtree_set.view().contains(container_ptr) }) by { reveal(container_thread_endpoint_wf); };
+        assert({ ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr) }) by { reveal(container_thread_endpoint_wf); };
     }
     let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
     proof {
-        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !krnl.pt_mp.spec_index(source_pagetable_ptr).locked_by_thread(lctx.thread_id())) by { reveal(process_thread_wf); reveal(process_pagetable_match);   };
+        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !krnl.pt_mp.spec_index(source_pagetable_ptr).locked_by_thread(lctx.thread_id())) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
     }
     let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
     let source_start_indices = va2index(va);
@@ -187,7 +243,8 @@ pub fn syscall_new_process_with_endpoint(
         return RetValueType::Error;
     }
     proof {
-        assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by {  reveal(LocalContext::holds_no_allocator_locks); };
+        assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by { reveal(LocalContext::holds_no_allocator_locks); };
+        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })) by { reveal(thread_cpu_wf); };
     }
     commit_new_process_with_endpoint(krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, endpoint_ptr, endpoint_index, pcid, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(endpoint_lock_perm));
     RetValueType::Success

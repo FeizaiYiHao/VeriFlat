@@ -500,6 +500,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).dom() == old(self).dom().insert(addr),
             final(self).map() == old(self).map().insert(addr, perm.view().value().view()),
             final(self).container_depth == old(self).container_depth,
+            final(self).minor == old(self).minor,
             final(self).lock_minor() == old(self).lock_minor(),
             old(self).dom().contains(addr) == false,
             old(self).map().dom().contains(addr) == false,
@@ -620,6 +621,41 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         let tracked head_perm = self.perms.borrow().tracked_borrow(head_addr);
         let node: &Node<T> = PPtr::<Node<T>>::from_usize(head_addr).borrow(Tracked(head_perm));
         (head_addr, node.value)
+    }
+
+    pub fn get(&self, index: usize) -> (ret: T)
+        where T: Copy
+        requires
+            self.wf(),
+            index < self.len(),
+        ensures
+            ret == self.view().spec_index(index as int),
+    {
+        proof {
+            reveal(LinkedList::wf_addr_list);
+            reveal(LinkedList::wf_value_list);
+            reveal(LinkedList::wf_head);
+        }
+        let mut current = self.head.unwrap();
+        let mut i = 0usize;
+        while i < index
+            invariant
+                self.wf(),
+                index < self.length,
+                i <= index,
+                current == self.addr_list.view().spec_index(i as int),
+            decreases index - i,
+        {
+            proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_next); }
+            let tracked node_perm = self.perms.borrow().tracked_borrow(current);
+            let node = PPtr::<Node<T>>::from_usize(current).borrow(Tracked(node_perm));
+            current = node.next.unwrap();
+            i = i + 1;
+        }
+        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); }
+        let tracked node_perm = self.perms.borrow().tracked_borrow(current);
+        let node = PPtr::<Node<T>>::from_usize(current).borrow(Tracked(node_perm));
+        node.value
     }
 
     pub fn pop_head(&mut self) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))

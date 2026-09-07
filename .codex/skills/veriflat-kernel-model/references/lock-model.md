@@ -15,6 +15,14 @@
 - Thread ownership metadata never disappears. Running, scheduled, and blocked
   states use their established dynamic lock-id majors; `NotApp` changes only
   lock ordering and does not restrict IPC topology.
+- Container-scoped transitions may hold a non-empty set of CPU locks when every
+  CPU belongs to that container. Process/thread scopes require at least one CPU
+  carrying the target process; the remaining held CPUs are contextless or carry
+  that same process. Exclude `Off` CPUs from these ordinary scopes.
+- `CPU_LOCK_MAJOR_OFF` is the terminal major used only after the owning
+  container has established the corresponding closed CPU slot. Keep it above
+  the ordinary object-lock majors; do not use it to justify acquiring another
+  ordinary object lock afterward.
 - Do not infer local lock state backwards from alignment. Lower-level lock
   operations should expose target state, id changes, ledger changes, and
   unchanged fields directly.

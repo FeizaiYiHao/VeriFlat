@@ -135,10 +135,6 @@ impl Process{
             self.owned_pci_functions.view().contains(bdf)
             ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2)
     }
-    pub open spec fn at_least_one_thread(&self) -> bool{
-        &&&
-        self.owned_threads.len() != 0
-    }
 }
 
 impl LockMajorTrait for Process {

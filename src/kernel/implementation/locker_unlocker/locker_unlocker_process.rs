@@ -22,7 +22,7 @@ impl KernelK {
                 old(self).prc_mp.dom().contains(process_ptr),
                 !old(self).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                process_lock_acquire_scope(old(self), old(lctx), process_ptr),
+                may_acquire_process_lock(old(self), old(lctx), process_ptr),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -79,12 +79,12 @@ impl KernelK {
                     &&& wlock_ensures(old(self).prc_mp.spec_index(process_ptr), final(self).prc_mp.spec_index(process_ptr), old(self).prc_mp.lock_id_by_key(process_ptr), final(lctx), ret.1.unwrap().view())
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr)))
                     &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(process_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write })
-                    &&& process_lock_held_scope(final(self), final(lctx), process_ptr)
+                    &&& holds_process_lock_with_cpu_context(final(self), final(lctx), process_ptr)
                 },
         {
             proof {
                 assert(old(self).prc_mp.perms_wf()) by { reveal(process_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {     reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); reveal(cpus_belong_to_container); reveal(cpus_are_online); reveal(cpus_run_process_or_none); reveal(some_cpu_runs_process); };
             }
             let res = self.prc_mp.wlock_unless_killed(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)));
 
@@ -100,113 +100,17 @@ impl KernelK {
                 assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(process_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(process_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 if res.0 {
-                    if exists|cpu_id: CpuId|
-                        #![trigger old(self).cpu_arr.spec_index(cpu_id)]
-                    {
-                        &&& old(lctx).base_lock_scope(set![cpu_id], Set::empty(), Set::empty(), Set::empty(), Set::empty())
-                        &&& index_valid(NUM_CPUS, cpu_id)
-                        &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                    } {
-                        let cpu_id = choose|cpu_id: CpuId|
-                            #![trigger old(self).cpu_arr.spec_index(cpu_id)]
-                        {
-                            &&& old(lctx).base_lock_scope(set![cpu_id], Set::empty(), Set::empty(), Set::empty(), Set::empty())
-                            &&& index_valid(NUM_CPUS, cpu_id)
-                            &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                        };
-                        assert({
-                            &&& lctx.base_lock_scope(set![cpu_id], Set::empty(), set![process_ptr], Set::empty(), Set::empty())
-                            &&& self.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                        }) by {   broadcast use vstd::map::lemma_map_insert_domain; };
-                    } else if exists|cpu_id: CpuId, container_ptr: RwLockContainerPtr, pcid_allocators: Set<RwLockPcidAllocatorPtr>|
-                        #![trigger old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())]
-                    {
-                        &&& old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())
-                        &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
-                        &&& index_valid(NUM_CPUS, cpu_id)
-                        &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                        &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                    } {
-                        let cpu_id = choose|cpu_id: CpuId|
-                            #![trigger old(self).cpu_arr.spec_index(cpu_id)]
-                            exists|container_ptr: RwLockContainerPtr, pcid_allocators: Set<RwLockPcidAllocatorPtr>|
-                                #![trigger old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())]
-                            {
-                                &&& old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())
-                                &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
-                                &&& index_valid(NUM_CPUS, cpu_id)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                            };
-                        let container_ptr = choose|container_ptr: RwLockContainerPtr|
-                            #![trigger old(self).ctn_mp.spec_index(container_ptr)]
-                            exists|pcid_allocators: Set<RwLockPcidAllocatorPtr>|
-                                #![trigger old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())]
-                            {
-                                &&& old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())
-                                &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
-                                &&& index_valid(NUM_CPUS, cpu_id)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                            };
-                        let pcid_allocators = choose|pcid_allocators: Set<RwLockPcidAllocatorPtr>|
-                            #![trigger old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())]
-                        {
-                            &&& old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())
-                            &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
-                            &&& index_valid(NUM_CPUS, cpu_id)
-                            &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                            &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                        };
-                        assert({
-                            &&& lctx.object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), Set::empty(), pcid_allocators, Set::empty(), Set::empty())
-                            &&& pcid_allocators.subset_of(set![self.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
-                            &&& index_valid(NUM_CPUS, cpu_id)
-                            &&& self.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                            &&& self.cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                        }) by {   broadcast use vstd::map::lemma_map_insert_domain; };
-                    } else {
-                        let cpu_id = choose|cpu_id: CpuId|
-                            #![trigger old(self).cpu_arr.spec_index(cpu_id)]
-                            exists|container_ptr: RwLockContainerPtr, alloc_ptr_4k: RwLockPageAllocatorPtr|
-                                #![trigger old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])]
-                            {
-                                &&& old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])
-                                &&& index_valid(NUM_CPUS, cpu_id)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                                &&& old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                            };
-                        let container_ptr = choose|container_ptr: RwLockContainerPtr|
-                            #![trigger old(self).ctn_mp.spec_index(container_ptr)]
-                            exists|alloc_ptr_4k: RwLockPageAllocatorPtr|
-                                #![trigger old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])]
-                            {
-                                &&& old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])
-                                &&& index_valid(NUM_CPUS, cpu_id)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                                &&& old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                            };
-                        let alloc_ptr_4k = choose|alloc_ptr_4k: RwLockPageAllocatorPtr|
-                            #![trigger old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])]
-                        {
-                            &&& old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])
-                            &&& index_valid(NUM_CPUS, cpu_id)
-                            &&& old(self).cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                            &&& old(self).cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                            &&& old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                        };
-                        assert({
-                            &&& lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])
-                            &&& index_valid(NUM_CPUS, cpu_id)
-                            &&& self.cpu_arr.spec_index(cpu_id).view().view().current_process == Some(process_ptr)
-                            &&& self.cpu_arr.spec_index(cpu_id).view().view().owning_container == container_ptr
-                            &&& self.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k
-                        }) by {   broadcast use vstd::map::lemma_map_insert_domain; };
-                    }
+                    assert(holds_process_lock_with_cpu_context(self, &*lctx, process_ptr)) by {
+                        reveal(may_acquire_process_lock);
+                        reveal(holds_process_lock_with_cpu_context);
+                        reveal(typed_lock_maps_inserted);
+                        reveal(LocalContext::holds_exact_base_locks);
+                        reveal(LocalContext::object_lock_scope);
+                        reveal(LocalContext::holds_exact_base_and_4k_quota_locks);
+                        broadcast use vstd::map::lemma_map_insert_domain;
+                    };
                 }
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }

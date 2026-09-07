@@ -30,47 +30,6 @@ pub proof fn endpoint_lock_op_preserves_invariant_fields(
 {
 }
 
-pub proof fn thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields(
-    thread_map: ThreadLockedMap,
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-)
-    requires
-        thread_perms_wf(thread_map),
-        endpoint_perms_wf(pre),
-        endpoint_perms_wf(post),
-        thread_endpoint_ref_counter_wf(thread_map, pre),
-        thread_endpoint_ref_counter_wf(thread_map, post),
-        thread_endpoint_queue_wf(thread_map, pre),
-        endpoint_invariant_fields_unchanged(pre, post),
-    ensures
-        thread_endpoint_queue_wf(thread_map, post),
-{
-    reveal(thread_endpoint_queue_wf);
-}
-
-pub proof fn container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields(
-    container_map: ContainerLockedMap,
-    thread_map: ThreadLockedMap,
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-)
-    requires
-        thread_perms_wf(thread_map),
-        thread_endpoint_ref_counter_wf(thread_map, pre),
-        thread_endpoint_ref_counter_wf(thread_map, post),
-        container_endpoint_wf(container_map, pre),
-        container_endpoint_wf(container_map, post),
-        container_thread_endpoint_wf(container_map, thread_map, pre),
-        endpoint_invariant_fields_unchanged(pre, post),
-    ensures
-        container_thread_endpoint_wf(container_map, thread_map, post),
-{
-    reveal(container_thread_endpoint_wf);
-    reveal(thread_endpoint_ref_counter_wf);
-    reveal(container_endpoint_wf);
-}
-
 pub proof fn lemma_no_change_imply_endpoint_perms_wf_forall()
     ensures
         forall|pre: EndpointLockedMap,
@@ -184,41 +143,6 @@ pub proof fn lemma_no_change_imply_container_thread_endpoint_wf_forall()
     reveal(container_endpoint_wf);
 }
 
-pub open spec fn thread_endpoint_queue_fields_unchanged(
-    pre: ThreadLockedMap,
-    post: ThreadLockedMap,
-) -> bool {
-    &&& pre.dom() =~= post.dom()
-    &&& forall|t_ptr: RwLockThreadPtr|
-        #![trigger pre.spec_index(t_ptr)]
-        #![trigger post.spec_index(t_ptr)]
-        pre.dom().contains(t_ptr) ==>
-        {
-            &&& post.spec_index(t_ptr).view().state
-                == pre.spec_index(t_ptr).view().state
-            &&& post.spec_index(t_ptr).view().blocking_endpoint_ptr
-                == pre.spec_index(t_ptr).view().blocking_endpoint_ptr
-            &&& post.spec_index(t_ptr).view().endpoint_linkedlist_node
-                == pre.spec_index(t_ptr).view().endpoint_linkedlist_node
-        }
-}
-
-pub open spec fn endpoint_queue_fields_unchanged(
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-) -> bool {
-    &&& pre.dom() =~= post.dom()
-    &&& forall|endpoint_ptr: RwLockEndpointPtr|
-        #![trigger pre.spec_index(endpoint_ptr).view().queue]
-        #![trigger post.spec_index(endpoint_ptr).view().queue]
-        pre.dom().contains(endpoint_ptr) ==> {
-            &&& post.spec_index(endpoint_ptr).view().queue
-                == pre.spec_index(endpoint_ptr).view().queue
-            &&& post.spec_index(endpoint_ptr).view().queue_state
-                == pre.spec_index(endpoint_ptr).view().queue_state
-        }
-}
-
 pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
     pre_thread_map: ThreadLockedMap,
     post_thread_map: ThreadLockedMap,
@@ -233,25 +157,27 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
         thread_endpoint_ref_counter_wf(pre_thread_map, pre_endpoint_map),
         thread_endpoint_ref_counter_wf(post_thread_map, post_endpoint_map),
         thread_endpoint_queue_wf(pre_thread_map, pre_endpoint_map),
-        thread_endpoint_queue_fields_unchanged(pre_thread_map, post_thread_map),
-        endpoint_queue_fields_unchanged(pre_endpoint_map, post_endpoint_map),
+        pre_thread_map.dom() =~= post_thread_map.dom(),
+        forall|t_ptr: RwLockThreadPtr|
+            #![trigger pre_thread_map.spec_index(t_ptr)]
+            #![trigger post_thread_map.spec_index(t_ptr)]
+            pre_thread_map.dom().contains(t_ptr) ==> {
+                &&& post_thread_map.spec_index(t_ptr).view().state == pre_thread_map.spec_index(t_ptr).view().state
+                &&& post_thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr == pre_thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr
+                &&& post_thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node == pre_thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node
+            },
+        pre_endpoint_map.dom() =~= post_endpoint_map.dom(),
+        forall|endpoint_ptr: RwLockEndpointPtr|
+            #![trigger pre_endpoint_map.spec_index(endpoint_ptr).view().queue]
+            #![trigger post_endpoint_map.spec_index(endpoint_ptr).view().queue]
+            pre_endpoint_map.dom().contains(endpoint_ptr) ==> {
+                &&& post_endpoint_map.spec_index(endpoint_ptr).view().queue == pre_endpoint_map.spec_index(endpoint_ptr).view().queue
+                &&& post_endpoint_map.spec_index(endpoint_ptr).view().queue_state == pre_endpoint_map.spec_index(endpoint_ptr).view().queue_state
+            },
     ensures
         thread_endpoint_queue_wf(post_thread_map, post_endpoint_map),
 {
     reveal(thread_endpoint_queue_wf);
-}
-
-pub open spec fn endpoint_owning_container_fields_unchanged(
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-) -> bool {
-    &&& pre.dom() =~= post.dom()
-    &&& forall|endpoint_ptr: RwLockEndpointPtr|
-        #![trigger pre.spec_index(endpoint_ptr).view().owning_container]
-        #![trigger post.spec_index(endpoint_ptr).view().owning_container]
-        pre.dom().contains(endpoint_ptr) ==>
-            post.spec_index(endpoint_ptr).view().owning_container
-                == pre.spec_index(endpoint_ptr).view().owning_container
 }
 
 #[verifier::opaque]

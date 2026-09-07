@@ -73,6 +73,35 @@ pub proof fn thread_pages_wf_preserved_for_page_state_eq(
     reveal(thread_pages_wf);
 }
 
+// scheduler_pages_wf: Allocated4k{AsScheduler} <-> scheduler_map.dom().
+pub proof fn scheduler_pages_wf_preserved_for_page_state_eq(
+    old_scheduler_map: SchedulerLockedMap,
+    new_scheduler_map: SchedulerLockedMap,
+    old_page_array: PageLockedArray,
+    new_page_array: PageLockedArray,
+)
+    requires
+        scheduler_pages_wf(old_scheduler_map, old_page_array),
+        new_scheduler_map.dom() == old_scheduler_map.dom(),
+        forall|p_i: PageIndex|
+            #![trigger new_page_array.spec_index(p_i).view().view().state]
+            index_valid(NUM_PAGES, p_i)
+            && ((old_page_array.spec_index(p_i).view().view().state
+                    matches PageState::Allocated4k {
+                        state: Allocated4KPageState::AsScheduler,
+                    })
+                || (new_page_array.spec_index(p_i).view().view().state
+                    matches PageState::Allocated4k {
+                        state: Allocated4KPageState::AsScheduler,
+                    }))
+            ==> new_page_array.spec_index(p_i).view().view().state
+                == old_page_array.spec_index(p_i).view().view().state,
+    ensures
+        scheduler_pages_wf(new_scheduler_map, new_page_array),
+{
+    reveal(scheduler_pages_wf);
+}
+
 // endpoint_pages_wf: Allocated4k{AsEndpoint} <-> endpoint_map.dom().
 pub proof fn endpoint_pages_wf_preserved_for_page_state_eq(
     old_endpoint_map: EndpointLockedMap,

@@ -54,6 +54,30 @@ impl<T> UnLockedMap<usize, T>{
             self.spec_index(k) == old.spec_index(k)
     }
 
+    pub fn insert_with_perm(
+        &mut self,
+        key: usize,
+        Tracked(perm): Tracked<PointsTo<T>>,
+    )
+        requires
+            !old(self).dom().contains(key),
+            perm.is_init(),
+            perm.addr() == key,
+        ensures
+            old(self).perms_wf() ==> final(self).perms_wf(),
+            final(self).dom() =~= old(self).dom().insert(key),
+            final(self).dom().contains(key),
+            final(self).spec_index(key) == perm.value(),
+            forall|old_key: usize| #![auto]
+                old(self).dom().contains(old_key)
+                ==> final(self).spec_index(old_key)
+                    == old(self).spec_index(old_key),
+    {
+        proof {
+            self.map.borrow_mut().tracked_insert(key, perm);
+        }
+    }
+
     pub fn borrow<'a>(&'a self, key: usize) -> (ret: &'a T)
         requires
             self.perms_wf(),

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::simple_pptr::*;
 
 use crate::{define::*, primitive::*, va_4k_valid};
 use crate::locks::*;
@@ -239,6 +240,84 @@ verus! {
         }
     }
 
+    /// `free_list` is syscall-local staging state until an owned page is published.
+    pub fn set_4k_staging_next(page: &mut Page, next: PagePtr)
+        requires
+            old(page).inv(),
+            old(page).state is Owned4k || old(page).state is Free4k,
+        ensures
+            final(page).inv(),
+            final(page).free_list == next,
+            final(page).addr == old(page).addr,
+            final(page).state == old(page).state,
+            final(page).is_io_page == old(page).is_io_page,
+            final(page).ref_count == old(page).ref_count,
+            final(page).owning_container == old(page).owning_container,
+            final(page).mappings == old(page).mappings,
+            final(page).free_list_node_storage == old(page).free_list_node_storage,
+            final(page).perm_4k == old(page).perm_4k,
+            final(page).perm_2m == old(page).perm_2m,
+            final(page).perm_1g == old(page).perm_1g,
+    {
+        page.free_list = next;
+    }
+
+    pub fn convert_owned_4k_to_free_global(
+        page: &mut Page,
+        allocator_ptr: RwLockPageAllocatorPtr,
+        owning_container: RwLockContainerPtr,
+    ) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+        requires
+            old(page).inv(),
+            old(page).state is Owned4k,
+        ensures
+            final(page).inv(),
+            final(page).state == (PageState::Free4k {
+                allocator_ptr: Ghost(allocator_ptr),
+                state: FreePageAllocatorState::GlobalList,
+            }),
+            final(page).owning_container == owning_container,
+            final(page).free_list == old(page).free_list,
+            ret.1@.is_init(),
+            ret.1@.addr() == ret.0,
+            final(page).addr == old(page).addr,
+            final(page).is_io_page == old(page).is_io_page,
+            final(page).ref_count == old(page).ref_count,
+            final(page).mappings == old(page).mappings,
+            final(page).perm_4k == old(page).perm_4k,
+            final(page).perm_2m == old(page).perm_2m,
+            final(page).perm_1g == old(page).perm_1g,
+    {
+        let (node_addr, Tracked(node_perm)) = page.free_list_node_storage.take();
+        page.state = PageState::Free4k {
+            allocator_ptr: Ghost(allocator_ptr),
+            state: FreePageAllocatorState::GlobalList,
+        };
+        page.owning_container = owning_container;
+        (node_addr, Tracked(node_perm))
+    }
+
+    pub fn clear_free_4k_staging_next(page: &mut Page)
+        requires
+            old(page).inv(),
+            old(page).state is Free4k,
+        ensures
+            final(page).inv(),
+            final(page).free_list == 0,
+            final(page).addr == old(page).addr,
+            final(page).state == old(page).state,
+            final(page).is_io_page == old(page).is_io_page,
+            final(page).ref_count == old(page).ref_count,
+            final(page).owning_container == old(page).owning_container,
+            final(page).mappings == old(page).mappings,
+            final(page).free_list_node_storage == old(page).free_list_node_storage,
+            final(page).perm_4k == old(page).perm_4k,
+            final(page).perm_2m == old(page).perm_2m,
+            final(page).perm_1g == old(page).perm_1g,
+    {
+        page.free_list = 0;
+    }
+
     /// Extract the 4k page perm from a page that is Free4k or Owned4k.
     /// Sets perm_4k to None. The caller must ensure perm_4k is Some.
     pub fn take_perm_4k(page: &mut Page) -> (ret: Tracked<PagePerm4k>)
@@ -264,6 +343,31 @@ verus! {
             final(page).perm_1g.view() == old(page).perm_1g.view(),
     {
         let tracked ret = page.perm_4k.borrow_mut().tracked_take();
+        Tracked(ret)
+    }
+
+    pub fn take_perm_2m(page: &mut Page) -> (ret: Tracked<PagePerm2m>)
+        requires
+            old(page).perm_2m.view().is_some(),
+            old(page).perm_inv(),
+            old(page).state is Free2m || old(page).state is Owned2m,
+        ensures
+            final(page).perm_2m.view().is_none(),
+            ret.view() == old(page).perm_2m.view().unwrap(),
+            ret.view().is_init(),
+            ret.view().addr() == final(page).addr,
+            final(page).addr == old(page).addr,
+            final(page).state == old(page).state,
+            final(page).is_io_page == old(page).is_io_page,
+            final(page).ref_count == old(page).ref_count,
+            final(page).owning_container == old(page).owning_container,
+            final(page).mappings.view() == old(page).mappings.view(),
+            final(page).free_list_node_storage == old(page).free_list_node_storage,
+            final(page).free_list == old(page).free_list,
+            final(page).perm_4k.view() == old(page).perm_4k.view(),
+            final(page).perm_1g.view() == old(page).perm_1g.view(),
+    {
+        let tracked ret = page.perm_2m.borrow_mut().tracked_take();
         Tracked(ret)
     }
 

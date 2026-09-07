@@ -5,8 +5,7 @@ use super::syscall_new_thread_with_endpoint_helpers::add_new_thread_with_endpoin
 
 verus! {
 
-    /// Create a thread whose endpoint descriptor 0 aliases descriptor
-    /// `endpoint_index` of the thread currently running on `cpu_id`.
+    /// Create a thread sharing the running thread's `endpoint_index`.
     pub fn syscall_new_thread_with_endpoint(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -89,6 +88,20 @@ verus! {
         let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr)
             .borrow().scheduler;
 
+        proof {
+            assert(may_acquire_process_lock(krnl, lctx, process_ptr)) by {
+                reveal(may_acquire_process_lock);
+                reveal(cpus_belong_to_container);
+                reveal(cpus_are_online);
+                reveal(cpus_run_process_or_none);
+                reveal(some_cpu_runs_process);
+                reveal(LocalContext::holds_exact_base_locks);
+                reveal(cpu_array_wf);
+                reveal(container_cpu_wf);
+                reveal(process_cpu_wf);
+                reveal(container_process_wf);
+            };
+        }
         let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
         if let (false, _) = process_res {
             release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
@@ -97,6 +110,24 @@ verus! {
         let Tracked(process_lock_perm) = process_res.1.unwrap();
 
         assert(krnl.thr_mp.dom().contains(current_thread_ptr) && krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr && krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+        proof {
+            assert(lctx.holds_exact_base_locks(
+                set![cpu_id],
+                Set::empty(),
+                set![process_ptr],
+                Set::empty(),
+                Set::empty(),
+            )) by {
+                reveal(holds_process_lock_with_cpu_context);
+                reveal(LocalContext::holds_exact_base_locks);
+                reveal(LocalContext::object_lock_scope);
+                reveal(typed_lock_maps_inserted);
+                broadcast use vstd::map::lemma_map_insert_domain;
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
+        }
+        let ghost lctx_before_current_thread_lock = *lctx;
         let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
         if let (false, _) = thread_res {
             proof {
@@ -107,6 +138,22 @@ verus! {
         }
         let Tracked(current_thread_lock_perm) = thread_res.1.unwrap();
 
+        proof {
+            assert(lctx.holds_exact_base_locks(
+                set![cpu_id],
+                Set::empty(),
+                set![process_ptr],
+                set![current_thread_ptr],
+                Set::empty(),
+            )) by {
+                reveal(LocalContext::holds_exact_base_locks);
+                reveal(LocalContext::object_lock_scope);
+                reveal(typed_lock_maps_inserted);
+                broadcast use vstd::map::lemma_map_insert_domain;
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
+        }
         let thread_ref = krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm));
         let endpoint_option = *thread_ref.endpoint_descriptors.get(endpoint_index);
         if let None = endpoint_option {
@@ -132,7 +179,7 @@ verus! {
                 &&& krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)
                 &&& {
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
-                    ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view().subtree_set.view().contains(container_ptr)
+                    ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
                 }
             }) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
         }
@@ -145,7 +192,7 @@ verus! {
             &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
             &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
             &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
-        }) by {  reveal(LocalContext::holds_no_allocator_locks); };
+        }) by { reveal(LocalContext::holds_no_allocator_locks); };
         add_new_thread_with_endpoint(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, endpoint_ptr, endpoint_index, Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm), Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm));
         RetValueType::Success
     }

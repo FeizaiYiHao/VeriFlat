@@ -73,7 +73,7 @@ verus! {
             old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
             old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
-            old(lctx).base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k]),
+            old(lctx).holds_exact_base_and_4k_quota_locks(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k]),
             old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             alloc_amount <= usize::MAX - old(krnl).prc_mp.spec_index(process_ptr).view().quota_4k,

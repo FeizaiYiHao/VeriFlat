@@ -1,67 +1,11 @@
 use vstd::prelude::*;
 
 use crate::*;
-use super::mmap_4k_context::{
-    mmap_4k_allocation_ready,
-    mmap_4k_held_context,
-};
+use super::mmap_4k_context::{mmap_4k_allocation_ready, mmap_4k_held_context};
 use super::mmap_4k_create_entry_install::MissingPageTableLevel;
 use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 
 verus! {
-    fn mmap_4k_l4_directory_present<const TABLE_TYPE: PTType>(
-        pagetable: &PageTable<TABLE_TYPE>,
-        l4i: L4Index,
-    ) -> (ret: bool)
-        requires
-            pagetable.wf(),
-            pagetable.kernel_l4_end <= l4i && pei_valid(l4i),
-        ensures
-            ret == (pagetable.spec_resolve_mapping_l4(l4i) is Some),
-    {
-        pagetable.get_entry_l4(l4i).is_some()
-    }
-
-    fn mmap_4k_l3_directory_present<const TABLE_TYPE: PTType>(
-        pagetable: &PageTable<TABLE_TYPE>,
-        l4i: L4Index,
-        l3i: L3Index,
-    ) -> (ret: bool)
-        requires
-            pagetable.wf(),
-            pagetable.kernel_l4_end <= l4i && pei_valid(l4i),
-            pei_valid(l3i),
-            pagetable.spec_resolve_mapping_l4(l4i) is Some,
-            pagetable.spec_resolve_mapping_1g_l3(l4i, l3i) is None,
-        ensures
-            ret == (pagetable.spec_resolve_mapping_l3(l4i, l3i) is Some),
-    {
-        let l4_entry = pagetable.get_entry_l4(l4i).unwrap();
-        pagetable.get_entry_l3(l4i, l3i, &l4_entry).is_some()
-    }
-
-    fn mmap_4k_l2_directory_present<const TABLE_TYPE: PTType>(
-        pagetable: &PageTable<TABLE_TYPE>,
-        l4i: L4Index,
-        l3i: L3Index,
-        l2i: L2Index,
-    ) -> (ret: bool)
-        requires
-            pagetable.wf(),
-            pagetable.kernel_l4_end <= l4i && pei_valid(l4i),
-            pei_valid(l3i),
-            pei_valid(l2i),
-            pagetable.spec_resolve_mapping_l4(l4i) is Some,
-            pagetable.spec_resolve_mapping_l3(l4i, l3i) is Some,
-            pagetable.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None,
-        ensures
-            ret == (pagetable.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some),
-    {
-        let l4_entry = pagetable.get_entry_l4(l4i).unwrap();
-        let l3_entry = pagetable.get_entry_l3(l4i, l3i, &l4_entry).unwrap();
-        pagetable.get_entry_l2(l4i, l3i, l2i, &l3_entry).is_some()
-    }
-
     pub fn mmap_4k_build_one_structure(
         krnl: &mut KernelK,
         va: VAddr,
@@ -110,8 +54,6 @@ verus! {
             ),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
-            allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
-            allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_1g_mp, final(lctx).thread_id()),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k >= quota_reserve,
@@ -144,35 +86,31 @@ verus! {
             ) by { reveal(pagetable_perms_wf); };
             broadcast use group_held_objects_unchanged_transitive;
         }
-        let l4_present;
-        {
+        let l4_present = {
             let pagetable = krnl.pt_mp.borrow(pagetable_ptr, Tracked(pagetable_lock_perm));
-            l4_present = mmap_4k_l4_directory_present(pagetable, indices.0);
-        }
+            pagetable.get_entry_l4(indices.0).is_some()
+        };
         if !l4_present {
             assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
             install_one_mmap_4k_directory_page(krnl, MissingPageTableLevel::L4, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
         }
-        proof {
-            assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
-        }
-        let l3_present;
-        {
+        assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
+        let l3_present = {
             let pagetable = krnl.pt_mp.borrow(pagetable_ptr, Tracked(pagetable_lock_perm));
-            l3_present = mmap_4k_l3_directory_present(pagetable, indices.0, indices.1);
-        }
+            let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
+            pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).is_some()
+        };
         if !l3_present {
             assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
             install_one_mmap_4k_directory_page(krnl, MissingPageTableLevel::L3, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
         }
-        proof {
-            assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
-        }
-        let l2_present;
-        {
+        assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
+        let l2_present = {
             let pagetable = krnl.pt_mp.borrow(pagetable_ptr, Tracked(pagetable_lock_perm));
-            l2_present = mmap_4k_l2_directory_present(pagetable, indices.0, indices.1, indices.2);
-        }
+            let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
+            let l3_entry = pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap();
+            pagetable.get_entry_l2(indices.0, indices.1, indices.2, &l3_entry).is_some()
+        };
         if !l2_present {
             assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
             install_one_mmap_4k_directory_page(krnl, MissingPageTableLevel::L2, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));

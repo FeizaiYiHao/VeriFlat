@@ -9,6 +9,7 @@ verus! {
     // the `hugepage_2m_wf` framing lemma to exactly the slots that invariant reads.
     pub open spec fn page_state_2m_related(s: PageState) -> bool {
         ||| s is Free2m
+        ||| s is Owned2m
         ||| s is Allocated2m
         ||| s is Mapped2m
         ||| s is Merged2m
@@ -26,6 +27,7 @@ verus! {
         &&&
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free2m]
+            #![trigger page_array.spec_index(p_i).view().view().state is Owned2m]
             #![trigger page_array.spec_index(p_i).view().view().state is Allocated2m]
             #![trigger page_array.spec_index(p_i).view().view().state is Mapped2m]
             #![trigger page_index_2m_valid(p_i)]
@@ -33,6 +35,8 @@ verus! {
             && {
                 |||
                 page_array.spec_index(p_i).view().view().state is Free2m
+                |||
+                page_array.spec_index(p_i).view().view().state is Owned2m
                 ||| 
                 page_array.spec_index(p_i).view().view().state is Allocated2m 
                 |||
@@ -44,6 +48,7 @@ verus! {
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_2m_valid(p_i, p_j)]
             #![trigger page_array.spec_index(p_i).view().view().state is Free2m, page_array.spec_index(p_j).view().view().state is Merged2m]
+            #![trigger page_array.spec_index(p_i).view().view().state is Owned2m, page_array.spec_index(p_j).view().view().state is Merged2m]
             #![trigger page_array.spec_index(p_i).view().view().state is Allocated2m, page_array.spec_index(p_j).view().view().state is Merged2m]
             #![trigger page_array.spec_index(p_i).view().view().state is Mapped2m, page_array.spec_index(p_j).view().view().state is Merged2m]
             index_valid(NUM_PAGES, p_i)
@@ -51,6 +56,8 @@ verus! {
             && {
                 |||
                 page_array.spec_index(p_i).view().view().state is Free2m 
+                |||
+                page_array.spec_index(p_i).view().view().state is Owned2m
                 ||| 
                 page_array.spec_index(p_i).view().view().state is Allocated2m 
                 |||
@@ -74,6 +81,8 @@ verus! {
             {
                 |||
                 page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Free2m 
+                |||
+                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Owned2m
                 |||
                 page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Allocated2m 
                 ||| 

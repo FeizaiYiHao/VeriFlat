@@ -112,53 +112,40 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
     };
 }
 
-/// Forall-lifted form of the field-framing lemma. The old and new invariant
-/// terms jointly bind `pre` and `post`; callers only need to introduce this
-/// rule in the scoped assertion that asks for the new invariant.
-pub proof fn lemma_no_change_imply_container_allocator_free_4k_page_wf_forall()
+pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
+    pre: KernelK,
+    post: KernelK,
+)
+    requires
+        container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
+        post.pg_arr == pre.pg_arr,
+        post.allc_2m_mp.dom() == pre.allc_2m_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr|
+            #![trigger post.allc_2m_mp.spec_index(a).owning_container]
+            #![trigger post.allc_2m_mp.spec_index(a).global_pool.view()]
+            post.allc_2m_mp.dom().contains(a) ==>
+                post.allc_2m_mp.spec_index(a).owning_container
+                    == pre.allc_2m_mp.spec_index(a).owning_container
+                && post.allc_2m_mp.spec_index(a).global_pool.view()
+                    == pre.allc_2m_mp.spec_index(a).global_pool.view(),
+        forall|a: RwLockPageAllocatorPtr, i: CpuId|
+            #![trigger post.allc_2m_mp.spec_index(a)
+                .cpu_caches.spec_index(i).view().view()]
+            post.allc_2m_mp.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
+                post.allc_2m_mp.spec_index(a).cpu_caches
+                    .spec_index(i).view().view()
+                == pre.allc_2m_mp.spec_index(a).cpu_caches
+                    .spec_index(i).view().view(),
     ensures
-        forall|pre: KernelK, post: KernelK|
-            #![trigger
-                container_allocator_free_4k_page_wf(
-                    pre.allc_4k_mp,
-                    pre.pg_arr,
-                ),
-                container_allocator_free_4k_page_wf(
-                    post.allc_4k_mp,
-                    post.pg_arr,
-                )
-            ]
-            container_allocator_free_4k_page_wf(
-                pre.allc_4k_mp,
-                pre.pg_arr,
-            )
-            && post.pg_arr == pre.pg_arr
-            && post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
-            && (forall|a: RwLockPageAllocatorPtr|
-                #![trigger post.allc_4k_mp.spec_index(a).owning_container]
-                #![trigger post.allc_4k_mp.spec_index(a).global_pool.view()]
-                post.allc_4k_mp.dom().contains(a) ==>
-                    post.allc_4k_mp.spec_index(a).owning_container
-                        == pre.allc_4k_mp.spec_index(a).owning_container
-                    && post.allc_4k_mp.spec_index(a).global_pool.view()
-                        == pre.allc_4k_mp.spec_index(a).global_pool.view())
-            && (forall|a: RwLockPageAllocatorPtr, i: CpuId|
-                #![trigger post.allc_4k_mp.spec_index(a)
-                    .cpu_caches.spec_index(i).view().view()]
-                post.allc_4k_mp.dom().contains(a) && index_valid(NUM_CPUS, i) ==>
-                    post.allc_4k_mp.spec_index(a).cpu_caches
-                        .spec_index(i).view().view()
-                    == pre.allc_4k_mp.spec_index(a).cpu_caches
-                        .spec_index(i).view().view())
-            ==>
-                container_allocator_free_4k_page_wf(
-                    post.allc_4k_mp,
-                    post.pg_arr,
-                ),
+        container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
-    reveal(container_allocator_free_4k_page_wf);
-    reveal(container_allocator_global_free_4k_page_wf);
-    reveal(container_allocator_cpu_cache_free_4k_page_wf);
+    assert(container_allocator_free_2m_page_wf(
+        post.allc_2m_mp, post.pg_arr,
+    )) by {
+        reveal(container_allocator_free_2m_page_wf);
+        reveal(container_allocator_global_free_2m_page_wf);
+        reveal(container_allocator_cpu_cache_free_2m_page_wf);
+    };
 }
 
 }

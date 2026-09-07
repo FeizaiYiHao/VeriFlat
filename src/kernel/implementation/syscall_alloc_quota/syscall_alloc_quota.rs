@@ -88,7 +88,23 @@ verus! {
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
 
-            assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {    broadcast use vstd::map::lemma_map_insert_domain; };
+            assert(lctx.holds_exact_base_and_4k_quota_locks(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {    broadcast use vstd::map::lemma_map_insert_domain; };
+            assert(may_acquire_process_lock(
+                krnl,
+                lctx,
+                process_ptr,
+            )) by {
+                reveal(may_acquire_process_lock);
+                reveal(cpus_belong_to_container);
+                reveal(cpus_are_online);
+                reveal(cpus_run_process_or_none);
+                reveal(some_cpu_runs_process);
+                reveal(LocalContext::holds_exact_base_and_4k_quota_locks);
+                reveal(cpu_array_wf);
+                reveal(container_cpu_wf);
+                reveal(process_cpu_wf);
+                reveal(container_process_wf);
+            };
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(lctx));
             if let (false, _) = process_res {
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
@@ -120,7 +136,7 @@ verus! {
 
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
-                assert(lctx.base_quota_4k_lock_scope(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {   broadcast use vstd::map::lemma_map_insert_domain; };
+                assert(lctx.holds_exact_base_and_4k_quota_locks(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {   broadcast use vstd::map::lemma_map_insert_domain; };
             }
             commit_alloc_quota_4k(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
             return  RetValueType::Success;

@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_map_owned::map_owned_4k_page;
-use super::syscall_mmap_4k_spec::mmap_4k_lock_scope;
 
 verus! {
 
@@ -45,7 +44,7 @@ verus! {
             final(steps).steps.len() == old(steps).steps.len() + 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
             mmap_4k_allocation_ready(final(krnl), final(lctx)),
-            mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr) ==> mmap_4k_lock_scope(final(krnl), final(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr),
+            old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()) ==> final(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -62,10 +61,6 @@ verus! {
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
-            thread_objects_unlocked_except(old(krnl).thr_mp, old(lctx).thread_id(), set![thread_ptr]) ==> thread_objects_unlocked_except(final(krnl).thr_mp, final(lctx).thread_id(), set![thread_ptr]),
-            pagetable_objects_unlocked_except(old(krnl).pt_mp, old(lctx).thread_id(), set![pagetable_ptr]) ==> pagetable_objects_unlocked_except(final(krnl).pt_mp, final(lctx).thread_id(), set![pagetable_ptr]),
-            allocator_objects_unlocked(old(krnl).allc_2m_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_2m_mp, final(lctx).thread_id()),
-            allocator_objects_unlocked(old(krnl).allc_1g_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked(final(krnl).allc_1g_mp, final(lctx).thread_id()),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().insert(va, final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va)),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
@@ -128,28 +123,6 @@ verus! {
                 );
             };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
-            assert(
-                thread_objects_unlocked_except(
-                    old(krnl).thr_mp, old(lctx).thread_id(),
-                    set![thread_ptr],
-                ) ==> thread_objects_unlocked_except(
-                    krnl.thr_mp, lctx.thread_id(),
-                    set![thread_ptr],
-                )
-            ) by {
-                broadcast use thread_objects_unlocked_except_preserved_for_typed_maps_unchanged;
-            };
-            assert(
-                pagetable_objects_unlocked_except(
-                    old(krnl).pt_mp, old(lctx).thread_id(),
-                    set![pagetable_ptr],
-                ) ==> pagetable_objects_unlocked_except(
-                    krnl.pt_mp, lctx.thread_id(),
-                    set![pagetable_ptr],
-                )
-            ) by {
-                broadcast use pagetable_objects_unlocked_except_preserved_for_typed_maps_unchanged;
-            };
             assert({
                 &&& mmap_4k_allocation_ready(krnl, lctx)
                 &&& krnl.pt_mp.spec_index(pagetable_ptr).view().wf()
@@ -169,9 +142,10 @@ verus! {
                 reveal(pagetable_perms_wf);
                 reveal(LocalContext::holds_no_allocator_locks);
             };
-            if mmap_4k_lock_scope(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr) {
-                assert(mmap_4k_lock_scope(krnl, lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable_ptr)) by {
-                    broadcast use group_object_types_unlocked_except_preserved_for_typed_maps_unchanged;
+            if old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()) {
+                assert(lctx.object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty())) by {
+                    reveal(typed_lock_maps_unchanged);
+                    reveal(LocalContext::object_lock_scope);
                 };
             }
         }

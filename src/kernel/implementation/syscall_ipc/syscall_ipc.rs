@@ -2,8 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_dispatch::syscall_ipc_ordinary;
 verus! {
-
-    /// Send an empty payload through an endpoint.
     pub fn syscall_send_empty(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -40,7 +38,6 @@ verus! {
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty, pt_regs)
     }
 
-    /// Receive an empty payload through an endpoint.
     pub fn syscall_receive_empty(
         krnl: &mut KernelK,
         Tracked(lctx): Tracked<&mut LocalContext>,
@@ -115,10 +112,7 @@ verus! {
         syscall_ipc_ordinary(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
             endpoint_index, ThreadState::SENDING,
-            IPCPayLoad::Endpoint {
-                endpoint_index: source_endpoint_index,
-            },
-            pt_regs,
+            IPCPayLoad::Endpoint { endpoint_index: source_endpoint_index }, pt_regs,
         )
     }
 
@@ -160,10 +154,7 @@ verus! {
         syscall_ipc_ordinary(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
             endpoint_index, ThreadState::RECEIVING,
-            IPCPayLoad::Endpoint {
-                endpoint_index: target_endpoint_index,
-            },
-            pt_regs,
+            IPCPayLoad::Endpoint { endpoint_index: target_endpoint_index }, pt_regs,
         )
     }
 
@@ -309,5 +300,4 @@ verus! {
             IPCPayLoad::Pages { va_range }, pt_regs,
         )
     }
-
 } // verus!

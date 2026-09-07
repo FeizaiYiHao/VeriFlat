@@ -11,6 +11,7 @@ impl KernelK {
             requires
                 old(self).inv(),
                 index_valid(NUM_CPUS, cpu_id),
+                !(old(self).cpu_arr.spec_index(cpu_id).view().view().state is Off),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 !old(self).cpu_arr.spec_index(cpu_id).view().locked_by_thread(old(lctx).thread_id()),
                 old(lctx).no_locks_held(),
@@ -54,12 +55,12 @@ impl KernelK {
                 wlock_ensures(old(self).cpu_arr.spec_index(cpu_id).view(), final(self).cpu_arr.spec_index(cpu_id).view(), old(self).cpu_arr.lock_id_by_index(cpu_id), final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
-                cpu_lock_held_scope(final(lctx), cpu_id),
+                final(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), Set::empty(), Set::empty(), Set::empty()),
                 final(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR),
         {
             proof {
                 assert(old(self).cpu_arr.inv()) by { reveal(cpu_array_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {  reveal(lock_id_set_aligned); };
+                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(lock_id_set_aligned); };
             }
             let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
             proof {
@@ -73,7 +74,7 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {  reveal(cpu_array_wf);  reveal(lock_id_set_aligned); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(cpu_array_wf); reveal(lock_id_set_aligned); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             ret

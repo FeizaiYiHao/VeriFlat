@@ -60,6 +60,142 @@ use vstd::simple_pptr::*;
         unimplemented!()
     }
 
+    /// Approved TCB boundary for retyping one owned 2M page; callers use `retype_2m_and_insert`.
+    #[verifier::external_body]
+    fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>(
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm2m>,
+        Tracked(lctx): Tracked<&mut LocalContext>,
+        obj_id: Ghost<KernelObjId>,
+    ) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked<LockPerm>))
+        requires
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+        ensures
+            ret.0.view().addr() == page_ptr,
+            ret.0.view().is_init(),
+            ret.0.view().value().is_init(),
+            ret.0.view().value().view() == value,
+            ret.0.view().value().view_rodata() == rodata,
+            ret.0.view().value().view_ghost() == ghost,
+            ret.0.view().value().being_killed() == false,
+            ret.0.view().value().locking_thread() == (RwLockState::Write {
+                thread_id: final(lctx).thread_id(),
+                lock_id: ret.1.view().lock_id(),
+            }),
+            ret.1.view().state() is WriteLock,
+            ret.1.view().thread_id() == final(lctx).thread_id(),
+            ret.1.view().ordering_lock_id() == (LockId{
+                container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
+                process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
+                major: value.current_lock_major(),
+                minor: page_ptr,
+            }),
+            lock_ensures(old(lctx), final(lctx), value, LockId{
+                container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
+                process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
+                major: value.current_lock_major(),
+                minor: page_ptr,
+            }, obj_id.view()),
+    {
+        unimplemented!()
+    }
+
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>
+    LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {
+    pub fn retype_4k_and_insert(
+        &mut self,
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm4k>,
+        Tracked(lctx): Tracked<&mut LocalContext>,
+        obj_id: Ghost<KernelObjId>,
+    ) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).perms_wf(),
+            !old(self).dom().contains(page_ptr),
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+            old(lctx).typed_lock_entry(obj_id.view()) is None,
+            lock_id_set_aligned(old(lctx)),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= old(self).dom().insert(page_ptr),
+            final(self).dom().contains(page_ptr),
+            forall|ptr: usize| #![auto]
+                old(self).dom().contains(ptr)
+                ==> final(self).spec_index(ptr) == old(self).spec_index(ptr),
+            final(self).spec_index(page_ptr).view() == value,
+            final(self).spec_index(page_ptr).view_rodata() == rodata,
+            final(self).spec_index(page_ptr).view_ghost() == ghost,
+            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).wlocked_by(final(lctx)),
+            final(self).spec_index(page_ptr).write_lock_perm_match(&ret.view()),
+            ret.view().state() is WriteLock,
+            ret.view().thread_id() == final(lctx).thread_id(),
+            ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
+            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(page_ptr), obj_id.view()),
+            lock_id_set_aligned(final(lctx)),
+    {
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
+            page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id,
+        );
+        self.insert_with_perm(page_ptr, Tracked(rwlock_perm));
+        Tracked(lock_perm)
+    }
+
+    pub fn retype_2m_and_insert(
+        &mut self,
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm2m>,
+        Tracked(lctx): Tracked<&mut LocalContext>,
+        obj_id: Ghost<KernelObjId>,
+    ) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).perms_wf(),
+            !old(self).dom().contains(page_ptr),
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+            old(lctx).typed_lock_entry(obj_id.view()) is None,
+            lock_id_set_aligned(old(lctx)),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= old(self).dom().insert(page_ptr),
+            final(self).dom().contains(page_ptr),
+            forall|ptr: usize| #![auto]
+                old(self).dom().contains(ptr)
+                ==> final(self).spec_index(ptr) == old(self).spec_index(ptr),
+            final(self).spec_index(page_ptr).view() == value,
+            final(self).spec_index(page_ptr).view_rodata() == rodata,
+            final(self).spec_index(page_ptr).view_ghost() == ghost,
+            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).wlocked_by(final(lctx)),
+            final(self).spec_index(page_ptr).write_lock_perm_match(&ret.view()),
+            ret.view().state() is WriteLock,
+            ret.view().thread_id() == final(lctx).thread_id(),
+            ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
+            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(page_ptr), obj_id.view()),
+            lock_id_set_aligned(final(lctx)),
+    {
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
+            page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id,
+        );
+        self.insert_with_perm(page_ptr, Tracked(rwlock_perm));
+        Tracked(lock_perm)
+    }
+}
+
 impl KernelK {
     pub fn retype_page_to_thread_and_insert(
         &mut self,

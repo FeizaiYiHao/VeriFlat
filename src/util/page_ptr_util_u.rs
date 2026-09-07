@@ -422,25 +422,6 @@ pub proof fn page_ptr2page_index_injective()
     }
 }
 
-pub proof fn page_index2page_ptr_injective()
-    ensures
-        forall|i: usize, j: usize|
-            #![trigger page_index2page_ptr(i), page_index2page_ptr(j)]
-            index_valid(NUM_PAGES, i) && index_valid(NUM_PAGES, j) && i != j
-                ==> page_index2page_ptr(i) != page_index2page_ptr(j),
-{
-    assert forall|i: usize, j: usize|
-        index_valid(NUM_PAGES, i) && index_valid(NUM_PAGES, j) && i != j implies
-        #[trigger] page_index2page_ptr(i) != #[trigger] page_index2page_ptr(j) by {
-        let pi = (i * 4096usize) as usize;
-        let pj = (j * 4096usize) as usize;
-        assert(pi / 4096 == i) by (nonlinear_arith)
-            requires pi == i * 4096;
-        assert(pj / 4096 == j) by (nonlinear_arith)
-            requires pj == j * 4096;
-    }
-}
-
 // Keep each trusted VA/index fact in its own lemma so callers import only the
 // quantifier and trigger needed by the assertion currently being proved.
 #[verifier(external_body)]

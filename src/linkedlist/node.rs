@@ -77,13 +77,6 @@ impl<T> ExternalNode<T>{
 }
 
 #[verifier(external_body)]
-pub broadcast proof fn node_has_size<T>()
-    ensures
-        #![trigger size_of::<Node<T>>()]
-        size_of::<Node<T>>() != 0,
-{
-}
-#[verifier(external_body)]
 pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
     ensures 
         forall|k:K| 
