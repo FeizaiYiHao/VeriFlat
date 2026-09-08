@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use core::marker::ConstParamTy;
 use std::usize;
 verus! {
-
 use crate::*;
 use vstd::simple_pptr::*;
 use super::pagemap_util_t::*;
@@ -95,7 +94,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 #![trigger page_map_perm.value().spec_index(i)]
                 0 <= i < mem_end_l4_index ==> kernel_entries_ghost.view().spec_index(i as int)
                     == page_map_perm.value().spec_index(i),
-            pei_valid(mem_end_l4_index),
             TABLE_TYPE == PT_TYPE ==> pcid is Some,
             TABLE_TYPE == IOMMU_TYPE ==> pcid is None,
             TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
@@ -620,16 +618,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==>
                 {
                     &&&
-                    self.mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) 
+                    self.mapping_4k.view().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                         == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
                     &&&
                     self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is Some
                         ==>
                         self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).addr == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.addr
                         && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
-                        && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i,)->0.perm.execute_disable
-                        && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i,)->0.perm.present
-                }   
+                        && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)->0.perm.execute_disable
+                        && self.mapping_4k.view().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)->0.perm.present
+                }
     }
 
     #[verifier::opaque]
@@ -666,11 +664,11 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 && pei_valid(l3i)
                 ==>
                 {
-                    &&& 
-                    self.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0))) 
-                    == 
+                    &&&
+                    self.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0)))
+                    ==
                     self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
-                    &&& 
+                    &&&
                     self.spec_resolve_mapping_1g_l3(l4i,l3i) is Some
                     ==>
                     self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
@@ -946,7 +944,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         }
     }
     impl<const TABLE_TYPE:PTType> LockMajorTrait for  PageTable<TABLE_TYPE> {
-
         open spec fn lock_major_1(&self) -> LockMajorId {
             0x233
         }

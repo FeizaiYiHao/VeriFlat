@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 /// Union of process fields read by invariants that frame a `quota_4k` update.
 /// The changed `quota_4k` field and lock state are deliberately excluded.
 pub open spec fn process_quota_4k_framed_fields_unchanged(
@@ -117,8 +116,7 @@ pub proof fn lemma_no_change_imply_process_pages_wf_forall()
                 process_pages_wf(page_array, post)
             ]
             process_pages_wf(page_array, pre)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> process_pages_wf(page_array, post),
+            && post.dom() == pre.dom() ==> process_pages_wf(page_array, post),
 {
     reveal(process_pages_wf);
 }
@@ -175,8 +173,17 @@ pub proof fn lemma_no_change_imply_allocator_free_page_ptrs_wf_forall()
                 allocator_free_page_ptrs_wf(post)
             ]
             allocator_free_page_ptrs_wf(pre)
-            && allocator_quota_value_framed_fields_unchanged(pre, post)
-            ==> allocator_free_page_ptrs_wf(post),
+            && post.dom() == pre.dom()
+            && (forall|a_ptr: RwLockPageAllocatorPtr|
+                #![trigger pre.spec_index(a_ptr)]
+                #![trigger post.spec_index(a_ptr)]
+                pre.dom().contains(a_ptr) ==> {
+                    &&& post.spec_index(a_ptr).global_pool.view() == pre.spec_index(a_ptr).global_pool.view()
+                    &&& forall|cpu_id: CpuId|
+                        #![trigger pre.spec_index(a_ptr).cpu_caches.spec_index(cpu_id).view().view()]
+                        #![trigger post.spec_index(a_ptr).cpu_caches.spec_index(cpu_id).view().view()]
+                        index_valid(NUM_CPUS, cpu_id) ==> post.spec_index(a_ptr).cpu_caches.spec_index(cpu_id).view().view() == pre.spec_index(a_ptr).cpu_caches.spec_index(cpu_id).view().view()
+                }) ==> allocator_free_page_ptrs_wf(post),
 {
     reveal(allocator_free_page_ptrs_wf);
 }
@@ -191,8 +198,15 @@ pub proof fn lemma_no_change_imply_process_pagetable_match_forall()
                 process_pagetable_match(post, pagetable_map)
             ]
             process_pagetable_match(pre, pagetable_map)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> process_pagetable_match(post, pagetable_map),
+            && post.dom() == pre.dom()
+            && (forall|p_ptr: RwLockProcessPtr|
+                #![trigger pre.spec_index(p_ptr)]
+                #![trigger post.spec_index(p_ptr)]
+                pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
+                    &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
+                    &&& post.spec_index(p_ptr).view().pcid == pre.spec_index(p_ptr).view().pcid
+                }) ==> process_pagetable_match(post, pagetable_map),
 {
     reveal(process_pagetable_match);
 }
@@ -207,8 +221,13 @@ pub proof fn lemma_no_change_imply_process_iommu_table_match_forall()
                 process_iommu_table_match(post, iommu_table_map)
             ]
             process_iommu_table_match(pre, iommu_table_map)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> process_iommu_table_match(post, iommu_table_map),
+            && post.dom() == pre.dom()
+            && (forall|p_ptr: RwLockProcessPtr|
+                #![trigger pre.spec_index(p_ptr)]
+                #![trigger post.spec_index(p_ptr)]
+                pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view().iommu_table == pre.spec_index(p_ptr).view().iommu_table
+                }) ==> process_iommu_table_match(post, iommu_table_map),
 {
     reveal(process_iommu_table_match);
 }
@@ -274,8 +293,13 @@ pub proof fn lemma_no_change_imply_container_process_wf_forall()
                 container_process_wf(container_map, post)
             ]
             container_process_wf(container_map, pre)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> container_process_wf(container_map, post),
+            && post.dom() == pre.dom()
+            && (forall|p_ptr: RwLockProcessPtr|
+                #![trigger pre.spec_index(p_ptr)]
+                #![trigger post.spec_index(p_ptr)]
+                pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
+                }) ==> container_process_wf(container_map, post),
 {
     reveal(container_process_wf);
 }
@@ -365,8 +389,15 @@ pub proof fn lemma_no_change_imply_process_cpu_wf_forall()
                 process_cpu_wf(post, cpu_array)
             ]
             process_cpu_wf(pre, cpu_array)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> process_cpu_wf(post, cpu_array),
+            && post.dom() == pre.dom()
+            && (forall|p_ptr: RwLockProcessPtr|
+                #![trigger pre.spec_index(p_ptr)]
+                #![trigger post.spec_index(p_ptr)]
+                pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
+                    &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
+                    &&& post.spec_index(p_ptr).view().pcid == pre.spec_index(p_ptr).view().pcid
+                }) ==> process_cpu_wf(post, cpu_array),
 {
     reveal(process_cpu_wf);
 }
@@ -382,8 +413,15 @@ pub proof fn lemma_no_change_imply_process_thread_wf_forall()
             ]
             process_thread_wf(pre, thread_map)
             && process_empty_thread_list_wlocked(post)
-            && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> process_thread_wf(post, thread_map),
+            && post.dom() == pre.dom()
+            && (forall|p_ptr: RwLockProcessPtr|
+                #![trigger pre.spec_index(p_ptr)]
+                #![trigger post.spec_index(p_ptr)]
+                pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
+                    &&& post.spec_index(p_ptr).view().owned_threads == pre.spec_index(p_ptr).view().owned_threads
+                    &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
+                }) ==> process_thread_wf(post, thread_map),
 {
     reveal(process_thread_wf);
 }

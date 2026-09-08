@@ -1,11 +1,10 @@
 use super::*;
-use super::allocate_free_4k_impl_basd::allocator_objects_unlocked_except_cache_pool;
+use super::super::allocator_cache_spec::allocator_objects_unlocked_except_cache_pool;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
 
 verus! {
-
     pub(super) fn pop_stage_4k_page(
         krnl: &mut KernelK,
         alloc_ptr_4k: RwLockPageAllocatorPtr,

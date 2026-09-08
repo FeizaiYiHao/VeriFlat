@@ -15,6 +15,13 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
   framing bridges.
 - A direct postcondition may expose an operation's existing narrow guarantee.
   Preconditions stay limited to safety, semantics, and direct callees.
+- Before introducing any framing spec, obtain explicit user approval for that
+  specific spec. Show its proposed name, complete definition, objects and fields
+  preserved, intended use sites, and why direct proof or existing relations are
+  insufficient. Judge by purpose, including framing packaged as `unchanged`,
+  `context`, `requires`, or `ensures`. Reuse, performance, and slow-equation
+  EOF/EOL summaries do not waive approval. Names must identify what is preserved.
+  Permission to retain an existing spec does not authorize a new one.
 - Delete dead private helpers after checking callers. Public syscalls and
   intended public primitives are not dead merely because they lack in-tree
   callers.

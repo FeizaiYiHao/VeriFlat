@@ -18,45 +18,6 @@ pub struct PageMap {
 }
 
 impl PageMap {
-    pub(super) fn init_unpublished(&mut self)
-        requires
-            old(self).ar.wf(),
-            old(self).spec_seq.view().len() == 512,
-        ensures
-            final(self).wf(),
-            forall|i: usize| #![trigger final(self).view().spec_index(i as int).is_empty()]
-                pei_valid(i) ==> final(self).view().spec_index(i as int).is_empty(),
-    {
-        for i in 0..512
-            invariant
-                0 <= i <= 512,
-                self.ar.wf(),
-                self.spec_seq.view().len() == 512,
-                forall|j: int|
-                    #![trigger usize2page_entry(self.ar.view().spec_index(j))]
-                    0 <= j < i ==> (usize2page_entry(self.ar.view().spec_index(j)) =~= self.spec_seq.view().spec_index(j)),
-                forall|j: int|
-                    #![trigger self.ar.view().spec_index(j)]
-                    0 <= j < i ==> (usize2page_entry(self.ar.view().spec_index(j)).is_empty() <==> self.ar.view().spec_index(j) == 0),
-                forall|j: int|
-                    #![trigger self.ar.view().spec_index(j)]
-                    0 <= j < i ==> usize2page_entry(self.ar.view().spec_index(j)).is_empty(),
-                forall|j: int| #![trigger self.view().spec_index(j).is_empty()] 0 <= j < i ==> self.view().spec_index(j).is_empty(),
-                forall|j: int| #![trigger self.spec_seq.view().spec_index(j)] 0 <= j < i ==> self.spec_seq.view().spec_index(j).perm.kernel_present == false,
-        {
-            let ghost_view = Ghost(self.view());
-            self.ar.set(i, 0usize);
-            assert(self.view() == ghost_view);
-            proof {
-                zero_leads_is_empty_page_entry();
-                assert(usize2page_entry(0usize).is_empty());
-                self.spec_seq = Ghost(self.spec_seq.view().update(i as int, usize2page_entry(0usize)));
-            }
-        }
-        assert(forall|j: usize| #![trigger self.view().spec_index(j as int)]
-            pei_valid(j) ==> self.spec_seq.view().spec_index(j as int).perm.kernel_present == false);
-    }
-
     pub open spec fn wf(&self) -> bool {
         &&& self.ar.wf()
         &&& self.spec_seq.view().len() == 512

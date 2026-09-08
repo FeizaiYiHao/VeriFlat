@@ -7,18 +7,10 @@ use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
 use super::syscall_mmap_4k_spec::mmap_4k_syscall_range_mapped;
 
 verus! {
-
     /// Map writable, executable anonymous 4K pages into the running
     /// process. Directory construction is krnl-only; every published leaf
     /// is one user-visible krnl step.
-    pub fn syscall_mmap_4k(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        va: VAddr,
-        range: usize,
-    ) -> (ret: RetValueType)
+    pub fn syscall_mmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
@@ -73,12 +65,9 @@ verus! {
             &&& krnl.prc_mp.dom().contains(cpu.current_process.unwrap())
             &&& krnl.thr_mp.dom().contains(cpu.current_thread.unwrap())
             &&& krnl.ctn_mp.spec_index(cpu.owning_container).view().owned_processes.view().contains(cpu.current_process.unwrap())
-            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view()
-                .owning_proc == cpu.current_process.unwrap()
-            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view()
-                .owning_container == cpu.owning_container
-            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view()
-                .state == (ThreadState::RUNNING { cpu_id })
+            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_proc == cpu.current_process.unwrap()
+            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container
+            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
             &&& mmap_4k_no_page_locks(&*lctx)
         }) by { reveal(container_cpu_wf); reveal(container_process_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(container_thread_wf); };
 
@@ -154,8 +143,7 @@ verus! {
 
         let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
         proof {
-            assert(mmap_4k_held_context(krnl, &*lctx, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, &thread_lock_perm, &pagetable_lock_perm)) by { reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(pagetable_perms_wf); reveal(container_allocator_wf); reveal(process_pagetable_match); };
-            assert(mmap_4k_allocation_ready(krnl, &*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); reveal(page_array_wf); reveal(allocator_perms_wf); };
+            assert(mmap_4k_allocation_ready(&*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); reveal(page_array_wf); reveal(allocator_perms_wf); };
         }
 
         let precheck = mmap_4k_precheck(krnl, &va_range, thread_ptr, pagetable_ptr, Tracked(&*lctx), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
@@ -163,6 +151,7 @@ verus! {
         match precheck {
             Mmap4kPrecheck::Ready => {
                 assert(krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(va_range.start)) by { assert(spec_va2index(va_range.start).0 == spec_v2l4index(va_range.start)) by (bit_vector); };
+                assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr) by { reveal(process_pagetable_match); };
                 mmap_4k_map_leaf_range(krnl, &va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
                 proof {
                     assert(mmap_4k_syscall_range_mapped(krnl.pt_mp.spec_index(pagetable_ptr).view(), va, range)) by { va_range.va_range_lemma(); };
@@ -189,9 +178,7 @@ verus! {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(lctx.no_locks_held()) by {
-                reveal(LocalContext::holds_no_allocator_locks);
-            };
+            assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
             steps.end_kernel_step(&*krnl, &*lctx);
         }

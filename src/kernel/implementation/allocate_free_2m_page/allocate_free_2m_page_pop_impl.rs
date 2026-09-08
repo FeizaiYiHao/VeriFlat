@@ -1,11 +1,10 @@
 use super::*;
-use super::allocate_free_2m_impl_basd::allocator_objects_unlocked_except_cache_pool;
+use super::super::allocator_cache_spec::allocator_objects_unlocked_except_cache_pool;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
 
 verus! {
-
     pub(super) fn pop_stage_2m_page(
         krnl: &mut KernelK,
         alloc_ptr_2m: RwLockPageAllocatorPtr,
@@ -522,7 +521,7 @@ verus! {
                 assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).pcid_allc_mp, krnl.pcid_allc_mp); };
                 assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); };
-                assert(thread_staged_pages_2m_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
+                assert(thread_staged_pages_2m_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_2m_wf); reveal(thread_perms_wf); };
                 assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by {
                     thread_staged_pages_4k_wf_preserved_for_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
                     thread_staged_pages_1g_wf_preserved_for_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
