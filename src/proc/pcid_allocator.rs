@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 use crate::*;
 
 /// PCID allocator payload. Each of the 4096 PCIDs has one machine-word
@@ -20,10 +19,8 @@ impl PcidAllocator {
             ret.inv(),
             ret.owning_container.view() == owning_container,
             ret.container_depth.view() == container_depth,
-            forall|id: Pcid| #![auto] pcid_valid(id) ==> {
-                &&& ret.ref_counters.spec_index(id) == 0
-                &&& ret.id_to_proc.view().spec_index(id as int) == Set::<RwLockProcessPtr>::empty()
-            },
+            ret.id_to_proc.view() == Seq::new(PCID_MAX as nat, |_id: int| Set::<RwLockProcessPtr>::empty()),
+            forall|id: Pcid| #![auto] pcid_valid(id) ==> ret.ref_counters.spec_index(id) == 0,
     {
         Self {
             owning_container: Ghost(owning_container),
@@ -201,8 +198,7 @@ impl LockUserVisibilityTrait for PcidAllocator {
 
 } // verus!
 
-const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<usize>()] =
-    [(); core::mem::size_of::<PcidAllocator>()];
+const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<usize>()] = [(); core::mem::size_of::<PcidAllocator>()];
 const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [();
     (core::mem::size_of::<RwLock<
         PcidAllocator,

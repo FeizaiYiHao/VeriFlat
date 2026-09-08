@@ -8,15 +8,7 @@ use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 
 verus! {
 #[verifier::spinoff_prover]
-pub(super) fn ipc_copy_endpoint_reference(
-    krnl: &mut KernelK,
-    receiver_thread_ptr: RwLockThreadPtr,
-    target_endpoint_index: EndpointIdx,
-    payload_endpoint_ptr: RwLockEndpointPtr,
-    Tracked(lctx): Tracked<&LocalContext>,
-    Tracked(receiver_thread_lock_perm): Tracked<&LockPerm>,
-    Tracked(payload_endpoint_lock_perm): Tracked<&LockPerm>,
-)
+pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_ptr: RwLockThreadPtr, target_endpoint_index: EndpointIdx, payload_endpoint_ptr: RwLockEndpointPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(receiver_thread_lock_perm): Tracked<&LockPerm>, Tracked(payload_endpoint_lock_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         lctx.kernel_view_locking_state() is Acquire,
@@ -49,7 +41,6 @@ pub(super) fn ipc_copy_endpoint_reference(
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),
-        lock_id_set_aligned(lctx),
         final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, receiver_thread_ptr),
         final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, payload_endpoint_ptr),
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).wlocked_by(lctx),
@@ -121,17 +112,15 @@ pub(super) fn ipc_copy_endpoint_reference(
         };
         assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
         assert(krnl.process_management_inv()) by {
-            assert(thread_endpoint_reference_added(old(krnl).thr_mp, krnl.thr_mp, receiver_thread_ptr, payload_endpoint_ptr, target_endpoint_index)) by { thread_endpoint_reference_added_from_single_update(old(krnl).thr_mp, krnl.thr_mp, receiver_thread_ptr, payload_endpoint_ptr, target_endpoint_index); };
-            assert(endpoint_reference_added(old(krnl).ep_mp, krnl.ep_mp, receiver_thread_ptr, payload_endpoint_ptr, target_endpoint_index)) by { endpoint_reference_added_from_single_update(old(krnl).ep_mp, krnl.ep_mp, receiver_thread_ptr, payload_endpoint_ptr, target_endpoint_index); };
-            assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_endpoint_reference_added); reveal(thread_caller_callee_wf); };
-            assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(endpoint_reference_added); reveal(container_endpoint_wf); };
-            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_reference_added); reveal(endpoint_reference_added); reveal(thread_endpoint_ref_counter_wf); };
+            assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
+            assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
+            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
             assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(old(krnl).thr_mp, krnl.thr_mp, old(krnl).ep_mp, krnl.ep_mp); };
-            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_reference_added); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
-            assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(thread_endpoint_reference_added); reveal(container_thread_scheduler_wf); };
-            assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(thread_endpoint_reference_added); reveal(container_thread_wf); };
-            assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(thread_endpoint_reference_added); reveal(process_thread_wf); };
-            assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_endpoint_reference_added); reveal(thread_cpu_wf); };
+            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
+            assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_scheduler_wf); };
+            assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
+            assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_thread_wf); };
+            assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
         };
         assert({
             &&& typed_lock_maps_aligned(krnl, lctx)
@@ -154,9 +143,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
     source_thread_ptr: RwLockThreadPtr,
     source_endpoint_index: EndpointIdx,
     payload_endpoint_ptr: RwLockEndpointPtr,
-    cpu_lock_perm: Tracked<&LockPerm>,
-    process_lock_perm: Tracked<&LockPerm>,
-    current_thread_lock_perm: Tracked<&LockPerm>,
     channel_endpoint_lock_perm: Tracked<LockPerm>,
     peer_thread_lock_perm: Tracked<&LockPerm>,
 )
@@ -173,24 +159,15 @@ pub(super) fn ipc_begin_endpoint_transfer(
         old(krnl).thr_mp.spec_index(source_thread_ptr).view().endpoint_descriptors.view().spec_index(source_endpoint_index as int) == Some(payload_endpoint_ptr),
         old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
-        cpu_lock_perm.view().state() is WriteLock,
-        cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
-        cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).prc_mp.dom().contains(process_ptr),
         old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
         old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
-        process_lock_perm.view().state() is WriteLock,
-        process_lock_perm.view().thread_id() == old(lctx).thread_id(),
-        process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.dom().contains(current_thread_ptr),
         old(krnl).thr_mp.spec_index(current_thread_ptr).wlocked_by(old(lctx)),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-        current_thread_lock_perm.view().state() is WriteLock,
-        current_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
-        current_thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).ep_mp.dom().contains(channel_endpoint_ptr),
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).wlocked_by(old(lctx)),
         channel_endpoint_lock_perm.view().state() is WriteLock,
@@ -231,9 +208,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread(),
-        cpu_lock_perm.view().lock_id() == final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        process_lock_perm.view().lock_id() == final(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-        current_thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         peer_thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.spec_index(source_thread_ptr).view().endpoint_descriptors.wf(),
         final(krnl).thr_mp.spec_index(source_thread_ptr).view().endpoint_descriptors.view().spec_index(source_endpoint_index as int) == Some(payload_endpoint_ptr),
@@ -596,7 +570,7 @@ pub(super) fn ipc_rendezvous_endpoint(
     }
     let payload_endpoint_ptr = source_endpoint_option.unwrap();
 
-    ipc_begin_endpoint_transfer(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, channel_endpoint_ptr, peer_thread_ptr, source_thread_ptr, source_endpoint_index, payload_endpoint_ptr, Tracked(&cpu_lock_perm), Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(channel_endpoint_lock_perm), Tracked(&peer_thread_lock_perm));
+    ipc_begin_endpoint_transfer(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, channel_endpoint_ptr, peer_thread_ptr, source_thread_ptr, source_endpoint_index, payload_endpoint_ptr, Tracked(channel_endpoint_lock_perm), Tracked(&peer_thread_lock_perm));
 
     proof {
         assert({

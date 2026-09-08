@@ -3,7 +3,6 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-
 /// Kernel invariants read thread payloads, not the current thread lock owner.
 pub open spec fn thread_invariant_fields_unchanged(
     pre: ThreadLockedMap,
@@ -87,177 +86,57 @@ pub proof fn thread_lock_op_preserves_invariant_fields(
 {
 }
 
-/// Every non-thread kernel field is framed by a thread lock operation.
-pub open spec fn thread_lock_kernel_context_unchanged(
-    pre: KernelK,
-    post: KernelK,
-) -> bool {
-    &&& post.pt_mp == pre.pt_mp
-    &&& post.it_mp == pre.it_mp
-    &&& post.irt == pre.irt
-    &&& post.pg_arr == pre.pg_arr
-    &&& post.cpu_arr == pre.cpu_arr
-    &&& post.ctn_mp == pre.ctn_mp
-    &&& post.sched_mp == pre.sched_mp
-    &&& post.pcid_allc_mp == pre.pcid_allc_mp
-    &&& post.prc_mp == pre.prc_mp
-    &&& post.ep_mp == pre.ep_mp
-    &&& post.allc_4k_mp == pre.allc_4k_mp
-    &&& post.allc_2m_mp == pre.allc_2m_mp
-    &&& post.allc_1g_mp == pre.allc_1g_mp
-    &&& post.cpu_tlb == pre.cpu_tlb
-    &&& post.iommu_tlb == pre.iommu_tlb
-    &&& post.rt_ctn == pre.rt_ctn
-    &&& post.dflt_pt == pre.dflt_pt
-}
-
 /// Memory preservation needs the source container/thread ownership leaf, not
 /// the unrelated remainder of process-management state.
-pub proof fn thread_no_change_imply_memory_management_inv(
-    pre: KernelK,
-    post: KernelK,
-)
+pub proof fn thread_no_change_imply_memory_management_inv(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
         container_thread_wf(pre.ctn_mp, pre.thr_mp),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
-        thread_lock_kernel_context_unchanged(pre, post),
+        post.pt_mp == pre.pt_mp,
+        post.it_mp == pre.it_mp,
+        post.pg_arr == pre.pg_arr,
+        post.ctn_mp == pre.ctn_mp,
+        post.sched_mp == pre.sched_mp,
+        post.pcid_allc_mp == pre.pcid_allc_mp,
+        post.prc_mp == pre.prc_mp,
+        post.ep_mp == pre.ep_mp,
+        post.allc_4k_mp == pre.allc_4k_mp,
+        post.allc_2m_mp == pre.allc_2m_mp,
+        post.allc_1g_mp == pre.allc_1g_mp,
     ensures
         post.memory_management_inv(),
 {
-    assert(container_process_allocator_quota_4k_wf(
-        post.ctn_mp,
-        post.prc_mp,
-        post.thr_mp,
-        post.allc_4k_mp,
-    )) by {
-        container_process_allocator_quota_4k_wf_preserved_for_thread_fields(
-            post.ctn_mp,
-            post.prc_mp,
-            pre.thr_mp,
-            post.thr_mp,
-            post.allc_4k_mp,
-        );
-    };
-    assert(container_process_allocator_quota_2m_wf(
-        post.ctn_mp,
-        post.prc_mp,
-        post.thr_mp,
-        post.allc_2m_mp,
-    )) by {
-        container_process_allocator_quota_2m_wf_preserved_for_thread_fields(
-            post.ctn_mp,
-            post.prc_mp,
-            pre.thr_mp,
-            post.thr_mp,
-            post.allc_2m_mp,
-        );
-    };
-    assert(container_process_allocator_quota_1g_wf(
-        post.ctn_mp,
-        post.prc_mp,
-        post.thr_mp,
-        post.allc_1g_mp,
-    )) by {
-        container_process_allocator_quota_1g_wf_preserved_for_thread_fields(
-            post.ctn_mp,
-            post.prc_mp,
-            pre.thr_mp,
-            post.thr_mp,
-            post.allc_1g_mp,
-        );
-    };
-    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by {
-        reveal(thread_pages_wf);
-    };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
-        lemma_no_change_imply_thread_staged_pages_wf_forall();
-    };
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by { container_process_allocator_quota_4k_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp); };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { lemma_no_change_imply_thread_staged_pages_wf_forall(); };
 }
 
-pub proof fn thread_no_change_imply_process_management_inv(
-    pre: KernelK,
-    post: KernelK,
-)
+pub proof fn thread_no_change_imply_process_management_inv(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
-        thread_lock_kernel_context_unchanged(pre, post),
+        post.cpu_arr == pre.cpu_arr,
+        post.ctn_mp == pre.ctn_mp,
+        post.sched_mp == pre.sched_mp,
+        post.pcid_allc_mp == pre.pcid_allc_mp,
+        post.prc_mp == pre.prc_mp,
+        post.ep_mp == pre.ep_mp,
+        post.rt_ctn == pre.rt_ctn,
     ensures
         post.process_management_inv(),
 {
-    thread_invariant_fields_unchanged_implies_process_management_fields(
-        pre.thr_mp,
-        post.thr_mp,
-    );
-    assert(thread_caller_callee_wf(post.thr_mp)) by {
-        thread_caller_callee_wf_preserved_for_thread_process_management_fields(
-            pre.thr_mp,
-            post.thr_mp,
-        );
-    };
-    assert(thread_endpoint_ref_counter_wf(
-        post.thr_mp,
-        post.ep_mp,
-    )) by {
-        thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(
-            pre.thr_mp,
-            post.thr_mp,
-            post.ep_mp,
-        );
-    };
-    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by {
-        thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(
-            pre.thr_mp,
-            post.thr_mp,
-            post.ep_mp,
-        );
-    };
-    assert(container_thread_endpoint_wf(
-        post.ctn_mp,
-        post.thr_mp,
-        post.ep_mp,
-    )) by {
-        container_thread_endpoint_wf_preserved_for_thread_process_management_fields(
-            post.ctn_mp,
-            pre.thr_mp,
-            post.thr_mp,
-            post.ep_mp,
-        );
-    };
-    assert(container_thread_scheduler_wf(
-        post.ctn_mp,
-        post.thr_mp,
-        post.sched_mp,
-    )) by {
-        container_thread_scheduler_wf_preserved_for_thread_process_management_fields(
-            post.ctn_mp,
-            pre.thr_mp,
-            post.thr_mp,
-            post.sched_mp,
-        );
-    };
-    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by {
-        container_thread_wf_preserved_for_thread_process_management_fields(
-            post.ctn_mp,
-            pre.thr_mp,
-            post.thr_mp,
-        );
-    };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
-        process_thread_wf_preserved_for_thread_process_management_fields(
-            post.prc_mp,
-            pre.thr_mp,
-            post.thr_mp,
-        );
-    };
-    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by {
-        thread_cpu_wf_preserved_for_thread_process_management_fields(
-            pre.thr_mp,
-            post.thr_mp,
-            post.cpu_arr,
-        );
-    };
+    thread_invariant_fields_unchanged_implies_process_management_fields(pre.thr_mp, post.thr_mp);
+    assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
+    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
+    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.ep_mp); };
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
+    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
+    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
 }
 
 pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(

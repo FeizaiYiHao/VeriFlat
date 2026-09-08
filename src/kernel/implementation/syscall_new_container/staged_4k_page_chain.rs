@@ -3,7 +3,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 pub(super) proof fn page_ptr_sets_disjoint_from_index_disjoint(
     left: Seq<PagePtr>,
     right: Seq<PagePtr>,
@@ -75,8 +74,6 @@ pub(super) fn set_4k_page_staging_next(
 )
     requires
         old(krnl).inv(),
-        lctx.kernel_view_locking_state() is Acquire
-            || lctx.kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), lctx),
         lock_id_set_aligned(lctx),
         page_ptr_valid(page_ptr),
@@ -94,7 +91,6 @@ pub(super) fn set_4k_page_staging_next(
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),
-        lock_id_set_aligned(lctx),
         kernel_k_to_kernel_u(*final(krnl))
             == kernel_k_to_kernel_u(*old(krnl)),
         final(krnl).pg_arr.entries_unchanged_except(
@@ -727,8 +723,7 @@ pub(super) fn cleanup_published_4k_page_chain(
             Tracked(page_lock_perms.tracked_borrow(page_ptr)),
         );
         let ghost krnl_after_clear = *krnl;
-        let tracked page_lock_perm =
-            page_lock_perms.tracked_remove(page_ptr);
+        let tracked page_lock_perm = page_lock_perms.tracked_remove(page_ptr);
         krnl.wunlock_page(
             page_index,
             Tracked(&mut *lctx),
@@ -1521,8 +1516,7 @@ pub(super) fn allocate_staged_4k_page_chain(
                 reveal(allocated_4k_page_lock_perms_wf);
             };
         }
-        let (page_ptr, Tracked(page_lock_perm)) =
-            allocate_free_4k_page(
+        let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(
                 krnl,
                 thread_ptr,
                 container_ptr,

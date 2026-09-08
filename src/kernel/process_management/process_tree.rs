@@ -214,6 +214,7 @@ verus! {
             seq_push_unique_lemma::<RwLockProcessPtr>();
         };
         assert(process_uppertree_seq_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
+            assert(!old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(process_uppertree_seq_wf); reveal(process_perms_wf); };
             seq_push_lemma::<RwLockProcessPtr>();
             seq_push_unique_lemma::<RwLockProcessPtr>();
             reveal(process_uppertree_seq_wf);

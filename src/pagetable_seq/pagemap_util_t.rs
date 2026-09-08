@@ -1,71 +1,11 @@
 use vstd::prelude::*;
 
 verus! {
-
 use crate::*;
 use vstd::simple_pptr::*;
 use super::entry::*;
 use super::pagemap::*;
 use core::mem::MaybeUninit;
-
-fn page_map_set_kernel_entry_range(
-    kernel_entries: &Array<usize, KERNEL_MEM_END_L4INDEX>,
-    page_map_ptr: PageMapPtr,
-    Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
-)
-    requires
-        old(page_map_perm).addr() == page_map_ptr,
-        old(page_map_perm).is_init(),
-        old(page_map_perm).value().wf(),
-        kernel_entries.wf(),
-        kernel_entries.view().len() == KERNEL_MEM_END_L4INDEX,
-    ensures
-        final(page_map_perm).addr() == page_map_ptr,
-        final(page_map_perm).is_init(),
-        final(page_map_perm).value().wf(),
-        forall|i: usize|
-            #![trigger final(page_map_perm).value().spec_index(i)]
-            KERNEL_MEM_END_L4INDEX <= i && pei_valid(i) ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
-        forall|i: usize|
-            #![trigger final(page_map_perm).value().spec_index(i)]
-            0 <= i < KERNEL_MEM_END_L4INDEX ==> final(page_map_perm).value().spec_index(i) =~= usize2page_entry(
-                kernel_entries.view().spec_index(i as int),
-            ),
-{
-    for index in 0..KERNEL_MEM_END_L4INDEX
-        invariant
-            0 <= index <= KERNEL_MEM_END_L4INDEX,
-            kernel_entries.wf(),
-            kernel_entries.view().len() == KERNEL_MEM_END_L4INDEX,
-            page_map_perm.addr() == page_map_ptr,
-            page_map_perm.is_init(),
-            page_map_perm.value().wf(),
-            forall|i: usize|
-                #![trigger page_map_perm.value().spec_index(i)]
-                KERNEL_MEM_END_L4INDEX <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i) =~= old(
-                    page_map_perm,
-                ).value().spec_index(i),
-            forall|i: usize|
-                #![trigger page_map_perm.value().spec_index(i)]
-                0 <= i < index ==> page_map_perm.value().spec_index(i) =~= usize2page_entry(
-                    kernel_entries.view().spec_index(i as int),
-                ),
-    {
-        let v = *kernel_entries.get(index);
-        let value = usize2page_entry(v);
-        // mem_valid(value.addr) holds because usize2pa always masks to a valid address.
-        assert(mem_valid(value.addr)) by {
-            assert((v & 0x0000_ffff_ffff_f000u64 as usize) & (!0x0000_ffff_ffff_f000u64) as usize == 0)
-                by (bit_vector);
-        }
-        page_map_set_raw(
-            page_map_ptr,
-            Tracked(page_map_perm),
-            index,
-            value,
-        );
-    }
-}
 
 /// Raw PageMap mutation for an unpublished page-table page.
 ///
@@ -197,40 +137,7 @@ impl PageTable<PT_TYPE> {
     }
 }
 
-/// The single PageMap write gate for a page-table page that is already published.
-///
-/// Every published PageMap write closes the current kernel atomic section:
-/// the caller supplies kernel `Acquire`, and this helper changes it to `Release`
-/// immediately before the concrete write.  The phase is only the proof model for
-/// abstract kernel/user interleaving and step-ledger discipline. It does *not establish
-/// machine-level PTE-store atomicity or CPU/MMU memory ordering. The concrete
-/// write ultimately reaches the trusted `Array::set`; this layer only models the
-/// abstract state transition.
-///
-/// Nor does this phase contract permit arbitrary PTE replacement. Each PageTable
-/// operation must retain its transition-specific proof: publish only initialized
-/// children or fresh leaves, clear user `present` before invalidation, and remove
-/// the kernel-view entry only after every stale TLB translation is gone.
-/// The PageTable operation containing this write must reach a kernel boundary
-/// before another PageMap write, because subsequent writes require `Acquire`.
-pub open spec fn page_map_write_lctx_ensures(
-    old_lctx: &LocalContext,
-    new_lctx: &LocalContext,
-) -> bool {
-    &&& new_lctx.thread_id() == old_lctx.thread_id()
-    &&& new_lctx.kernel_view_locking_state() is Release
-    &&& new_lctx.lock_id_set() == old_lctx.lock_id_set()
-    &&& typed_lock_maps_unchanged(old_lctx, new_lctx)
-    &&& lock_id_set_aligned(old_lctx) ==> lock_id_set_aligned(new_lctx)
-}
-
-pub(super) fn page_map_set_published(
-    page_map_ptr: PageMapPtr,
-    Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>,
-    index: usize,
-    value: PageEntry,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-)
+pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
     requires
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
@@ -239,7 +146,11 @@ pub(super) fn page_map_set_published(
         mem_valid(value.addr),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
-        page_map_write_lctx_ensures(old(lctx), final(lctx)),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
@@ -250,9 +161,7 @@ pub(super) fn page_map_set_published(
             #![trigger
                 final(page_map_perm).value().spec_index(i),
             ]
-            pei_valid(i) && i != index
-            ==> final(page_map_perm).value().spec_index(i)
-                =~= old(page_map_perm).value().spec_index(i),
+            pei_valid(i) && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
         final(page_map_perm).value().spec_index(index).addr == value.addr,
         final(page_map_perm).value().spec_index(index).perm.present == value.perm.present,
@@ -265,13 +174,7 @@ pub(super) fn page_map_set_published(
     page_map_set_raw(page_map_ptr, Tracked(page_map_perm), index, value);
 }
 
-pub(super) fn page_map_set_published_in_map(
-    page_map_ptr: PageMapPtr,
-    Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<PageMap>>>,
-    index: usize,
-    value: PageEntry,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-)
+pub(super) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<PageMap>>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
     requires
         old(page_map_perms).dom().contains(page_map_ptr),
         old(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,
@@ -281,48 +184,34 @@ pub(super) fn page_map_set_published_in_map(
         mem_valid(value.addr),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
-        page_map_write_lctx_ensures(old(lctx), final(lctx)),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
         final(page_map_perms).dom() == old(page_map_perms).dom(),
         forall|p: PageMapPtr|
             #![trigger final(page_map_perms).spec_index(p)]
-            old(page_map_perms).dom().contains(p) && p != page_map_ptr
-            ==> final(page_map_perms).spec_index(p)
-                == old(page_map_perms).spec_index(p),
+            old(page_map_perms).dom().contains(p) && p != page_map_ptr ==> final(page_map_perms).spec_index(p) == old(page_map_perms).spec_index(p),
         final(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,
         final(page_map_perms).spec_index(page_map_ptr).is_init(),
         final(page_map_perms).spec_index(page_map_ptr).value().wf(),
         forall|i: usize|
             #![trigger final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)]
-            pei_valid(i) && i != index
-            ==> final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)
-                =~= old(page_map_perms).spec_index(page_map_ptr).value().spec_index(i),
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index)
-            =~= value,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).addr
-            == value.addr,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.present
-            == value.perm.present,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.ps
-            == value.perm.ps,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.write
-            == value.perm.write,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.execute_disable
-            == value.perm.execute_disable,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.user
-            == value.perm.user,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.kernel_present
-            == value.perm.kernel_present,
+            pei_valid(i) && i != index ==> final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i) =~= old(page_map_perms).spec_index(page_map_ptr).value().spec_index(i),
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index) =~= value,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).addr == value.addr,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.present == value.perm.present,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.ps == value.perm.ps,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.write == value.perm.write,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.execute_disable == value.perm.execute_disable,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.user == value.perm.user,
+        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.kernel_present == value.perm.kernel_present,
         value.is_empty() ==>
             final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).is_empty(),
 {
     let tracked mut page_map_perm = page_map_perms.tracked_remove(page_map_ptr);
-    page_map_set_published(
-        page_map_ptr,
-        Tracked(&mut page_map_perm),
-        index,
-        value,
-        Tracked(&mut *lctx),
-    );
+    page_map_set_published(page_map_ptr, Tracked(&mut page_map_perm), index, value, Tracked(&mut *lctx));
     proof {
         page_map_perms.tracked_insert(page_map_ptr, page_map_perm);
     }

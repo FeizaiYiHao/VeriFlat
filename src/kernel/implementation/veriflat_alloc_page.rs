@@ -10,3 +10,5 @@ pub mod allocate_free_2m_page;
 verus! {
 global size_of usize == 8;
 }
+
+pub(crate) mod allocator_cache_spec;

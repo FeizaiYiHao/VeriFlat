@@ -7,7 +7,6 @@ use crate::kernel::implementation::lock_owned_2m_page_tails::{
 };
 
 verus! {
-
 pub const STAGED_4K_PAGE_CHAIN_END: PagePtr = usize::MAX;
 
 pub open spec fn staged_4k_page_chain(pages: PageLockedArray, page_ptrs: Seq<PagePtr>) -> bool {
@@ -1577,8 +1576,7 @@ pub fn publish_staged_container_root(
             reveal(PageTable::kernel_entries_wf);
         };
     }
-    let child_depth =
-        krnl.ctn_mp.borrow_rodata(parent_container_ptr).borrow().depth + 1;
+    let child_depth = krnl.ctn_mp.borrow_rodata(parent_container_ptr).borrow().depth + 1;
     let ghost parent_uppers = krnl.ctn_mp.spec_index(parent_container_ptr)
         .view_ghost().uppertree_seq.view();
     let ghost child_uppers = krnl.ctn_mp.spec_index(parent_container_ptr)
@@ -2280,8 +2278,7 @@ pub fn publish_staged_container_root(
         Tracked(funding_page_lock_perms),
     );
 
-    let ghost old_container_page_lock_id =
-        krnl.pg_arr.lock_id_by_index(container_head);
+    let ghost old_container_page_lock_id = krnl.pg_arr.lock_id_by_index(container_head);
     let Tracked(container_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             container_head,
@@ -2304,8 +2301,7 @@ pub fn publish_staged_container_root(
         );
     }
 
-    let ghost old_pcid_allocator_page_lock_id =
-        krnl.pg_arr.lock_id_by_index(pcid_allocator_head);
+    let ghost old_pcid_allocator_page_lock_id = krnl.pg_arr.lock_id_by_index(pcid_allocator_head);
     let Tracked(pcid_allocator_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             pcid_allocator_head,
@@ -2334,51 +2330,23 @@ pub fn publish_staged_container_root(
         funded_global_pool,
         allocator_quota_4k,
     );
-    let allocator_2m_value =
-        PageAllocator::new_empty(child_container_ptr, child_depth);
-    let allocator_1g_value =
-        PageAllocator::new_empty(child_container_ptr, child_depth);
+    let allocator_2m_value = PageAllocator::new_empty(child_container_ptr, child_depth);
+    let allocator_1g_value = PageAllocator::new_empty(child_container_ptr, child_depth);
     let scheduler_value = Scheduler::new_empty(
         child_scheduler_ptr,
         child_container_ptr,
         child_depth,
     );
-    let mut pcid_allocator_value =
-        PcidAllocator::new_empty(child_container_ptr, child_depth);
+    let mut pcid_allocator_value = PcidAllocator::new_empty(child_container_ptr, child_depth);
     proof {
         assert(pcid_valid(root_pcid)) by {
             reveal(pcid_valid);
-        };
-        assert(forall|id: usize|
-            #![trigger pcid_allocator_value.id_to_proc
-                .view().spec_index(id as int).contains(child_process_ptr)]
-            usize_in_range::<PCID_MAX>(id) ==> !pcid_allocator_value
-                .id_to_proc.view().spec_index(id as int)
-                .contains(child_process_ptr)
-        ) by {
-            assert forall|id: usize|
-                #![trigger pcid_allocator_value.id_to_proc
-                    .view().spec_index(id as int).contains(child_process_ptr)]
-                usize_in_range::<PCID_MAX>(id) implies !pcid_allocator_value
-                    .id_to_proc.view().spec_index(id as int)
-                    .contains(child_process_ptr) by {
-                assert(pcid_valid(id));
-                assert(
-                    pcid_allocator_value.id_to_proc.view()
-                        .spec_index(id as int)
-                        == Set::<RwLockProcessPtr>::empty()
-                );
-            };
         };
         assert(
             pcid_allocator_value.process_is_unallocated(child_process_ptr)
         ) by {
             reveal(PcidAllocator::process_is_unallocated);
         };
-        assert(
-            pcid_allocator_value.ref_counters
-                .spec_index(root_pcid) == 0
-        );
     }
     pcid_allocator_value.alloc(root_pcid, child_process_ptr);
 
@@ -2430,8 +2398,7 @@ pub fn publish_staged_container_root(
     );
 
     let pagetable_index = page_ptr2page_index(pagetable_page);
-    let ghost old_pagetable_lock_id =
-        krnl.pg_arr.lock_id_by_index(pagetable_index);
+    let ghost old_pagetable_lock_id = krnl.pg_arr.lock_id_by_index(pagetable_index);
     let Tracked(pagetable_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             pagetable_index,
@@ -2453,8 +2420,7 @@ pub fn publish_staged_container_root(
             krnl.pg_arr.lock_id_by_index(pagetable_index),
         );
     }
-    let Tracked(child_pagetable_lock_perm) =
-        krnl.retype_page_to_pagetable_and_insert(
+    let Tracked(child_pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(
             child_pagetable_ptr,
             pagetable_value,
             Tracked(pagetable_perm),
@@ -2485,8 +2451,7 @@ pub fn publish_staged_container_root(
         subtree_set: Ghost(Set::empty()),
     };
     let process_index = page_ptr2page_index(process_page);
-    let ghost old_process_lock_id =
-        krnl.pg_arr.lock_id_by_index(process_index);
+    let ghost old_process_lock_id = krnl.pg_arr.lock_id_by_index(process_index);
     let Tracked(process_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             process_index,
@@ -2508,8 +2473,7 @@ pub fn publish_staged_container_root(
             krnl.pg_arr.lock_id_by_index(process_index),
         );
     }
-    let Tracked(child_process_lock_perm) =
-        krnl.retype_page_to_process_and_insert(
+    let Tracked(child_process_lock_perm) = krnl.retype_page_to_process_and_insert(
             child_process_ptr,
             process_value,
             process_rodata,
@@ -2519,8 +2483,7 @@ pub fn publish_staged_container_root(
         );
 
     let allocator_4k_index = page_ptr2page_index(allocator_4k_page);
-    let ghost old_allocator_4k_page_lock_id =
-        krnl.pg_arr.lock_id_by_index(allocator_4k_index);
+    let ghost old_allocator_4k_page_lock_id = krnl.pg_arr.lock_id_by_index(allocator_4k_index);
     let Tracked(allocator_4k_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             allocator_4k_index,
@@ -2549,8 +2512,7 @@ pub fn publish_staged_container_root(
     );
 
     let allocator_2m_index = page_ptr2page_index(allocator_2m_page);
-    let ghost old_allocator_2m_page_lock_id =
-        krnl.pg_arr.lock_id_by_index(allocator_2m_index);
+    let ghost old_allocator_2m_page_lock_id = krnl.pg_arr.lock_id_by_index(allocator_2m_index);
     let Tracked(allocator_2m_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             allocator_2m_index,
@@ -2579,8 +2541,7 @@ pub fn publish_staged_container_root(
     );
 
     let allocator_1g_index = page_ptr2page_index(allocator_1g_page);
-    let ghost old_allocator_1g_page_lock_id =
-        krnl.pg_arr.lock_id_by_index(allocator_1g_index);
+    let ghost old_allocator_1g_page_lock_id = krnl.pg_arr.lock_id_by_index(allocator_1g_index);
     let Tracked(allocator_1g_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             allocator_1g_index,
@@ -2609,8 +2570,7 @@ pub fn publish_staged_container_root(
     );
 
     let scheduler_index = page_ptr2page_index(scheduler_page);
-    let ghost old_scheduler_page_lock_id =
-        krnl.pg_arr.lock_id_by_index(scheduler_index);
+    let ghost old_scheduler_page_lock_id = krnl.pg_arr.lock_id_by_index(scheduler_index);
     let Tracked(scheduler_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(
             scheduler_index,
@@ -2632,8 +2592,7 @@ pub fn publish_staged_container_root(
             krnl.pg_arr.lock_id_by_index(scheduler_index),
         );
     }
-    let Tracked(child_scheduler_lock_perm) =
-        krnl.sched_mp.retype_4k_and_insert(
+    let Tracked(child_scheduler_lock_perm) = krnl.sched_mp.retype_4k_and_insert(
             child_scheduler_ptr,
             scheduler_value,
             (),
@@ -2643,8 +2602,7 @@ pub fn publish_staged_container_root(
             Ghost(KernelObjId::Scheduler(child_scheduler_ptr)),
         );
 
-    let Tracked(child_pcid_allocator_lock_perm) =
-        krnl.pcid_allc_mp.retype_2m_and_insert(
+    let Tracked(child_pcid_allocator_lock_perm) = krnl.pcid_allc_mp.retype_2m_and_insert(
             child_pcid_allocator_ptr,
             pcid_allocator_value,
             (),
@@ -2659,8 +2617,7 @@ pub fn publish_staged_container_root(
         child_process_ptr,
         child_depth,
     );
-    container_value.owned_processes =
-        Ghost(Set::empty().insert(child_process_ptr));
+    container_value.owned_processes = Ghost(Set::empty().insert(child_process_ptr));
     container_value.owned_pages = Ghost(moved_pages);
     let container_rodata = ReadOnlyNode::new(
         ContainerRO {
@@ -2680,8 +2637,7 @@ pub fn publish_staged_container_root(
         owned_threads: Ghost(Set::empty()),
         owned_indirect_threads: Ghost(Set::empty()),
     };
-    let Tracked(child_container_lock_perm) =
-        krnl.ctn_mp.retype_2m_and_insert(
+    let Tracked(child_container_lock_perm) = krnl.ctn_mp.retype_2m_and_insert(
             child_container_ptr,
             container_value,
             container_rodata,
@@ -2722,8 +2678,7 @@ pub fn publish_staged_container_root(
             Tracked(&*lctx),
             Tracked(parent_container_lock_perm),
         );
-        parent.owned_pages =
-            Ghost(parent.owned_pages.view().difference(moved_pages));
+        parent.owned_pages = Ghost(parent.owned_pages.view().difference(moved_pages));
     }
     {
         let thread = krnl.thr_mp.borrow_mut_typed(
@@ -2746,8 +2701,7 @@ pub fn publish_staged_container_root(
             ),
         );
         thread.temp_alloc_cache_2m = Ghost(Set::empty());
-        thread.quota_4k =
-            thread.quota_4k - 7 - funding_page_count;
+        thread.quota_4k = thread.quota_4k - 7 - funding_page_count;
         thread.quota_2m = thread.quota_2m - 2;
     }
 
