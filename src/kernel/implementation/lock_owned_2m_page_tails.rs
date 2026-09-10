@@ -448,6 +448,7 @@ pub fn wlock_owned_2m_page_tails(
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -463,6 +464,7 @@ pub fn wlock_owned_2m_page_tails(
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+        final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
         final(krnl).prc_mp == old(krnl).prc_mp,
         final(krnl).thr_mp == old(krnl).thr_mp,
         final(krnl).ep_mp == old(krnl).ep_mp,
@@ -522,6 +524,7 @@ pub fn wlock_owned_2m_page_tails(
             lctx.endpoint_lock_map() == old(lctx).endpoint_lock_map(),
             lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
             lctx.pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+            lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
             lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
             lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -537,6 +540,7 @@ pub fn wlock_owned_2m_page_tails(
             krnl.ctn_mp == old(krnl).ctn_mp,
             krnl.sched_mp == old(krnl).sched_mp,
             krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
+            krnl.cpu_set_mp == old(krnl).cpu_set_mp,
             krnl.prc_mp == old(krnl).prc_mp,
             krnl.thr_mp == old(krnl).thr_mp,
             krnl.ep_mp == old(krnl).ep_mp,
@@ -917,6 +921,7 @@ pub fn wunlock_owned_2m_page_tails(
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map()
             == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map()
             == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map()
@@ -937,6 +942,7 @@ pub fn wunlock_owned_2m_page_tails(
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+        final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
         final(krnl).prc_mp == old(krnl).prc_mp,
         final(krnl).thr_mp == old(krnl).thr_mp,
         final(krnl).ep_mp == old(krnl).ep_mp,
@@ -984,6 +990,7 @@ pub fn wunlock_owned_2m_page_tails(
             lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
             lctx.pcid_allocator_lock_map()
                 == old(lctx).pcid_allocator_lock_map(),
+            lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map()
                 == old(lctx).pagetable_lock_map(),
             lctx.iommu_table_lock_map()
@@ -1004,6 +1011,7 @@ pub fn wunlock_owned_2m_page_tails(
             krnl.ctn_mp == old(krnl).ctn_mp,
             krnl.sched_mp == old(krnl).sched_mp,
             krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
+            krnl.cpu_set_mp == old(krnl).cpu_set_mp,
             krnl.prc_mp == old(krnl).prc_mp,
             krnl.thr_mp == old(krnl).thr_mp,
             krnl.ep_mp == old(krnl).ep_mp,

@@ -12,7 +12,6 @@ pub struct Container {
 
     pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed
     pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
-    pub owned_cpus: ArraySet<NUM_CPUS>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
 }
@@ -21,6 +20,7 @@ pub struct ContainerRO {
     pub depth: usize,
     pub scheduler: RwLockSchedulerPtr,
     pub pcid_allocator: RwLockPcidAllocatorPtr,
+    pub cpu_set: RwLockCpuSetPtr,
     pub allocator_ptr_4k: RwLockPageAllocatorPtr,
     pub allocator_ptr_2m: RwLockPageAllocatorPtr,
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
@@ -40,7 +40,6 @@ pub ghost struct ContainerU {
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
     pub root_process: RwLockProcessPtr,
     pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
-    pub owned_cpus: ArraySet<NUM_CPUS>,
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
@@ -48,6 +47,7 @@ pub ghost struct ContainerU {
     pub depth: usize,
     pub scheduler: RwLockSchedulerPtr,
     pub pcid_allocator: RwLockPcidAllocatorPtr,
+    pub cpu_set: RwLockCpuSetPtr,
     pub allocator_ptr_4k: RwLockPageAllocatorPtr,
     pub allocator_ptr_2m: RwLockPageAllocatorPtr,
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
@@ -71,8 +71,6 @@ impl Container{
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
             ret.owned_processes.view() == Set::<RwLockProcessPtr>::empty(),
-            ret.owned_cpus.view() == Set::<CpuId>::empty(),
-            ret.owned_cpus.closed_view() == Set::<CpuId>::empty(),
             ret.owned_endpoints.view() == Set::<RwLockEndpointPtr>::empty(),
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
@@ -81,7 +79,6 @@ impl Container{
             children: LinkedList::new(Some(depth), Some(container_ptr)),
             root_process,
             owned_processes: Ghost(Set::empty()),
-            owned_cpus: ArraySet::new(),
             owned_endpoints: Ghost(Set::empty()),
             owned_pages: Ghost(Set::empty()),
         }
@@ -90,8 +87,6 @@ impl Container{
     pub open spec fn wf(&self) -> bool {
         &&&
         self.children.inv()
-        &&&
-        self.owned_cpus.wf()
         &&&
         (self.owned_processes.view().is_empty() || self.root_process_in_processes())
     }

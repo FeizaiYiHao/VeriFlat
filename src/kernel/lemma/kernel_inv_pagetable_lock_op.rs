@@ -137,6 +137,7 @@ pub proof fn lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_foral
 pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
+            cpu_set_map: CpuSetLockedMap,
             process_map: ProcessLockedMap,
             cpu_array: CpuLockedArray,
             cpu_tlb: CpuTLB,
@@ -144,18 +145,18 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(
             post: PageTableLockedMap|
             #![trigger
                 cpu_dirty_map_wf(
-                    container_map, process_map, cpu_array, cpu_tlb, pre,
+                    container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre,
                 ),
                 cpu_dirty_map_wf(
-                    container_map, process_map, cpu_array, cpu_tlb, post,
+                    container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post,
                 )
             ]
             cpu_dirty_map_wf(
-                container_map, process_map, cpu_array, cpu_tlb, pre,
+                container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre,
             )
             && pagetable_invariant_fields_unchanged(pre, post)
             ==> cpu_dirty_map_wf(
-                container_map, process_map, cpu_array, cpu_tlb, post,
+                container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post,
             ),
 {
     reveal(cpu_dirty_map_contains_pagetable_pcid_match);

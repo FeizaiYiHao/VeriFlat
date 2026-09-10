@@ -14,27 +14,37 @@ impl KernelK {
                 old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
                 wlock_requires(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota, old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).holds_exact_base_locks(
-                    old(lctx).cpu_lock_map().dom(),
-                    set![old(self).allc_4k_mp.spec_index(
+                old(lctx).page_lock_map().dom().is_empty(),
+                old(lctx).container_lock_map().dom() =~= set![old(self).allc_4k_mp.spec_index(
                         alloc_ptr_4k,
                     ).owning_container],
-                    Set::empty(),
-                    Set::empty(),
-                    Set::empty(),
-                ),
+                old(lctx).process_lock_map().dom().is_empty(),
+                old(lctx).thread_lock_map().dom().is_empty(),
+                old(lctx).endpoint_lock_map().dom().is_empty(),
+                old(lctx).scheduler_lock_map().dom().is_empty(),
+                old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+                old(lctx).cpu_set_lock_map().dom().is_empty(),
+                old(lctx).pagetable_lock_map().dom().is_empty(),
+                old(lctx).iommu_table_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
                 !old(lctx).cpu_lock_map().dom().is_empty(),
-                cpus_belong_to_container(
-                    old(self),
-                    old(lctx).cpu_lock_map().dom(),
-                    old(self).allc_4k_mp.spec_index(
+                (forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> ((index_valid(NUM_CPUS, held_cpu_id)) && (old(self).cpu_arr.spec_index(held_cpu_id).view().view().owning_container == old(self).allc_4k_mp.spec_index(
                         alloc_ptr_4k,
-                    ).owning_container,
-                ),
-                cpus_are_online(
-                    old(self),
-                    old(lctx).cpu_lock_map().dom(),
-                ),
+                    ).owning_container))),
+                (forall|held_cpu_id: CpuId|
+                    #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)]
+                    old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> {
+                        &&& index_valid(NUM_CPUS, held_cpu_id)
+                        &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().state is Off)
+                    }),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -52,6 +62,7 @@ impl KernelK {
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -66,7 +77,6 @@ impl KernelK {
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).total_free_pages == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).total_free_pages,
-                allocator_objects_unlocked(old(self).allc_4k_mp, old(lctx).thread_id()) ==> allocator_objects_unlocked_except_quota(final(self).allc_4k_mp, final(lctx).thread_id(), alloc_ptr_4k),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 wlock_ensures(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota, final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota, old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), final(lctx), ret.view()),
@@ -75,7 +85,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by {    reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_allocator_wf); reveal(container_perms_wf); reveal(allocator_perms_wf); reveal(cpus_belong_to_container); reveal(cpus_are_online); };
+                assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by {    reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_allocator_wf); reveal(container_perms_wf); reveal(allocator_perms_wf); };
             }
             let ret = self.allc_4k_mp.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
 
@@ -127,6 +137,7 @@ impl KernelK {
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -137,7 +148,6 @@ impl KernelK {
                 final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
                 !final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.locked_by_thread(final(lctx).thread_id()),
-                allocator_objects_unlocked_except_quota(old(self).allc_4k_mp, old(lctx).thread_id(), alloc_ptr_4k) ==> allocator_objects_unlocked(final(self).allc_4k_mp, final(lctx).thread_id()),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool,
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container == old(self).allc_4k_mp.spec_index(alloc_ptr_4k).owning_container,

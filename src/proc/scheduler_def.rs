@@ -97,6 +97,8 @@ impl Scheduler {
             old(self).queue.length != usize::MAX,
         ensures
             final(self).inv(),
+            final(self).queue.container_depth == old(self).queue.container_depth,
+            final(self).queue.lock_minor() == old(self).queue.lock_minor(),
             final(self).queue.length == old(self).queue.length + 1,
             final(self).queue.view()
                 == old(self).queue.view().push(thread_ptr),

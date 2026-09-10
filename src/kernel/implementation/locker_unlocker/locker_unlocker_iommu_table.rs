@@ -34,6 +34,7 @@ impl KernelK {
             final(self).ctn_mp == old(self).ctn_mp,
             final(self).sched_mp == old(self).sched_mp,
             final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+            final(self).cpu_set_mp == old(self).cpu_set_mp,
             final(self).prc_mp == old(self).prc_mp,
             final(self).thr_mp == old(self).thr_mp,
             final(self).ep_mp == old(self).ep_mp,
@@ -46,13 +47,8 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             wunlock_ensures(old(self).it_mp.spec_index(iommu_table_ptr), final(self).it_mp.spec_index(iommu_table_ptr)),
-            iommu_table_objects_unlocked_except(old(self).it_mp, old(lctx).thread_id(), set![iommu_table_ptr]) ==> iommu_table_objects_unlocked(final(self).it_mp, final(lctx).thread_id()),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).it_mp.lock_id_by_key(iommu_table_ptr), KernelObjId::IommuTable(iommu_table_ptr))),
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::IommuTable(iommu_table_ptr)),
-            forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)]
-                old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
-                ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables.remove(iommu_table_ptr)),
     {
         proof {
             assert(old(self).it_mp.perms_wf() && old(self).it_mp.spec_index(iommu_table_ptr).inv()) by { reveal(iommu_table_perms_wf); };

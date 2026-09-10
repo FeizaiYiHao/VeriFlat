@@ -48,6 +48,7 @@ pub type RwLockEndpointPtr = usize;
 pub type RwLockPageAllocatorPtr = usize;
 pub type RwLockSchedulerPtr = usize;
 pub type RwLockPcidAllocatorPtr = usize;
+pub type RwLockCpuSetPtr = usize;
 
 pub type PciBdf = (usize, usize, usize);
 
@@ -185,6 +186,7 @@ pub enum Allocated4KPageState {
     AsThread,
     AsEndpoint,
     AsScheduler,
+    AsCpuSet,
     AsIommuTableRoot,
     As4KAllocator,
     As2MAllocator,
@@ -318,9 +320,16 @@ pub enum RetValueType {
     ErrorNoPcid,
     // ---- IPC failure modes ----
     ErrorInvalidEndpoint,
+    /// The endpoint has no waiting peer.
+    ErrorIpcNoPeer,
+    /// The endpoint has waiters in the caller's send/receive direction.
+    ErrorIpcSameDirection,
     ErrorIpcTypeMismatch,
     ErrorIpcPeerKilled,
     ErrorIpcSameProcess,
+    ErrorIpcSameContainer,
+    ErrorIpcCpuOwnerMismatch,
+    ErrorIpcCpuNotOff,
     ErrorIpcSourceUnmapped,
     ErrorIpcPageOwnerMismatch,
     ErrorIpcEndpointSourceInvalid,
@@ -426,8 +435,7 @@ impl VaRange4K {
             va < usize::MAX - len * 4096,
         ensures
             ret.wf(),
-            ret.start == va,
-            ret.len == len,
+            ret == (Self { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(va, i as usize))) }),
     {
         proof {
             va_range_lemma();

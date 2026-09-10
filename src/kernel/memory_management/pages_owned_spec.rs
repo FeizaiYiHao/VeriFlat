@@ -62,7 +62,7 @@ pub open spec fn thread_staged_pages_2m_wf(
         }
     &&&
     forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
-        #![trigger thread_map.dom().contains(p_ptr), page_ptr_valid(page_ptr)]
+        #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
         thread_map.dom().contains(p_ptr)
         && thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
         ==>

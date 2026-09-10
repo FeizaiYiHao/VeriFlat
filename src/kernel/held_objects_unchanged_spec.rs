@@ -55,28 +55,6 @@ pub open spec fn processes_rodata_unchanged(
             ==> pre.spec_index(p).view_rodata() == post.spec_index(p).view_rodata()
 }
 
-/// A held process pins its owning container across an interleaving boundary.
-/// This is deliberately narrower than global container-map persistence.
-pub open spec fn held_process_owning_containers_unchanged(
-    pre_processes: ProcessLockedMap,
-    post_processes: ProcessLockedMap,
-    pre_containers: ContainerLockedMap,
-    post_containers: ContainerLockedMap,
-    lctx: &LocalContext,
-) -> bool {
-    forall|p: RwLockProcessPtr|
-        #![trigger lctx.process_lock_map().dom().contains(p)]
-        #![trigger pre_processes.spec_index(p)]
-        #![trigger post_processes.spec_index(p)]
-        lctx.process_lock_map().dom().contains(p) ==> {
-            let c = pre_processes.spec_index(p).view_rodata().view().owning_container;
-            &&& post_processes.dom().contains(p)
-            &&& post_containers.dom().contains(c)
-            &&& post_containers.spec_index(c).view_rodata()
-                == pre_containers.spec_index(c).view_rodata()
-        }
-}
-
 pub open spec fn held_threads_unchanged(
     pre: ThreadLockedMap,
     post: ThreadLockedMap,
@@ -148,6 +126,21 @@ pub open spec fn held_pcid_allocators_unchanged(
         #![trigger pre.spec_index(p)]
         #![trigger post.spec_index(p)]
         lctx.pcid_allocator_lock_map().dom().contains(p) ==> {
+            &&& post.dom().contains(p)
+            &&& post.spec_index(p) == pre.spec_index(p)
+        }
+}
+
+pub open spec fn held_cpu_sets_unchanged(
+    pre: CpuSetLockedMap,
+    post: CpuSetLockedMap,
+    lctx: &LocalContext,
+) -> bool {
+    forall|p: RwLockCpuSetPtr|
+        #![trigger lctx.cpu_set_lock_map().dom().contains(p)]
+        #![trigger pre.spec_index(p)]
+        #![trigger post.spec_index(p)]
+        lctx.cpu_set_lock_map().dom().contains(p) ==> {
             &&& post.dom().contains(p)
             &&& post.spec_index(p) == pre.spec_index(p)
         }
@@ -562,6 +555,7 @@ pub broadcast proof fn held_kernel_objects_unchanged_reflexive(
         held_endpoints_unchanged(k.ep_mp, k.ep_mp, lctx),
         held_schedulers_unchanged(k.sched_mp, k.sched_mp, lctx),
         held_pcid_allocators_unchanged(k.pcid_allc_mp, k.pcid_allc_mp, lctx),
+        held_cpu_sets_unchanged(k.cpu_set_mp, k.cpu_set_mp, lctx),
         held_pagetables_unchanged(k.pt_mp, k.pt_mp, lctx),
         held_iommu_tables_unchanged(k.it_mp, k.it_mp, lctx),
         held_pages_unchanged(k.pg_arr, k.pg_arr, lctx),

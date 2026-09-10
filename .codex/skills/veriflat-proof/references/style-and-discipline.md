@@ -23,16 +23,44 @@
   declarations; syscall entries stay in `syscall_xxx.rs`; helpers/specs/proofs
   use sibling files prefixed with the module name.
 
+# Contracts and concrete results
+
+- Describe an operation through its concrete inputs and results. Constructors
+  may expose the exact value they already construct, including a deterministic
+  ghost sequence, so consumers can use that fact across crate boundaries.
+  Framing guarantees still require the specific approval defined in `AGENTS.md`.
+- Keep preconditions limited to safety, semantics, and direct callees. Before
+  removing a parameter, inspect exec uses, proof consumers, and dependencies
+  across kernel-step boundaries; an argument unused by exec may still be needed.
+- Remove duplicate or implied contract clauses and separately approved unused
+  guarantees. Preserve semantic guarantees; absence of an in-tree consumer alone
+  does not authorize weakening a public contract. Avoid repeating immutable
+  input facts in postconditions when the existing interface already supplies them.
+- Invariants and cross-function contracts must not hide objects with `exists`
+  or `choose`, including through a helper spec. Use explicit arguments, return
+  fields, known indices, or deterministic constructions instead.
+- Local `choose`/`exists` used entirely within a proof for an index, counterexample,
+  or induction witness are allowed. Prefer an already available witness to
+  choosing it again; do not remove useful local choices merely to reach zero.
+
 # Proof discipline
 
-- No bare `assert(condition);`, empty `by {}`, proof workaround
-  `assume(...)`, or `assume(false)`. Do not add `#[verifier::external_body]`
+- No bare `assert(condition);` or empty `by {}`. Do not leave `assume(...)`,
+  `assume(false)`, or `admit()` in delivered proof code. Temporary diagnostic
+  cutoffs require the explicit authorization and immediate restoration described
+  in [proof-debugging.md](proof-debugging.md).
+- Do not add `#[verifier::external_body]`
   outside the explicitly approved page-retype TCB boundary:
   `retype_4k_page_perm_to_allocator` and
   `retype_page_perm_2m_to_rwlock`. Keep those primitives limited to consuming
   an owned page permission and constructing the corresponding kernel object;
   new variants or callers require explicit authorization. Authorized temporary
   diagnostics must be removed immediately.
+- Treat existing `external_body` contracts, mathematical axioms, and permission
+  construction with `Tracked::assume_new()` as trust boundaries. Do not replace
+  a failed proof with these mechanisms or `assume_specification`. Changes to
+  established TCB contracts or additional trusted construction paths require
+  specific user authorization; zero explicit assumptions does not mean zero trust.
 - Scope each opaque reveal to the assertion that consumes it. Do not
   redundantly reveal a non-opaque open spec. An EOF S may be opaque-open and
   revealed once at its producer and once per closure VC when fail-on-delete

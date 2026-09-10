@@ -23,6 +23,21 @@
 - Treat >50 seconds as suspicious. Performance reports include Rust, VIR,
   verification, SMT, wall, and rlimit under identical cache/thread scope.
   Rlimit alone does not determine proof speed.
+- For comparisons, freeze the source versions and keep the binary, arguments,
+  threads, source path, and artifact reuse equivalent; disclose unavoidable
+  differences. Interleave baseline/candidate runs, retain every sample, and avoid
+  concurrent heavy verification. Report observed variation and repeat as needed
+  before treating a slowdown or speedup as reproducible.
+- Label function-body SMT, independently verified callees, package wall, and
+  whole-workspace/monolith wall separately. A call-chain cost must include its
+  constituent obligations, with shared callees counted once. Sum all independent
+  entries for a function when aggregating profiles. Parallel SMT times are not
+  wall time, and a local rlimit reduction is not evidence of whole-build speedup.
+- There is no automatic wall-time regression allowance. First adapt the proof
+  and repeat the comparison. If a slowdown persists beyond observed variation,
+  present the concrete simplification and measurements for a user decision.
+  When measurements remain noisy, report that uncertainty rather than claiming
+  the regression is resolved. Historical per-batch tolerances are not defaults.
 - Preserve the permanent build architecture and do not hand off new warnings.
 - Before handoff run `git diff --check` and a style audit only on files changed
   in this session. Check bare/empty asserts, `assert forall`, loose reveals,

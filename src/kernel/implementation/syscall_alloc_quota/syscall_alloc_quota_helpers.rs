@@ -73,7 +73,26 @@ verus! {
             old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
             old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
-            old(lctx).holds_exact_base_and_4k_quota_locks(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k]),
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+            old(lctx).container_lock_map().dom() =~= set![container_ptr],
+            old(lctx).process_lock_map().dom() =~= set![process_ptr],
+            old(lctx).thread_lock_map().dom().is_empty(),
+            old(lctx).endpoint_lock_map().dom().is_empty(),
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).iommu_table_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_4k_lock_map().dom() =~= set![alloc_ptr_4k],
+            old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             alloc_amount <= usize::MAX - old(krnl).prc_mp.spec_index(process_ptr).view().quota_4k,
@@ -89,6 +108,7 @@ verus! {
             final(krnl).pg_arr        == old(krnl).pg_arr,
             final(krnl).sched_mp     == old(krnl).sched_mp,
             final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
             final(krnl).thr_mp        == old(krnl).thr_mp,
             final(krnl).ep_mp      == old(krnl).ep_mp,
             final(krnl).allc_2m_mp  == old(krnl).allc_2m_mp,
@@ -171,7 +191,7 @@ verus! {
                 assert(process_empty_thread_list_wlocked(krnl.prc_mp)) by { reveal(process_empty_thread_list_wlocked); reveal(process_thread_wf); };
                 assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { lemma_no_change_imply_process_thread_wf_forall(); };
             };
-            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
+            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
             assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
             assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
             assert(iommu_tlb_wf_spec(krnl.iommu_tlb, &krnl.irt, krnl.prc_mp, krnl.it_mp)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };

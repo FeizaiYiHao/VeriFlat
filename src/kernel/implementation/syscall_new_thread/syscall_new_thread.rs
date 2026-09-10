@@ -19,13 +19,13 @@ verus! {
                 old(krnl).cpu_arr.spec_index(cpu_id).view().view().state == CpuState::Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
+            old(krnl).cpu_arr.spec_index(cpu_id).view().locked_by(old(lctx)) == false,
                 {
                     let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0;
                     let container_ptr = old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
                     let scheduler_ptr = old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler;
-                    &&& old(krnl).prc_mp.spec_index(process_ptr).locked_by(old(lctx)) == false
-                    &&& old(krnl).sched_mp.spec_index(scheduler_ptr).locked_by(old(lctx)) == false
+                    old(krnl).prc_mp.spec_index(process_ptr).locked_by(old(lctx)) == false
+                    && old(krnl).sched_mp.spec_index(scheduler_ptr).locked_by(old(lctx)) == false
                 },
                 old(steps).steps.len() == 0,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
@@ -43,6 +43,7 @@ verus! {
                 ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0; &&& final(steps).steps.len() == 1 &&& final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(krnl)) &&& kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, process_ptr) },
                 ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
         {
+            proof { reveal(KernelK::all_objects_unlocked); }
             proof {
                 assert(
                     krnl.cpu_arr.spec_index(cpu_id).view().view().current_process is Some
@@ -57,6 +58,7 @@ verus! {
 
             assert({
                 &&& krnl.prc_mp.dom().contains(process_ptr)
+                &&& krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
                 &&& krnl.prc_mp.view().spec_index(process_ptr).is_init()
                 &&& krnl.prc_mp.view().spec_index(process_ptr).addr() == process_ptr
             }) by { reveal(process_cpu_wf); reveal(process_perms_wf); };
@@ -68,21 +70,7 @@ verus! {
             }) by { reveal(container_process_wf); reveal(container_perms_wf); };
             let scheduler_ptr = krnl.ctn_mp.borrow_rodata(proc_container).borrow().scheduler;
 
-            proof {
-                assert(may_acquire_process_lock(krnl, lctx, process_ptr)) by {
-                    reveal(may_acquire_process_lock);
-                    reveal(cpus_belong_to_container);
-                    reveal(cpus_are_online);
-                    reveal(cpus_run_process_or_none);
-                    reveal(some_cpu_runs_process);
-                    reveal(LocalContext::holds_exact_base_locks);
-                    reveal(cpu_array_wf);
-                    reveal(container_cpu_wf);
-                    reveal(process_cpu_wf);
-                    reveal(container_process_wf);
-                };
-            }
-            let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
+            let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
             if let (false, _) = process_res {
                 release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
                 return RetValueType::ErrorProcessKilled;

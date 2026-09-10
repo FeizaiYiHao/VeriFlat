@@ -60,14 +60,6 @@ pub type ThreadRwLock = RwLock<Thread, (), (), THREAD_HAS_KILL_STATE>;
 pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
-    #[verifier::opaque]
-    pub open spec fn stable_allocation_root_equal(&self, other: &Self) -> bool {
-        &&& self.owning_container == other.owning_container
-        &&& self.upper_container_seq == other.upper_container_seq
-        &&& self.state == other.state
-        &&& self.blocking_endpoint_ptr == other.blocking_endpoint_ptr
-    }
-
     pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
         &&& self.owning_container == other.owning_container
         &&& self.container_depth == other.container_depth
@@ -248,19 +240,6 @@ impl Thread {
             final(self).trap_frame.get_some_0() =~= pt_regs,
             final(self).caller == old(self).caller,
             final(self).callee == old(self).callee,
-            final(self).owning_container == old(self).owning_container,
-            final(self).container_depth == old(self).container_depth,
-            final(self).scheduler_linkedlist_node.addr()
-                == old(self).scheduler_linkedlist_node.addr(),
-            final(self).owning_proc == old(self).owning_proc,
-            final(self).process_depth == old(self).process_depth,
-            final(self).proc_pagetable_ptr == old(self).proc_pagetable_ptr,
-            final(self).proc_linkedlist_node.addr()
-                == old(self).proc_linkedlist_node.addr(),
-            final(self).endpoint_descriptors == old(self).endpoint_descriptors,
-            final(self).upper_container_seq == old(self).upper_container_seq,
-            final(self).endpoint_linkedlist_node.addr()
-                == old(self).endpoint_linkedlist_node.addr(),
             ret.0 == final(self).endpoint_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
@@ -302,6 +281,7 @@ impl Thread {
             final(self).error_code == Some(result),
             final(self).ipc_payload is Empty,
             final(self).trap_frame == old(self).trap_frame,
+            final(self).proc_linkedlist_node == old(self).proc_linkedlist_node,
             final(self).caller == old(self).caller,
             final(self).callee == old(self).callee,
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
@@ -640,6 +620,8 @@ pub enum IPCPayLoad {
     Message { va: VAddr, len: usize },
     Pages { va_range: VaRange4K },
     Endpoint { endpoint_index: EndpointIdx },
+    Cpu { cpu_id: CpuId },
+    ReceiveCpu,
     Pci { bus: u8, dev: u8, fun: u8 },
     // TODO @Xiangdong add this when adding demand paging
     // PageFault { vaddr: VAddr },
@@ -650,6 +632,7 @@ impl IPCPayLoad {
     pub open spec fn wf(&self) -> bool {
         match self {
             IPCPayLoad::Pages { va_range } => va_range.wf(),
+            IPCPayLoad::Cpu { cpu_id } => index_valid(NUM_CPUS, *cpu_id),
             IPCPayLoad::Endpoint { endpoint_index } =>
                 edp_idx_valid(*endpoint_index),
             _ => true,

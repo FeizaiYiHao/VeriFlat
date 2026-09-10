@@ -37,6 +37,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
         post.ctn_mp == pre.ctn_mp,
         post.sched_mp == pre.sched_mp,
         post.pcid_allc_mp == pre.pcid_allc_mp,
+        post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
         post.thr_mp == pre.thr_mp,
         post.ep_mp == pre.ep_mp,
@@ -68,6 +69,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
+    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
@@ -105,6 +107,7 @@ pub proof fn lemma_no_change_imply_memory_management_inv_for_page_fields_forall(
                 &&& post.ctn_mp == pre.ctn_mp
                 &&& post.sched_mp == pre.sched_mp
                 &&& post.pcid_allc_mp == pre.pcid_allc_mp
+                &&& post.cpu_set_mp == pre.cpu_set_mp
                 &&& post.prc_mp == pre.prc_mp
                 &&& post.thr_mp == pre.thr_mp
                 &&& post.ep_mp == pre.ep_mp
@@ -123,6 +126,7 @@ pub proof fn lemma_no_change_imply_memory_management_inv_for_page_fields_forall(
             &&& post.ctn_mp == pre.ctn_mp
             &&& post.sched_mp == pre.sched_mp
             &&& post.pcid_allc_mp == pre.pcid_allc_mp
+            &&& post.cpu_set_mp == pre.cpu_set_mp
             &&& post.prc_mp == pre.prc_mp
             &&& post.thr_mp == pre.thr_mp
             &&& post.ep_mp == pre.ep_mp

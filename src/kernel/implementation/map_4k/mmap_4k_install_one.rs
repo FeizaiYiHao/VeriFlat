@@ -1,8 +1,5 @@
 use vstd::prelude::*;
 use crate::*;
-use super::mmap_4k_context::{
-    mmap_4k_allocation_ready,
-    };
 use super::mmap_4k_create_entry_install::{
     install_staged_4k_page_table_page,
     MissingPageTableLevel,
@@ -61,7 +58,9 @@ verus! {
                     &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None
                 },
             },
-            mmap_4k_allocation_ready(old(lctx)),
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
         ensures
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Acquire,
@@ -88,7 +87,9 @@ verus! {
             pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            mmap_4k_allocation_ready(final(lctx)),
+            final(lctx).page_lock_map().dom().is_empty(),
+            final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
             held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
@@ -97,6 +98,7 @@ verus! {
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -134,7 +136,6 @@ verus! {
         let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
         proof {
             assert(old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            assert(krnl.thr_mp.spec_index(quota_thread_ptr).view().upper_container_seq == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().upper_container_seq && krnl.thr_mp.spec_index(quota_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().blocking_endpoint_ptr) by { reveal(Thread::stable_allocation_root_equal); };
             assert(krnl.prc_mp.dom().contains(process_ptr) && krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr && krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr) by { reveal(LockedMap::typed_lock_map_aligned); reveal(process_thread_wf); reveal(process_pagetable_match); };
         }
         install_staged_4k_page_table_page(krnl, level, page_ptr, quota_thread_ptr, process_ptr, container_ptr, pagetable_ptr, indices, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm));
@@ -162,8 +163,8 @@ verus! {
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
             assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
             assert(krnl.prc_mp.dom().contains(process_ptr) && ((krnl.thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && krnl.thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr) || krnl.prc_mp.spec_index(process_ptr).wlocked_by(lctx))) by { reveal(LockedMap::typed_lock_map_aligned); reveal(process_thread_wf); };
+            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
-            assert(mmap_4k_allocation_ready(lctx)) by { reveal(LocalContext::holds_no_allocator_locks); };
             assert(krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
             if old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) {
                 assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged; };

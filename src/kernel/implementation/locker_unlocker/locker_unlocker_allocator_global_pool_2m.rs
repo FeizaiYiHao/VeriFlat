@@ -12,7 +12,7 @@ impl KernelK {
                 old(self).inv(),
                 old(self).allc_2m_mp.dom().contains(alloc_ptr_2m),
                 old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf(),
-                wlock_requires(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, old(lctx)),
+                !typed_lock_map_contains_mode(old(lctx).allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedLockMode::Write),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).lock_id_acyclic(LockId{ container: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().container_depth(), process: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().process_depth(), major: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().current_lock_major(), minor: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().lock_minor(), }),
                 typed_lock_maps_aligned(old(self), old(lctx)),
@@ -93,6 +93,7 @@ impl KernelK {
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -120,6 +121,7 @@ impl KernelK {
                         &&& old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf()
                     }
                 ) by { reveal(allocator_perms_wf); };
+                assert(wlock_requires(self.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, &*lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             }
             let ret = self.allc_2m_mp.wlock_global_pool(alloc_ptr_2m, Tracked(&mut *lctx), Ghost(PageSize::SZ2m));
 
@@ -231,6 +233,7 @@ impl KernelK {
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -253,7 +256,7 @@ impl KernelK {
                 wunlock_ensures(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m))),
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m)),
-                unlock_ensures(old(lctx), final(lctx), (), lock_perm.view().lock_id(), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m), old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id()),
+                unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m), old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id()),
         {
             proof {
                 assert({

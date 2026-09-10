@@ -43,3 +43,5 @@ pub use iommu_root_table_spec::*;
 
 pub use pages_process_spec::*;
 pub use pages_container_spec::*;
+pub mod pages_cpu_set_spec;
+pub use pages_cpu_set_spec::*;

@@ -50,7 +50,7 @@ use vstd::simple_pptr::*;
                 major: value.current_lock_major(),
                 minor: page_ptr,
             }),
-            lock_ensures(old(lctx), final(lctx), value, LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
                 process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
                 major: value.current_lock_major(),
@@ -95,7 +95,7 @@ use vstd::simple_pptr::*;
                 major: value.current_lock_major(),
                 minor: page_ptr,
             }),
-            lock_ensures(old(lctx), final(lctx), value, LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
                 process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
                 major: value.current_lock_major(),
@@ -141,7 +141,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
-            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(page_ptr), obj_id.view()),
+            lock_ensures(old(lctx), final(lctx), final(self).lock_id_by_key(page_ptr), obj_id.view()),
             lock_id_set_aligned(final(lctx)),
     {
         let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
@@ -185,7 +185,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
-            lock_ensures(old(lctx), final(lctx), value, final(self).lock_id_by_key(page_ptr), obj_id.view()),
+            lock_ensures(old(lctx), final(lctx), final(self).lock_id_by_key(page_ptr), obj_id.view()),
             lock_id_set_aligned(final(lctx)),
     {
         let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
@@ -221,6 +221,7 @@ impl KernelK {
             final(self).ctn_mp == old(self).ctn_mp,
             final(self).sched_mp == old(self).sched_mp,
             final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+            final(self).cpu_set_mp == old(self).cpu_set_mp,
             final(self).prc_mp == old(self).prc_mp,
             final(self).ep_mp == old(self).ep_mp,
             final(self).allc_4k_mp == old(self).allc_4k_mp,

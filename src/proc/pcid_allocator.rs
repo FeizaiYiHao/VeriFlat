@@ -94,10 +94,6 @@ impl PcidAllocator {
         process_ptr: RwLockProcessPtr,
         id: usize,
     ) -> bool {
-        &&& usize_in_range::<PCID_MAX>(id)
-        &&& id != KERNEL_DEFAULT_PCID
-        &&& old.process_is_unallocated(process_ptr)
-        &&& old.ref_counters.spec_index(id) < usize::MAX
         &&& self.owning_container.view() == old.owning_container.view()
         &&& self.container_depth.view() == old.container_depth.view()
         &&& self.ref_counters.view()

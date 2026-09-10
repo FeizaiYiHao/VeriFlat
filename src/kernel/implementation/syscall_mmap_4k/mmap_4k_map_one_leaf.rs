@@ -36,7 +36,9 @@ verus! {
             pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            mmap_4k_allocation_ready(old(lctx)),
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             old(lctx).container_lock_map().dom().contains(container_ptr),
             old(lctx).process_lock_map().dom().contains(process_ptr),
             va_4k_valid(va),
@@ -76,8 +78,9 @@ verus! {
             pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             final(steps).steps.len() == old(steps).steps.len() + 1,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            mmap_4k_allocation_ready(final(lctx)),
-            old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()) ==> final(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
+            final(lctx).page_lock_map().dom().is_empty(),
+            final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -92,6 +95,7 @@ verus! {
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
@@ -135,15 +139,9 @@ verus! {
             };
             assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()) by { set_insert_remove_absent_lemma(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), page_ptr); };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
+            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
-            assert(mmap_4k_allocation_ready(lctx)) by { reveal(LocalContext::holds_no_allocator_locks); };
             assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
-            if old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()) {
-                assert(lctx.object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![process_ptr], set![thread_ptr], Set::empty(), Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty())) by {
-                    reveal(typed_lock_maps_unchanged);
-                    reveal(LocalContext::object_lock_scope);
-                };
-            }
         }
     }
 

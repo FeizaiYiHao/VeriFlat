@@ -171,14 +171,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         let ia = self.addr_list.view().index_of(a);
         let ib = self.addr_list.view().index_of(b);
         // index_of lands in range and recovers the element.
-        assert(0 <= ia < self.length) by {
-            let k = choose|k: int| 0 <= k < self.addr_list.view().len() && self.addr_list.view().spec_index(k) == a;
-            assert(self.addr_list.view().spec_index(k) == a);
-        }
-        assert(0 <= ib < self.length) by {
-            let k = choose|k: int| 0 <= k < self.addr_list.view().len() && self.addr_list.view().spec_index(k) == b;
-            assert(self.addr_list.view().spec_index(k) == b);
-        }
         assert(self.addr_list.view().spec_index(ia) == a);
         assert(self.addr_list.view().spec_index(ib) == b);
         // wf_value_list: view()[i] == perms[addr_list[i]].value()@; wf_map:

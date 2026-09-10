@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 use crate::*;
 
 verus! {
@@ -278,23 +277,10 @@ verus! {
                 broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
             };
             process_insert_child_into_ancestor_subtree_sets(process_map, ancestors.drop_first(), child_ptr);
-            assert(!ancestors.drop_first().to_set().contains(p0)) by {
-                ancestors.drop_first().to_set_ensures();
-                if ancestors.drop_first().contains(p0) {
-                    let k = choose|k: int| 0 <= k < ancestors.drop_first().len() && ancestors.drop_first().spec_index(k) == p0;
-                }
-            };
-            assert_sets_equal!(ancestors.to_set() == ancestors.drop_first().to_set().insert(p0), p => {
-                ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures();
-                if ancestors.contains(p) && p != p0 {
-                    let i = choose|i: int| 0 <= i < ancestors.len() && ancestors.spec_index(i) == p;
-                    assert(i > 0 && ancestors.drop_first().spec_index(i - 1) == p) by { ancestors.to_set_ensures(); };
-                }
-                if ancestors.drop_first().contains(p) {
-                    let i = choose|i: int| 0 <= i < ancestors.drop_first().len() && ancestors.drop_first().spec_index(i) == p;
-                    assert(ancestors.spec_index(i + 1) == p) by { ancestors.drop_first().to_set_ensures(); };
-                }
-            });
+            assert({
+                &&& !ancestors.drop_first().to_set().contains(p0)
+                &&& ancestors.to_set() =~= ancestors.drop_first().to_set().insert(p0)
+            }) by { broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
         }
     }
 

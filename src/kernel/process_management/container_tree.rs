@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::assert_sets_equal;
 use crate::*;
 use vstd::simple_pptr::PointsTo;
 
@@ -197,8 +196,6 @@ verus! {
         &&& container_tree_wf(root_container, old_container_perms)
         &&& old_container_perms.dom().contains(parent_ptr)
         &&& !old_container_perms.dom().contains(child_ptr)
-        &&& child_ptr != root_container
-        &&& child_ptr != parent_ptr
         &&& old_container_perms.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX
         &&& new_container_perms.dom() == old_container_perms.dom().insert(child_ptr)
         &&& new_container_perms.spec_index(child_ptr).view_rodata().view().parent == Some(parent_ptr)
@@ -226,11 +223,6 @@ verus! {
             #![trigger old_container_perms.dom().contains(c_ptr)]
             old_container_perms.dom().contains(c_ptr) && !new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(c_ptr) ==>
                 new_container_perms.spec_index(c_ptr).view_ghost().subtree_set == old_container_perms.spec_index(c_ptr).view_ghost().subtree_set
-        &&& forall|c_ptr: RwLockContainerPtr|
-            #![trigger old_container_perms.dom().contains(c_ptr)]
-            old_container_perms.dom().contains(c_ptr) ==>
-                old_container_perms.spec_index(c_ptr).view_ghost().subtree_set.view()
-                    .subset_of(new_container_perms.spec_index(c_ptr).view_ghost().subtree_set.view())
         &&& new_container_perms.spec_index(parent_ptr).view().children.view() == old_container_perms.spec_index(parent_ptr).view().children.view().push(child_ptr)
         &&& new_container_perms.spec_index(parent_ptr).view().children.map().dom().contains(new_container_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr())
         &&& new_container_perms.spec_index(parent_ptr).view().children.map().spec_index(new_container_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr()) == child_ptr
@@ -375,23 +367,10 @@ verus! {
                 broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
             };
             container_insert_child_into_ancestor_subtree_sets(container_map, ancestors.drop_first(), child_ptr);
-            assert(!ancestors.drop_first().to_set().contains(c0)) by {
-                ancestors.drop_first().to_set_ensures();
-                if ancestors.drop_first().contains(c0) {
-                    let k = choose|k: int| 0 <= k < ancestors.drop_first().len() && ancestors.drop_first().spec_index(k) == c0;
-                }
-            };
-            assert_sets_equal!(ancestors.to_set() == ancestors.drop_first().to_set().insert(c0), c => {
-                ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures();
-                if ancestors.contains(c) && c != c0 {
-                    let i = choose|i: int| 0 <= i < ancestors.len() && ancestors.spec_index(i) == c;
-                    assert(i > 0 && ancestors.drop_first().spec_index(i - 1) == c) by { ancestors.to_set_ensures(); };
-                }
-                if ancestors.drop_first().contains(c) {
-                    let i = choose|i: int| 0 <= i < ancestors.drop_first().len() && ancestors.drop_first().spec_index(i) == c;
-                    assert(ancestors.spec_index(i + 1) == c) by { ancestors.drop_first().to_set_ensures(); };
-                }
-            });
+            assert({
+                &&& !ancestors.drop_first().to_set().contains(c0)
+                &&& ancestors.to_set() =~= ancestors.drop_first().to_set().insert(c0)
+            }) by { broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
         }
     }
 

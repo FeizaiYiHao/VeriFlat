@@ -381,7 +381,7 @@ NO_KILL_STATE>{
                 major: old(self).spec_index(key).view().current_lock_major(),
                 minor: key,
             }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).spec_index(key).view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(self).spec_index(key).container_depth(),
                 process: old(self).spec_index(key).process_depth(),
                 major: old(self).spec_index(key).view().current_lock_major(),
@@ -423,8 +423,6 @@ NO_KILL_STATE>>::from_usize(key),
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).spec_index(key).view(),
-                lock_perm.view().lock_id(),
                 obj_id.view(),
                 old(self).lock_id_by_key(key),
             ),
@@ -482,8 +480,7 @@ HAS_KILL_STATE>{
                 &&&
                 wlock_ensures(old(self).spec_index(key), final(self).spec_index(key), old(self).lock_id_by_key(key), final(lctx), ret.1.unwrap().view())
                 &&&
-                lock_ensures(old(lctx), final(lctx),
-                    old(self).spec_index(key).view(), old(self).lock_id_by_key(key),
+                lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_key(key),
                     obj_id.view())
             },
     {
@@ -535,8 +532,6 @@ HAS_KILL_STATE>{
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).spec_index(key).view(),
-                lock_perm.view().lock_id(),
                 obj_id.view(),
                 old(self).lock_id_by_key(key),
             ),
@@ -547,21 +542,6 @@ HAS_KILL_STATE>{
             self.map.borrow_mut().tracked_insert(key, perm);
         }
         return ret;
-    }
-}
-
-impl<T:LockInvTrait + LockRecursivelyLockedTrait, ROT, GhostT, const HAS_KILL_STATE: bool> Step for LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE>{
-    open spec fn random_step_spec(self, old:&Self, lctx: &LocalContext) -> bool{
-        &&&
-        forall|k:usize|
-            #![auto]
-            old.dom().contains(k) && old.spec_index(k).partial_locked_by(lctx)
-            ==>
-            self.dom().contains(k) && self.spec_index(k) =~= old.spec_index(k)
-    }
-    proof fn random_step(&mut self, lctx: &LocalContext)
-    {
-        admit()
     }
 }
 

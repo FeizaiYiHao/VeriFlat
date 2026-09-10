@@ -21,8 +21,8 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
-        old(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
-        old(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
+        old(lctx).thread_lock_map().dom() =~= set![source_thread, target_thread],
+        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable],
         old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         source_pagetable != target_pagetable,
         old(krnl).thr_mp.dom().contains(source_thread),
@@ -85,7 +85,26 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).ep_mp.spec_index(held_endpoint).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(held_endpoint).view().queue.view().spec_index(0) == peer_thread_ptr,
-        old(lctx).object_lock_scope(Set::empty(), set![cpu_id], Set::empty(), set![held_process], set![current_thread_ptr, peer_thread_ptr], set![held_endpoint], Set::empty(), Set::empty(), set![source_pagetable, target_pagetable], Set::empty()),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom().is_empty(),
+        old(lctx).process_lock_map().dom() =~= set![held_process],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![held_endpoint],
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable],
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         (source_thread == current_thread_ptr && target_thread == peer_thread_ptr) || (source_thread == peer_thread_ptr && target_thread == current_thread_ptr),
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         source_range.wf(),
@@ -95,7 +114,9 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         source_range.len <= usize::MAX / 3usize,
         old(krnl).thr_mp.spec_index(target_thread).view().owning_proc == target_process,
         old(krnl).thr_mp.spec_index(source_thread).view().owning_container == source_container,
-        mmap_4k_allocation_ready(old(lctx)),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -155,8 +176,28 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         source_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
         target_pagetable_lock_perm.thread_id() == final(lctx).thread_id(),
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        final(lctx).object_lock_scope(Set::empty(), set![cpu_id], Set::empty(), set![held_process], set![current_thread_ptr, peer_thread_ptr], set![held_endpoint], Set::empty(), Set::empty(), set![source_pagetable, target_pagetable], Set::empty()),
-        mmap_4k_allocation_ready(final(lctx)),
+        final(lctx).page_lock_map().dom().is_empty(),
+        final(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        final(lctx).container_lock_map().dom().is_empty(),
+        final(lctx).process_lock_map().dom() =~= set![held_process],
+        final(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        final(lctx).endpoint_lock_map().dom() =~= set![held_endpoint],
+        final(lctx).scheduler_lock_map().dom().is_empty(),
+        final(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        final(lctx).cpu_set_lock_map().dom().is_empty(),
+        final(lctx).pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable],
+        final(lctx).iommu_table_lock_map().dom().is_empty(),
+        final(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        final(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        final(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        final(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        final(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        final(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        final(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        final(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        final(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
 {
     let source_start_indices = va2index(source_range.start);
     proof {
@@ -167,13 +208,6 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
             &&& krnl.thr_mp.perms_wf()
             &&& krnl.thr_mp.spec_index(target_thread).inv()
         }) by { reveal(pagetable_perms_wf); reveal(thread_perms_wf); };
-        assert({
-            &&& lctx.cpu_lock_map().dom().contains(cpu_id)
-            &&& lctx.process_lock_map().dom().contains(held_process)
-            &&& lctx.thread_lock_map().dom().contains(current_thread_ptr)
-            &&& lctx.thread_lock_map().dom().contains(peer_thread_ptr)
-            &&& lctx.endpoint_lock_map().dom().contains(held_endpoint)
-        }) by { reveal(LocalContext::object_lock_scope); };
     }
     let source_pt = krnl.pt_mp.borrow(source_pagetable, Tracked(source_pagetable_lock_perm));
     if source_start_indices.0 < source_pt.kernel_l4_end {
@@ -239,10 +273,6 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         share_mapping_4k_source_owner_precheck(krnl, source_range, source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm))
     };
     proof {
-        assert(lctx.object_lock_scope(Set::empty(), set![cpu_id], Set::empty(), set![held_process], set![current_thread_ptr, peer_thread_ptr], set![held_endpoint], Set::empty(), Set::empty(), set![source_pagetable, target_pagetable], Set::empty())) by {
-            reveal(typed_lock_maps_unchanged);
-            reveal(LocalContext::object_lock_scope);
-        };
         assert({
             &&& held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx))
             &&& held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx))
@@ -265,12 +295,6 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { reveal(container_allocator_wf); };
     }
     share_mapping_4k_build_and_share(krnl, source_range, target_range, target_allocator, source_thread, target_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
-    proof {
-        assert(lctx.object_lock_scope(Set::empty(), set![cpu_id], Set::empty(), set![held_process], set![current_thread_ptr, peer_thread_ptr], set![held_endpoint], Set::empty(), Set::empty(), set![source_pagetable, target_pagetable], Set::empty())) by {
-            reveal(typed_lock_maps_unchanged);
-            reveal(LocalContext::object_lock_scope);
-        };
-    }
     IpcPagesMapping::Ready
 }
 
@@ -324,7 +348,26 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
-        old(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![endpoint_ptr]),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom().is_empty(),
+        old(lctx).process_lock_map().dom() =~= set![process_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         source_range.wf(),
         target_range.wf(),
@@ -414,8 +457,6 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
                 &&& !krnl.pt_mp.spec_index(source_pagetable).locked_by_thread(lctx.thread_id())
                 &&& !krnl.pt_mp.spec_index(target_pagetable).locked_by_thread(lctx.thread_id())
             }) by {
-                reveal(LocalContext::holds_exact_base_locks);
-                reveal(LocalContext::object_lock_scope);
                 reveal(typed_lock_maps_aligned);
                 reveal(LockedMap::typed_lock_map_aligned);
             };
@@ -427,15 +468,6 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
 
         let (Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm)) = krnl.wlock_pagetable_pair(source_pagetable, target_pagetable, Tracked(&mut *lctx));
         proof {
-            assert({
-                &&& lctx.page_lock_map().dom().is_empty()
-                &&& lctx.thread_lock_map().dom() == set![source_thread, target_thread]
-                &&& lctx.pagetable_lock_map().dom() == set![source_pagetable, target_pagetable]
-                &&& lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)
-            }) by {
-                reveal(LocalContext::holds_exact_base_locks);
-                reveal(LocalContext::object_lock_scope);
-            };
             assert({
                 &&& krnl.thr_mp.dom().contains(source_thread)
                 &&& krnl.thr_mp.dom().contains(target_thread)
@@ -481,23 +513,12 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
                 reveal(process_thread_wf);
                 reveal(process_pagetable_match);
                 reveal(pagetable_perms_wf);
-                reveal(LocalContext::holds_exact_base_locks);
-                reveal(LocalContext::object_lock_scope);
                 reveal(typed_lock_maps_aligned);
                 reveal(LockedMap::typed_lock_map_aligned);
             };
-            assert(mmap_4k_allocation_ready(&*lctx)) by {
-                reveal(mmap_4k_allocation_ready);
-                reveal(mmap_4k_no_page_locks);
-                reveal(LocalContext::holds_no_allocator_locks);
-                reveal(LocalContext::holds_exact_base_locks);
-                reveal(LocalContext::object_lock_scope);
-                reveal(typed_lock_maps_aligned);
-                reveal(LockedArray::typed_lock_map_aligned);
-                reveal(UnLockedMap::typed_quota_lock_map_aligned);
-                reveal(UnLockedMap::typed_cache_lock_map_aligned);
-                reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-            };
+        }
+        proof {
+            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
         }
         let pages_result = ipc_share_pages_locked(
             krnl, source_range, target_range, source_thread, target_thread, target_process,

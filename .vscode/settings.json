@@ -2,5 +2,6 @@
     "chat.editing.autoAccept": true,
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 1000,
-    "task.autoDetect": "on"
+    "task.autoDetect": "on",
+    "remote.autoForwardPortsFallback": 0
 }

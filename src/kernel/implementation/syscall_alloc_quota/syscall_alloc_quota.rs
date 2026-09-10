@@ -36,6 +36,7 @@ verus! {
                         &&& kernel_u_only_process_quota_4k_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, process_ptr, alloc_amount as int) 
                     },
         {
+            proof { reveal(KernelK::all_objects_unlocked); }
             assert(
                 {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container)
                     &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container).view().owned_processes.view()
@@ -83,35 +84,22 @@ verus! {
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
                     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
+                    assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
                     steps.end_kernel_step(&*krnl, &*lctx);
                 }
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
 
-            assert(lctx.holds_exact_base_and_4k_quota_locks(set![cpu_id], set![container_ptr], Set::empty(), Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {    broadcast use vstd::map::lemma_map_insert_domain; };
-            assert(may_acquire_process_lock(
-                krnl,
-                lctx,
-                process_ptr,
-            )) by {
-                reveal(may_acquire_process_lock);
-                reveal(cpus_belong_to_container);
-                reveal(cpus_are_online);
-                reveal(cpus_run_process_or_none);
-                reveal(some_cpu_runs_process);
-                reveal(LocalContext::holds_exact_base_and_4k_quota_locks);
-                reveal(cpu_array_wf);
-                reveal(container_cpu_wf);
-                reveal(process_cpu_wf);
-                reveal(container_process_wf);
-            };
-            let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(lctx));
+
+            assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr) by { reveal(container_process_wf); };
+            let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
             if let (false, _) = process_res {
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
                     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
+                    assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
                     steps.end_kernel_step(&*krnl, &*lctx);
                 }
                 return RetValueType::ErrorProcessKilled;
@@ -129,6 +117,7 @@ verus! {
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
                     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
+                    assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
                     steps.end_kernel_step(&*krnl, &*lctx);
                 }
                 return RetValueType::ErrorProcessQuotaOverflow;
@@ -136,9 +125,9 @@ verus! {
 
             proof {
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
-                assert(lctx.holds_exact_base_and_4k_quota_locks(set![cpu_id], set![container_ptr], set![process_ptr], Set::empty(), Set::empty(), set![alloc_ptr_4k])) by {   broadcast use vstd::map::lemma_map_insert_domain; };
             }
             commit_alloc_quota_4k(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
+            assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
             return  RetValueType::Success;
         }
 }

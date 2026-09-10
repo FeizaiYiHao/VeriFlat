@@ -1,5 +1,8 @@
 pub mod syscall_ipc;
 mod syscall_ipc_dispatch;
+mod syscall_ipc_cpu;
+mod syscall_ipc_cpu_spec;
+mod syscall_ipc_cpu_eof;
 mod syscall_ipc_endpoint;
 mod syscall_ipc_pages;
 mod syscall_ipc_queue;

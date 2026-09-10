@@ -35,6 +35,7 @@ verus! {
             !(ret is Success) ==> final(steps).steps.len() == 0,
             ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0; let pagetable_ptr = old(krnl).prc_mp.spec_index(process_ptr).view().pagetable; &&& range > 0 &&& va_4k_valid(va) &&& final(krnl).pt_mp.dom().contains(pagetable_ptr) &&& mmap_4k_syscall_range_mapped(final(krnl).pt_mp.spec_index(pagetable_ptr).view(), va, range) },
     {
+        proof { reveal(KernelK::all_objects_unlocked); }
         if range == 0
             || range > usize::MAX / 4096usize
             || range > usize::MAX / 4usize
@@ -57,18 +58,19 @@ verus! {
         }
         let va_range = VaRange4K::new(va, range);
 
+
         assert({
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view();
             &&& cpu.current_process is Some
             &&& cpu.current_thread is Some
             &&& krnl.ctn_mp.dom().contains(cpu.owning_container)
             &&& krnl.prc_mp.dom().contains(cpu.current_process.unwrap())
+            &&& krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view_rodata().view().owning_container == cpu.owning_container
             &&& krnl.thr_mp.dom().contains(cpu.current_thread.unwrap())
             &&& krnl.ctn_mp.spec_index(cpu.owning_container).view().owned_processes.view().contains(cpu.current_process.unwrap())
             &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_proc == cpu.current_process.unwrap()
             &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container
             &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& mmap_4k_no_page_locks(&*lctx)
         }) by { reveal(container_cpu_wf); reveal(container_process_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(container_thread_wf); };
 
         let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
@@ -87,20 +89,7 @@ verus! {
         }
         let Tracked(container_lock_perm) = container_res.1.unwrap();
 
-        assert(may_acquire_process_lock(krnl, lctx, process_ptr)) by {
-            reveal(may_acquire_process_lock);
-            reveal(cpus_belong_to_container);
-            reveal(cpus_are_online);
-            reveal(cpus_run_process_or_none);
-            reveal(some_cpu_runs_process);
-            reveal(LocalContext::holds_exact_base_locks);
-            reveal(LocalContext::object_lock_scope);
-            reveal(cpu_array_wf);
-            reveal(container_cpu_wf);
-            reveal(process_cpu_wf);
-            reveal(container_process_wf);
-        };
-        let process_res = krnl.wlock_process_unless_killed(process_ptr, Tracked(&mut *lctx));
+        let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
         if let (false, _) = process_res {
             krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -130,6 +119,7 @@ verus! {
         let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
         let thread = krnl.thr_mp.borrow(thread_ptr, Tracked(&thread_lock_perm));
         let pagetable_ptr = thread.proc_pagetable_ptr;
+
         assert({
             &&& krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)
             &&& krnl.pt_mp.dom().contains(pagetable_ptr)
@@ -138,12 +128,12 @@ verus! {
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
             &&& !krnl.pt_mp.spec_index(pagetable_ptr).locked_by_thread(lctx.thread_id())
-            &&& mmap_4k_no_page_locks(&*lctx)
         }) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
 
         let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
+
         proof {
-            assert(mmap_4k_allocation_ready(&*lctx)) by { reveal(LocalContext::holds_no_allocator_locks); reveal(page_array_wf); reveal(allocator_perms_wf); };
+            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
         }
 
         let precheck = mmap_4k_precheck(krnl, &va_range, thread_ptr, pagetable_ptr, Tracked(&*lctx), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));

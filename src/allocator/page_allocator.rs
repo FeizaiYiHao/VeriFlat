@@ -260,7 +260,7 @@ impl PageAllocator{
         ensures
             final(self).wf(),
             wlock_ensures(old(self).quota, final(self).quota, old(self).quota.lock_id(), final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).quota.view(),
+            lock_ensures(old(lctx), final(lctx),
                 old(self).quota.lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
             final(self).cpu_caches == old(self).cpu_caches,
@@ -295,8 +295,6 @@ impl PageAllocator{
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).quota.view(),
-                lock_perm.view().lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()),
                 old(self).quota.lock_id(),
             ),
@@ -329,7 +327,7 @@ impl PageAllocator{
                 major: old(self).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
                 minor: old(self).cpu_caches.spec_index(cpu_id).lock_minor(),
             }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).cpu_caches.spec_index(cpu_id).view().view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(self).cpu_caches.spec_index(cpu_id).container_depth(),
                 process: old(self).cpu_caches.spec_index(cpu_id).process_depth(),
                 major: old(self).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
@@ -379,8 +377,6 @@ impl PageAllocator{
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).cpu_caches.spec_index(cpu_id).view().view(),
-                lock_perm.view().lock_id(),
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id),
                 old(self).cpu_caches.spec_index(cpu_id).lock_id(),
             ),
@@ -424,7 +420,7 @@ impl PageAllocator{
                 major: old(self).global_pool.view().current_lock_major(),
                 minor: old(self).global_pool.view().lock_minor(),
             }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).global_pool.view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(self).global_pool.view().container_depth(),
                 process: old(self).global_pool.view().process_depth(),
                 major: old(self).global_pool.view().current_lock_major(),
@@ -463,8 +459,6 @@ impl PageAllocator{
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).global_pool.view(),
-                lock_perm.view().lock_id(),
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view()),
                 old(self).global_pool.lock_id(),
             ),

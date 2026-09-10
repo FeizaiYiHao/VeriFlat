@@ -119,6 +119,7 @@ pub(super) fn set_4k_page_staging_next(
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+        final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
         final(krnl).prc_mp == old(krnl).prc_mp,
         final(krnl).thr_mp == old(krnl).thr_mp,
         final(krnl).ep_mp == old(krnl).ep_mp,
@@ -239,6 +240,7 @@ pub(super) fn set_4k_page_staging_next(
         )) by {
             reveal(pcid_allocator_pages_wf);
         };
+        assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); };
         assert(thread_staged_pages_4k_wf(
             krnl.thr_mp,
             krnl.pg_arr,
@@ -440,6 +442,7 @@ pub(super) fn cleanup_published_4k_page_chain(
             == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map()
             == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map()
             == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map()
@@ -457,6 +460,7 @@ pub(super) fn cleanup_published_4k_page_chain(
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+        final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
         final(krnl).prc_mp == old(krnl).prc_mp,
         final(krnl).thr_mp == old(krnl).thr_mp,
         final(krnl).ep_mp == old(krnl).ep_mp,
@@ -570,6 +574,7 @@ pub(super) fn cleanup_published_4k_page_chain(
             lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
             lctx.pcid_allocator_lock_map()
                 == old(lctx).pcid_allocator_lock_map(),
+            lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
             lctx.iommu_table_lock_map()
                 == old(lctx).iommu_table_lock_map(),
@@ -586,6 +591,7 @@ pub(super) fn cleanup_published_4k_page_chain(
             krnl.ctn_mp == old(krnl).ctn_mp,
             krnl.sched_mp == old(krnl).sched_mp,
             krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
+            krnl.cpu_set_mp == old(krnl).cpu_set_mp,
             krnl.prc_mp == old(krnl).prc_mp,
             krnl.thr_mp == old(krnl).thr_mp,
             krnl.ep_mp == old(krnl).ep_mp,
@@ -1229,6 +1235,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map()
             == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map()
             == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map()
@@ -1279,6 +1286,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             final(krnl).pcid_allc_mp,
             old(lctx),
         ),
+        held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
         held_pagetables_unchanged(
             old(krnl).pt_mp,
             final(krnl).pt_mp,
@@ -1420,6 +1428,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
             lctx.pcid_allocator_lock_map()
                 == old(lctx).pcid_allocator_lock_map(),
+            lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
             lctx.iommu_table_lock_map()
                 == old(lctx).iommu_table_lock_map(),
@@ -1469,6 +1478,7 @@ pub(super) fn allocate_staged_4k_page_chain(
                 krnl.pcid_allc_mp,
                 old(lctx),
             ),
+            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, krnl.cpu_set_mp, old(lctx)),
             held_pagetables_unchanged(
                 old(krnl).pt_mp,
                 krnl.pt_mp,

@@ -1,293 +1,72 @@
 use vstd::prelude::*;
 use crate::*;
-use super::*;
+
 verus! {
 
-/// TODO kill all these
-pub open spec fn cpu_objects_unlocked(
-    cpu_array: CpuLockedArray,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|cpu_i: CpuId|
-        #![trigger cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id), index_valid(NUM_CPUS, cpu_i)]
-        index_valid(NUM_CPUS, cpu_i)
-        ==>
-        cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id) == false
-}
-
-pub open spec fn cpu_objects_unlocked_except(
-    cpu_array: CpuLockedArray,
-    thread_id: LockThreadId,
-    exceptions: Set<CpuId>,
-) -> bool {
-    forall|cpu_i: CpuId|
-        #![trigger cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id), index_valid(NUM_CPUS, cpu_i)]
-        index_valid(NUM_CPUS, cpu_i) && !exceptions.contains(cpu_i)
-        ==> !cpu_array.spec_index(cpu_i).view().locked_by_thread(thread_id)
-}
-
-pub open spec fn page_objects_unlocked(
-    page_array: PageLockedArray,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|p_i: PageIndex|
-        #![trigger page_array.spec_index(p_i), index_valid(NUM_PAGES, p_i)]
-        index_valid(NUM_PAGES, p_i)
-        ==>
-        page_array.spec_index(p_i).view().locked_by_thread(thread_id) == false
-}
-
-pub open spec fn page_objects_unlocked_except(
-    page_array: PageLockedArray,
-    thread_id: LockThreadId,
-    exceptions: Set<PageIndex>,
-) -> bool {
-    forall|p_i: PageIndex|
-        #![trigger page_array.spec_index(p_i).view().locked_by_thread(thread_id), index_valid(NUM_PAGES, p_i)]
-        index_valid(NUM_PAGES, p_i) && !exceptions.contains(p_i)
-        ==> !page_array.spec_index(p_i).view().locked_by_thread(thread_id)
-}
-
-pub open spec fn container_objects_unlocked(
-    container_map: ContainerLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|c_ptr: RwLockContainerPtr|
-        #![trigger container_map.dom().contains(c_ptr)]
-        container_map.dom().contains(c_ptr)
-        ==>
-        container_map.spec_index(c_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn container_objects_unlocked_except(
-    container_map: ContainerLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockContainerPtr>,
-) -> bool {
-    forall|c_ptr: RwLockContainerPtr|
-        #![trigger container_map.spec_index(c_ptr).locked_by_thread(thread_id)]
-        container_map.dom().contains(c_ptr) && !exceptions.contains(c_ptr)
-        ==> !container_map.spec_index(c_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn process_objects_unlocked(
-    process_map: ProcessLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|p_ptr: RwLockProcessPtr|
-        #![trigger process_map.dom().contains(p_ptr)]
-        process_map.dom().contains(p_ptr)
-        ==>
-        process_map.spec_index(p_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn process_objects_unlocked_except(
-    process_map: ProcessLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockProcessPtr>,
-) -> bool {
-    forall|p_ptr: RwLockProcessPtr|
-        #![trigger process_map.spec_index(p_ptr).locked_by_thread(thread_id)]
-        process_map.dom().contains(p_ptr) && !exceptions.contains(p_ptr)
-        ==> !process_map.spec_index(p_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn thread_objects_unlocked(
-    thread_map: ThreadLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|t_ptr: RwLockThreadPtr|
-        #![trigger thread_map.spec_index(t_ptr)]
-        thread_map.dom().contains(t_ptr)
-        ==>
-        thread_map.spec_index(t_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn thread_objects_unlocked_except(
-    thread_map: ThreadLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockThreadPtr>,
-) -> bool {
-    forall|t_ptr: RwLockThreadPtr|
-        #![trigger thread_map.spec_index(t_ptr).locked_by_thread(thread_id)]
-        thread_map.dom().contains(t_ptr) && !exceptions.contains(t_ptr)
-        ==> !thread_map.spec_index(t_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn endpoint_objects_unlocked(
-    endpoint_map: EndpointLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|e_ptr: RwLockEndpointPtr|
-        #![trigger endpoint_map.spec_index(e_ptr)]
-        endpoint_map.dom().contains(e_ptr)
-        ==>
-        endpoint_map.spec_index(e_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn endpoint_objects_unlocked_except(
-    endpoint_map: EndpointLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockEndpointPtr>,
-) -> bool {
-    forall|e_ptr: RwLockEndpointPtr|
-        #![trigger endpoint_map.spec_index(e_ptr).locked_by_thread(thread_id)]
-        endpoint_map.dom().contains(e_ptr) && !exceptions.contains(e_ptr)
-        ==> !endpoint_map.spec_index(e_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn pagetable_objects_unlocked(
-    pagetable_map: PageTableLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|pt_ptr: RwLockPageTableRoot|
-        #![trigger pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id)]
-        pagetable_map.dom().contains(pt_ptr)
-        ==>
-        pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn pagetable_objects_unlocked_except(
-    pagetable_map: PageTableLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockPageTableRoot>,
-) -> bool {
-    forall|pt_ptr: RwLockPageTableRoot|
-        #![trigger pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id)]
-        pagetable_map.dom().contains(pt_ptr) && !exceptions.contains(pt_ptr)
-        ==> !pagetable_map.spec_index(pt_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn iommu_table_objects_unlocked(
-    iommu_table_map: IommuTableLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|iommu_root: RwLockPageTableRoot|
-        #![trigger iommu_table_map.spec_index(iommu_root).locked_by_thread(thread_id)]
-        iommu_table_map.dom().contains(iommu_root)
-        ==> iommu_table_map.spec_index(iommu_root).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn iommu_table_objects_unlocked_except(
-    iommu_table_map: IommuTableLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockPageTableRoot>,
-) -> bool {
-    forall|iommu_root: RwLockPageTableRoot|
-        #![trigger iommu_table_map.spec_index(iommu_root).locked_by_thread(thread_id)]
-        iommu_table_map.dom().contains(iommu_root) && !exceptions.contains(iommu_root)
-        ==> !iommu_table_map.spec_index(iommu_root).locked_by_thread(thread_id)
-}
-
-pub open spec fn scheduler_objects_unlocked(
-    scheduler_map: SchedulerLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|s_ptr: RwLockSchedulerPtr|
-        #![trigger scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id)]
-        scheduler_map.dom().contains(s_ptr)
-        ==>
-        scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn scheduler_objects_unlocked_except(
-    scheduler_map: SchedulerLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockSchedulerPtr>,
-) -> bool {
-    forall|s_ptr: RwLockSchedulerPtr|
-        #![trigger scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id)]
-        scheduler_map.dom().contains(s_ptr) && !exceptions.contains(s_ptr)
-        ==> !scheduler_map.spec_index(s_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn pcid_allocator_objects_unlocked(
-    allocator_map: PcidAllocatorLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    forall|allocator_ptr: RwLockPcidAllocatorPtr|
-        #![trigger allocator_map.spec_index(allocator_ptr).locked_by_thread(thread_id)]
-        allocator_map.dom().contains(allocator_ptr)
-        ==> allocator_map.spec_index(allocator_ptr).locked_by_thread(thread_id) == false
-}
-
-pub open spec fn pcid_allocator_objects_unlocked_except(
-    allocator_map: PcidAllocatorLockedMap,
-    thread_id: LockThreadId,
-    exceptions: Set<RwLockPcidAllocatorPtr>,
-) -> bool {
-    forall|allocator_ptr: RwLockPcidAllocatorPtr|
-        #![trigger allocator_map.spec_index(allocator_ptr).locked_by_thread(thread_id)]
-        allocator_map.dom().contains(allocator_ptr) && !exceptions.contains(allocator_ptr)
-        ==> !allocator_map.spec_index(allocator_ptr).locked_by_thread(thread_id)
-}
-
-pub open spec fn allocator_objects_unlocked(
-    alloc_map: PageAllocatorUnLockedMap,
-    thread_id: LockThreadId,
-) -> bool {
-    &&&
-    forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).global_pool]
-        alloc_map.dom().contains(alloc_ptr)
-        ==>
-        alloc_map.spec_index(alloc_ptr).global_pool.locked_by_thread(thread_id) == false
-    &&&
-    forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).quota]
-        alloc_map.dom().contains(alloc_ptr)
-        ==>
-        alloc_map.spec_index(alloc_ptr).quota.locked_by_thread(thread_id) == false
-    &&&
-    forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
-        #![trigger alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
-        alloc_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i)
-        ==>
-        alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view()
-            .locked_by_thread(thread_id) == false
-}
-
-pub open spec fn allocator_objects_unlocked_except_quota(
-    alloc_map: PageAllocatorUnLockedMap,
-    thread_id: LockThreadId,
-    quota_allocator_ptr: RwLockPageAllocatorPtr,
-) -> bool {
-    &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).global_pool]
-        alloc_map.dom().contains(alloc_ptr)
-        ==> !alloc_map.spec_index(alloc_ptr).global_pool
-            .locked_by_thread(thread_id)
-    &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
-        #![trigger alloc_map.spec_index(alloc_ptr).quota]
-        alloc_map.dom().contains(alloc_ptr)
-            && alloc_ptr != quota_allocator_ptr
-        ==> !alloc_map.spec_index(alloc_ptr).quota
-            .locked_by_thread(thread_id)
-    &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
-        #![trigger alloc_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i),
-            index_valid(NUM_CPUS, cpu_i)]
-        alloc_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i)
-        ==> !alloc_map.spec_index(alloc_ptr).cpu_caches
-            .spec_index(cpu_i).view().locked_by_thread(thread_id)
-}
-
-impl KernelK{
-    pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool{
-        &&& cpu_objects_unlocked(self.cpu_arr, lctx.thread_id())
-        &&& page_objects_unlocked(self.pg_arr, lctx.thread_id())
-        &&& container_objects_unlocked(self.ctn_mp, lctx.thread_id())
-        &&& process_objects_unlocked(self.prc_mp, lctx.thread_id())
-        &&& thread_objects_unlocked(self.thr_mp, lctx.thread_id())
-        &&& endpoint_objects_unlocked(self.ep_mp, lctx.thread_id())
-        &&& pagetable_objects_unlocked(self.pt_mp, lctx.thread_id())
-        &&& iommu_table_objects_unlocked(self.it_mp, lctx.thread_id())
-        &&& scheduler_objects_unlocked(self.sched_mp, lctx.thread_id())
-        &&& pcid_allocator_objects_unlocked(
-            self.pcid_allc_mp, lctx.thread_id())
-        &&& allocator_objects_unlocked(self.allc_4k_mp, lctx.thread_id())
-        &&& allocator_objects_unlocked(self.allc_2m_mp, lctx.thread_id())
-        &&& allocator_objects_unlocked(self.allc_1g_mp, lctx.thread_id())
+impl KernelK {
+    #[verifier::opaque]
+    pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool {
+        &&& forall|cpu_i: CpuId|
+            #![trigger self.cpu_arr.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()), index_valid(NUM_CPUS, cpu_i)]
+            index_valid(NUM_CPUS, cpu_i) ==> self.cpu_arr.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
+        &&& forall|p_i: PageIndex|
+            #![trigger self.pg_arr.spec_index(p_i), index_valid(NUM_PAGES, p_i)]
+            index_valid(NUM_PAGES, p_i) ==> self.pg_arr.spec_index(p_i).view().locked_by_thread(lctx.thread_id()) == false
+        &&& forall|c_ptr: RwLockContainerPtr|
+            #![trigger self.ctn_mp.dom().contains(c_ptr)]
+            self.ctn_mp.dom().contains(c_ptr) ==> self.ctn_mp.spec_index(c_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|p_ptr: RwLockProcessPtr|
+            #![trigger self.prc_mp.dom().contains(p_ptr)]
+            self.prc_mp.dom().contains(p_ptr) ==> self.prc_mp.spec_index(p_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|t_ptr: RwLockThreadPtr|
+            #![trigger self.thr_mp.spec_index(t_ptr)]
+            self.thr_mp.dom().contains(t_ptr) ==> self.thr_mp.spec_index(t_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|e_ptr: RwLockEndpointPtr|
+            #![trigger self.ep_mp.spec_index(e_ptr)]
+            self.ep_mp.dom().contains(e_ptr) ==> self.ep_mp.spec_index(e_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|pt_ptr: RwLockPageTableRoot|
+            #![trigger self.pt_mp.spec_index(pt_ptr).locked_by_thread(lctx.thread_id())]
+            self.pt_mp.dom().contains(pt_ptr) ==> self.pt_mp.spec_index(pt_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|iommu_root: RwLockPageTableRoot|
+            #![trigger self.it_mp.spec_index(iommu_root).locked_by_thread(lctx.thread_id())]
+            self.it_mp.dom().contains(iommu_root) ==> self.it_mp.spec_index(iommu_root).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|s_ptr: RwLockSchedulerPtr|
+            #![trigger self.sched_mp.spec_index(s_ptr).locked_by_thread(lctx.thread_id())]
+            self.sched_mp.dom().contains(s_ptr) ==> self.sched_mp.spec_index(s_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|cpu_set_ptr: RwLockCpuSetPtr|
+            #![trigger self.cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(lctx.thread_id())]
+            self.cpu_set_mp.dom().contains(cpu_set_ptr) ==> self.cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|allocator_ptr: RwLockPcidAllocatorPtr|
+            #![trigger self.pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(lctx.thread_id())]
+            self.pcid_allc_mp.dom().contains(allocator_ptr) ==> self.pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allc_4k_mp.spec_index(alloc_ptr).global_pool]
+            self.allc_4k_mp.dom().contains(alloc_ptr) ==> self.allc_4k_mp.spec_index(alloc_ptr).global_pool.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allc_4k_mp.spec_index(alloc_ptr).quota]
+            self.allc_4k_mp.dom().contains(alloc_ptr) ==> self.allc_4k_mp.spec_index(alloc_ptr).quota.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
+            #![trigger self.allc_4k_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
+            self.allc_4k_mp.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.allc_4k_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allc_2m_mp.spec_index(alloc_ptr).global_pool]
+            self.allc_2m_mp.dom().contains(alloc_ptr) ==> self.allc_2m_mp.spec_index(alloc_ptr).global_pool.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allc_2m_mp.spec_index(alloc_ptr).quota]
+            self.allc_2m_mp.dom().contains(alloc_ptr) ==> self.allc_2m_mp.spec_index(alloc_ptr).quota.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
+            #![trigger self.allc_2m_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
+            self.allc_2m_mp.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.allc_2m_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allc_1g_mp.spec_index(alloc_ptr).global_pool]
+            self.allc_1g_mp.dom().contains(alloc_ptr) ==> self.allc_1g_mp.spec_index(alloc_ptr).global_pool.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr|
+            #![trigger self.allc_1g_mp.spec_index(alloc_ptr).quota]
+            self.allc_1g_mp.dom().contains(alloc_ptr) ==> self.allc_1g_mp.spec_index(alloc_ptr).quota.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId|
+            #![trigger self.allc_1g_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
+            self.allc_1g_mp.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.allc_1g_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
     }
-
 }
+
 }

@@ -1,5 +1,43 @@
 # Proof 清理记录
 
+## 跨轮总结与当前决定（2026-09-09）
+
+本节汇总此前大轮清理、framing 分组审阅和 choose/exists 清理至第八组（#12966）的结果。当前规矩以 [AGENTS.md](AGENTS.md) 及其路由的仓库技能为准。下方各轮原始记录保留当时的源码范围、决定和测量口径；后续决定可能替代早期决定，不应把不同批次的行数、定义数或性能变化直接累加。
+
+### 契约、调用链和 framing
+
+前几轮删除了中间 context/requires/ensures 包装、重复条款和只为包装契约传递的参数。创建、映射、分配及 IPC 调用链逐步改用操作自身的直接保证。例如构造者暴露实际构造的序列，发布层只要求实际消耗的 quota，调用方通过返回对象和已有字段等式衔接证明。审查参数时同时检查 exec、proof 和跨 kernel-step boundary 的用途；线程创建的 endpoint 索引曾因跨步骤归属证明仍需要而恢复。
+
+framing 审阅保留了真实的 held/RO、invariant-field、quota 和底层操作关系，以及已批准的 EOF 优化。删除的是已确认冗余的 per-object unlocked、精确持锁集合、CPU 上下文等包装。`all_objects_unlocked` 和 `no_locks_held` 保留；`allocator_caches_unlocked` 描述物理 cache 锁，`holds_no_allocator_locks` 描述当前上下文的持锁记录，也分别保留。既有 spec 获准保留不构成新增 framing 的许可。
+
+[第二批 framing 报告](.verus-log/framing-cleanup-batch2-20260909/report.md)落实了 20 组审阅的最后五组修改：删除 4 个 framing 定义、2 个辅助转发 spec，并删除旧 random-step 链中的 2 处 `admit()`。按此前已确认口径，累计 framing 删除数为 47；其中早期 43 个的原始临时产物已丢失，该累计数沿用历史记录，不声称本轮重新独立复核。完整保留/删除决定见[分组记录](.verus-log/framing-cleanup-batch2-20260909/decisions-final.json)；例如早期 F18 保留的 `held_process_owning_containers_unchanged` 后来已获批删除。
+
+### 量词清理与证明适配
+
+choose 第 1–4 组共删除 23 处重复选择：已有索引 10 处、祖先更新 9 处、集合基数证明 3 处、bitmap 初始化 1 处。用户随后决定保留完全用于 proof 内部的辅助选择，最终留下 30 处：通用序列证明 15、fold 归纳 2、syscall 局部证明 13。
+
+exists 第 6–8 组删除 7 处跨调用契约的存在量词。三个 `commit_new_process*` 返回具体对象，三个公开进程 syscall 和 `syscall_new_container` 继续将它们传出；成功条件直接描述返回的进程、线程、IOMMU 表或容器。原创建、归属、调度、映射等语义保证保留。自有源码显式 exists 降至 0；这是清理结果，不是要求把纯局部 proof 量词也清零。当前已确认规则是：不变式和跨函数契约禁用隐藏对象的 exists/choose，纯局部证明选择允许。见[完整进度与保留决定](.verus-log/choose-exists-audit-20260909/progress.json)。
+
+直接结果契约并不保证旧 proof 更快。第六组最初暴露默认资源上限问题；删除旧尾部历史证明后恢复通过，随后继续精简 endpoint/IOMMU 的尾部证明。[最后一轮](.verus-log/exists-cleanup-group8-20260909/report.md)又删除 24 处用户视图相等重证，将 16 处非空事实合并到 5 个公共位置，并删除 3 处 RUNNING 重证，合计净删 143 行、41 个 assert、17 次 reveal 和 24 次通用 lemma 调用。
+
+这 5 个非空事实逐个删除后都缺失 unlock 的真实前置条件，因而保留。通用 Set/Seq/Map 和 fold 事实缺失应按证明事实缺口处理；不能因此认定 invariant 设计有问题，也不能把待证明的后置 invariant 当成前置条件传入来绕过闭合。
+
+### 性能证据与取舍
+
+最后一轮同路径、同二进制、32 线程单体交替测量为 B1/C1/B2/C2，四次均 857/0；此前最终 workspace #12962 的九个 crate 也全部实际重验通过。四个入口本体 rlimit 合计下降约 26.13%，整库 rlimit 下降约 1.70%；全库 wall 样本为基线 31.21/33.85 秒、候选 33.49/33.50 秒，均值 32.53 → 33.50 秒（+2.97%）。局部证明工作量下降，但该轮没有测出整体提速。函数本体 SMT 不包含被调用函数的独立验证成本，线程累计时间也不是 wall。
+
+用户现已明确选择**不设固定性能退化容忍阈值**。先调整证明并同口径复测；若仍有超出观测波动的退化，带具体简化与测量结果单独决定。下文早期的“允许 5% 退化”是该批实验的历史约定，已不作为当前默认规则。保留全部样本，区分代码简化、求解工作量变化和全库 wall 变化；不同缓存、并发和验证范围的结果不互相比较。
+
+### 信任边界与规则落点
+
+截至本次审计，自有 238 个 Rust 文件排除注释后，显式 `assume/admit/assume_specification` 均为 0；另有 7 处 `Tracked::assume_new()`，均处于 `external_body` 函数内。自有源码共有 106 个 `external_body` 标记，包括 27 条 fold 公理和 5 条 cardinality 公理，以及锁、内存和内核交错边界。这些是该时点的盘点数字；验证通过仍依赖相应可信契约。README 的旧 `assume(self.inv())` 说明已更新。
+
+本次将直接结果、局部量词例外和 framing 审批原则写入总规则；[proof 风格与契约细则](.codex/skills/veriflat-proof/references/style-and-discipline.md)及[证明调试细则](.codex/skills/veriflat-proof/references/proof-debugging.md)补充调用方适配和事实缺口分类；[锁模型](.codex/skills/veriflat-kernel-model/references/lock-model.md)记录已批准关系的保留边界；[验证与测量细则](.codex/skills/veriflat-build/references/verification.md)明确成本范围和性能取舍。此次规则更新只涉及文档，不改变 Rust、公开 API 或既有 TCB，也不新增自动检查脚本。
+
+原始运行日志保存在本地忽略目录 `.verus-log/`，不随普通源码 checkout 分发；规则本身不依赖这些日志才能执行。
+
+## 第一轮清理原始记录
+
 本轮按已确认方案清理代码、契约与证明。核心语义、锁模型、公共 syscall 和九个 split crate 的边界保持不变。新增 framing spec 必须逐个先向用户展示完整定义并获得批准；该规则已写入 `AGENTS.md`，性能理由也不豁免。
 
 ## 契约与调用链

@@ -429,6 +429,7 @@ pub proof fn lemma_no_change_imply_process_thread_wf_forall()
 pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
     ensures
         forall|container_map: ContainerLockedMap,
+            cpu_set_map: CpuSetLockedMap,
             pre: ProcessLockedMap,
             post: ProcessLockedMap,
             cpu_array: CpuLockedArray,
@@ -436,14 +437,14 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
             pagetable_map: PageTableLockedMap|
             #![trigger
                 cpu_dirty_map_wf(
-                    container_map,
+                    container_map, cpu_set_map,
                     pre,
                     cpu_array,
                     cpu_tlb,
                     pagetable_map,
                 ),
                 cpu_dirty_map_wf(
-                    container_map,
+                    container_map, cpu_set_map,
                     post,
                     cpu_array,
                     cpu_tlb,
@@ -451,17 +452,17 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
                 )
             ]
             cpu_dirty_map_wf(
-                container_map,
+                container_map, cpu_set_map,
                 pre,
                 cpu_array,
                 cpu_tlb,
                 pagetable_map,
             )
             && process_cpu_wf(pre, cpu_array)
-            && container_cpu_wf(container_map, cpu_array)
+            && container_cpu_wf(container_map, cpu_set_map, cpu_array)
             && process_quota_4k_framed_fields_unchanged(pre, post)
             ==> cpu_dirty_map_wf(
-                container_map,
+                container_map, cpu_set_map,
                 post,
                 cpu_array,
                 cpu_tlb,

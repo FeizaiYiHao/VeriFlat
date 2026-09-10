@@ -303,15 +303,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
 
 }
 
-impl<T: LockRecursivelyLockedTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
-    pub open spec fn partial_locked_by(&self, lctx:&LocalContext) -> bool{
-        self.view().partial_locked_by(lctx)
-    }    
-    pub open spec fn total_locked_by(&self, lctx:&LocalContext) -> bool{
-        self.view().total_locked_by(lctx)
-    }
-}
-
 impl<T:LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
     pub open spec fn inv(&self) -> bool{
         &&&
@@ -455,7 +446,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
             old(lctx).lock_id_acyclic(lock_id.view()),
         ensures
             wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).view(),
+            lock_ensures(old(lctx), final(lctx),
                 lock_id.view(), obj_id.view()),
     {
         self.lock.wlock();
@@ -483,8 +474,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).view(),
-                lp.view().lock_id(),
                 obj_id.view(),
                 LockId {
                     container: old(self).view().container_depth(),
@@ -531,7 +520,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
                 &&&
                 wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.1.unwrap().view())
                 &&&
-                lock_ensures(old(lctx), final(lctx), final(self).view(),
+                lock_ensures(old(lctx), final(lctx),
                     lock_id.view(), obj_id.view())
             } 
     {
@@ -561,8 +550,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).view(),
-                lp.view().lock_id(),
                 obj_id.view(),
                 lock_id.view(),
             ),

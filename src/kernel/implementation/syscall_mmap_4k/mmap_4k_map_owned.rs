@@ -100,6 +100,7 @@ use crate::*;
             final(krnl).ctn_mp == old(krnl).ctn_mp,
             final(krnl).sched_mp == old(krnl).sched_mp,
             final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
             final(krnl).prc_mp == old(krnl).prc_mp,
             final(krnl).ep_mp == old(krnl).ep_mp,
             final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
@@ -180,6 +181,7 @@ use crate::*;
                 };
             };
             assert(krnl.memory_management_inv()) by {
+                assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); };
                 assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
                     allocator_4k_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_4k_mp, krnl.allc_4k_mp);
                     allocator_2m_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_2m_mp, krnl.allc_2m_mp);
@@ -229,7 +231,7 @@ use crate::*;
                 assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp); };
                 assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.cpu_arr); };
             };
-            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr, va); };
             assert({
                 let process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;

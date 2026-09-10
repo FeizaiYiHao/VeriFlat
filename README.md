@@ -72,24 +72,37 @@ atomic operation using pre- and postcondition.
 For a kernel object that is locked more than once for the duration of the system call, we can still report its last-seen state in the postcondition, 
 but it shouldn't be super useful. 
 
-### Nullifying the pre state of unlocked object. 
-After the first `unlock()` operation, each `lock()` triggers a change of the global state -- all the kernel objects that are not locked will have 
-their states nullified. Since they could be changed by other threads.
+### Concurrent interleaving between kernel sections
 
-### Squash changes on tracked maps.
-There exists a few tracked maps whose domains determine the domains of `alive` objects in the kernel. For example, the domain of all `Container`
-in the kernel. These maps has zero impact on the actual state of the kernel other than aiding the proofs. Since all the objects under these 
-maps are protected by locks, it's safe to reorder their operations and squash the changes into one big atomic change. 
+[`KernelK::kernel_step_boundary`](src/kernel/kernel_k_define_spec.rs) models
+concurrent interleaving between a completed `Release` section and the next
+`Acquire` section. Its contract preserves objects whose locks remain held and
+allows other state to change subject to the boundary's explicit guarantees.
+Proofs across this boundary use those guarantees and subsequent lock contracts
+to determine which earlier facts remain available.
 
-### Ensuring invariants when objects are re-locked.
-Since we nullify the pre-state of a re-locked object, Verus wouldn't be able to infer that all the invariants still hold after this re-`lock()`. 
-However, the invariants still hold, we insert an `assume(self.inv())` after each `lock()` to let Verus know that the invariants are still true, 
-after the second `lock()` returns. 
+[`LocalContext`](src/locks/local_context.rs) records held locks in typed maps and
+an exact `Set<(LockId, KernelObjId)>` ledger. `typed_lock_maps_aligned` relates the
+typed maps to the kernel objects; `lock_id_set_aligned` relates them to the ledger.
+Lock operations maintain both alignments, and the boundary preserves them.
 
-#### TODO
-Talk about how to modify Verus to enforce this assume. 
+### Invariant obligations and trusted boundaries
 
-## TODO
-Add a user view() of the page table and a kernel view() of the page table.
+The caller must establish `KernelK::inv()` and both lock alignments before
+`kernel_step_boundary`. The boundary guarantees them again after the modeled
+interleaving and restores the `Acquire` phase. It is an `external_body` proof
+function: preservation by concurrent execution is part of the trusted model.
+The current source contains no explicit `assume(...)` or `admit()` calls.
 
-The user view() of the page table cannot be locked, hence triggering an inv() check whenever it's updated. 
+[`KernelSteps`](src/kernel/kernel_total_define_spec.rs) records changes to the
+user projection, `kernel_k_to_kernel_u`. At a boundary, it records the completed
+section's change before refreshing the snapshot after interleaving. At syscall
+exit, `end_kernel_step` records the final section without introducing another
+interleaving point. Sections whose user projection is unchanged add no user step.
+Both recording operations are trusted `external_body` functions.
+
+The trusted code also includes low-level lock and memory primitives, permission
+construction using `Tracked::assume_new()` inside `external_body` functions, and
+the explicit [fold](src/kernel/lemma/kernel_fold_axioms.rs) and
+[cardinality](src/kernel/lemma/kernel_cardinality_axioms.rs) axioms. Verification
+results depend on these contracts and axioms.

@@ -82,6 +82,8 @@ impl Endpoint {
             old(self).queue.view().spec_index(0) == thread_ptr,
         ensures
             final(self).inv(),
+            final(self).queue.container_depth == old(self).queue.container_depth,
+            final(self).queue.lock_minor() == old(self).queue.lock_minor(),
             final(self).queue.length == old(self).queue.length - 1,
             final(self).queue.view() == old(self).queue.view().skip(1),
             final(self).queue.dom() == old(self).queue.dom().remove(ret.0),

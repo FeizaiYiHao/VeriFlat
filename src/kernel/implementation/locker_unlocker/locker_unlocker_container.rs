@@ -13,23 +13,33 @@ impl KernelK {
                 old(self).ctn_mp.dom().contains(container_ptr),
                 !old(self).ctn_mp.spec_index(container_ptr).wlocked_by(old(lctx)),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).holds_exact_base_locks(
-                    old(lctx).cpu_lock_map().dom(),
-                    Set::empty(),
-                    Set::empty(),
-                    Set::empty(),
-                    Set::empty(),
-                ),
+                old(lctx).page_lock_map().dom().is_empty(),
+                old(lctx).container_lock_map().dom().is_empty(),
+                old(lctx).process_lock_map().dom().is_empty(),
+                old(lctx).thread_lock_map().dom().is_empty(),
+                old(lctx).endpoint_lock_map().dom().is_empty(),
+                old(lctx).scheduler_lock_map().dom().is_empty(),
+                old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+                old(lctx).cpu_set_lock_map().dom().is_empty(),
+                old(lctx).pagetable_lock_map().dom().is_empty(),
+                old(lctx).iommu_table_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+                old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+                old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+                old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
                 !old(lctx).cpu_lock_map().dom().is_empty(),
-                cpus_belong_to_container(
-                    old(self),
-                    old(lctx).cpu_lock_map().dom(),
-                    container_ptr,
-                ),
-                cpus_are_online(
-                    old(self),
-                    old(lctx).cpu_lock_map().dom(),
-                ),
+                (forall|held_cpu_id: CpuId|
+                    #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)]
+                    old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> {
+                        &&& index_valid(NUM_CPUS, held_cpu_id)
+                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().owning_container == container_ptr
+                        &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().state is Off)
+                    }),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -51,6 +61,7 @@ impl KernelK {
                 final(self).rt_ctn    == old(self).rt_ctn,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -62,7 +73,6 @@ impl KernelK {
                 // ---- (success) or nothing at all (failure) changed.
                 final(self).ctn_mp.unchanged_except(&old(self).ctn_mp, container_ptr),
                 final(self).ctn_mp.perms_wf(),
-                container_objects_unlocked(old(self).ctn_mp, old(lctx).thread_id()) ==> container_objects_unlocked_except(final(self).ctn_mp, final(lctx).thread_id(), set![container_ptr]),
                 // ---- LocalContext phase preservation ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -85,28 +95,11 @@ impl KernelK {
                     &&& wlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr), final(lctx), ret.1.unwrap().view())
                     &&& final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr)))
                     &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(container_ptr), TypedHeldLock { lock_id: final(self).ctn_mp.lock_id_by_key(container_ptr), mode: TypedLockMode::Write })
-                    &&& final(lctx).holds_exact_base_locks(
-                        final(lctx).cpu_lock_map().dom(),
-                        set![container_ptr],
-                        Set::empty(),
-                        Set::empty(),
-                        Set::empty(),
-                    )
-                    &&& !final(lctx).cpu_lock_map().dom().is_empty()
-                    &&& cpus_belong_to_container(
-                        final(self),
-                        final(lctx).cpu_lock_map().dom(),
-                        container_ptr,
-                    )
-                    &&& cpus_are_online(
-                        final(self),
-                        final(lctx).cpu_lock_map().dom(),
-                    )
                 },
         {
             proof {
                 assert(old(self).ctn_mp.perms_wf()) by { reveal(container_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(cpus_belong_to_container); reveal(cpus_are_online); };
+                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
             }
             let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
             proof {
@@ -116,22 +109,8 @@ impl KernelK {
                 assert(self.memory_management_inv()) by { container_no_change_imply_memory_management_inv(*old(self), *self); };
                 assert(container_process_wf(self.ctn_mp, self.prc_mp)) by { reveal(container_process_wf); };
                 assert(self.process_management_inv()) by { container_no_change_imply_process_management_inv(*old(self), *self); };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                if res.0 {
-                    assert(lctx.cpu_lock_map() == old(lctx).cpu_lock_map()) by {
-                        reveal(typed_lock_maps_inserted);
-                    };
-                    let cpus = old(lctx).cpu_lock_map().dom();
-                    assert({
-                        &&& lctx.holds_exact_base_locks(cpus, set![container_ptr], Set::empty(), Set::empty(), Set::empty())
-                        &&& !cpus.is_empty()
-                        &&& cpus_belong_to_container(self, cpus, container_ptr)
-                        &&& cpus_are_online(self, cpus)
-                    }) by {
-                        broadcast use vstd::map::lemma_map_insert_domain;
-                    };
-                }
                 assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(container_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
@@ -188,6 +167,7 @@ impl KernelK {
                 final(self).rt_ctn    == old(self).rt_ctn,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -201,7 +181,6 @@ impl KernelK {
                 final(self).ctn_mp.spec_index(container_ptr).locking_thread() is None,
                 final(self).ctn_mp.lock_id_by_key(container_ptr) == old(self).ctn_mp.lock_id_by_key(container_ptr),
                 wunlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr)),
-                container_objects_unlocked_except(old(self).ctn_mp, old(lctx).thread_id(), set![container_ptr]) ==> container_objects_unlocked(final(self).ctn_mp, final(lctx).thread_id()),
                 // ---- LocalContext: lock dropped; thread preserved ----
                 // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
                 // `unlock_ensures` transitions it Acquire -> Release, so restating
@@ -235,7 +214,7 @@ impl KernelK {
                 assert(self.memory_management_inv()) by { container_no_change_imply_memory_management_inv(*old(self), *self); };
                 assert(container_process_wf(self.ctn_mp, self.prc_mp)) by { reveal(container_process_wf); };
                 assert(self.process_management_inv()) by { container_no_change_imply_process_management_inv(*old(self), *self); };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { container_no_change_imply_cpu_dirty_map_wf(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }

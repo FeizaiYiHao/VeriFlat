@@ -629,7 +629,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
             }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).spec_index(alloc_ptr).quota.view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
                 process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
@@ -639,7 +639,6 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            allocator_objects_unlocked(*old(self), old(lctx).thread_id()) ==> allocator_objects_unlocked_except_quota(*final(self), final(lctx).thread_id(), alloc_ptr),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wlock_quota(Tracked(lctx), page_size, Ghost(alloc_ptr))
@@ -670,8 +669,6 @@ impl UnLockedMap<usize, PageAllocator> {
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).spec_index(alloc_ptr).quota.view(),
-                lock_perm.view().lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
                 old(self).spec_index(alloc_ptr).quota.lock_id(),
             ),
@@ -679,7 +676,6 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            allocator_objects_unlocked_except_quota(*old(self), old(lctx).thread_id(), alloc_ptr) ==> allocator_objects_unlocked(*final(self), final(lctx).thread_id()),
     {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_quota(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
@@ -710,7 +706,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
             }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
                 process: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).process_depth(),
                 major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
@@ -750,8 +746,6 @@ impl UnLockedMap<usize, PageAllocator> {
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(),
-                lock_perm.view().lock_id(),
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
                 old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
             ),
@@ -787,7 +781,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
             }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), final(self).spec_index(alloc_ptr).global_pool.view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(self).spec_index(alloc_ptr).global_pool.view().container_depth(),
                 process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
@@ -825,8 +819,6 @@ impl UnLockedMap<usize, PageAllocator> {
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                final(self).spec_index(alloc_ptr).global_pool.view(),
-                lock_perm.view().lock_id(),
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
                 old(self).spec_index(alloc_ptr).global_pool.lock_id(),
             ),

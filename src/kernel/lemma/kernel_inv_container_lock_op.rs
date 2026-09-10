@@ -53,6 +53,7 @@ pub proof fn container_no_change_imply_memory_management_inv(pre: KernelK, post:
         post.pg_arr == pre.pg_arr,
         post.sched_mp == pre.sched_mp,
         post.pcid_allc_mp == pre.pcid_allc_mp,
+        post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
         post.thr_mp == pre.thr_mp,
         post.ep_mp == pre.ep_mp,
@@ -86,6 +87,7 @@ pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post
         post.cpu_arr == pre.cpu_arr,
         post.sched_mp == pre.sched_mp,
         post.pcid_allc_mp == pre.pcid_allc_mp,
+        post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
         post.thr_mp == pre.thr_mp,
         post.ep_mp == pre.ep_mp,
@@ -103,7 +105,8 @@ pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post
         &&& post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()
     }) by { reveal(container_root_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
-    assert(container_cpu_wf(post.ctn_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
+    assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+    assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
         reveal(container_endpoint_wf);
         reveal(thread_endpoint_ref_counter_wf);
@@ -122,15 +125,16 @@ pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post
 
 pub proof fn container_no_change_imply_cpu_dirty_map_wf(pre: KernelK, post: KernelK)
     requires
-        cpu_dirty_map_wf(pre.ctn_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp),
-        container_cpu_wf(pre.ctn_mp, pre.cpu_arr),
+        cpu_dirty_map_wf(pre.ctn_mp, pre.cpu_set_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp),
+        container_cpu_wf(pre.ctn_mp, pre.cpu_set_mp, pre.cpu_arr),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         post.pt_mp == pre.pt_mp,
         post.cpu_arr == pre.cpu_arr,
+        post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
         post.cpu_tlb == pre.cpu_tlb,
     ensures
-        cpu_dirty_map_wf(post.ctn_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp),
+        cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp),
 {
     reveal(cpu_dirty_map_contains_container_processes);
     reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
