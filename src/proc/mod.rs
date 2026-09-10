@@ -17,3 +17,5 @@ pub use pcid_allocator::*;
 pub use trap_frame_def::*;
 pub use thread_util_t::*;
 pub use process_util_t::*;
+pub mod cpu_set;
+pub use cpu_set::*;

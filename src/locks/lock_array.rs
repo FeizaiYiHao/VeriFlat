@@ -290,7 +290,6 @@ verus! {
 
                 wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx), ret.view()),
                 lock_ensures(old(lctx), final(lctx),
-                    final(self).spec_index(index).view().view(),
                     old(self).lock_id_by_index(index), obj_id.view()),
         {
             self.array.ar[index].wlock_external(Tracked(lctx))
@@ -329,8 +328,6 @@ verus! {
                 unlock_ensures(
                     old(lctx),
                     final(lctx),
-                    final(self).spec_index(index).view().view(),
-                    lock_perm.view().lock_id(),
                     obj_id.view(),
                     old(self).lock_id_by_index(index),
                 ),

@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 use crate::*;
-use super::mmap_4k_context::{mmap_4k_allocation_ready};
 use super::mmap_4k_create_entry_install::MissingPageTableLevel;
 use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 
@@ -35,7 +34,9 @@ verus! {
             pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
             pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            mmap_4k_allocation_ready(old(lctx)),
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             va_4k_valid(va),
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().free_quota_pending_clean(),
@@ -67,7 +68,9 @@ verus! {
             pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             final(steps).steps == old(steps).steps,
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            mmap_4k_allocation_ready(final(lctx)),
+            final(lctx).page_lock_map().dom().is_empty(),
+            final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
@@ -77,6 +80,7 @@ verus! {
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),

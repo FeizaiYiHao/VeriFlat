@@ -37,3 +37,7 @@ pub use process_cpu_spec::*;
 pub use process_thread_spec::*;
 pub use container_thread_endpoint_spec::*;
 pub use thread_call_reply_spec::*;
+pub mod cpu_set_map_wf;
+pub use cpu_set_map_wf::*;
+pub mod container_cpu_set_spec;
+pub use container_cpu_set_spec::*;

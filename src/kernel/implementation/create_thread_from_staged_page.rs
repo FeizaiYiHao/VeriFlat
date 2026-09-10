@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
-use vstd::assert_sets_equal;
 use crate::*;
 verus! {
 
@@ -128,6 +127,7 @@ verus! {
                 final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
                 final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
                 final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+                final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
                 final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
                 final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
                 final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -141,6 +141,7 @@ verus! {
                 final(krnl).it_mp == old(krnl).it_mp,
                 final(krnl).ep_mp == old(krnl).ep_mp,
                 final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+                final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
                 final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
                 final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
                 final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
@@ -334,6 +335,7 @@ verus! {
                     };
                     assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(iommu_table_pages_wf); };
                     assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
+
                     assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { reveal(container_pages_wf); };
                     assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { reveal(process_pages_wf); };
                     assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); };
@@ -377,9 +379,10 @@ verus! {
                         process_no_change_to_tree_fields_imply_wf_forall();
                     };
                     assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
-                    assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
+                    assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
                     assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
                     assert(container_pcid_allocator_wf(krnl.ctn_mp, krnl.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
+
                     assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { reveal(process_cpu_wf); };
                     assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
                     assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by {
@@ -405,7 +408,7 @@ verus! {
                         seq_push_lemma::<RwLockThreadPtr>();
                         reveal(container_process_wf); reveal(process_pagetable_match); reveal(process_thread_wf);
                     };
-                    assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
+                    assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                     assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { reveal(tlb_wf_spec); };
                     assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
                     assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
@@ -463,30 +466,10 @@ verus! {
                 broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
             };
             add_thread_to_ancestor_sets(container_map, t_ptr, uppers.drop_first());
-            assert(!uppers.drop_first().to_set().contains(c0)) by {
-                uppers.drop_first().to_set_ensures();
-                if uppers.drop_first().contains(c0) {
-                    let k = choose|k: int| 0 <= k < uppers.drop_first().len() && uppers.drop_first().spec_index(k) == c0;
-                }
-            };
-            assert_sets_equal!(
-                uppers.to_set() == uppers.drop_first().to_set().insert(c0),
-                c => {
-                    uppers.to_set_ensures();
-                    uppers.drop_first().to_set_ensures();
-                    if uppers.contains(c) && c != c0 {
-                        let i = choose|i: int| 0 <= i < uppers.len() && uppers.spec_index(i) == c;
-                        assert({
-                            &&& i > 0
-                            &&& uppers.drop_first().spec_index(i - 1) == c
-                        }) by { uppers.to_set_ensures(); };
-                    }
-                    if uppers.drop_first().contains(c) {
-                        let i = choose|i: int| 0 <= i < uppers.drop_first().len() && uppers.drop_first().spec_index(i) == c;
-                        assert(uppers.spec_index(i + 1) == c) by { uppers.drop_first().to_set_ensures(); };
-                    }
-                }
-            );
+            assert({
+                &&& !uppers.drop_first().to_set().contains(c0)
+                &&& uppers.to_set() =~= uppers.drop_first().to_set().insert(c0)
+            }) by { broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
         }
     }
 

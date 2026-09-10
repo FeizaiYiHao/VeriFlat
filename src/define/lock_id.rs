@@ -7,7 +7,7 @@ verus! {
 // -------------------- Begin of const ------------------------
 pub const CPU_LOCK_MAJOR_RUNNING:LockMajorId = 1;
 pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
-// An Off CPU is terminal after its owning container proves the slot closed.
+// An Off CPU is terminal after its owning CPU-set lock proves the slot closed.
 pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 30001;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
@@ -34,11 +34,14 @@ pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
 pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
 pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
 
+// CPU sets are discovered through IPC peers; their locks follow mapped pages.
+pub const CPU_SET_LOCK_MAJOR:LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
+
 // An endpoint rendezvous discovers the peer only after locking the endpoint
 // and that blocked thread. Its owning-container scheduler is therefore locked
 // afterward. Keep allocation above the scheduler so new-thread creation can
 // still allocate while holding the destination scheduler.
-pub const SCHEDULER_LOCK_MAJOR:LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
+pub const SCHEDULER_LOCK_MAJOR:LockMajorId = CPU_SET_LOCK_MAJOR + 1;
 pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = SCHEDULER_LOCK_MAJOR + 1;
 pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
@@ -241,6 +244,7 @@ pub ghost enum KernelObjId {
     Endpoint(RwLockEndpointPtr),
     Scheduler(RwLockSchedulerPtr),
     PcidAllocator(RwLockPcidAllocatorPtr),
+    CpuSet(RwLockCpuSetPtr),
     PageTable(RwLockPageTableRoot),
     IommuTable(RwLockPageTableRoot),
     Page(PageIndex),

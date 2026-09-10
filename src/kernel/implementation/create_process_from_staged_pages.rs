@@ -195,6 +195,7 @@ pub fn create_process_from_staged_pages(krnl: &mut KernelK, process_page_ptr: Pa
         l4_page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().locking_thread()->Write_lock_id,
         final(krnl).cpu_arr == old(krnl).cpu_arr,
         final(krnl).sched_mp == old(krnl).sched_mp,
+        final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
         final(krnl).ep_mp == old(krnl).ep_mp,
         final(krnl).it_mp == old(krnl).it_mp,
         final(krnl).irt == old(krnl).irt,
@@ -208,6 +209,7 @@ pub fn create_process_from_staged_pages(krnl: &mut KernelK, process_page_ptr: Pa
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
@@ -309,7 +311,7 @@ pub fn create_process_from_staged_pages(krnl: &mut KernelK, process_page_ptr: Pa
             reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(container_endpoint_wf); reveal(container_cpu_wf); reveal(container_scheduler_wf); reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf);
             reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(thread_caller_callee_wf); reveal(container_thread_endpoint_wf); reveal(container_thread_scheduler_wf); reveal(container_thread_wf); reveal(process_cpu_wf); reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); reveal(thread_cpu_wf);
         };
-        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { reveal(tlb_wf_spec); };
         assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
         assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };

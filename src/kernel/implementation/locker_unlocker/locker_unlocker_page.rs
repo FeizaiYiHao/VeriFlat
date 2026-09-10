@@ -12,7 +12,7 @@ impl KernelK {
                 old(self).inv(),
                 index_valid(NUM_PAGES, page_index),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                !old(self).pg_arr.spec_index(page_index).view().locked_by_thread(old(lctx).thread_id()),
+                !old(lctx).page_lock_map().dom().contains(page_index),
                 old(lctx).lock_id_acyclic(old(self).pg_arr.lock_id_by_index(page_index)),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
@@ -34,6 +34,7 @@ impl KernelK {
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -47,11 +48,6 @@ impl KernelK {
                     lock_id: final(self).pg_arr.lock_id_by_index(page_index),
                     mode: TypedLockMode::Write,
                 }),
-                page_objects_unlocked(old(self).pg_arr, old(lctx).thread_id()) ==> page_objects_unlocked_except(final(self).pg_arr, final(lctx).thread_id(), set![page_index]),
-                forall|exceptions: Set<PageIndex>|
-                    #![trigger page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions)]
-                    page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions)
-                    ==> page_objects_unlocked_except(final(self).pg_arr, final(lctx).thread_id(), exceptions.insert(page_index)),
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -61,6 +57,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).pg_arr.inv()) by { reveal(page_array_wf); };
+                assert(wlock_requires(self.pg_arr.spec_index(page_index).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             }
             let ret = self.pg_arr.wlock(page_index, Tracked(&mut *lctx), Ghost(KernelObjId::Page(page_index)));
             proof {
@@ -109,6 +106,7 @@ impl KernelK {
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).sched_mp     == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -128,14 +126,8 @@ impl KernelK {
                 final(lctx).kernel_view_locking_state() is Release,
                 // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
                 wunlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view()),
-                page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), set![page_index]) ==> page_objects_unlocked(final(self).pg_arr, final(lctx).thread_id()),
-                forall|exceptions: Set<PageIndex>|
-                    #![trigger page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions.insert(page_index))]
-                    !exceptions.contains(page_index)
-                    && page_objects_unlocked_except(old(self).pg_arr, old(lctx).thread_id(), exceptions.insert(page_index))
-                    ==> page_objects_unlocked_except(final(self).pg_arr, final(lctx).thread_id(), exceptions),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))),
-                unlock_ensures(old(lctx), final(lctx), (), lock_perm.view().lock_id(), KernelObjId::Page(page_index), old(self).pg_arr.lock_id_by_index(page_index)),
+                unlock_ensures(old(lctx), final(lctx), KernelObjId::Page(page_index), old(self).pg_arr.lock_id_by_index(page_index)),
         {
             assert(self.pg_arr.inv()) by { reveal(page_array_wf); };
             assert({

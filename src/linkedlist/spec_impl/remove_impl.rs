@@ -47,12 +47,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                     && self.addr_list.view().spec_index(ghost_index.view()) == addr
                 ) by {
                     reveal(LinkedList::wf_addr_list);
-                    let k = choose|k: int|
-                        0 <= k < self.addr_list.view().len()
-                        && self.addr_list.view().spec_index(k) == addr;
-                    assert(self.addr_list.view().spec_index(k) == addr) by {
-                        reveal(LinkedList::wf_perms);
-                    };
                 };
                 assert(0 < ghost_index.view()) by {
                     reveal(LinkedList::wf_head);

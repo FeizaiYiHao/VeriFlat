@@ -19,6 +19,14 @@ impl KernelK {
             ensures
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
+                forall|key: usize|
+                    #![trigger old(self).sched_mp.view().spec_index(key)]
+                    #![trigger final(self).sched_mp.view().spec_index(key)]
+                    old(self).sched_mp.dom().contains(key) ==> {
+                        &&& final(self).sched_mp.view().spec_index(key).is_init() == old(self).sched_mp.view().spec_index(key).is_init()
+                        &&& final(self).sched_mp.view().spec_index(key).addr() == old(self).sched_mp.view().spec_index(key).addr()
+                    },
+                final(self).sched_mp.spec_index(scheduler_ptr).is_init() == old(self).sched_mp.spec_index(scheduler_ptr).is_init(),
                 // ---- Every held lock still matches lctx (scheduler now locked) ----
                 // ---- Dynamic lock ids remain aligned ----
                 typed_lock_maps_aligned(final(self), final(lctx)),
@@ -34,6 +42,7 @@ impl KernelK {
                 final(self).rt_ctn    == old(self).rt_ctn,
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -44,7 +53,6 @@ impl KernelK {
                 // ---- scheduler_map: dom unchanged; only the targeted entry's lock state changed ----
                 final(self).sched_mp.dom() == old(self).sched_mp.dom(),
                 final(self).sched_mp.unchanged_except(&old(self).sched_mp, scheduler_ptr),
-                scheduler_objects_unlocked(old(self).sched_mp, old(lctx).thread_id()) ==> scheduler_objects_unlocked_except(final(self).sched_mp, final(lctx).thread_id(), set![scheduler_ptr]),
                 // ---- LocalContext: phases preserved ----
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -53,17 +61,9 @@ impl KernelK {
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr), TypedHeldLock { lock_id: final(self).sched_mp.lock_id_by_key(scheduler_ptr), mode: TypedLockMode::Write }),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-                forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                    #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)]
-                    old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
-                    ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers.insert(scheduler_ptr), pcid_allocators, pagetables, iommu_tables),
-                forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
-                    ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, set![scheduler_ptr], Set::empty(), Set::empty(), Set::empty()),
         {
             proof {
-                assert(old(self).sched_mp.perms_wf()) by { reveal(scheduler_perms_wf); };
+                assert(old(self).sched_mp.perms_wf() && old(self).sched_mp.spec_index(scheduler_ptr).is_init()) by { reveal(scheduler_perms_wf); };
                 assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by { reveal(scheduler_perms_wf); };
             }
             let ret = self.sched_mp.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
@@ -120,6 +120,7 @@ impl KernelK {
                 final(self).rt_ctn    == old(self).rt_ctn,
                 final(self).ctn_mp     == old(self).ctn_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp       == old(self).prc_mp,
                 final(self).thr_mp        == old(self).thr_mp,
                 final(self).ep_mp      == old(self).ep_mp,
@@ -141,15 +142,9 @@ impl KernelK {
                 final(lctx).kernel_view_locking_state() is Release,
                 // ---- wunlock ensures (forwarded from LockedMap::wunlock) ----
                 wunlock_ensures(old(self).sched_mp.spec_index(scheduler_ptr), final(self).sched_mp.spec_index(scheduler_ptr)),
-                scheduler_objects_unlocked_except(old(self).sched_mp, old(lctx).thread_id(), set![scheduler_ptr]) ==> scheduler_objects_unlocked(final(self).sched_mp, final(lctx).thread_id()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))),
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr)),
-                forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                    #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers.insert(scheduler_ptr), pcid_allocators, pagetables, iommu_tables)]
-                    !schedulers.contains(scheduler_ptr)
-                    && old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers.insert(scheduler_ptr), pcid_allocators, pagetables, iommu_tables)
-                    ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables),
-                unlock_ensures(old(lctx), final(lctx), (), lock_perm.view().lock_id(), KernelObjId::Scheduler(scheduler_ptr), old(self).sched_mp.lock_id_by_key(scheduler_ptr)),
+                unlock_ensures(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr), old(self).sched_mp.lock_id_by_key(scheduler_ptr)),
         {
             proof {
                 assert({

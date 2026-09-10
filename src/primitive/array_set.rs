@@ -119,6 +119,7 @@ impl <const N: usize> ArraySet<N> {
         self.elements_in_range()
         &&&
         self.internal_wf()
+        &&& self.closed_view().subset_of(self.view())
     }
 
     pub open spec fn elements_in_range(&self) -> bool{
@@ -188,6 +189,9 @@ impl <const N: usize> ArraySet<N> {
             final(self).wf(),
             final(self).view() == old(self).view().insert(v),
             final(self).closed_view() == old(self).closed_view().insert(v),
+            final(self).data.view() == old(self).data.view().update(v as int, true),
+            final(self).closed.view() == old(self).closed.view().update(v as int, true),
+            final(self).len as int == old(self).len as int + 1,
     {
         proof { Self::lemma_set_missing_element_size(self.set.view(), v, N); }
         self.data.set(v, true);
@@ -205,6 +209,9 @@ impl <const N: usize> ArraySet<N> {
             final(self).wf(),
             final(self).view() == old(self).view().remove(v),
             final(self).closed_view() == old(self).closed_view().remove(v),
+            final(self).data.view() == old(self).data.view().update(v as int, false),
+            final(self).closed.view() == old(self).closed.view().update(v as int, false),
+            final(self).len as int == old(self).len as int - 1,
     {
         self.data.set(v, false);
         self.closed.set(v, false);
@@ -239,49 +246,15 @@ impl <const N: usize> ArraySet<N> {
         self.closed.set(v, false);
         self.closed_set = Ghost(self.closed_set.view().remove(v));
     }
-    // Helper lemma: a finite set contained in [0, m) has at most m elements
     proof fn lemma_finite_set_bounded_size(s: Set<usize>, m: usize)
         requires
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < m,
         ensures
             s.len() <= m,
-        decreases m,
     {
-        if m == 0 {
-            // s is contained in [0, 0) = empty set, so s is empty
-            if s.len() > 0 {
-                let elem = s.choose();
-                assert(s.contains(elem));
-                assert(false);
-            }
-        } else {
-            // m > 0
-            if s.len() == 0 {
-            } else {
-                // s is non-empty
-                // split based on whether s contains m-1
-                let m_minus_1 = (m - 1) as usize;
-
-                if s.contains(m_minus_1) {
-                    // m-1 is in s
-                    let s_without_last = s.remove(m_minus_1);
-
-                    // Recursively prove for s_without_last in [0, m-1)
-                    Self::lemma_finite_set_bounded_size(s_without_last, m_minus_1);
-
-                } else {
-                    // m-1 is not in s
-                    // So all elements of s are in [0, m-1)
-
-                    // Recursively prove for s in [0, m-1)
-                    Self::lemma_finite_set_bounded_size(s, m_minus_1);
-                }
-            }
-        }
+        assert(s.len() <= m) by { lemma_len_subset(s, Set::<usize>::range(0, m)); };
     }
 
-        // Helper lemma: if a set contains only elements in [0, n), and doesn't contain a specific element v in [0, n),
-    // then the set has strictly fewer than n elements
     proof fn lemma_set_missing_element_size(s: Set<usize>, v: usize, n: usize)
         requires
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < n,
@@ -290,75 +263,8 @@ impl <const N: usize> ArraySet<N> {
             n > 0,
         ensures
             s.len() < n,
-        decreases n,
     {
-        if n == 1 {
-            // n = 1, so the only possible element is 0
-            // v must be 0, and s doesn't contain 0
-            // Therefore s is empty and s.len() == 0 < 1
-            if s.len() > 0 {
-                let elem = s.choose();
-                assert(s.contains(elem));
-                assert(elem == 0);
-                assert(false);
-            }
-        } else {
-            // n > 1
-            // Consider the set restricted to [0, n-1)
-            let n_minus_1 = (n - 1) as usize;
-            let s_restricted = s.filter(|i: usize| 0 <= i < n_minus_1);
-
-            if v < n_minus_1 {
-                // Recursively prove for n-1
-                Self::lemma_set_missing_element_size(s_restricted, v, n_minus_1);
-
-                // Now, s can have at most one more element than s_restricted (the element n-1)
-                // So s.len() <= s_restricted.len() + 1 < (n-1) + 1 = n
-
-                // Elements of s are either in s_restricted or equal to n-1
-                let elem_n_minus_1 = n_minus_1;
-                if s.contains(elem_n_minus_1) {
-                    // s = s_restricted �~H� {n-1}
-                    let s_without_last = s.remove(elem_n_minus_1);
-                                        assert(s_without_last =~= s_restricted);
-                } else {
-                    // s = s_restricted
-                    assert(s =~= s_restricted);
-                }
-            } else {
-                // So s doesn't contain n_minus_1, and all elements of s are in [0, n)
-                // Now s is entirely contained in [0, n_minus_1)
-                // We need to prove s.len() < n, which is equivalent to s.len() <= n_minus_1
-
-                // Use induction: if s is empty, done. Otherwise, pick an element, remove it, and recurse
-                if s.len() == 0 {
-                } else {
-                    // s has at least one element
-                    let w = s.choose();
-                    assert(s.contains(w));
-                    assert(0 <= w < n_minus_1);
-
-                    if n_minus_1 == 0 {
-                        // All elements of s are in [0, 0), which is empty
-                        assert(s.len() == 0);
-                    } else {
-                        // Let's construct an upper bound proof:
-                        // We'll remove one element at a time from s and show the count
-                        let s_minus_w = s.remove(w);
-
-                        // If s_minus_w is empty, then s has 1 element, so s.len() = 1 <= n_minus_1 (since n_minus_1 > 0)
-                        if s_minus_w.len() == 0 {
-                        } else {
-                            // s_minus_w is non-empty
-                            // I think I need a lemma that directly states: finite set in [0, m) has size <= m
-                            // Let me extract that as a separate helper
-                            Self::lemma_finite_set_bounded_size(s, n_minus_1);
-                            assert(s.len() <= n_minus_1);
-                        }
-                    }
-                }
-            }
-        }
+        assert(s.insert(v).len() <= n) by { Self::lemma_finite_set_bounded_size(s.insert(v), n); };
     }
 }
 

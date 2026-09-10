@@ -15,6 +15,12 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
   framing bridges.
 - A direct postcondition may expose an operation's existing narrow guarantee.
   Preconditions stay limited to safety, semantics, and direct callees.
+- Invariants and cross-function contracts must not use `exists` or `choose` to
+  hide objects. Pass concrete arguments and results. Choices used only inside
+  a proof for indices, counterexamples, or induction remain allowed.
+- After changing a contract, simplify its callers' old proofs and verify which
+  facts are still necessary. Use typed lock maps directly for lock membership
+  and scope; preserve the approved relations described by the kernel-model skill.
 - Before introducing any framing spec, obtain explicit user approval for that
   specific spec. Show its proposed name, complete definition, objects and fields
   preserved, intended use sites, and why direct proof or existing relations are
@@ -25,6 +31,9 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
 - Delete dead private helpers after checking callers. Public syscalls and
   intended public primitives are not dead merely because they lack in-tree
   callers.
+- There is no fixed acceptable wall-time regression. Follow the build skill's
+  measurement rules and bring a persistent slowdown beyond observed variation
+  to the user with the concrete simplification and measurements.
 
 ## Required repository skills
 

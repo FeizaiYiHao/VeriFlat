@@ -50,6 +50,7 @@ pub tracked struct LocalContext {
     endpoint_lock_map: Map<RwLockEndpointPtr, TypedHeldLock>,
     scheduler_lock_map: Map<RwLockSchedulerPtr, TypedHeldLock>,
     pcid_allocator_lock_map: Map<RwLockPcidAllocatorPtr, TypedHeldLock>,
+    cpu_set_lock_map: Map<RwLockCpuSetPtr, TypedHeldLock>,
     pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
     iommu_table_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
     allocator_4k_lock_maps: AllocatorLockMaps,
@@ -94,6 +95,10 @@ impl LocalContext {
 
     pub closed spec fn pcid_allocator_lock_map(&self) -> Map<RwLockPcidAllocatorPtr, TypedHeldLock> {
         self.pcid_allocator_lock_map
+    }
+
+    pub closed spec fn cpu_set_lock_map(&self) -> Map<RwLockCpuSetPtr, TypedHeldLock> {
+        self.cpu_set_lock_map
     }
 
     pub closed spec fn pagetable_lock_map(&self) -> Map<RwLockPageTableRoot, TypedHeldLock> {
@@ -198,6 +203,9 @@ impl LocalContext {
             KernelObjId::PcidAllocator(ptr) => if self.pcid_allocator_lock_map().dom().contains(ptr) {
                 Some(self.pcid_allocator_lock_map().index(ptr))
             } else { None },
+            KernelObjId::CpuSet(ptr) => if self.cpu_set_lock_map().dom().contains(ptr) {
+                Some(self.cpu_set_lock_map().index(ptr))
+            } else { None },
             KernelObjId::PageTable(ptr) => if self.pagetable_lock_map().dom().contains(ptr) {
                 Some(self.pagetable_lock_map().index(ptr))
             } else { None },
@@ -259,93 +267,10 @@ impl LocalContext {
         &&& self.endpoint_lock_map().dom().is_empty()
         &&& self.scheduler_lock_map().dom().is_empty()
         &&& self.pcid_allocator_lock_map().dom().is_empty()
+        &&& self.cpu_set_lock_map().dom().is_empty()
         &&& self.pagetable_lock_map().dom().is_empty()
         &&& self.iommu_table_lock_map().dom().is_empty()
         &&& self.allocator_quota_4k_lock_map().dom().is_empty()
-        &&& self.allocator_cache_4k_lock_map().dom().is_empty()
-        &&& self.allocator_global_pool_4k_lock_map().dom().is_empty()
-        &&& self.allocator_quota_2m_lock_map().dom().is_empty()
-        &&& self.allocator_cache_2m_lock_map().dom().is_empty()
-        &&& self.allocator_global_pool_2m_lock_map().dom().is_empty()
-        &&& self.allocator_quota_1g_lock_map().dom().is_empty()
-        &&& self.allocator_cache_1g_lock_map().dom().is_empty()
-        &&& self.allocator_global_pool_1g_lock_map().dom().is_empty()
-    }
-
-    pub open spec fn holds_exact_cpu_process_thread_locks(
-        &self,
-        cpus: Set<CpuId>,
-        processes: Set<RwLockProcessPtr>,
-        threads: Set<RwLockThreadPtr>,
-    ) -> bool {
-        self.holds_exact_base_locks(cpus, Set::empty(), processes, threads, Set::empty())
-    }
-
-    pub open spec fn holds_exact_base_locks(
-        &self,
-        cpus: Set<CpuId>,
-        containers: Set<RwLockContainerPtr>,
-        processes: Set<RwLockProcessPtr>,
-        threads: Set<RwLockThreadPtr>,
-        endpoints: Set<RwLockEndpointPtr>,
-    ) -> bool {
-        self.object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), Set::empty(), Set::empty())
-    }
-
-    pub open spec fn object_lock_scope(
-        &self,
-        pages: Set<PageIndex>,
-        cpus: Set<CpuId>,
-        containers: Set<RwLockContainerPtr>,
-        processes: Set<RwLockProcessPtr>,
-        threads: Set<RwLockThreadPtr>,
-        endpoints: Set<RwLockEndpointPtr>,
-        schedulers: Set<RwLockSchedulerPtr>,
-        pcid_allocators: Set<RwLockPcidAllocatorPtr>,
-        pagetables: Set<RwLockPageTableRoot>,
-        iommu_tables: Set<RwLockPageTableRoot>,
-    ) -> bool {
-        &&& self.page_lock_map().dom() =~= pages
-        &&& self.cpu_lock_map().dom() =~= cpus
-        &&& self.container_lock_map().dom() =~= containers
-        &&& self.process_lock_map().dom() =~= processes
-        &&& self.thread_lock_map().dom() =~= threads
-        &&& self.endpoint_lock_map().dom() =~= endpoints
-        &&& self.scheduler_lock_map().dom() =~= schedulers
-        &&& self.pcid_allocator_lock_map().dom() =~= pcid_allocators
-        &&& self.pagetable_lock_map().dom() =~= pagetables
-        &&& self.iommu_table_lock_map().dom() =~= iommu_tables
-        &&& self.allocator_quota_4k_lock_map().dom().is_empty()
-        &&& self.allocator_cache_4k_lock_map().dom().is_empty()
-        &&& self.allocator_global_pool_4k_lock_map().dom().is_empty()
-        &&& self.allocator_quota_2m_lock_map().dom().is_empty()
-        &&& self.allocator_cache_2m_lock_map().dom().is_empty()
-        &&& self.allocator_global_pool_2m_lock_map().dom().is_empty()
-        &&& self.allocator_quota_1g_lock_map().dom().is_empty()
-        &&& self.allocator_cache_1g_lock_map().dom().is_empty()
-        &&& self.allocator_global_pool_1g_lock_map().dom().is_empty()
-    }
-
-    pub open spec fn holds_exact_base_and_4k_quota_locks(
-        &self,
-        cpus: Set<CpuId>,
-        containers: Set<RwLockContainerPtr>,
-        processes: Set<RwLockProcessPtr>,
-        threads: Set<RwLockThreadPtr>,
-        endpoints: Set<RwLockEndpointPtr>,
-        quotas: Set<RwLockPageAllocatorPtr>,
-    ) -> bool {
-        &&& self.page_lock_map().dom().is_empty()
-        &&& self.cpu_lock_map().dom() =~= cpus
-        &&& self.container_lock_map().dom() =~= containers
-        &&& self.process_lock_map().dom() =~= processes
-        &&& self.thread_lock_map().dom() =~= threads
-        &&& self.endpoint_lock_map().dom() =~= endpoints
-        &&& self.scheduler_lock_map().dom().is_empty()
-        &&& self.pcid_allocator_lock_map().dom().is_empty()
-        &&& self.pagetable_lock_map().dom().is_empty()
-        &&& self.iommu_table_lock_map().dom().is_empty()
-        &&& self.allocator_quota_4k_lock_map().dom() =~= quotas
         &&& self.allocator_cache_4k_lock_map().dom().is_empty()
         &&& self.allocator_global_pool_4k_lock_map().dom().is_empty()
         &&& self.allocator_quota_2m_lock_map().dom().is_empty()
@@ -500,6 +425,7 @@ pub open spec fn typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContex
     &&& new.endpoint_lock_map() == old.endpoint_lock_map()
     &&& new.scheduler_lock_map() == old.scheduler_lock_map()
     &&& new.pcid_allocator_lock_map() == old.pcid_allocator_lock_map()
+    &&& new.cpu_set_lock_map() == old.cpu_set_lock_map()
     &&& new.pagetable_lock_map() == old.pagetable_lock_map()
     &&& new.iommu_table_lock_map() == old.iommu_table_lock_map()
     &&& new.allocator_quota_4k_lock_map() == old.allocator_quota_4k_lock_map()
@@ -546,6 +472,10 @@ pub open spec fn typed_lock_maps_inserted(
     &&& new.pcid_allocator_lock_map() == match obj_id {
         KernelObjId::PcidAllocator(ptr) => old.pcid_allocator_lock_map().insert(ptr, entry),
         _ => old.pcid_allocator_lock_map(),
+    }
+    &&& new.cpu_set_lock_map() == match obj_id {
+        KernelObjId::CpuSet(ptr) => old.cpu_set_lock_map().insert(ptr, entry),
+        _ => old.cpu_set_lock_map(),
     }
     &&& new.pagetable_lock_map() == match obj_id {
         KernelObjId::PageTable(ptr) => old.pagetable_lock_map().insert(ptr, entry),
@@ -698,6 +628,10 @@ pub open spec fn typed_lock_maps_removed(
         KernelObjId::PcidAllocator(ptr) => old.pcid_allocator_lock_map().remove(ptr),
         _ => old.pcid_allocator_lock_map(),
     }
+    &&& new.cpu_set_lock_map() == match obj_id {
+        KernelObjId::CpuSet(ptr) => old.cpu_set_lock_map().remove(ptr),
+        _ => old.cpu_set_lock_map(),
+    }
     &&& new.pagetable_lock_map() == match obj_id {
         KernelObjId::PageTable(ptr) => old.pagetable_lock_map().remove(ptr),
         _ => old.pagetable_lock_map(),
@@ -756,10 +690,9 @@ pub open spec fn typed_lock_maps_removed(
     }
 }
 
-pub open spec fn lock_ensures<T>(
+pub open spec fn lock_ensures(
     old: &LocalContext,
     new: &LocalContext,
-    value: T,
     lock_id: LockId,
     obj_id: KernelObjId,
 ) -> bool {
@@ -773,11 +706,9 @@ pub open spec fn lock_ensures<T>(
     &&& lock_id_set_aligned(old) ==> lock_id_set_aligned(new)
 }
 
-pub open spec fn unlock_ensures<T>(
+pub open spec fn unlock_ensures(
     old: &LocalContext,
     new: &LocalContext,
-    value: T,
-    lock_token: LockToken,
     obj_id: KernelObjId,
     lock_id: LockId,
 ) -> bool {

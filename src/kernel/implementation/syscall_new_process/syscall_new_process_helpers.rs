@@ -62,6 +62,7 @@ pub(super) fn allocate_new_process_pages(
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -100,6 +101,7 @@ pub(super) fn allocate_new_process_pages(
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
         held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
+        held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -125,7 +127,6 @@ pub(super) fn allocate_new_process_pages(
     let tracked l4_page_lock_perm = page_lock_perms.tracked_remove(l4_page_ptr);
     proof {
         assert(lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by { reveal(LocalContext::holds_no_allocator_locks); };
-        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state) by { reveal(Thread::stable_allocation_root_equal); };
     }
     (process_page_ptr, pagetable_page_ptr, l4_page_ptr, Tracked(process_page_lock_perm), Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm))
 }
@@ -137,8 +138,28 @@ fn create_initial_thread_and_finish_new_process(krnl: &mut KernelK, Tracked(lctx
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-        mmap_4k_allocation_ready(old(lctx)),
-        old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![child_ptr], set![current_thread_ptr], Set::empty(), set![scheduler_ptr], Set::empty(), set![source_pagetable_ptr, target_pagetable_ptr], Set::empty()),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom() =~= set![container_ptr],
+        old(lctx).process_lock_map().dom() =~= set![child_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        old(lctx).endpoint_lock_map().dom().is_empty(),
+        old(lctx).scheduler_lock_map().dom() =~= set![scheduler_ptr],
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, target_pagetable_ptr],
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
@@ -242,8 +263,28 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(krnl: &
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-        mmap_4k_allocation_ready(old(lctx)),
-        old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![child_ptr], set![current_thread_ptr], set![endpoint_ptr], set![scheduler_ptr], Set::empty(), set![source_pagetable_ptr, target_pagetable_ptr], Set::empty()),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom() =~= set![container_ptr],
+        old(lctx).process_lock_map().dom() =~= set![child_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom() =~= set![scheduler_ptr],
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, target_pagetable_ptr],
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
@@ -391,7 +432,7 @@ pub(super) fn commit_new_process(
     parent_lock_perm: Tracked<LockPerm>,
     current_thread_lock_perm: Tracked<LockPerm>,
     source_pagetable_lock_perm: Tracked<LockPerm>,
-)
+) -> (ret: (RwLockProcessPtr, RwLockThreadPtr))
     requires
         index_valid(NUM_CPUS, cpu_id),
         source_range.wf(),
@@ -452,7 +493,25 @@ pub(super) fn commit_new_process(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-        old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![parent_ptr], set![current_thread_ptr], Set::empty(), Set::empty(), set![pcid_allocator_ptr], set![source_pagetable_ptr], Set::empty()),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom() =~= set![container_ptr],
+        old(lctx).process_lock_map().dom() =~= set![parent_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        old(lctx).endpoint_lock_map().dom().is_empty(),
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom() =~= set![pcid_allocator_ptr],
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
@@ -464,18 +523,13 @@ pub(super) fn commit_new_process(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
-        exists|child_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr|
-            #![trigger kernel_u_new_process_shared(final(steps).steps.spec_index(old(steps).steps.len() as int).new_u, final(steps).steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, child_ptr, source_range), final(krnl).thr_mp.spec_index(thread_ptr)]
-        {
-            let first_step = final(steps).steps.spec_index(old(steps).steps.len() as int);
-            &&& kernel_u_create_process_changed(first_step.old_u, first_step.new_u, parent_ptr, child_ptr)
-            &&& kernel_u_new_process_shared(first_step.new_u, final(steps).steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, child_ptr, source_range)
-            &&& kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, child_ptr)
-            &&& final(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
-        },
+        kernel_u_create_process_changed(final(steps).steps.spec_index(old(steps).steps.len() as int).old_u, final(steps).steps.spec_index(old(steps).steps.len() as int).new_u, parent_ptr, ret.0),
+        kernel_u_new_process_shared(final(steps).steps.spec_index(old(steps).steps.len() as int).new_u, final(steps).steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, ret.0, source_range),
+        kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, ret.0),
+        final(krnl).thr_mp.dom().contains(ret.1),
+        final(krnl).thr_mp.spec_index(ret.1).view().state is SCHEDULED,
+        final(krnl).thr_mp.spec_index(ret.1).view().owning_proc == ret.0,
+        final(krnl).thr_mp.spec_index(ret.1).view().owning_container == container_ptr,
 {
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked container_lock_perm = container_lock_perm.get();
@@ -499,7 +553,6 @@ pub(super) fn commit_new_process(
             &&& lctx.pagetable_lock_map().dom() == set![source_pagetable_ptr, target_pagetable_ptr]
             &&& lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)
         }) by {
-            reveal(LocalContext::object_lock_scope);
             broadcast use vstd::set::lemma_set_insert_same;
         };
 
@@ -520,12 +573,7 @@ pub(super) fn commit_new_process(
 
     }
     let new_thread_ptr = create_initial_thread_and_finish_new_process(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, child_ptr, current_thread_ptr, scheduler_ptr, source_pagetable_ptr, target_pagetable_ptr, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(child_lock_perm), Tracked(current_thread_lock_perm), Tracked(scheduler_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
-    proof {
-        assert(kernel_u_create_process_changed(steps.steps.spec_index(old(steps).steps.len() as int).old_u, steps.steps.spec_index(old(steps).steps.len() as int).new_u, parent_ptr, child_ptr)) by { vstd::seq::lemma_seq_subrange_index(steps.steps, 0, (old(steps).steps.len() + 1) as int, old(steps).steps.len() as int); };
-        assert(kernel_u_new_process_shared(steps.steps.spec_index(old(steps).steps.len() as int).new_u, steps.steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, child_ptr, source_range)) by {
-            vstd::seq::lemma_seq_subrange_index(steps.steps, 0, (old(steps).steps.len() + 1) as int, old(steps).steps.len() as int);
-        };
-    }
+    (child_ptr, new_thread_ptr)
 }
 
 #[verifier::spinoff_prover]
@@ -552,7 +600,7 @@ pub(super) fn commit_new_process_with_endpoint(
     current_thread_lock_perm: Tracked<LockPerm>,
     source_pagetable_lock_perm: Tracked<LockPerm>,
     endpoint_lock_perm: Tracked<LockPerm>,
-)
+) -> (ret: (RwLockProcessPtr, RwLockThreadPtr))
     requires
         index_valid(NUM_CPUS, cpu_id),
         edp_idx_valid(endpoint_index),
@@ -629,7 +677,25 @@ pub(super) fn commit_new_process_with_endpoint(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-        old(lctx).object_lock_scope(Set::empty(), set![cpu_id], set![container_ptr], set![parent_ptr], set![current_thread_ptr], set![endpoint_ptr], Set::empty(), set![pcid_allocator_ptr], set![source_pagetable_ptr], Set::empty()),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom() =~= set![container_ptr],
+        old(lctx).process_lock_map().dom() =~= set![parent_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom() =~= set![pcid_allocator_ptr],
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
@@ -641,20 +707,15 @@ pub(super) fn commit_new_process_with_endpoint(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
-        exists|child_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr|
-            #![trigger kernel_u_new_process_shared(final(steps).steps.spec_index(old(steps).steps.len() as int).new_u, final(steps).steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, child_ptr, source_range), final(krnl).thr_mp.spec_index(thread_ptr)]
-        {
-            let first_step = final(steps).steps.spec_index(old(steps).steps.len() as int);
-            &&& kernel_u_create_process_changed(first_step.old_u, first_step.new_u, parent_ptr, child_ptr)
-            &&& kernel_u_new_process_shared(first_step.new_u, final(steps).steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, child_ptr, source_range)
-            &&& kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, child_ptr)
-            &&& final(krnl).thr_mp.dom().contains(thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
-            &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr)
-        },
+        kernel_u_create_process_changed(final(steps).steps.spec_index(old(steps).steps.len() as int).old_u, final(steps).steps.spec_index(old(steps).steps.len() as int).new_u, parent_ptr, ret.0),
+        kernel_u_new_process_shared(final(steps).steps.spec_index(old(steps).steps.len() as int).new_u, final(steps).steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, ret.0, source_range),
+        kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, ret.0),
+        final(krnl).thr_mp.dom().contains(ret.1),
+        final(krnl).thr_mp.spec_index(ret.1).view().state is SCHEDULED,
+        final(krnl).thr_mp.spec_index(ret.1).view().owning_proc == ret.0,
+        final(krnl).thr_mp.spec_index(ret.1).view().owning_container == container_ptr,
+        final(krnl).thr_mp.spec_index(ret.1).view().endpoint_descriptors.wf(),
+        final(krnl).thr_mp.spec_index(ret.1).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
 {
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked container_lock_perm = container_lock_perm.get();
@@ -679,7 +740,6 @@ pub(super) fn commit_new_process_with_endpoint(
             &&& lctx.pagetable_lock_map().dom() == set![source_pagetable_ptr, target_pagetable_ptr]
             &&& lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)
         }) by {
-            reveal(LocalContext::object_lock_scope);
             broadcast use vstd::set::lemma_set_insert_same;
         };
 
@@ -709,12 +769,7 @@ pub(super) fn commit_new_process_with_endpoint(
         }) by { reveal(container_thread_endpoint_wf); };
     }
     let new_thread_ptr = create_initial_thread_with_endpoint_and_finish_new_process(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, child_ptr, current_thread_ptr, scheduler_ptr, endpoint_ptr, endpoint_index, source_pagetable_ptr, target_pagetable_ptr, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(child_lock_perm), Tracked(current_thread_lock_perm), Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
-    proof {
-        assert(kernel_u_create_process_changed(steps.steps.spec_index(old(steps).steps.len() as int).old_u, steps.steps.spec_index(old(steps).steps.len() as int).new_u, parent_ptr, child_ptr)) by { vstd::seq::lemma_seq_subrange_index(steps.steps, 0, (old(steps).steps.len() + 1) as int, old(steps).steps.len() as int); };
-        assert(kernel_u_new_process_shared(steps.steps.spec_index(old(steps).steps.len() as int).new_u, steps.steps.spec_index((old(steps).steps.len() + source_range.len) as int).new_u, parent_ptr, child_ptr, source_range)) by {
-            vstd::seq::lemma_seq_subrange_index(steps.steps, 0, (old(steps).steps.len() + 1) as int, old(steps).steps.len() as int);
-        };
-    }
+    (child_ptr, new_thread_ptr)
 }
 
 }

@@ -92,7 +92,7 @@ NO_KILL_STATE>>>,
             major: old(perm).value().view().current_lock_major(),
             minor: old(perm).lock_minor(),
         }, final(lctx), ret.view()),
-        lock_ensures(old(lctx), final(lctx), final(perm).value().view(), LockId{
+        lock_ensures(old(lctx), final(lctx), LockId{
             container: old(perm).value().container_depth(),
             process: old(perm).value().process_depth(),
             major: old(perm).value().view().current_lock_major(),
@@ -139,8 +139,6 @@ NO_KILL_STATE>>>,
         unlock_ensures(
             old(lctx),
             final(lctx),
-            final(perm).value().view(),
-            lock_perm.view().lock_id(),
             obj_id.view(),
             old(perm).lock_id(),
         ),
@@ -198,7 +196,7 @@ HAS_KILL_STATE>>>,
                 minor: old(perm).lock_minor(),
             }, final(lctx), ret.1.unwrap().view())
             &&&
-            lock_ensures(old(lctx), final(lctx), final(perm).value().view(), LockId{
+            lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(perm).value().container_depth(),
                 process: old(perm).value().process_depth(),
                 major: old(perm).value().view().current_lock_major(),
@@ -253,8 +251,6 @@ HAS_KILL_STATE>>>,
         unlock_ensures(
             old(lctx),
             final(lctx),
-            final(perm).value().view(),
-            lock_perm.view().lock_id(),
             obj_id.view(),
             old(perm).lock_id(),
         ),

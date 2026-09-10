@@ -33,6 +33,7 @@ impl KernelK {
                 final(self).ctn_mp == old(self).ctn_mp,
                 final(self).sched_mp == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp == old(self).prc_mp,
                 final(self).thr_mp == old(self).thr_mp,
                 final(self).ep_mp == old(self).ep_mp,
@@ -47,11 +48,6 @@ impl KernelK {
                     other_pagetable != pagetable_ptr && old(self).pt_mp.dom().contains(other_pagetable)
                     ==> final(self).pt_mp.dom().contains(other_pagetable)
                         && final(self).pt_mp.lock_id_by_key(other_pagetable) == old(self).pt_mp.lock_id_by_key(other_pagetable),
-                pagetable_objects_unlocked(old(self).pt_mp, old(lctx).thread_id()) ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), set![pagetable_ptr]),
-                forall|exceptions: Set<RwLockPageTableRoot>|
-                    #![trigger pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), exceptions)]
-                    pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), exceptions)
-                    ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), exceptions.insert(pagetable_ptr)),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 wlock_ensures(old(self).pt_mp.spec_index(pagetable_ptr), final(self).pt_mp.spec_index(pagetable_ptr), old(self).pt_mp.lock_id_by_key(pagetable_ptr), final(lctx), ret.view()),
@@ -59,14 +55,6 @@ impl KernelK {
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
                 final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-                forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                    #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)]
-                    old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
-                    ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.insert(pagetable_ptr), iommu_tables),
-                forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
-                    ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
                 forall|other_pagetable: RwLockPageTableRoot|
                     #![trigger final(lctx).lock_id_set().contains((final(self).pt_mp.lock_id_by_key(other_pagetable), KernelObjId::PageTable(other_pagetable)))]
                     old(self).pt_mp.dom().contains(other_pagetable)
@@ -89,7 +77,7 @@ impl KernelK {
                     assert(container_process_page_pagetable_wf(self.ctn_mp, self.prc_mp, self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall(); };
                     assert(pagetable_pages_wf(self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall(); };
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
@@ -130,6 +118,7 @@ impl KernelK {
                 final(self).ctn_mp == old(self).ctn_mp,
                 final(self).sched_mp == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp == old(self).prc_mp,
                 final(self).thr_mp == old(self).thr_mp,
                 final(self).ep_mp == old(self).ep_mp,
@@ -144,11 +133,6 @@ impl KernelK {
                     other_pagetable != pagetable_ptr && old(self).pt_mp.dom().contains(other_pagetable)
                     ==> final(self).pt_mp.dom().contains(other_pagetable)
                         && final(self).pt_mp.lock_id_by_key(other_pagetable) == old(self).pt_mp.lock_id_by_key(other_pagetable),
-                pagetable_objects_unlocked(old(self).pt_mp, old(lctx).thread_id()) ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), set![pagetable_ptr]),
-                forall|exceptions: Set<RwLockPageTableRoot>|
-                    #![trigger pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), exceptions)]
-                    pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), exceptions)
-                    ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), exceptions.insert(pagetable_ptr)),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 wlock_ensures(old(self).pt_mp.spec_index(pagetable_ptr), final(self).pt_mp.spec_index(pagetable_ptr), old(self).pt_mp.lock_id_by_key(pagetable_ptr), final(lctx), ret.view()),
@@ -156,14 +140,6 @@ impl KernelK {
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
                 final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-                forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                    #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)]
-                    old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
-                    ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.insert(pagetable_ptr), iommu_tables),
-                forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
-                    ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![pagetable_ptr], Set::empty()),
         {
             proof {
                 assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by { reveal(pagetable_perms_wf); };
@@ -187,8 +163,21 @@ impl KernelK {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) || {
                     &&& old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)
-                    &&& exists|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                        old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
+                    &&& old(lctx).page_lock_map().dom().is_empty()
+                    &&& old(lctx).scheduler_lock_map().dom().is_empty()
+                    &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
+                    &&& old(lctx).cpu_set_lock_map().dom().is_empty()
+                    &&& old(lctx).pagetable_lock_map().dom().is_empty()
+                    &&& old(lctx).iommu_table_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_quota_4k_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_cache_4k_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_quota_2m_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_cache_2m_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
+                    &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
                 },
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
@@ -207,6 +196,7 @@ impl KernelK {
                 final(self).ctn_mp == old(self).ctn_mp,
                 final(self).sched_mp == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp == old(self).prc_mp,
                 final(self).thr_mp == old(self).thr_mp,
                 final(self).ep_mp == old(self).ep_mp,
@@ -224,6 +214,7 @@ impl KernelK {
                 final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
                 final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
                 final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+                final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
                 final(lctx).pagetable_lock_map() == if source_pagetable < target_pagetable {
                     old(lctx).pagetable_lock_map()
                         .insert(source_pagetable, TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(source_pagetable), mode: TypedLockMode::Write })
@@ -241,17 +232,12 @@ impl KernelK {
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
                 final(self).pt_mp.spec_index(source_pagetable).wlocked_by(final(lctx)),
                 final(self).pt_mp.spec_index(target_pagetable).wlocked_by(final(lctx)),
-                forall|cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>|
-                    #![trigger old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)]
-                    old(lctx).holds_exact_base_locks(cpus, containers, processes, threads, endpoints)
-                    ==> final(lctx).object_lock_scope(Set::empty(), cpus, containers, processes, threads, endpoints, Set::empty(), Set::empty(), set![source_pagetable, target_pagetable], Set::empty()),
                 ret.0.view().state() is WriteLock,
                 ret.0.view().thread_id() == final(lctx).thread_id(),
                 ret.0.view().lock_id() == final(self).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
                 ret.1.view().state() is WriteLock,
                 ret.1.view().thread_id() == final(lctx).thread_id(),
                 ret.1.view().lock_id() == final(self).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-                pagetable_objects_unlocked(old(self).pt_mp, old(lctx).thread_id()) ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), set![source_pagetable, target_pagetable]),
         {
             proof {
                 assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by {
@@ -305,6 +291,7 @@ impl KernelK {
                 final(self).ctn_mp == old(self).ctn_mp,
                 final(self).sched_mp == old(self).sched_mp,
                 final(self).pcid_allc_mp == old(self).pcid_allc_mp,
+                final(self).cpu_set_mp == old(self).cpu_set_mp,
                 final(self).prc_mp == old(self).prc_mp,
                 final(self).thr_mp == old(self).thr_mp,
                 final(self).ep_mp == old(self).ep_mp,
@@ -317,23 +304,8 @@ impl KernelK {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
                 wunlock_ensures(old(self).pt_mp.spec_index(pagetable_ptr), final(self).pt_mp.spec_index(pagetable_ptr)),
-                pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), set![pagetable_ptr]) ==> pagetable_objects_unlocked(final(self).pt_mp, final(lctx).thread_id()),
-                forall|exceptions: Set<RwLockPageTableRoot>|
-                    #![trigger pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), exceptions.insert(pagetable_ptr))]
-                    !exceptions.contains(pagetable_ptr)
-                    && pagetable_objects_unlocked_except(old(self).pt_mp, old(lctx).thread_id(), exceptions.insert(pagetable_ptr))
-                    ==> pagetable_objects_unlocked_except(final(self).pt_mp, final(lctx).thread_id(), exceptions),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))),
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
-                forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                    #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)]
-                    old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables)
-                    ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.remove(pagetable_ptr), iommu_tables),
-                forall|pages: Set<PageIndex>, cpus: Set<CpuId>, containers: Set<RwLockContainerPtr>, processes: Set<RwLockProcessPtr>, threads: Set<RwLockThreadPtr>, endpoints: Set<RwLockEndpointPtr>, schedulers: Set<RwLockSchedulerPtr>, pcid_allocators: Set<RwLockPcidAllocatorPtr>, pagetables: Set<RwLockPageTableRoot>, iommu_tables: Set<RwLockPageTableRoot>|
-                    #![trigger old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.insert(pagetable_ptr), iommu_tables)]
-                    !pagetables.contains(pagetable_ptr)
-                    && old(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables.insert(pagetable_ptr), iommu_tables)
-                    ==> final(lctx).object_lock_scope(pages, cpus, containers, processes, threads, endpoints, schedulers, pcid_allocators, pagetables, iommu_tables),
                 forall|other_pagetable: RwLockPageTableRoot|
                     #![trigger final(lctx).lock_id_set().contains((final(self).pt_mp.lock_id_by_key(other_pagetable), KernelObjId::PageTable(other_pagetable)))]
                     old(self).pt_mp.dom().contains(other_pagetable)
@@ -361,7 +333,7 @@ impl KernelK {
                     assert(container_process_page_pagetable_wf(self.ctn_mp, self.prc_mp, self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall(); };
                     assert(pagetable_pages_wf(self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall(); };
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 broadcast use vstd::map::lemma_map_remove_domain;

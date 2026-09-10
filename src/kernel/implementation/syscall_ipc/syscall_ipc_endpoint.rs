@@ -66,6 +66,7 @@ pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_pt
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+        final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
         final(krnl).prc_mp == old(krnl).prc_mp,
         final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
         final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
@@ -186,7 +187,26 @@ pub(super) fn ipc_begin_endpoint_transfer(
         peer_thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
-        old(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![channel_endpoint_ptr]),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom().is_empty(),
+        old(lctx).process_lock_map().dom() =~= set![process_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![channel_endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
@@ -222,7 +242,26 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(krnl).prc_mp.spec_index(process_ptr).wlocked_by(final(lctx)),
         final(krnl).thr_mp.spec_index(current_thread_ptr).wlocked_by(final(lctx)),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).wlocked_by(final(lctx)),
-        final(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], Set::empty()),
+        final(lctx).page_lock_map().dom().is_empty(),
+        final(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        final(lctx).container_lock_map().dom().is_empty(),
+        final(lctx).process_lock_map().dom() =~= set![process_ptr],
+        final(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        final(lctx).endpoint_lock_map().dom().is_empty(),
+        final(lctx).scheduler_lock_map().dom().is_empty(),
+        final(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        final(lctx).cpu_set_lock_map().dom().is_empty(),
+        final(lctx).pagetable_lock_map().dom().is_empty(),
+        final(lctx).iommu_table_lock_map().dom().is_empty(),
+        final(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        final(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        final(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        final(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        final(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        final(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        final(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        final(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        final(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
 {
@@ -277,7 +316,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
         };
         assert({
-            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
+            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
             &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
             &&& typed_lock_maps_aligned(krnl, &*lctx)
         }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
@@ -372,7 +411,26 @@ pub(super) fn ipc_finish_endpoint_transit(
         },
         !old(krnl).sched_mp.spec_index(peer_scheduler_ptr).view()
             .queue.view().contains(peer_thread_ptr),
-        old(lctx).object_lock_scope(Set::empty(), set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![payload_endpoint_ptr], set![peer_scheduler_ptr], Set::empty(), Set::empty(), Set::empty()),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom().is_empty(),
+        old(lctx).process_lock_map().dom() =~= set![process_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![payload_endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom() =~= set![peer_scheduler_ptr],
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
@@ -415,7 +473,7 @@ pub(super) fn ipc_finish_endpoint_transit(
                 &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                 &&& thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)
                 &&& thread_caller_callee_wf(krnl.thr_mp)
-            }) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
+            }) by { reveal(thread_perms_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
             assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); };
             assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); };
             assert({
@@ -430,7 +488,7 @@ pub(super) fn ipc_finish_endpoint_transit(
             };
         };
         assert({
-            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
+            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
             &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
             &&& typed_lock_maps_aligned(krnl, &*lctx)
         }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
@@ -522,7 +580,26 @@ pub(super) fn ipc_rendezvous_endpoint(
         peer_thread_lock_perm.view().state() is WriteLock,
         peer_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![channel_endpoint_ptr]),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom().is_empty(),
+        old(lctx).process_lock_map().dom() =~= set![process_ptr],
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![channel_endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
@@ -580,8 +657,6 @@ pub(super) fn ipc_rendezvous_endpoint(
             reveal(process_perms_wf);
             reveal(thread_perms_wf);
             reveal(endpoint_perms_wf);
-            reveal(LocalContext::holds_exact_base_locks);
-            reveal(LocalContext::object_lock_scope);
             reveal(typed_lock_maps_aligned);
             reveal(LockedMap::typed_lock_map_aligned);
         };
@@ -654,8 +729,6 @@ pub(super) fn ipc_rendezvous_endpoint(
             reveal(process_perms_wf);
             reveal(thread_perms_wf);
             reveal(endpoint_perms_wf);
-            reveal(LocalContext::holds_exact_base_locks);
-            reveal(LocalContext::object_lock_scope);
             reveal(typed_lock_maps_aligned);
             reveal(LockedMap::typed_lock_map_aligned);
         };

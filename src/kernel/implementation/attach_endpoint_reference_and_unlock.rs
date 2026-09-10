@@ -59,6 +59,7 @@ verus! {
             final(krnl).ctn_mp == old(krnl).ctn_mp,
             final(krnl).sched_mp == old(krnl).sched_mp,
             final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
+            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
             final(krnl).prc_mp == old(krnl).prc_mp,
             final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
             final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
@@ -79,6 +80,7 @@ verus! {
             final(lctx).process_lock_map() == old(lctx).process_lock_map(),
             final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
             final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+            final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
             final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
             final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -89,16 +91,6 @@ verus! {
             kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
     {
         proof {
-            assert(thread_objects_unlocked_except(krnl.thr_mp, lctx.thread_id(), set![current_thread_ptr, thread_ptr])) by {
-                reveal(thread_objects_unlocked_except);
-                reveal(typed_lock_maps_aligned);
-                reveal(LockedMap::typed_lock_map_aligned);
-            };
-            assert(endpoint_objects_unlocked_except(krnl.ep_mp, lctx.thread_id(), set![endpoint_ptr])) by {
-                reveal(endpoint_objects_unlocked_except);
-                reveal(typed_lock_maps_aligned);
-                reveal(LockedMap::typed_lock_map_aligned);
-            };
             assert({
                 &&& krnl.thr_mp.view().spec_index(thread_ptr).is_init()
                 &&& krnl.thr_mp.view().spec_index(thread_ptr).addr() == thread_ptr

@@ -134,10 +134,6 @@ pub proof fn seq_skip_index_of_lemma<A>()
         let s2 = s.skip(1);
         assert(s2.len() == s.len() - 1);
         let i = s.index_of(v);
-        assert(0 <= i < s.len() && s.spec_index(i) == v) by {
-            let j = choose|j: int| 0 <= j < s.len() && s.spec_index(j) == v;
-            assert(s.spec_index(j) == v);
-        }
         // i != 0 because s[0] != v
         assert(i != 0);
         // s2[i-1] == s[i] == v
@@ -145,10 +141,6 @@ pub proof fn seq_skip_index_of_lemma<A>()
         assert(s2.spec_index(i - 1) == v);
         // The chosen index of v in s2:
         let k = s2.index_of(v);
-        assert(0 <= k < s2.len() && s2.spec_index(k) == v) by {
-            let j = choose|j: int| 0 <= j < s2.len() && s2.spec_index(j) == v;
-            assert(s2.spec_index(j) == v);
-        }
         if k != i - 1 {
             // s[k+1] == s2[k] == v, and s[i] == v, with k+1 != i, contradicting no_duplicates
             assert(s2.spec_index(k) == s.spec_index(k + 1));
@@ -510,10 +502,6 @@ pub proof fn seq_push_unique_lemma<A>()
         }
         // s2.index_of(v): chose any k with s2[k] == v. Since s2 has no_duplicates, k must be unique == s.len()
         let k = s2.index_of(v);
-        assert(0 <= k < s2.len() && s2.spec_index(k) == v) by {
-            let kk = choose|kk: int| 0 <= kk < s2.len() && s2.spec_index(kk) == v;
-            assert(s2.spec_index(kk) == v);
-        }
         if k != s.len() {
             assert(0 <= k < s.len());
             assert(s2.spec_index(k) == s.spec_index(k));
@@ -526,17 +514,9 @@ pub proof fn seq_push_unique_lemma<A>()
         == s.index_of(v) by {
         let s2 = s.push(y);
         let i = s.index_of(v);
-        assert(0 <= i < s.len() && s.spec_index(i) == v) by {
-            let j = choose|j: int| 0 <= j < s.len() && s.spec_index(j) == v;
-            assert(s.spec_index(j) == v);
-        }
         assert(s2.spec_index(i) == s.spec_index(i));
         assert(s2.spec_index(i) == v);
         let k = s2.index_of(v);
-        assert(0 <= k < s2.len() && s2.spec_index(k) == v) by {
-            let j = choose|j: int| 0 <= j < s2.len() && s2.spec_index(j) == v;
-            assert(s2.spec_index(j) == v);
-        }
         if k != i {
             if k == s.len() {
                 assert(s2.spec_index(k) == y);
@@ -587,10 +567,6 @@ pub proof fn seq_push_head_unique_lemma<A>()
         }
         // index_of: chosen index k with s2[k] == v. k must be 0 because v not in s.
         let k = s2.index_of(v);
-        assert(0 <= k < s2.len() && s2.spec_index(k) == v) by {
-            let kk = choose|kk: int| 0 <= kk < s2.len() && s2.spec_index(kk) == v;
-            assert(s2.spec_index(kk) == v);
-        }
         if k != 0 {
             assert(s2.spec_index(k) == s.spec_index(k - 1));
             assert(s.contains(v));
@@ -688,10 +664,6 @@ pub proof fn seq_index_lemma<A>()
         0 <= i < s.len() && s.no_duplicates() implies s.index_of(#[trigger] s.spec_index(i)) == i by {
         let v = s.spec_index(i);
         let k = s.index_of(v);
-        assert(0 <= k < s.len() && s.spec_index(k) == v) by {
-            let kk = choose|kk: int| 0 <= kk < s.len() && s.spec_index(kk) == v;
-            assert(s.spec_index(kk) == v);
-        }
         if k != i {
             assert(s.no_duplicates());
         }

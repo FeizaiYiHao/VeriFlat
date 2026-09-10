@@ -50,6 +50,10 @@ impl Cpu{
     pub open spec fn wf(&self) -> bool{
         &&&
         self.state is Off ==> (self.current_process is None && self.current_thread is None)
+        &&& (self.state is Off ==> forall|pcid: Pcid|
+            #![trigger self.tlb_dirty_bitmap().spec_index(pcid)]
+            pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+                ==> self.tlb_dirty_bitmap().spec_index(pcid) is None)
         &&& self.state is Running ==> (self.current_process is Some && self.current_thread is Some)
         &&& self.current_process is None == self.current_thread is None
         &&&

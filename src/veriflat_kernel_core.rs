@@ -40,7 +40,6 @@ pub use kernel::cpu_tlb_management;
 pub use kernel::cpu_tlb_management::*;
 pub use kernel::iommu_tlb_management::*;
 pub use kernel::lemma::*;
-pub use kernel::spec_util::*;
 pub use kernel::release_and_finish_syscall::*;
 pub use kernel::implementation::attach_endpoint_reference_and_unlock::*;
 pub use kernel::implementation::create_thread_from_staged_page::*;

@@ -21,5 +21,4 @@ pub use memory_management::*;
 pub use cpu_tlb_management::*;
 pub use iommu_tlb_management::*;
 pub use lemma::*;
-pub use spec_util::*;
 pub use release_and_finish_syscall::*;

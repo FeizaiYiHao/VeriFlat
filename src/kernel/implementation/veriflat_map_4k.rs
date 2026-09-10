@@ -6,10 +6,6 @@ use veriflat_alloc_page::allocate_free_4k_page::allocate_free_4k_impl_basd::allo
 use veriflat_kernel_core::*;
 
 pub mod map_4k;
-pub use map_4k::mmap_4k_context::{
-    mmap_4k_allocation_ready,
-    mmap_4k_no_page_locks,
-    };
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use map_4k::share_mapping_4k::{
     empty_4k_directory_page_count,

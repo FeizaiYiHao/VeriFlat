@@ -18,5 +18,9 @@ hide a difficult callsite inside a new operation-specific helper.
 - Only when a single equation exceeds 5 seconds SMT under `--time-expanded`,
   read [references/slow-equation.md](references/slow-equation.md).
 
+For full EOF optimization, move the entire invariant-closing tail behind an
+explicit transition summary into independently verified proof functions. Merging
+inline assertions does not isolate solver context and does not complete EOF.
+
 Remove temporary diagnostics immediately. Once verification is green, minimize
 added proof scaffolding one item at a time and retain only fail-on-delete proof.

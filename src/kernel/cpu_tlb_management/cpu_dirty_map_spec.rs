@@ -1,11 +1,11 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    pub open spec fn cpu_dirty_map_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, 
+    pub open spec fn cpu_dirty_map_wf(container_map: ContainerLockedMap, cpu_set_map: CpuSetLockedMap, process_map: ProcessLockedMap,
         cpu_array:CpuLockedArray, tlb: CpuTLB, pagetable_map: PageTableLockedMap) -> bool
     {
         &&&
-        cpu_dirty_map_contains_container_processes(container_map, cpu_array)
+        cpu_dirty_map_contains_container_processes(container_map, cpu_set_map, cpu_array)
         &&&
         cpu_dirty_map_proc_pcid_match(process_map, cpu_array)
         &&&
@@ -15,9 +15,9 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn cpu_dirty_map_contains_container_processes(container_map: ContainerLockedMap, cpu_array:CpuLockedArray) -> bool 
+    pub open spec fn cpu_dirty_map_contains_container_processes(container_map: ContainerLockedMap, cpu_set_map: CpuSetLockedMap, cpu_array:CpuLockedArray) -> bool
         recommends
-            container_cpu_wf(container_map, cpu_array),
+            container_cpu_wf(container_map, cpu_set_map, cpu_array),
     {
         &&&
         forall|cpu_i:CpuId, pcid: Pcid|

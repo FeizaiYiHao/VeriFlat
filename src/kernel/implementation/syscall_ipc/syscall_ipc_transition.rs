@@ -61,7 +61,26 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-            old(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr], set![endpoint_ptr]),
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+            old(lctx).container_lock_map().dom().is_empty(),
+            old(lctx).process_lock_map().dom() =~= set![process_ptr],
+            old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
+            old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).iommu_table_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             waiting_state.is_endpoint_waiting(),
             payload.wf(),
             waiting_state is RECEIVING_CALL ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().caller is None,
@@ -143,7 +162,7 @@ verus! {
                     &&& process_thread_wf(krnl.prc_mp, krnl.thr_mp)
                 }) by { reveal(container_thread_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); };
                 assert({
-                    &&& container_cpu_wf(krnl.ctn_mp, krnl.cpu_arr)
+                    &&& container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)
                     &&& process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)
                     &&& thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)
                 }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
@@ -154,7 +173,7 @@ verus! {
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
             };
             assert({
-                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
+                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
                 &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
                 &&& typed_lock_maps_aligned(krnl, &*lctx)
                 &&& lock_id_set_aligned(&*lctx)
@@ -168,8 +187,6 @@ verus! {
         proof {
             assert(lctx.no_locks_held()) by {
                 reveal(LocalContext::no_locks_held);
-                reveal(LocalContext::holds_exact_base_locks);
-                reveal(LocalContext::object_lock_scope);
             };
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
             assert(
@@ -248,11 +265,32 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
-            old(lctx).holds_exact_base_locks(set![cpu_id], Set::empty(), set![process_ptr], set![current_thread_ptr, peer_thread_ptr], set![endpoint_ptr]),
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+            old(lctx).container_lock_map().dom().is_empty(),
+            old(lctx).process_lock_map().dom() =~= set![process_ptr],
+            old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+            old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).iommu_table_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view().state == old(krnl).cpu_arr.spec_index(cpu_id).view().view().state,
+            final(krnl).cpu_arr.spec_index(cpu_id).view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_thread,
             ret == result,
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -301,8 +339,6 @@ verus! {
                 reveal(thread_perms_wf);
                 reveal(endpoint_perms_wf);
                 reveal(scheduler_perms_wf);
-                reveal(LocalContext::holds_exact_base_locks);
-                reveal(LocalContext::object_lock_scope);
                 reveal(typed_lock_maps_aligned);
                 reveal(LockedMap::typed_lock_map_aligned);
             };
@@ -348,7 +384,7 @@ verus! {
             };
             assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
             assert(krnl.process_management_inv()) by {
-                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                     &&& thread_caller_callee_wf(krnl.thr_mp)
@@ -359,7 +395,7 @@ verus! {
                     &&& process_thread_wf(krnl.prc_mp, krnl.thr_mp)
                 }) by { reveal(container_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); };
                 assert({
-                    &&& container_cpu_wf(krnl.ctn_mp, krnl.cpu_arr)
+                    &&& container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)
                     &&& process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)
                     &&& thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)
                 }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
@@ -375,7 +411,7 @@ verus! {
                 };
             };
             assert({
-                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
+                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
                 &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
                 &&& typed_lock_maps_aligned(krnl, &*lctx)
                 &&& lock_id_set_aligned(&*lctx)
