@@ -16,6 +16,7 @@ verus! {
             Tracked(process_lock_perm): Tracked<&LockPerm>,
             Tracked(staging_thread_lock_perm): Tracked<&LockPerm>,
             Tracked(scheduler_lock_perm): Tracked<&LockPerm>,
+            initial_regs: &Registers,
         ) -> (ret: (RwLockThreadPtr, Tracked<LockPerm>))
             requires
                 old(krnl).inv(),
@@ -26,13 +27,13 @@ verus! {
                 old(krnl).ctn_mp.dom().contains(container_ptr),
                 old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
                 old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
-                old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 process_lock_perm.state() is WriteLock,
                 process_lock_perm.thread_id() == old(lctx).thread_id(),
                 process_lock_perm.lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 old(krnl).sched_mp.dom().contains(scheduler_ptr),
                 old(krnl).sched_mp.spec_index(scheduler_ptr).being_killed() == false,
-                old(krnl).sched_mp.spec_index(scheduler_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 scheduler_lock_perm.state() is WriteLock,
                 scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
                 scheduler_lock_perm.lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
@@ -41,7 +42,7 @@ verus! {
                 old(krnl).thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
                 old(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k >= 1,
                 old(krnl).thr_mp.spec_index(staging_thread_ptr).view().free_quota_pending_clean(),
-                old(krnl).thr_mp.spec_index(staging_thread_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
                 staging_thread_lock_perm.state() is WriteLock,
                 staging_thread_lock_perm.thread_id() == old(lctx).thread_id(),
                 staging_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(staging_thread_ptr).locking_thread()->Write_lock_id,
@@ -51,11 +52,12 @@ verus! {
                 page_lock_perm.state() is WriteLock,
                 page_lock_perm.thread_id() == old(lctx).thread_id(),
                 page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
-                old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
                 old(lctx).kernel_view_locking_state() is Release,
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(krnl).inv(),
                 ret.0 == page_ptr,
                 ret.0 != staging_thread_ptr,
@@ -63,11 +65,13 @@ verus! {
                 ret.1.view().thread_id() == final(lctx).thread_id(),
                 ret.1.view().lock_id() == final(krnl).thr_mp.spec_index(page_ptr).locking_thread()->Write_lock_id,
                 final(krnl).thr_mp.spec_index(page_ptr).is_init(),
-                final(krnl).thr_mp.spec_index(page_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).thread_lock_map(), page_ptr, TypedLockMode::Write),
                 final(krnl).thr_mp.dom() =~= old(krnl).thr_mp.dom().insert(page_ptr),
                 final(krnl).thr_mp.spec_index(page_ptr).view().free_quota_pending_clean(),
                 final(krnl).thr_mp.spec_index(page_ptr).view().temp_alloc_clean(),
                 final(krnl).thr_mp.spec_index(page_ptr).view().state is SCHEDULED,
+                final(krnl).thr_mp.spec_index(page_ptr).view().trap_frame.is_some(),
+                *final(krnl).thr_mp.spec_index(page_ptr).view().trap_frame.get_some_0() == *initial_regs,
                 final(krnl).thr_mp.spec_index(page_ptr).view().owning_container == container_ptr,
                 final(krnl).thr_mp.spec_index(page_ptr).view().owning_proc == process_ptr,
                 final(krnl).thr_mp.spec_index(page_ptr).view().endpoint_descriptors.spec_index(0) is None,
@@ -77,7 +81,7 @@ verus! {
                 final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom(),
                 final(krnl).prc_mp.spec_index(process_ptr).view_rodata()
                     == old(krnl).prc_mp.spec_index(process_ptr).view_rodata(),
-                final(krnl).prc_mp.spec_index(process_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 final(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
                 final(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view() == old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().push(page_ptr),
                 forall|p: RwLockProcessPtr|
@@ -100,19 +104,19 @@ verus! {
                 final(krnl).thr_mp.spec_index(staging_thread_ptr).view().state == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state,
                 final(krnl).thr_mp.dom().contains(staging_thread_ptr),
                 final(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed(),
-                final(krnl).thr_mp.spec_index(staging_thread_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
                 staging_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(staging_thread_ptr).locking_thread()->Write_lock_id,
                 final(krnl).thr_mp.lock_id_by_key(staging_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(staging_thread_ptr),
                 kernel_u_new_thread_changed(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), process_ptr),
                 process_lock_perm.lock_id() == final(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 final(krnl).prc_mp.lock_id_by_key(process_ptr) == old(krnl).prc_mp.lock_id_by_key(process_ptr),
                 final(krnl).sched_mp.dom().contains(scheduler_ptr),
-                final(krnl).sched_mp.spec_index(scheduler_ptr).wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 final(krnl).sched_mp.spec_index(scheduler_ptr).being_killed() == false,
                 scheduler_lock_perm.lock_id() == final(krnl).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 final(krnl).sched_mp.lock_id_by_key(scheduler_ptr) == old(krnl).sched_mp.lock_id_by_key(scheduler_ptr),
                 final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == false,
-                final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().wlocked_by(final(lctx)),
+                typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
                 page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
                 final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
                 final(lctx).page_lock_map() == old(lctx).page_lock_map().insert(page_ptr2page_index(page_ptr), TypedHeldLock {
@@ -207,6 +211,7 @@ verus! {
                 assert(
                     krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().no_duplicates()
                     && !krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set().contains(container_ptr)
+                    && krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().len() == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
                 ) by {
                     krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
                     reveal(container_perms_wf); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
@@ -280,6 +285,7 @@ verus! {
             }
             let thread_mut = krnl.thr_mp.borrow_mut_typed(page_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_perm));
             let ((node_addr, mut node_perm), (sched_node_addr, mut sched_node_perm)) = (thread_mut.proc_linkedlist_node.take(), thread_mut.scheduler_linkedlist_node.take());
+            thread_mut.trap_frame.set_self(initial_regs);
             thread_mut.state = ThreadState::SCHEDULED;
             node_update_value(node_addr, &mut node_perm, page_ptr);
             proof { assert(krnl.prc_mp.perms_wf()) by { reveal(process_perms_wf); }; }

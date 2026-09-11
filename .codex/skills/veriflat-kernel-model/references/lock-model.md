@@ -12,6 +12,15 @@
 - Lock membership, counts, scopes, and finish conditions read typed maps.
   Deadlock checks and major bounds quantify only the exact pair set. Syscalls
   and transitions do not reveal either alignment or rebuild it manually.
+- Upper-layer contracts, assertions, and loop invariants express thread-held
+  ownership through typed-map membership and `typed_lock_map_contains_mode`.
+  This includes `locked_by`, `rlocked_by`, `wlocked_by`, and their `_thread`
+  variants. Locker/unlocker implementations derive physical ownership from
+  alignment locally; their callers do not supply `wlock_requires` or physical
+  ownership facts. Preserve the distinction between absence and non-Write mode.
+  Physical predicates remain in the lock model, alignment definitions, and
+  low-level operation proofs, including `all_objects_unlocked` below.
+  Permission-token matching remains separate from typed ordering-lock ids.
 - Do not restore the deleted per-object `*_objects_unlocked` and
   `*_unlocked_except` families, exact held-lock-set wrappers, or CPU-context
   bundles over facts available directly from typed maps and object fields.
@@ -23,7 +32,9 @@
 - Preserve the approved held-object, read-only-field, invariant-field, quota,
   and operation relations, low-level map/array `unchanged_except` relations, and
   existing EOF optimizations. Judge each by its meaning and consumers, not its
-  name. Approval to retain one does not waive approval for any new framing spec.
+  name. New framing specs and framing lemmas require approval; ordinary edits
+  to function `requires`/`ensures`, including typed-map preservation clauses,
+  do not. Approval to retain an existing abstraction does not authorize a new one.
 - Thread ownership metadata never disappears. Running, scheduled, and blocked
   states use their established dynamic lock-id majors; `NotApp` changes only
   lock ordering and does not restrict IPC topology.

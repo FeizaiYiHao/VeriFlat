@@ -11,11 +11,12 @@ pub fn syscall_new_container(
     cpu_id: CpuId,
     funding_page_count: usize,
     process_quota_4k: usize,
+    initial_regs: &Registers,
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().state
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state
             == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
@@ -25,6 +26,7 @@ pub fn syscall_new_container(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).steps.len() <= 1,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         final(krnl).all_objects_unlocked(final(lctx)),
@@ -33,7 +35,7 @@ pub fn syscall_new_container(
         final(lctx).no_locks_held(),
         !(ret is SuccessThreeUsize) ==> final(steps).steps.len() == 0,
         ret is SuccessThreeUsize ==> {
-            let parent_container_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().owning_container;
+            let parent_container_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
             let child_container_ptr = ret->SuccessThreeUsize_value1;
             let child_process_ptr = ret->SuccessThreeUsize_value2;
             let child_thread_ptr = ret->SuccessThreeUsize_value3;
@@ -70,19 +72,19 @@ pub fn syscall_new_container(
     proof {
         assert({
             &&& krnl.cpu_arr.spec_index(cpu_id)
-                .view().view().current_process is Some
+                .view().view().view().current_process is Some
             &&& krnl.cpu_arr.spec_index(cpu_id)
-                .view().view().current_thread is Some
+                .view().view().view().current_thread is Some
         }) by {
             reveal(cpu_array_wf);
         };
     }
     let Tracked(cpu_lock_perm) =
         krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
-    let cpu = krnl.cpu_arr.borrow(cpu_id, Tracked(&cpu_lock_perm));
-    let parent_container_ptr = cpu.owning_container;
-    let parent_process_ptr = cpu.current_process.unwrap();
-    let current_thread_ptr = cpu.current_thread.unwrap();
+    let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
+    let parent_container_ptr = cpu.owning_container();
+    let parent_process_ptr = cpu.current_process().unwrap();
+    let current_thread_ptr = cpu.current_thread().unwrap();
     proof {
         assert(krnl.ctn_mp.dom().contains(parent_container_ptr)) by {
             reveal(container_cpu_wf);
@@ -181,10 +183,8 @@ pub fn syscall_new_container(
         return RetValueType::ErrorThreadKilled;
     }
     let Tracked(thread_lock_perm) = thread_res.1.unwrap();
-    let thread = krnl.thr_mp.borrow(
-        current_thread_ptr,
-        Tracked(&thread_lock_perm),
-    );
+    let thread = krnl.thr_mp.borrow_typed(
+        current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
     let quota_4k = thread.quota_4k;
     let quota_2m = thread.quota_2m;
     let source_pagetable_ptr = thread.proc_pagetable_ptr;
@@ -219,8 +219,7 @@ pub fn syscall_new_container(
     proof {
         assert({
             &&& krnl.pt_mp.dom().contains(source_pagetable_ptr)
-            &&& !krnl.pt_mp.spec_index(source_pagetable_ptr)
-                .locked_by_thread(lctx.thread_id())
+            &&& !lctx.pagetable_lock_map().dom().contains(source_pagetable_ptr)
         }) by {
             reveal(process_thread_wf);
             reveal(process_pagetable_match);
@@ -266,6 +265,7 @@ pub fn syscall_new_container(
         Tracked(process_lock_perm),
         Tracked(thread_lock_perm),
         Tracked(source_pagetable_lock_perm),
+        initial_regs,
     );
     RetValueType::SuccessThreeUsize { value1: child_container_ptr, value2: child_process_ptr, value3: child_thread_ptr }
 }

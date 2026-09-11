@@ -25,9 +25,13 @@
   Rlimit alone does not determine proof speed.
 - For comparisons, freeze the source versions and keep the binary, arguments,
   threads, source path, and artifact reuse equivalent; disclose unavoidable
-  differences. Interleave baseline/candidate runs, retain every sample, and avoid
-  concurrent heavy verification. Report observed variation and repeat as needed
-  before treating a slowdown or speedup as reproducible.
+  differences. Interleave baseline/candidate runs, include every sample in the
+  comparison, and avoid concurrent heavy verification. Report observed variation
+  and repeat as needed before treating a slowdown or speedup as reproducible.
+- Report results in the conversation. Do not retain verification reports,
+  handoff records, run logs, profiles, or benchmark source snapshots. Use
+  temporary files while measuring and remove them before handoff. Keep only
+  the shared run counter, not a persistent history of commands or results.
 - Label function-body SMT, independently verified callees, package wall, and
   whole-workspace/monolith wall separately. A call-chain cost must include its
   constituent obligations, with shared callees counted once. Sum all independent

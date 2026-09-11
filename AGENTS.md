@@ -21,19 +21,28 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
 - After changing a contract, simplify its callers' old proofs and verify which
   facts are still necessary. Use typed lock maps directly for lock membership
   and scope; preserve the approved relations described by the kernel-model skill.
-- Before introducing any framing spec, obtain explicit user approval for that
-  specific spec. Show its proposed name, complete definition, objects and fields
-  preserved, intended use sites, and why direct proof or existing relations are
-  insufficient. Judge by purpose, including framing packaged as `unchanged`,
-  `context`, `requires`, or `ensures`. Reuse, performance, and slow-equation
-  EOF/EOL summaries do not waive approval. Names must identify what is preserved.
-  Permission to retain an existing spec does not authorize a new one.
+- Before introducing a new framing spec or framing lemma, obtain explicit user
+  approval for that specific abstraction. Show its proposed name, complete
+  definition or lemma statement, objects and fields preserved, intended use
+  sites, and why direct proof or existing relations are insufficient. Reuse,
+  performance, and slow-equation EOF/EOL summaries do not waive approval.
+  Names must identify what is preserved. Permission to retain an existing spec
+  or lemma does not authorize a new one.
+- Ordinary edits to a function's `requires` and `ensures` do not require
+  separate approval, including clauses that state which fields or lock-map
+  entries are preserved. Do not classify a normal contract edit as a new
+  framing spec merely because it relates old and new states. This does not
+  authorize introducing a new framing helper or abstraction.
 - Delete dead private helpers after checking callers. Public syscalls and
   intended public primitives are not dead merely because they lack in-tree
   callers.
 - There is no fixed acceptable wall-time regression. Follow the build skill's
   measurement rules and bring a persistent slowdown beyond observed variation
   to the user with the concrete simplification and measurements.
+- Report verification and proof-performance results in the conversation. Do
+  not retain verification reports, handoff records, run logs, profiles, or
+  benchmark source snapshots. Temporary measurement files must be removed
+  before handoff; the shared verification run counter may remain.
 
 ## Required repository skills
 

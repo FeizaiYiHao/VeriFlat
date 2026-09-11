@@ -12,11 +12,12 @@ impl KernelK {
             old(self).inv(),
             old(self).cpu_set_mp.dom().contains(cpu_set_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
-            wlock_requires(old(self).cpu_set_mp.spec_index(cpu_set_ptr), old(lctx)),
+            !typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), cpu_set_ptr, TypedLockMode::Write),
             old(lctx).lock_id_acyclic(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr)),
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             forall|key: usize|
                 #![trigger old(self).cpu_set_mp.view().spec_index(key)]
@@ -59,6 +60,7 @@ impl KernelK {
         proof {
             assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init()) by { reveal(cpu_set_perms_wf); };
         }
+        assert(wlock_requires(self.cpu_set_mp.spec_index(cpu_set_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.cpu_set_mp.wlock(cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
         proof {
             assert(cpu_set_perms_wf(self.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
@@ -80,13 +82,14 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).cpu_set_mp.dom().contains(cpu_set_ptr),
-            old(self).cpu_set_mp.spec_index(cpu_set_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), cpu_set_ptr, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).cpu_set_mp.spec_index(cpu_set_ptr).locking_thread()->Write_lock_id,
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
@@ -126,6 +129,7 @@ impl KernelK {
             assert(old(lctx).lock_entry_contains(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(old(lctx).lock_id_set().contains((old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr)))) by { reveal(lock_id_set_aligned); };
         }
+        assert(self.cpu_set_mp.spec_index(cpu_set_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         self.cpu_set_mp.wunlock(cpu_set_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
         proof {
             assert(cpu_set_perms_wf(self.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };

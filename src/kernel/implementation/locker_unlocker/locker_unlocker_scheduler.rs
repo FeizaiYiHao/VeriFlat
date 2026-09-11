@@ -12,11 +12,12 @@ impl KernelK {
                 old(self).inv(),
                 old(self).sched_mp.dom().contains(scheduler_ptr),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                wlock_requires(old(self).sched_mp.spec_index(scheduler_ptr), old(lctx)),
+                !typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 forall|key: usize|
@@ -66,6 +67,7 @@ impl KernelK {
                 assert(old(self).sched_mp.perms_wf() && old(self).sched_mp.spec_index(scheduler_ptr).is_init()) by { reveal(scheduler_perms_wf); };
                 assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by { reveal(scheduler_perms_wf); };
             }
+            assert(wlock_requires(self.sched_mp.spec_index(scheduler_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.sched_mp.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
                 assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
@@ -96,13 +98,14 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).sched_mp.dom().contains(scheduler_ptr),
-                old(self).sched_mp.spec_index(scheduler_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 // ---- Every held lock still matches lctx (scheduler now released) ----
@@ -154,6 +157,7 @@ impl KernelK {
                 assert(old(lctx).lock_entry_contains(old(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(old(lctx).lock_id_set().contains((old(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr)))) by { reveal(lock_id_set_aligned); };
             }
+            assert(self.sched_mp.spec_index(scheduler_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             self.sched_mp.wunlock(scheduler_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Scheduler(scheduler_ptr)));
             proof {
                 assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };

@@ -42,6 +42,7 @@ pub open spec fn typed_lock_map_contains_mode<K>(
 /// corresponding pair is replaced explicitly by `update_lock_id`.
 pub tracked struct LocalContext {
     thread_id: LockThreadId,
+    cpu_id: CpuId,
     page_lock_map: Map<PageIndex, TypedHeldLock>,
     cpu_lock_map: Map<CpuId, TypedHeldLock>,
     container_lock_map: Map<RwLockContainerPtr, TypedHeldLock>,
@@ -61,6 +62,11 @@ pub tracked struct LocalContext {
 }
 
 impl LocalContext {
+    /// The executing CPU, fixed for this kernel execution; must be bound at entry.
+    pub closed spec fn cpu_id(&self) -> CpuId {
+        self.cpu_id
+    }
+
     pub closed spec fn thread_id(&self) -> LockThreadId {
         self.thread_id
     }
@@ -342,6 +348,7 @@ impl LocalContext {
         requires
             old(self).kernel_view_locking_state() is Acquire,
         ensures
+            final(self).cpu_id() == old(self).cpu_id(),
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() is Release,
             final(self).lock_id_set() == old(self).lock_id_set(),
@@ -364,6 +371,7 @@ impl LocalContext {
             old(self).lock_entry_contains(old_lock_id, obj_id),
             lock_id_set_aligned(old(self)),
         ensures
+            final(self).cpu_id() == old(self).cpu_id(),
             final(self).lock_id_set() == old(self).lock_id_set().remove((old_lock_id, obj_id)).insert((new_lock_id, obj_id)),
             typed_lock_maps_inserted(old(self), final(self), obj_id, TypedHeldLock {
                 lock_id: new_lock_id,
@@ -696,6 +704,7 @@ pub open spec fn lock_ensures(
     lock_id: LockId,
     obj_id: KernelObjId,
 ) -> bool {
+    &&& new.cpu_id() == old.cpu_id()
     &&& new.thread_id() == old.thread_id()
     &&& new.kernel_view_locking_state() is Acquire
     &&& new.lock_id_set() == old.lock_id_set().insert((lock_id, obj_id))
@@ -712,6 +721,7 @@ pub open spec fn unlock_ensures(
     obj_id: KernelObjId,
     lock_id: LockId,
 ) -> bool {
+    &&& new.cpu_id() == old.cpu_id()
     &&& new.thread_id() == old.thread_id()
     &&& old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
     &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release

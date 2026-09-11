@@ -13,9 +13,9 @@ verus! {
                 &&&
                 cpu_array.spec_index(cpu_i).view().inv()
                 &&&
-                cpu_array.spec_index(cpu_i).view().view().current_process is None ==> cpu_array.spec_index(cpu_i).view().view().current_cr3 == kernel_pagetable.cr3
+                cpu_array.spec_index(cpu_i).view().view().view().current_pagetable is None ==> cpu_array.spec_index(cpu_i).view().view().view().current_cr3 == kernel_pagetable.cr3
                 &&&
-                cpu_array.spec_index(cpu_i).view().view().current_process is None ==> cpu_array.spec_index(cpu_i).view().view().current_pcid == KERNEL_DEFAULT_PCID
+                cpu_array.spec_index(cpu_i).view().view().view().current_pagetable is None ==> cpu_array.spec_index(cpu_i).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
             }
     }
 }

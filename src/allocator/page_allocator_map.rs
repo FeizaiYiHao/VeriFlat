@@ -165,6 +165,32 @@ impl UnLockedMap<usize, PageAllocator> {
         alloc.quota.borrow(lp)
     }
 
+    pub fn borrow_quota_typed<'a>(
+        &'a self, alloc_ptr: usize,
+        Ghost(held_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&'a LockPerm>,
+    ) -> (ret: &'a AllocatorQuota)
+        requires
+            self.perms_wf(),
+            self.dom().contains(alloc_ptr),
+            self.spec_index(alloc_ptr).quota.is_init(),
+            self.typed_quota_lock_map_aligned(held_locks, lctx.thread_id()),
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, alloc_ptr, TypedLockMode::Write),
+            lock_perm.view().state() is WriteLock ==> lock_perm.view().lock_id() == self.spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
+            lock_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(held_locks, alloc_ptr, TypedLockMode::Read),
+            lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).quota.locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), lock_perm.view().lock_id()),
+        ensures
+            *ret == self.spec_index(alloc_ptr).quota.view(),
+    {
+        assert({
+            &&& lock_perm.view().state() is WriteLock ==> self.spec_index(alloc_ptr).quota.write_lock_perm_match(lock_perm.view())
+            &&& lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).quota.read_lock_perm_match(lock_perm.view())
+        }) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
+        self.borrow_quota(alloc_ptr, lock_perm)
+    }
+
     pub fn borrow_mut_quota<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorQuota)
         requires
             old(self).dom().contains(alloc_ptr),
@@ -219,7 +245,8 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).quota.is_init(),
             lp.view().state() is WriteLock,
             lp.view().thread_id() == lctx.thread_id(),
-            old(self).spec_index(alloc_ptr).quota.write_lock_perm_match(lp.view()),
+            typed_lock_map_contains_mode(quota_locks, alloc_ptr, TypedLockMode::Write),
+            lp.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -250,7 +277,6 @@ impl UnLockedMap<usize, PageAllocator> {
                 ==> final(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
     {
         proof {
-            assert(typed_lock_map_contains_mode(quota_locks, alloc_ptr, TypedLockMode::Write)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -270,6 +296,32 @@ impl UnLockedMap<usize, PageAllocator> {
     {
         let alloc = self.borrow(alloc_ptr);
         alloc.global_pool.borrow(lp)
+    }
+
+    pub fn borrow_global_pool_typed<'a>(
+        &'a self, alloc_ptr: usize,
+        Ghost(held_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&'a LockPerm>,
+    ) -> (ret: &'a GlobalPool)
+        requires
+            self.perms_wf(),
+            self.dom().contains(alloc_ptr),
+            self.spec_index(alloc_ptr).global_pool.is_init(),
+            self.typed_global_pool_lock_map_aligned(held_locks, lctx.thread_id()),
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, alloc_ptr, TypedLockMode::Write),
+            lock_perm.view().state() is WriteLock ==> lock_perm.view().lock_id() == self.spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
+            lock_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(held_locks, alloc_ptr, TypedLockMode::Read),
+            lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).global_pool.locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), lock_perm.view().lock_id()),
+        ensures
+            *ret == self.spec_index(alloc_ptr).global_pool.view(),
+    {
+        assert({
+            &&& lock_perm.view().state() is WriteLock ==> self.spec_index(alloc_ptr).global_pool.write_lock_perm_match(lock_perm.view())
+            &&& lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).global_pool.read_lock_perm_match(lock_perm.view())
+        }) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+        self.borrow_global_pool(alloc_ptr, lock_perm)
     }
 
     pub fn borrow_mut_global_pool<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut GlobalPool)
@@ -326,7 +378,8 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).global_pool.is_init(),
             lp.view().state() is WriteLock,
             lp.view().thread_id() == lctx.thread_id(),
-            old(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lp.view()),
+            typed_lock_map_contains_mode(global_pool_locks, alloc_ptr, TypedLockMode::Write),
+            lp.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -355,7 +408,6 @@ impl UnLockedMap<usize, PageAllocator> {
             ),
     {
         proof {
-            assert(typed_lock_map_contains_mode(global_pool_locks, alloc_ptr, TypedLockMode::Write)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -376,6 +428,33 @@ impl UnLockedMap<usize, PageAllocator> {
     {
         let alloc = self.borrow(alloc_ptr);
         alloc.cpu_caches.borrow(cpu_id, lp)
+    }
+
+    pub fn borrow_cache_typed<'a>(
+        &'a self, alloc_ptr: usize, cpu_id: CpuId,
+        Ghost(held_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&'a LockPerm>,
+    ) -> (ret: &'a AllocatorCache)
+        requires
+            self.perms_wf(),
+            self.dom().contains(alloc_ptr),
+            index_valid(NUM_CPUS, cpu_id),
+            self.spec_index(alloc_ptr).cpu_caches.inv(),
+            self.typed_cache_lock_map_aligned(held_locks, lctx.thread_id()),
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, (alloc_ptr, cpu_id), TypedLockMode::Write),
+            lock_perm.view().state() is WriteLock ==> lock_perm.view().lock_id() == self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            lock_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(held_locks, (alloc_ptr, cpu_id), TypedLockMode::Read),
+            lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), lock_perm.view().lock_id()),
+        ensures
+            *ret == self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(),
+    {
+        assert({
+            &&& lock_perm.view().state() is WriteLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view())
+            &&& lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().read_lock_perm_match(lock_perm.view())
+        }) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
+        self.borrow_cache(alloc_ptr, cpu_id, lock_perm)
     }
 
     pub fn borrow_mut_cache<'a>(&'a mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorCache)
@@ -440,7 +519,8 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
             lp.view().state() is WriteLock,
             lp.view().thread_id() == lctx.thread_id(),
-            old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lp.view()),
+            typed_lock_map_contains_mode(cache_locks, (alloc_ptr, cpu_id), TypedLockMode::Write),
+            lp.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -471,7 +551,6 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
     {
         proof {
-            assert(typed_lock_map_contains_mode(cache_locks, (alloc_ptr, cpu_id), TypedLockMode::Write)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -499,7 +578,8 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view()),
+            typed_lock_map_contains_mode(cache_locks, (alloc_ptr, cpu_id), TypedLockMode::Write),
+            lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
         ensures
             final(self).perms_wf(),
@@ -561,7 +641,8 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            old(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lock_perm.view()),
+            typed_lock_map_contains_mode(global_pool_locks, alloc_ptr, TypedLockMode::Write),
+            lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
             old(self).spec_index(alloc_ptr).global_pool.view().len() > 0,
         ensures
             final(self).perms_wf(),
@@ -620,6 +701,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
             }),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
@@ -660,6 +742,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 old(self).spec_index(alloc_ptr).quota.lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr))),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
@@ -697,6 +780,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
             }),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
@@ -737,6 +821,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id))),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
@@ -772,6 +857,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
             }),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
@@ -810,6 +896,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 old(self).spec_index(alloc_ptr).global_pool.lock_id(),
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr))),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),

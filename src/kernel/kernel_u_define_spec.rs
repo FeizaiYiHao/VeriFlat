@@ -45,7 +45,7 @@ verus! {
             cpu_array: Seq::new(
                 NUM_CPUS as nat,
                 |i: int| {
-                    let c = krnl.cpu_arr.spec_index(i as usize).value.view();
+                    let c = krnl.cpu_arr.spec_index(i as usize).value.view().view();
                     CpuU {
                         owning_container: c.owning_container,
                         state: c.state,

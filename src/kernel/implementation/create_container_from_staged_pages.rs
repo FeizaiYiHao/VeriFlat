@@ -70,8 +70,7 @@ fn build_staged_4k_global_pool(
                     .view().view().inv()
                 &&& old(pages).spec_index(page_ptr2page_index(page_ptr))
                     .view().view().state is Owned4k
-                &&& old(pages).spec_index(page_ptr2page_index(page_ptr))
-                    .view().wlocked_by(old(lctx))
+                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
                 &&& page_lock_perms.spec_index(page_ptr).state()
                     is WriteLock
                 &&& page_lock_perms.spec_index(page_ptr).thread_id()
@@ -81,6 +80,7 @@ fn build_staged_4k_global_pool(
                         .view().locking_thread()->Write_lock_id
             },
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(pages).inv(),
         ret.wf(),
         ret.view() == page_ptrs,
@@ -162,8 +162,7 @@ fn build_staged_4k_global_pool(
                     })
                 &&& final(pages).spec_index(page_ptr2page_index(page_ptr))
                     .view().view().owning_container == child_container_ptr
-                &&& final(pages).spec_index(page_ptr2page_index(page_ptr))
-                    .view().wlocked_by(final(lctx))
+                &&& typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
                 &&& page_lock_perms.spec_index(page_ptr).lock_id()
                     == final(pages).spec_index(
                         page_ptr2page_index(page_ptr),
@@ -217,6 +216,7 @@ fn build_staged_4k_global_pool(
             lock_id_set_aligned(lctx),
             lctx.kernel_view_locking_state() is Release,
             lctx.thread_id() == old(lctx).thread_id(),
+            lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.page_lock_map().dom()
                 == old(lctx).page_lock_map().dom(),
             lctx.page_lock_map()
@@ -341,8 +341,7 @@ fn build_staged_4k_global_pool(
                         .view().is_init()
                     &&& pages.spec_index(page_ptr2page_index(page_ptr))
                         .view().view().inv()
-                    &&& pages.spec_index(page_ptr2page_index(page_ptr))
-                        .view().wlocked_by(lctx)
+                    &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
                     &&& page_lock_perms.spec_index(page_ptr).state()
                         is WriteLock
                     &&& page_lock_perms.spec_index(page_ptr).thread_id()
@@ -451,8 +450,7 @@ fn build_staged_4k_global_pool(
                         .view().is_init()
                     &&& pages.spec_index(page_ptr2page_index(other_ptr))
                         .view().view().inv()
-                    &&& pages.spec_index(page_ptr2page_index(other_ptr))
-                        .view().wlocked_by(lctx)
+                    &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(other_ptr), TypedLockMode::Write)
                     &&& page_lock_perms.spec_index(other_ptr).state()
                         is WriteLock
                     &&& page_lock_perms.spec_index(other_ptr).thread_id()
@@ -727,7 +725,7 @@ pub fn publish_staged_container_root(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         old(krnl).ctn_mp.dom().contains(parent_container_ptr),
-        old(krnl).ctn_mp.spec_index(parent_container_ptr).wlocked_by(old(lctx)),
+        typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
         parent_container_lock_perm.state() is WriteLock,
         parent_container_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -737,7 +735,7 @@ pub fn publish_staged_container_root(
         old(krnl).ctn_mp.spec_index(parent_container_ptr)
             .view_rodata().view().depth < usize::MAX,
         old(krnl).thr_mp.dom().contains(current_thread_ptr),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).wlocked_by(old(lctx)),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
         !old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
         old(krnl).thr_mp.spec_index(current_thread_ptr)
             .view().owning_container == parent_container_ptr,
@@ -911,9 +909,7 @@ pub fn publish_staged_container_root(
                 &&& old(krnl).pg_arr.spec_index(
                     page_ptr2page_index(page_ptr),
                 ).view().view().owning_container == parent_container_ptr
-                &&& old(krnl).pg_arr.spec_index(
-                    page_ptr2page_index(page_ptr),
-                ).view().wlocked_by(old(lctx))
+                &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
                 &&& funding_page_lock_perms.spec_index(page_ptr).lock_id()
                     == old(krnl).pg_arr.spec_index(
                         page_ptr2page_index(page_ptr),
@@ -936,36 +932,31 @@ pub fn publish_staged_container_root(
         container_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(container_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(container_page))
-            .view().write_lock_perm_match(container_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(container_page), TypedLockMode::Write),
         pcid_allocator_page_lock_perm.state() is WriteLock,
         pcid_allocator_page_lock_perm.thread_id() == old(lctx).thread_id(),
         pcid_allocator_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page))
-            .view().write_lock_perm_match(pcid_allocator_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pcid_allocator_page), TypedLockMode::Write),
         allocator_4k_page_lock_perm.state() is WriteLock,
         allocator_4k_page_lock_perm.thread_id() == old(lctx).thread_id(),
         allocator_4k_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_4k_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_4k_page))
-            .view().write_lock_perm_match(allocator_4k_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(allocator_4k_page), TypedLockMode::Write),
         allocator_2m_page_lock_perm.state() is WriteLock,
         allocator_2m_page_lock_perm.thread_id() == old(lctx).thread_id(),
         allocator_2m_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_2m_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_2m_page))
-            .view().write_lock_perm_match(allocator_2m_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(allocator_2m_page), TypedLockMode::Write),
         allocator_1g_page_lock_perm.state() is WriteLock,
         allocator_1g_page_lock_perm.thread_id() == old(lctx).thread_id(),
         allocator_1g_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_1g_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_1g_page))
-            .view().write_lock_perm_match(allocator_1g_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(allocator_1g_page), TypedLockMode::Write),
         scheduler_page_lock_perm.state() is WriteLock,
         cpu_set_page_lock_perm.state() is WriteLock,
         scheduler_page_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -976,32 +967,28 @@ pub fn publish_staged_container_root(
         cpu_set_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(cpu_set_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(scheduler_page))
-            .view().write_lock_perm_match(scheduler_page_lock_perm),
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(cpu_set_page))
-            .view().write_lock_perm_match(cpu_set_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(scheduler_page), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(cpu_set_page), TypedLockMode::Write),
         process_page_lock_perm.state() is WriteLock,
         process_page_lock_perm.thread_id() == old(lctx).thread_id(),
         process_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(process_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(process_page))
-            .view().write_lock_perm_match(process_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(process_page), TypedLockMode::Write),
         pagetable_page_lock_perm.state() is WriteLock,
         pagetable_page_lock_perm.thread_id() == old(lctx).thread_id(),
         pagetable_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page))
-            .view().write_lock_perm_match(pagetable_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pagetable_page), TypedLockMode::Write),
         l4_page_lock_perm.state() is WriteLock,
         l4_page_lock_perm.thread_id() == old(lctx).thread_id(),
         l4_page_lock_perm.lock_id()
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page))
                 .view().locking_thread()->Write_lock_id,
-        old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page))
-            .view().write_lock_perm_match(l4_page_lock_perm),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_page), TypedLockMode::Write),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -1024,6 +1011,7 @@ pub fn publish_staged_container_root(
         ),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page))
             == old(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page)),
+        final(lctx).page_lock_map().get(page_ptr2page_index(thread_page)) == old(lctx).page_lock_map().get(page_ptr2page_index(thread_page)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page))
             .view().view().state
             == (PageState::Owned4k { thread_ptr: current_thread_ptr }),
@@ -1040,10 +1028,8 @@ pub fn publish_staged_container_root(
                 .view().owned_processes,
         !final(krnl).ctn_mp.spec_index(container_page)
             .view().owned_pages.view().contains(thread_page),
-        final(krnl).ctn_mp.spec_index(parent_container_ptr)
-            .write_lock_perm_match(parent_container_lock_perm),
-        final(krnl).thr_mp.spec_index(current_thread_ptr)
-            .write_lock_perm_match(current_thread_lock_perm),
+        parent_container_lock_perm.lock_id() == final(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
+        current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         final(lctx).allocator_4k_lock_maps()
             == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps()
@@ -1173,7 +1159,7 @@ pub fn publish_staged_container_root(
         final(lctx).iommu_table_lock_map()
             == old(lctx).iommu_table_lock_map(),
         final(krnl).ctn_mp.dom().contains(container_page),
-        final(krnl).ctn_mp.spec_index(container_page).wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).container_lock_map(), container_page, TypedLockMode::Write),
         !final(krnl).ctn_mp.spec_index(container_page).being_killed(),
         final(krnl).ctn_mp.spec_index(container_page)
             .view_rodata().view().parent == Some(parent_container_ptr),
@@ -1211,7 +1197,7 @@ pub fn publish_staged_container_root(
                 l4_page,
             ).union(funding_pages.to_set()),
         final(krnl).prc_mp.dom().contains(process_page),
-        final(krnl).prc_mp.spec_index(process_page).wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_page, TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(process_page).being_killed(),
         final(krnl).prc_mp.spec_index(process_page)
             .view_rodata().view().owning_container == container_page,
@@ -1226,7 +1212,7 @@ pub fn publish_staged_container_root(
         final(krnl).prc_mp.spec_index(process_page)
             .view().owned_threads.view().len() == 0,
         final(krnl).pt_mp.dom().contains(pagetable_page),
-        final(krnl).pt_mp.spec_index(pagetable_page).wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_page, TypedLockMode::Write),
         final(krnl).pt_mp.spec_index(pagetable_page).view().is_empty(),
         final(krnl).pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page,
         final(krnl).pt_mp.spec_index(pagetable_page)
@@ -1248,13 +1234,12 @@ pub fn publish_staged_container_root(
         final(krnl).allc_1g_mp.spec_index(allocator_1g_page)
             .total_free_pages.view() == 0,
         final(krnl).sched_mp.dom().contains(scheduler_page),
-        final(krnl).sched_mp.spec_index(scheduler_page).wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).scheduler_lock_map(), scheduler_page, TypedLockMode::Write),
         !final(krnl).sched_mp.spec_index(scheduler_page).being_killed(),
         final(krnl).sched_mp.spec_index(scheduler_page)
             .view().queue.view().len() == 0,
         final(krnl).pcid_allc_mp.dom().contains(pcid_allocator_page),
-        final(krnl).pcid_allc_mp.spec_index(pcid_allocator_page)
-            .wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).pcid_allocator_lock_map(), pcid_allocator_page, TypedLockMode::Write),
         final(krnl).thr_mp.dom().contains(current_thread_ptr),
         final(krnl).thr_mp.spec_index(current_thread_ptr)
             .view().temp_alloc_cache_4k.view()
@@ -1290,53 +1275,43 @@ pub fn publish_staged_container_root(
                 .view().quota_4k - 8 - funding_page_count,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_2m
             == old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_2m - 2,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(container_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(container_page), TypedLockMode::Write),
         container_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(container_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(pcid_allocator_page), TypedLockMode::Write),
         pcid_allocator_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_4k_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(allocator_4k_page), TypedLockMode::Write),
         allocator_4k_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_4k_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_2m_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(allocator_2m_page), TypedLockMode::Write),
         allocator_2m_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_2m_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_1g_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(allocator_1g_page), TypedLockMode::Write),
         allocator_1g_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(allocator_1g_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(scheduler_page))
-            .view().wlocked_by(final(lctx)),
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(cpu_set_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(scheduler_page), TypedLockMode::Write),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(cpu_set_page), TypedLockMode::Write),
         scheduler_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(scheduler_page))
                 .view().locking_thread()->Write_lock_id,
         cpu_set_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(cpu_set_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(process_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(process_page), TypedLockMode::Write),
         process_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(process_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(pagetable_page), TypedLockMode::Write),
         pagetable_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(pagetable_page))
                 .view().locking_thread()->Write_lock_id,
-        final(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page))
-            .view().wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(l4_page), TypedLockMode::Write),
         l4_page_lock_perm.lock_id()
             == final(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page))
                 .view().locking_thread()->Write_lock_id,
@@ -1367,9 +1342,7 @@ pub fn publish_staged_container_root(
                 &&& final(krnl).pg_arr.spec_index(
                     page_ptr2page_index(page_ptr),
                 ).view().view().owning_container == container_page
-                &&& final(krnl).pg_arr.spec_index(
-                    page_ptr2page_index(page_ptr),
-                ).view().wlocked_by(final(lctx))
+                &&& typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
                 &&& funding_page_lock_perms.spec_index(page_ptr).lock_id()
                     == final(krnl).pg_arr.spec_index(
                         page_ptr2page_index(page_ptr),
@@ -1626,7 +1599,6 @@ pub fn publish_staged_container_root(
         assert(krnl.sched_mp.perms_wf()) by { reveal(scheduler_perms_wf); };
         assert(krnl.pcid_allc_mp.perms_wf()) by {
             reveal(pcid_allocator_perms_wf);
-
         };
         assert(krnl.allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
         assert(krnl.allc_2m_mp.perms_wf()) by { reveal(allocator_perms_wf); };
@@ -1667,7 +1639,7 @@ pub fn publish_staged_container_root(
                 &&& krnl.pg_arr.spec_index(index).view().is_init()
                 &&& krnl.pg_arr.spec_index(index).view().view().state
                     is Merged2m
-                &&& krnl.pg_arr.spec_index(index).view().wlocked_by(&*lctx)
+                &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                 &&& container_tail_lock_perms.spec_index(index)
                     .state() is WriteLock
                 &&& container_tail_lock_perms.spec_index(index)
@@ -1687,7 +1659,7 @@ pub fn publish_staged_container_root(
                 &&& krnl.pg_arr.spec_index(index).view().is_init()
                 &&& krnl.pg_arr.spec_index(index).view().view().state
                     is Merged2m
-                &&& krnl.pg_arr.spec_index(index).view().wlocked_by(&*lctx)
+                &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                 &&& pcid_allocator_tail_lock_perms.spec_index(index)
                     .state() is WriteLock
                 &&& pcid_allocator_tail_lock_perms.spec_index(index)
@@ -1955,7 +1927,7 @@ pub fn publish_staged_container_root(
                 &&& krnl.pg_arr.spec_index(index).view().is_init()
                 &&& krnl.pg_arr.spec_index(index).view().view().state
                     is Merged2m
-                &&& krnl.pg_arr.spec_index(index).view().wlocked_by(&*lctx)
+                &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                 &&& pcid_allocator_tail_lock_perms.spec_index(index)
                     .state() is WriteLock
                 &&& pcid_allocator_tail_lock_perms.spec_index(index)
@@ -2079,60 +2051,6 @@ pub fn publish_staged_container_root(
                     == pages_before_pcid_allocator_tails
                         .spec_index(l4_index).view().view()
             );
-        };
-        assert(
-            krnl.pg_arr.spec_index(container_head).view()
-                .write_lock_perm_match(container_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(pcid_allocator_head).view()
-                .write_lock_perm_match(pcid_allocator_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(l4_index).view()
-                .write_lock_perm_match(l4_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(pagetable_index).view()
-                .write_lock_perm_match(pagetable_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(process_index).view()
-                .write_lock_perm_match(process_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(allocator_4k_index).view()
-                .write_lock_perm_match(allocator_4k_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(allocator_2m_index).view()
-                .write_lock_perm_match(allocator_2m_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(allocator_1g_index).view()
-                .write_lock_perm_match(allocator_1g_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
-        };
-        assert(
-            krnl.pg_arr.spec_index(scheduler_index).view()
-                .write_lock_perm_match(scheduler_page_lock_perm)
-        ) by {
-            reveal(LockedArray::typed_lock_map_aligned);
         };
     }
 
@@ -2282,8 +2200,7 @@ pub fn publish_staged_container_root(
                     .view().view().inv()
                 &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr))
                     .view().view().state is Owned4k
-                &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr))
-                    .view().wlocked_by(lctx)
+                &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
                 &&& funding_page_lock_perms.spec_index(page_ptr).state()
                     is WriteLock
                 &&& funding_page_lock_perms.spec_index(page_ptr).thread_id()
@@ -2307,6 +2224,35 @@ pub fn publish_staged_container_root(
         Tracked(funding_page_lock_perms),
     );
 
+    assert({
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), container_head, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), pcid_allocator_head, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), allocator_4k_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), allocator_2m_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), allocator_1g_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), scheduler_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), cpu_set_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), process_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), pagetable_index, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.page_lock_map(), l4_index, TypedLockMode::Write)
+    }) by {
+        let index = if !typed_lock_map_contains_mode(lctx.page_lock_map(), container_head, TypedLockMode::Write) { container_head } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), pcid_allocator_head, TypedLockMode::Write) { pcid_allocator_head } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), allocator_4k_index, TypedLockMode::Write) { allocator_4k_index } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), allocator_2m_index, TypedLockMode::Write) { allocator_2m_index } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), allocator_1g_index, TypedLockMode::Write) { allocator_1g_index } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), scheduler_index, TypedLockMode::Write) { scheduler_index } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), cpu_set_index, TypedLockMode::Write) { cpu_set_index } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), process_index, TypedLockMode::Write) { process_index } else
+            if !typed_lock_map_contains_mode(lctx.page_lock_map(), pagetable_index, TypedLockMode::Write) { pagetable_index } else
+            { l4_index };
+        let mapped = funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr));
+        if mapped.to_set().contains(index) {
+            let i = choose|i: int| 0 <= i < mapped.len() && mapped.spec_index(i) == index;
+            assert(funding_pages.to_set().contains(funding_pages.spec_index(i))) by { funding_pages.to_set_ensures(); };
+        }
+        assert(typed_lock_map_contains_mode(lctx.page_lock_map().remove_keys(mapped.to_set()), index, TypedLockMode::Write)) by { broadcast use vstd::map::lemma_map_new_index; };
+    };
     let ghost old_container_page_lock_id = krnl.pg_arr.lock_id_by_index(container_head);
     let Tracked(container_perm) = {
         let page = krnl.pg_arr.borrow_mut_typed(

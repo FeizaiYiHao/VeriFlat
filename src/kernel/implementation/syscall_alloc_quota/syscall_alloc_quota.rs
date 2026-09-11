@@ -10,7 +10,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().state == CpuState::Running,
+                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -19,6 +19,7 @@ verus! {
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(steps).steps.len() <= 1,
                 final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
                 final(krnl).all_objects_unlocked(final(lctx)),
@@ -30,7 +31,7 @@ verus! {
                 ret is Success && alloc_amount == 0 ==> final(steps).steps.len() == 0,
                 ret is Success && alloc_amount > 0 ==> 
                     { 
-                        let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0; 
+                        let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
                         &&& final(steps).steps.len() == 1 
                         &&& final(steps).steps.last().old_u == kernel_k_to_kernel_u(*old(krnl)) 
                         &&& kernel_u_only_process_quota_4k_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, process_ptr, alloc_amount as int) 
@@ -38,22 +39,22 @@ verus! {
         {
             proof { reveal(KernelK::all_objects_unlocked); }
             assert(
-                {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container)
-                    &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container).view().owned_processes.view()
-                        .contains(krnl.cpu_arr.spec_index(cpu_id).view().view().current_process.unwrap())
-                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().current_process is Some
-                    &&& krnl.prc_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().current_process.unwrap())
-                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().process_depth == krnl.prc_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().current_process.unwrap()).view_rodata().view().depth
-                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().container_depth == krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container).view_rodata().view().depth
-                    &&& krnl.prc_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().current_process.unwrap()).view_rodata().view().container_depth
-                        == krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().owning_container).view_rodata().view().depth
+                {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)
+                    &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view().owned_processes.view()
+                        .contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap())
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
+                    &&& krnl.prc_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap())
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.prc_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view_rodata().view().depth
+                    &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_rodata().view().depth
+                    &&& krnl.prc_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view_rodata().view().container_depth
+                        == krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_rodata().view().depth
                 }
             ) by { reveal(cpu_array_wf); reveal(container_perms_wf); reveal(process_perms_wf); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); };
 
             let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
-            let cpu = krnl.cpu_arr.borrow(cpu_id, Tracked(&cpu_lock_perm));
-            let process_ptr = cpu.current_process.unwrap();
-            let container_ptr = cpu.owning_container;
+            let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
+            let process_ptr = cpu.current_process().unwrap();
+            let container_ptr = cpu.owning_container();
             let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(lctx));
             if let (false, _) = container_res{
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
@@ -77,7 +78,7 @@ verus! {
 
             let Tracked(quota_lock_perm) = krnl.wlock_quota_4k(alloc_ptr_4k, Tracked(lctx));
 
-            let quota_ref = krnl.allc_4k_mp.borrow_quota(alloc_ptr_4k, Tracked(&quota_lock_perm));
+            let quota_ref = krnl.allc_4k_mp.borrow_quota_typed(alloc_ptr_4k, Ghost(lctx.allocator_quota_4k_lock_map()), Tracked(&*lctx), Tracked(&quota_lock_perm));
             if quota_ref.value < alloc_amount {
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
@@ -108,7 +109,7 @@ verus! {
             proof {
                 assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
             }
-            let process_ref: &Process = krnl.prc_mp.borrow(process_ptr, Tracked(&process_lock_perm));
+            let process_ref: &Process = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm));
             let process_quota_4k = process_ref.quota_4k;
             if alloc_amount > usize::MAX - process_quota_4k {
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));

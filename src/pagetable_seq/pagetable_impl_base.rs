@@ -352,6 +352,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),
@@ -460,6 +461,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 page_map_perm.value().spec_index(i).is_empty(),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),
@@ -577,6 +579,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),
@@ -692,6 +695,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             target_entry.present,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).lock_id_set() == old(lctx).lock_id_set(),

@@ -12,6 +12,8 @@ pub mod syscall_new_container;
 pub mod syscall_mmap_4k;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_ipc;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_schedule;
 pub mod locker_unlocker;
 pub mod attach_endpoint_reference_and_unlock;
 pub mod create_thread_from_staged_page;

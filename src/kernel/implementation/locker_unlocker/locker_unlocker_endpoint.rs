@@ -11,7 +11,7 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).ep_mp.dom().contains(endpoint_ptr),
-                wlock_requires(old(self).ep_mp.spec_index(endpoint_ptr), old(lctx)),
+                !typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 {
                     let cpus = old(lctx).cpu_lock_map().dom();
@@ -21,16 +21,16 @@ impl KernelK {
                         #![trigger cpus.contains(held_cpu_id)]
                         cpus.contains(held_cpu_id) ==> {
                             &&& index_valid(NUM_CPUS, held_cpu_id)
-                            &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().state is Off)
+                            &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
                         })
                     &&& processes.len() == 1
                     &&& forall|cpu_id: CpuId|
                         #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
                         cpus.contains(cpu_id) ==> {
                             let cpu = old(self).cpu_arr.spec_index(cpu_id).view().view();
-                            let current_thread_ptr = cpu.current_thread->Some_0;
+                            let current_thread_ptr = cpu.current_thread()->Some_0;
                             let threads = old(lctx).thread_lock_map().dom();
-                            &&& cpu.current_thread is Some
+                            &&& cpu.current_thread() is Some
                             &&& old(self).thr_mp.dom().contains(current_thread_ptr)
                             &&& old(self).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
                             &&& {
@@ -56,15 +56,15 @@ impl KernelK {
                                     &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
                                 }
                                 ||| {
-                                    &&& cpu.current_process is Some
+                                    &&& cpu.current_process() is Some
                                     &&& old(lctx).page_lock_map().dom().is_empty()
                                     &&& old(lctx).cpu_lock_map().dom() =~= set![cpu_id]
-                                    &&& old(lctx).container_lock_map().dom() =~= set![cpu.owning_container]
-                                    &&& old(lctx).process_lock_map().dom() =~= set![cpu.current_process->Some_0]
+                                    &&& old(lctx).container_lock_map().dom() =~= set![cpu.owning_container()]
+                                    &&& old(lctx).process_lock_map().dom() =~= set![cpu.current_process()->Some_0]
                                     &&& old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr]
                                     &&& old(lctx).endpoint_lock_map().dom().is_empty()
                                     &&& old(lctx).scheduler_lock_map().dom().is_empty()
-                                    &&& old(lctx).pcid_allocator_lock_map().dom() =~= set![old(self).ctn_mp.spec_index(cpu.owning_container).view_rodata().view().pcid_allocator]
+                                    &&& old(lctx).pcid_allocator_lock_map().dom() =~= set![old(self).ctn_mp.spec_index(cpu.owning_container()).view_rodata().view().pcid_allocator]
                                     &&& old(lctx).cpu_set_lock_map().dom().is_empty()
                                     &&& old(lctx).pagetable_lock_map().dom().is_empty()
                                     &&& old(lctx).iommu_table_lock_map().dom().is_empty()
@@ -110,6 +110,7 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
@@ -146,6 +147,7 @@ impl KernelK {
                 assert(old(lctx).held_lock_majors_lt(ENDPOINT_LOCK_MAJOR)) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(thread_cpu_wf); };
                 assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(endpoint_perms_wf); };
             }
+            assert(wlock_requires(self.ep_mp.spec_index(endpoint_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.ep_mp.wlock(endpoint_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(endpoint_ptr)));
             proof {
                 assert(endpoint_invariant_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { endpoint_lock_op_preserves_invariant_fields(old(self).ep_mp, self.ep_mp, endpoint_ptr); };
@@ -179,13 +181,14 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).ep_mp.dom().contains(endpoint_ptr),
-                old(self).ep_mp.spec_index(endpoint_ptr).wlocked_by(old(lctx)),
+                typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
@@ -225,6 +228,7 @@ impl KernelK {
                 assert(old(lctx).lock_entry_contains(old(self).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(old(lctx).lock_id_set().contains((old(self).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)))) by { reveal(lock_id_set_aligned); };
             }
+            assert(self.ep_mp.spec_index(endpoint_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             self.ep_mp.wunlock(endpoint_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Endpoint(endpoint_ptr)));
             proof {
                 assert(endpoint_invariant_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { endpoint_lock_op_preserves_invariant_fields(old(self).ep_mp, self.ep_mp, endpoint_ptr); };

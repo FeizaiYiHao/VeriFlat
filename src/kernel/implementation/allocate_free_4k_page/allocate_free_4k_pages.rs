@@ -25,7 +25,7 @@ pub open spec fn allocated_4k_page_lock_perms_wf(
             &&& lctx.page_lock_map().dom().contains(page_ptr2page_index(page_ptr))
             &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k { thread_ptr }
             &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr
-            &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().wlocked_by(lctx)
+            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
             &&& perms.spec_index(page_ptr).lock_id() == krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id
         }
 }
@@ -51,12 +51,13 @@ pub fn allocate_free_4k_pages<const N: usize>(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) >= N,
-        old(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(old(lctx)),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         ret.0.wf(),
         ret.0.len() == N,
@@ -81,7 +82,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         thread_effective_quota_4k(final(krnl).thr_mp.spec_index(thread_ptr)) == thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) - N,
         thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.dom().contains(thread_ptr),
-        final(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(final(lctx)),
+        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(ret.0.view())),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
@@ -101,6 +102,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
         final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         held_threads_unchanged_except(
             old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
@@ -157,8 +159,9 @@ pub fn allocate_free_4k_pages<const N: usize>(
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == lctx.thread_id(),
             thread_lock_perm.lock_id() == krnl.thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            krnl.thr_mp.spec_index(thread_ptr).wlocked_by(&*lctx),
+            typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
             lctx.thread_id() == old(lctx).thread_id(),
+            lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view())),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
@@ -177,6 +180,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
             typed_lock_maps_aligned(krnl, &*lctx),
             lock_id_set_aligned(&*lctx),
             lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+            old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
             lctx.holds_no_allocator_locks(PageSize::SZ4k),
             held_threads_unchanged_except(
                 old(krnl).thr_mp, krnl.thr_mp, old(lctx),

@@ -258,6 +258,7 @@ impl PageAllocator{
             wlock_requires(old(self).quota, old(lctx)),
             old(lctx).lock_id_acyclic(old(self).quota.lock_id()),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
             wlock_ensures(old(self).quota, final(self).quota, old(self).quota.lock_id(), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx),
@@ -289,6 +290,7 @@ impl PageAllocator{
                 old(self).quota.lock_id(),
                 KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()))),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
             final(self).quota.lock_id() == old(self).quota.lock_id(),
             wunlock_ensures(old(self).quota, final(self).quota),
@@ -320,6 +322,7 @@ impl PageAllocator{
                 minor: old(self).cpu_caches.spec_index(cpu_id).lock_minor(),
             }),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
             wlock_ensures(old(self).cpu_caches.spec_index(cpu_id).view(), final(self).cpu_caches.spec_index(cpu_id).view(), LockId{
                 container: old(self).cpu_caches.spec_index(cpu_id).container_depth(),
@@ -370,6 +373,7 @@ impl PageAllocator{
                 old(self).cpu_caches.spec_index(cpu_id).lock_id(),
                 KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id))),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
             final(self).cpu_caches.spec_index(cpu_id).lock_id()
                 == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
@@ -413,6 +417,7 @@ impl PageAllocator{
                 minor: old(self).global_pool.view().lock_minor(),
             }),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
             wlock_ensures(old(self).global_pool, final(self).global_pool, LockId{
                 container: old(self).global_pool.view().container_depth(),
@@ -453,6 +458,7 @@ impl PageAllocator{
                 old(self).global_pool.lock_id(),
                 KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view()))),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
             final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
             wunlock_ensures(old(self).global_pool, final(self).global_pool),

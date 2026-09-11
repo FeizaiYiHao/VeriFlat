@@ -26,16 +26,18 @@ pub(super) enum Mmap4kPrecheck {
     ) -> (ret: Mmap4kPrecheck)
         requires
             krnl.inv(),
+            krnl.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
+            krnl.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
             range.wf(),
             range.len > 0,
             range.len <= usize::MAX / 4usize,
             krnl.thr_mp.dom().contains(thread_ptr),
-            krnl.thr_mp.spec_index(thread_ptr).wlocked_by(lctx),
+            typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == lctx.thread_id(),
             thread_lock_perm.lock_id() == krnl.thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             krnl.pt_mp.dom().contains(pagetable_ptr),
-            krnl.pt_mp.spec_index(pagetable_ptr).wlocked_by(lctx),
+            typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             pagetable_lock_perm.state() is WriteLock,
             pagetable_lock_perm.thread_id() == lctx.thread_id(),
             pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
@@ -54,7 +56,7 @@ pub(super) enum Mmap4kPrecheck {
                     && krnl.thr_mp.spec_index(thread_ptr).inv()
             ) by { reveal(thread_perms_wf); };
         }
-        let thread = krnl.thr_mp.borrow(thread_ptr, Tracked(thread_lock_perm));
+        let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm));
         if thread.quota_4k < credit {
             return Mmap4kPrecheck::NoQuota;
         }
@@ -77,7 +79,7 @@ pub(super) enum Mmap4kPrecheck {
                     && krnl.pt_mp.spec_index(pagetable_ptr).inv()
             ) by { reveal(pagetable_perms_wf); };
         }
-        let pagetable = krnl.pt_mp.borrow(pagetable_ptr, Tracked(pagetable_lock_perm));
+        let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
         if start_indices.0 < pagetable.kernel_l4_end {
             return Mmap4kPrecheck::Invalid;
         }

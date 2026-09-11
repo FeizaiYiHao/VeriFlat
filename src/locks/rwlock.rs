@@ -585,6 +585,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             old(lctx).lock_id_acyclic(lock_id.view()),
 
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             ret.0 == false ==>
             {
                 &&&

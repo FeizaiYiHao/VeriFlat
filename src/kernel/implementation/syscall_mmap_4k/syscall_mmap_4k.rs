@@ -14,7 +14,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().state == CpuState::Running,
+            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(krnl).all_objects_unlocked(old(lctx)),
@@ -23,6 +23,7 @@ verus! {
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
@@ -33,7 +34,7 @@ verus! {
             ret is Success || ret is Error || ret is ErrorVaInUse || ret is ErrorNoQuota || ret is ErrorContainerKilled || ret is ErrorProcessKilled || ret is ErrorThreadKilled,
             ret is Success ==> final(steps).steps.len() == range,
             !(ret is Success) ==> final(steps).steps.len() == 0,
-            ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0; let pagetable_ptr = old(krnl).prc_mp.spec_index(process_ptr).view().pagetable; &&& range > 0 &&& va_4k_valid(va) &&& final(krnl).pt_mp.dom().contains(pagetable_ptr) &&& mmap_4k_syscall_range_mapped(final(krnl).pt_mp.spec_index(pagetable_ptr).view(), va, range) },
+            ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0; let pagetable_ptr = old(krnl).prc_mp.spec_index(process_ptr).view().pagetable; &&& range > 0 &&& va_4k_valid(va) &&& final(krnl).pt_mp.dom().contains(pagetable_ptr) &&& mmap_4k_syscall_range_mapped(final(krnl).pt_mp.spec_index(pagetable_ptr).view(), va, range) },
     {
         proof { reveal(KernelK::all_objects_unlocked); }
         if range == 0
@@ -58,26 +59,25 @@ verus! {
         }
         let va_range = VaRange4K::new(va, range);
 
-
         assert({
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view();
-            &&& cpu.current_process is Some
-            &&& cpu.current_thread is Some
-            &&& krnl.ctn_mp.dom().contains(cpu.owning_container)
-            &&& krnl.prc_mp.dom().contains(cpu.current_process.unwrap())
-            &&& krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view_rodata().view().owning_container == cpu.owning_container
-            &&& krnl.thr_mp.dom().contains(cpu.current_thread.unwrap())
-            &&& krnl.ctn_mp.spec_index(cpu.owning_container).view().owned_processes.view().contains(cpu.current_process.unwrap())
-            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_proc == cpu.current_process.unwrap()
-            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container
-            &&& krnl.thr_mp.spec_index(cpu.current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
+            &&& cpu.current_process() is Some
+            &&& cpu.current_thread() is Some
+            &&& krnl.ctn_mp.dom().contains(cpu.owning_container())
+            &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
+            &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().owning_container == cpu.owning_container()
+            &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
+            &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view().owned_processes.view().contains(cpu.current_process().unwrap())
+            &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
+            &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
+            &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
         }) by { reveal(container_cpu_wf); reveal(container_process_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(container_thread_wf); };
 
         let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
-        let cpu = krnl.cpu_arr.borrow(cpu_id, Tracked(&cpu_lock_perm));
-        let process_ptr = cpu.current_process.unwrap();
-        let thread_ptr = cpu.current_thread.unwrap();
-        let container_ptr = cpu.owning_container;
+        let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
+        let process_ptr = cpu.current_process().unwrap();
+        let thread_ptr = cpu.current_thread().unwrap();
+        let container_ptr = cpu.owning_container();
 
         let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
         if let (false, _) = container_res {
@@ -117,7 +117,7 @@ verus! {
 
         let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
         let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
-        let thread = krnl.thr_mp.borrow(thread_ptr, Tracked(&thread_lock_perm));
+        let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
         let pagetable_ptr = thread.proc_pagetable_ptr;
 
         assert({
@@ -127,7 +127,7 @@ verus! {
             &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
-            &&& !krnl.pt_mp.spec_index(pagetable_ptr).locked_by_thread(lctx.thread_id())
+            &&& !lctx.pagetable_lock_map().dom().contains(pagetable_ptr)
         }) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
 
         let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));

@@ -179,6 +179,31 @@ verus! {
             self.array.ar.index(index).borrow(lp)
         }
 
+        pub fn borrow_typed<'a>(
+            &self, index: usize,
+            Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>,
+            Tracked(lctx): Tracked<&LocalContext>,
+            lock_perm: Tracked<&'a LockPerm>,
+        ) -> (ret: &'a T)
+            requires
+                self.inv(),
+                index_valid(N, index),
+                self.typed_lock_map_aligned(held_locks, lctx.thread_id()),
+                lock_perm.view().thread_id() == lctx.thread_id(),
+                lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, index, TypedLockMode::Write),
+                lock_perm.view().state() is WriteLock ==> lock_perm.view().lock_id() == self.spec_index(index).view().locking_thread()->Write_lock_id,
+                lock_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(held_locks, index, TypedLockMode::Read),
+                lock_perm.view().state() is ReadLock ==> self.spec_index(index).view().locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), lock_perm.view().lock_id()),
+            ensures
+                ret == self.spec_index(index).view().view(),
+        {
+            assert({
+                &&& lock_perm.view().state() is WriteLock ==> self.spec_index(index).view().write_lock_perm_match(lock_perm.view())
+                &&& lock_perm.view().state() is ReadLock ==> self.spec_index(index).view().read_lock_perm_match(lock_perm.view())
+            }) by { reveal(LockedArray::typed_lock_map_aligned); };
+            self.borrow(index, lock_perm)
+        }
+
         #[verifier::external_body]
         pub fn borrow_mut<'a>(&'a mut self, index:usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
             requires
@@ -225,7 +250,8 @@ verus! {
                 old(self).spec_index(index).view().is_init(),
                 lp.view().state() is WriteLock,
                 lp.view().thread_id() == lctx.thread_id(),
-                old(self).spec_index(index).view().write_lock_perm_match(lp.view()),
+                typed_lock_map_contains_mode(held_locks, index, TypedLockMode::Write),
+                lp.view().lock_id() == old(self).spec_index(index).view().locking_thread()->Write_lock_id,
             ensures
                 final(self).inv(),
                 final(self).view().len() == old(self).view().len(),
@@ -252,7 +278,6 @@ verus! {
                     ==> final(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
         {
             proof {
-                assert(typed_lock_map_contains_mode(held_locks, index, TypedLockMode::Write)) by { reveal(LockedArray::typed_lock_map_aligned); };
                 reveal(LockedArray::typed_lock_map_aligned);
             }
             self.borrow_mut(index, Tracked(lctx), lp)

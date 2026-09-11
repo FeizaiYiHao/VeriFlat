@@ -34,8 +34,8 @@ pub open spec fn ipc_cpu_and_waiter_transition_framing(
         &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
         &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id)
         &&& !pre.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
-        &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().state is Off
-        &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().owning_container == source_container
+        &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
+        &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
     }
     &&& post.pt_mp == pre.pt_mp
     &&& post.it_mp == pre.it_mp
@@ -66,7 +66,7 @@ pub open spec fn ipc_cpu_and_waiter_transition_framing(
         &&& after.being_killed() == before.being_killed()
         &&& after.locking_thread() is Write
         &&& after.locking_thread()->Write_thread_id == thread_id
-        &&& after.view() == Cpu { owning_container: target_container, container_depth: pre.ctn_mp.spec_index(target_container).view_rodata().view().depth, ..before.view() }
+        &&& after.view().view() == CpuView { owning_container: target_container, container_depth: pre.ctn_mp.spec_index(target_container).view_rodata().view().depth, ..before.view().view() }
     }
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& forall|key: RwLockCpuSetPtr|

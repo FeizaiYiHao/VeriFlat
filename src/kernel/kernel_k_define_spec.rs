@@ -282,6 +282,7 @@ verus! {
         ///     their state across the boundary — `view`, `view_ghost`,
         ///     `view_rodata`, `locking_thread`,
         ///     `being_killed` are preserved per held lock instance;
+        ///   - the local CPU's CR3 and PCID stay unchanged even without its lock;
         ///   - everything else may change arbitrarily, including map
         ///     domains (except for the fixed-size arrays `cpu_array` and
         ///     `page_array`);
@@ -319,6 +320,11 @@ verus! {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                final(lctx).cpu_id() == old(lctx).cpu_id(),
+                index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> {
+                    &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3 == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3
+                    &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid
+                },
                 final(self).inv(),
                 final(lctx).kernel_view_locking_state() is Acquire,
                 // LocalContext is thread-local: the phase flips to Acquire,
@@ -485,6 +491,7 @@ pub proof fn enter_kernel_view_release_preserving_lock_alignments(
         typed_lock_maps_aligned(krnl, old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).lock_id_set() == old(lctx).lock_id_set(),
