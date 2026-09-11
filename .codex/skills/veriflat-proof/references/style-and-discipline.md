@@ -28,7 +28,9 @@
 - Describe an operation through its concrete inputs and results. Constructors
   may expose the exact value they already construct, including a deterministic
   ghost sequence, so consumers can use that fact across crate boundaries.
-  Framing guarantees still require the specific approval defined in `AGENTS.md`.
+  New framing specs and framing lemmas require the specific approval defined
+  in `AGENTS.md`. Ordinary `requires`/`ensures` edits do not require separate
+  approval, including direct preservation guarantees.
 - Keep preconditions limited to safety, semantics, and direct callees. Before
   removing a parameter, inspect exec uses, proof consumers, and dependencies
   across kernel-step boundaries; an argument unused by exec may still be needed.
@@ -77,7 +79,8 @@
   and `lemma_container_thread_quota_folds_insert_zero_forall`. Keep them
   inside the consuming scoped assertion.
 - Do not leave bare lemma calls that seed later solver context. Do not add
-  operation-specific wrapper/framing lemmas or proof-only snapshots. A snapshot
+  operation-specific wrappers, unapproved framing specs or framing lemmas, or
+  proof-only snapshots. A snapshot
   is allowed only when a real transition consumes the old dynamic lock id.
 - New generic Set/Seq/Map algebra lemmas may follow existing patterns. Ask
   before adding a lemma specialized to a repository-defined type.

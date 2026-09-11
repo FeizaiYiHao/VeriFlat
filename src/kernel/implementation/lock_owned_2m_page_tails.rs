@@ -369,7 +369,7 @@ pub open spec fn owned_2m_tail_lock_perms_wf(
         perms.dom().contains(index) ==> {
             &&& index_valid(NUM_PAGES, index)
             &&& krnl.pg_arr.spec_index(index).view().view().state is Merged2m
-            &&& krnl.pg_arr.spec_index(index).view().wlocked_by(lctx)
+            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
             &&& perms.spec_index(index).state() is WriteLock
             &&& perms.spec_index(index).thread_id() == lctx.thread_id()
             &&& perms.spec_index(index).lock_id()
@@ -415,6 +415,7 @@ pub fn wlock_owned_2m_page_tails(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -508,6 +509,7 @@ pub fn wlock_owned_2m_page_tails(
             head + 512usize <= NUM_PAGES,
             0 <= count <= 511,
             lctx.thread_id() == old(lctx).thread_id(),
+            lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
             lock_id_set_aligned(&*lctx),
@@ -567,7 +569,7 @@ pub fn wlock_owned_2m_page_tails(
                 perms.dom().contains(index) ==> {
                     &&& index_valid(NUM_PAGES, index)
                     &&& krnl.pg_arr.spec_index(index).view().view().state is Merged2m
-                    &&& krnl.pg_arr.spec_index(index).view().wlocked_by(&*lctx)
+                    &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                     &&& perms.spec_index(index).state() is WriteLock
                     &&& perms.spec_index(index).thread_id() == lctx.thread_id()
                     &&& perms.spec_index(index).lock_id()
@@ -626,8 +628,7 @@ pub fn wlock_owned_2m_page_tails(
                 }
             };
             assert(
-                !krnl.pg_arr.spec_index(index).view()
-                    .locked_by_thread(lctx.thread_id())
+                !lctx.page_lock_map().dom().contains(index)
             ) by { reveal(LockedArray::typed_lock_map_aligned); };
             assert(
                 lctx.lock_id_acyclic(krnl.pg_arr.lock_id_by_index(index))
@@ -738,7 +739,7 @@ pub(super) fn set_owned_2m_page_tails_container(
                 &&& old(pages).spec_index(index).view().is_init()
                 &&& old(pages).spec_index(index).view().view().state
                     is Merged2m
-                &&& old(pages).spec_index(index).view().wlocked_by(lctx)
+                &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                 &&& perms.spec_index(index).state() is WriteLock
                 &&& perms.spec_index(index).thread_id() == lctx.thread_id()
                 &&& perms.spec_index(index).lock_id()
@@ -785,7 +786,7 @@ pub(super) fn set_owned_2m_page_tails_container(
                     &&& pages.spec_index(index).view().is_init()
                     &&& pages.spec_index(index).view().view().state
                         is Merged2m
-                    &&& pages.spec_index(index).view().wlocked_by(lctx)
+                    &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                     &&& perms.spec_index(index).state() is WriteLock
                     &&& perms.spec_index(index).thread_id()
                         == lctx.thread_id()
@@ -819,12 +820,6 @@ pub(super) fn set_owned_2m_page_tails_container(
                 page_2m_tail_indices(head).contains(index)
             ) by {
                 reveal(page_2m_tail_indices);
-            };
-            assert(
-                pages.spec_index(index).view()
-                    .write_lock_perm_match(&perms.spec_index(index))
-            ) by {
-                reveal(LockedArray::typed_lock_map_aligned);
             };
         }
         let page = pages.borrow_mut_typed(
@@ -887,6 +882,7 @@ pub fn wunlock_owned_2m_page_tails(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         kernel_k_to_kernel_u(*final(krnl))
             == kernel_k_to_kernel_u(*old(krnl)),
@@ -958,8 +954,7 @@ pub fn wunlock_owned_2m_page_tails(
         forall|index: PageIndex|
             #![trigger page_2m_tail_indices(head).contains(index)]
             page_2m_tail_indices(head).contains(index) ==>
-                !final(krnl).pg_arr.spec_index(index).view()
-                    .locked_by_thread(final(lctx).thread_id()),
+                !final(lctx).page_lock_map().dom().contains(index),
 {
     let tracked mut perms = perms;
     let mut count: usize = 0;
@@ -969,6 +964,7 @@ pub fn wunlock_owned_2m_page_tails(
             page_index_2m_valid(head),
             0 <= count <= 511,
             lctx.thread_id() == old(lctx).thread_id(),
+            lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.kernel_view_locking_state() is Acquire
                 || lctx.kernel_view_locking_state() is Release,
             count > 0
@@ -1041,8 +1037,7 @@ pub fn wunlock_owned_2m_page_tails(
                     &&& index_valid(NUM_PAGES, index)
                     &&& krnl.pg_arr.spec_index(index).view().view().state
                         is Merged2m
-                    &&& krnl.pg_arr.spec_index(index).view()
-                        .wlocked_by(&*lctx)
+                    &&& typed_lock_map_contains_mode(lctx.page_lock_map(), index, TypedLockMode::Write)
                     &&& perms.spec_index(index).state() is WriteLock
                     &&& perms.spec_index(index).thread_id()
                         == lctx.thread_id()
@@ -1054,8 +1049,7 @@ pub fn wunlock_owned_2m_page_tails(
                 #![trigger page_2m_tail_prefix_indices(head, count)
                     .contains(index)]
                 page_2m_tail_prefix_indices(head, count).contains(index) ==>
-                    !krnl.pg_arr.spec_index(index).view()
-                        .locked_by_thread(lctx.thread_id()),
+                    !lctx.page_lock_map().dom().contains(index),
         decreases 511 - count,
     {
         let index = head + 1usize + count;

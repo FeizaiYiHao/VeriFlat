@@ -13,13 +13,14 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).it_mp.dom().contains(iommu_table_ptr),
-            old(self).it_mp.spec_index(iommu_table_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).it_mp.spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
@@ -55,6 +56,7 @@ impl KernelK {
             assert(old(lctx).lock_entry_contains(old(self).it_mp.lock_id_by_key(iommu_table_ptr), KernelObjId::IommuTable(iommu_table_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(old(lctx).lock_id_set().contains((old(self).it_mp.lock_id_by_key(iommu_table_ptr), KernelObjId::IommuTable(iommu_table_ptr)))) by { reveal(lock_id_set_aligned); };
         }
+        assert(self.it_mp.spec_index(iommu_table_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         self.it_mp.wunlock(iommu_table_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::IommuTable(iommu_table_ptr)));
         proof {
             assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf);  };

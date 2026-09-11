@@ -134,6 +134,8 @@ impl Thread{
         proc_pagetable_ptr: RwLockPageTableRoot,
         upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
     ) -> (ret: Self)
+        requires
+            upper_container_seq.view().len() == container_depth,
         ensures
             ret.inv(),
             ret.state == (ThreadState::RUNNING { cpu_id: 0 }),
@@ -172,10 +174,15 @@ impl Thread{
         process_depth: usize,
         proc_pagetable_ptr: RwLockPageTableRoot,
         upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
+        initial_regs: &Registers,
     ) -> (ret: (Self, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        requires
+            upper_container_seq.view().len() == container_depth,
         ensures
             ret.0.inv(),
             ret.0.state is SCHEDULED,
+            ret.0.trap_frame.is_some(),
+            *ret.0.trap_frame.get_some_0() == *initial_regs,
             ret.0.current_lock_major() == THREAD_SCHEDULED_LOCK_MAJOR,
             ret.0.owning_container == owning_container,
             ret.0.container_depth == container_depth,
@@ -203,12 +210,73 @@ impl Thread{
         let mut thread = Self::new_fresh(owning_container, container_depth, owning_proc, process_depth, proc_pagetable_ptr, upper_container_seq);
         let (node_addr, mut node_perm) = thread.scheduler_linkedlist_node.take();
         node_update_value(node_addr, &mut node_perm, thread_ptr);
+        thread.trap_frame.set_self(initial_regs);
         thread.state = ThreadState::SCHEDULED;
         (thread, node_addr, node_perm)
     }
 }
 
 impl Thread {
+    pub fn running_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        requires
+            old(self).inv(),
+            old(self).state is RUNNING,
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).caller == old(self).caller,
+            final(self).callee == old(self).callee,
+            final(self).blocking_endpoint_ptr == old(self).blocking_endpoint_ptr,
+            final(self).blocking_endpoint_index == old(self).blocking_endpoint_index,
+            final(self).endpoint_linkedlist_node == old(self).endpoint_linkedlist_node,
+            final(self).ipc_payload == old(self).ipc_payload,
+            final(self).error_code is None,
+            final(self).state is SCHEDULED,
+            final(self).trap_frame.is_some(),
+            *final(self).trap_frame.get_some_0() == *pt_regs,
+            ret.0 == final(self).scheduler_linkedlist_node.addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == thread_ptr,
+    {
+        self.trap_frame.set_self(pt_regs);
+        let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        self.state = ThreadState::SCHEDULED;
+        (node_addr, node_perm)
+    }
+
+    pub fn scheduled_to_running(&mut self, cpu_id: CpuId, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers) -> (ret: Option<RetValueType>)
+        requires
+            old(self).inv(),
+            old(self).state is SCHEDULED,
+            index_valid(NUM_CPUS, cpu_id),
+            node_perm.view().is_init(),
+            node_perm.view().addr() == old(self).scheduler_linkedlist_node.addr(),
+        ensures
+            final(self).inv(),
+            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).caller == old(self).caller,
+            final(self).callee == old(self).callee,
+            final(self).blocking_endpoint_ptr == old(self).blocking_endpoint_ptr,
+            final(self).blocking_endpoint_index == old(self).blocking_endpoint_index,
+            final(self).endpoint_linkedlist_node == old(self).endpoint_linkedlist_node,
+            final(self).ipc_payload == old(self).ipc_payload,
+            final(self).error_code is None,
+            ret == old(self).error_code,
+            final(self).state == (ThreadState::RUNNING { cpu_id }),
+            final(self).trap_frame.is_none(),
+            *final(pt_regs) == *old(self).trap_frame.get_some_0(),
+    {
+        self.scheduler_linkedlist_node.put(node_perm);
+        self.trap_frame.set_dst(pt_regs);
+        self.trap_frame.set_to_none();
+        let ret = self.error_code;
+        self.error_code = None;
+        self.state = ThreadState::RUNNING { cpu_id };
+        ret
+    }
+
     /// Move the running thread into an endpoint wait queue and hand its
     /// intrusive endpoint node to the queue owner.
     pub fn block_on_endpoint(
@@ -527,6 +595,7 @@ impl LockInvTrait for Thread {
         self.error_code is Some ==> self.state is SCHEDULED
         &&&
         self.state is RUNNING ==> self.trap_frame.is_none()
+        &&& self.state is SCHEDULED ==> self.trap_frame.is_some()
         &&&
         (self.state.is_endpoint_waiting()
             || self.state is WAITING_REPLY
@@ -793,6 +862,7 @@ impl LockOwnerIdTrait for Thread {
         if self.state.is_endpoint_waiting()
             || self.state is WAITING_REPLY
             || self.state is IPC_ENDPOINT_TRANSIT
+            || self.state is SCHEDULED
         {
             LockOwnerId::NotApp
         } else {

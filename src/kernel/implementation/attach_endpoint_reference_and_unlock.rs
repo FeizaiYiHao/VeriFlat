@@ -22,11 +22,11 @@ verus! {
                 ||| old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
                 ||| old(krnl).ctn_mp.spec_index(old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container)
             },
-            old(krnl).thr_mp.spec_index(thread_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
             thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            old(krnl).ep_mp.spec_index(endpoint_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
             endpoint_lock_perm.state() is WriteLock,
             endpoint_lock_perm.thread_id() == old(lctx).thread_id(),
             endpoint_lock_perm.lock_id() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
@@ -36,6 +36,7 @@ verus! {
             old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, thread_ptr],
             old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
             final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((thread_ptr, 0)),

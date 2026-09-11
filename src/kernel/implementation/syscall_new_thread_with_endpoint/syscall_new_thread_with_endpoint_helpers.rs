@@ -27,6 +27,7 @@ verus! {
         cpu_lock_perm: Tracked<LockPerm>,
         scheduler_lock_perm: Tracked<LockPerm>,
         endpoint_lock_perm: Tracked<LockPerm>,
+        initial_regs: &Registers,
     )
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -49,30 +50,30 @@ verus! {
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
             cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(krnl).cpu_arr.spec_index(cpu_id).view().wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().state == CpuState::Running,
+            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
             scheduler_lock_perm.view().state() is WriteLock,
             scheduler_lock_perm.view().thread_id() == old(lctx).thread_id(),
             scheduler_lock_perm.view().lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
-            old(krnl).sched_mp.spec_index(scheduler_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
             old(krnl).sched_mp.spec_index(scheduler_ptr).being_killed() == false,
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
             endpoint_lock_perm.view().state() is WriteLock,
             endpoint_lock_perm.view().thread_id() == old(lctx).thread_id(),
             endpoint_lock_perm.view().lock_id() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
-            old(krnl).ep_mp.spec_index(endpoint_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
             old(krnl).ep_mp.spec_index(endpoint_ptr).being_killed() == false,
             process_lock_perm.view().state() is WriteLock,
             process_lock_perm.view().thread_id() == old(lctx).thread_id(),
             process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-            old(krnl).prc_mp.spec_index(process_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
             old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
             current_thread_lock_perm.view().state() is WriteLock,
             current_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
             current_thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
-            old(krnl).thr_mp.spec_index(current_thread_ptr).wlocked_by(old(lctx)),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
             old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is RUNNING,
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
@@ -107,6 +108,7 @@ verus! {
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             final(lctx).no_locks_held(),
@@ -141,7 +143,7 @@ verus! {
                 ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
             }) by { reveal(container_thread_endpoint_wf); };
         }
-        let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm));
+        let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs);
 
         proof {
             assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { reveal(container_endpoint_wf); };

@@ -7,7 +7,6 @@ CARGO_VERUS_BIN="$CURRENT_DIR/verus/source/target-verus/release/cargo-verus"
 COUNTER_DIR="$CURRENT_DIR/.verus-log"
 COUNTER_FILE="$COUNTER_DIR/verify-count"
 COUNTER_LOCK="$COUNTER_DIR/verify-count.lock"
-RUN_LOG="$COUNTER_DIR/verify-runs.log"
 
 package=""
 cargo_jobs=""
@@ -103,13 +102,6 @@ run_count=$((run_count + 1))
 counter_tmp="$COUNTER_FILE.$$"
 printf '%s\n' "$run_count" > "$counter_tmp"
 mv "$counter_tmp" "$COUNTER_FILE"
-{
-    printf '%s\t%s\tworkspace:%s\tcargo_jobs=%s\tverus_threads=%s' \
-        "$run_count" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$run_kind" \
-        "$cargo_jobs" "$verus_threads"
-    printf '\t%q' "${verus_args[@]}"
-    printf '\n'
-} >> "$RUN_LOG"
 flock -u 9
 
 printf 'verification run #%s (%s, Cargo jobs=%s, Verus threads=%s)\n' \

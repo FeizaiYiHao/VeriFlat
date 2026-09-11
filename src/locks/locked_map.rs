@@ -164,6 +164,35 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         return ret;
     }
 
+    pub fn borrow_typed<'a>(
+        &self, key: usize,
+        Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&'a LockPerm>,
+    ) -> (ret: &'a T)
+        where
+            T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+            ROT: LockOwnerIdTrait,
+        requires
+            self.perms_wf(),
+            self.dom().contains(key),
+            self.spec_index(key).is_init(),
+            self.typed_lock_map_aligned(held_locks, lctx.thread_id()),
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write),
+            lock_perm.view().state() is WriteLock ==> lock_perm.view().lock_id() == self.spec_index(key).locking_thread()->Write_lock_id,
+            lock_perm.view().state() is ReadLock ==> typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read),
+            lock_perm.view().state() is ReadLock ==> self.spec_index(key).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), lock_perm.view().lock_id()),
+        ensures
+            ret == self.spec_index(key).view(),
+    {
+        assert({
+            &&& lock_perm.view().state() is WriteLock ==> self.spec_index(key).write_lock_perm_match(lock_perm.view())
+            &&& lock_perm.view().state() is ReadLock ==> self.spec_index(key).read_lock_perm_match(lock_perm.view())
+        }) by { reveal(LockedMap::typed_lock_map_aligned); };
+        self.borrow(key, lock_perm)
+    }
+
     pub fn borrow_mut<'a>(&'a mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
         requires
             old(self).dom().contains(key),
@@ -219,7 +248,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             old(self).spec_index(key).is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            old(self).spec_index(key).write_lock_perm_match(lock_perm.view()),
+            typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
@@ -265,7 +295,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             })) ==> final(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
     {
         proof {
-            assert(typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write)) by { reveal(LockedMap::typed_lock_map_aligned); };
             reveal(LockedMap::typed_lock_map_aligned);
         }
         self.borrow_mut(key, Tracked(lctx), lock_perm)

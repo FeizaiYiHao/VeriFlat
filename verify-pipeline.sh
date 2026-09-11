@@ -31,11 +31,6 @@ run_count=0
 run_count=$((run_count + 1))
 printf '%s\n' "$run_count" > ".verus-log/verify-count.$$"
 mv ".verus-log/verify-count.$$" .verus-log/verify-count
-{
-    printf '%s\t%s\tpipeline\tcargo_jobs=default\tverus_threads_default=32\tcold_veriflat=%s' "$run_count" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$cold"
-    printf '\t%q' "${args[@]}"
-    printf '\n'
-} >> .verus-log/verify-runs.log
 flock -u 9
 printf 'verification run #%s (pipeline; Cargo default; cold VeriFlat=%s; dependency caches retained)\n' "$run_count" "$cold" >&2
 exec env VERUS_PIPELINE_SMT=1 "$CURRENT_DIR/verus/source/target-verus/release/cargo-verus" \

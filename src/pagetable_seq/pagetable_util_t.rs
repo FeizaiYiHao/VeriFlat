@@ -20,6 +20,7 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).it_mp == old(self).it_mp,
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
@@ -49,7 +50,7 @@ impl KernelK {
             final(self).pt_mp.spec_index(page_ptr).is_init(),
             final(self).pt_mp.spec_index(page_ptr).view() == pagetable_value,
             !final(self).pt_mp.spec_index(page_ptr).being_killed(),
-            final(self).pt_mp.spec_index(page_ptr).wlocked_by(final(lctx)),
+            typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), page_ptr, TypedLockMode::Write),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).pt_mp.lock_id_by_key(page_ptr),
@@ -95,6 +96,7 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).pt_mp == old(self).pt_mp,
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
@@ -124,7 +126,7 @@ impl KernelK {
             final(self).it_mp.spec_index(page_ptr).is_init(),
             final(self).it_mp.spec_index(page_ptr).view() == iommu_table_value,
             !final(self).it_mp.spec_index(page_ptr).being_killed(),
-            final(self).it_mp.spec_index(page_ptr).wlocked_by(final(lctx)),
+            typed_lock_map_contains_mode(final(lctx).iommu_table_lock_map(), page_ptr, TypedLockMode::Write),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).it_mp.lock_id_by_key(page_ptr),

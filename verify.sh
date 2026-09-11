@@ -7,7 +7,6 @@ VERUS_BIN="$CURRENT_DIR/verus/source/target-verus/release/verus"
 COUNTER_DIR="$CURRENT_DIR/.verus-log"
 COUNTER_FILE="$COUNTER_DIR/verify-count"
 COUNTER_LOCK="$COUNTER_DIR/verify-count.lock"
-RUN_LOG="$COUNTER_DIR/verify-runs.log"
 
 if [[ ! -x "$VERUS_BIN" ]]; then
     printf 'verify.sh: Verus binary is not executable: %s\n' "$VERUS_BIN" >&2
@@ -32,11 +31,6 @@ run_count=$((run_count + 1))
 counter_tmp="$COUNTER_FILE.$$"
 printf '%s\n' "$run_count" > "$counter_tmp"
 mv "$counter_tmp" "$COUNTER_FILE"
-{
-    printf '%s\t%s' "$run_count" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-    printf '\t%q' "$@"
-    printf '\n'
-} >> "$RUN_LOG"
 flock -u 9
 
 printf 'verification run #%s\n' "$run_count" >&2

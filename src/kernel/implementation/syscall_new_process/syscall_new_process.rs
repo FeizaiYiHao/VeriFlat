@@ -16,11 +16,12 @@ pub fn syscall_new_process(
     cpu_id: CpuId,
     va: VAddr,
     range: usize,
+    initial_regs: &Registers,
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().state == CpuState::Running,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -29,6 +30,7 @@ pub fn syscall_new_process(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).steps.len() <= range + 2,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         final(krnl).all_objects_unlocked(final(lctx)),
@@ -37,7 +39,7 @@ pub fn syscall_new_process(
         final(lctx).no_locks_held(),
         !(ret is SuccessPairUsize) ==> final(steps).steps.len() == 0,
         ret is SuccessPairUsize ==> {
-            let parent_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().current_process->Some_0;
+            let parent_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
             let child_ptr = ret->SuccessPairUsize_value1;
             let thread_ptr = ret->SuccessPairUsize_value2;
             let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
@@ -70,13 +72,13 @@ pub fn syscall_new_process(
     }
     let source_range = VaRange4K::new(va, range);
     proof {
-        assert(krnl.cpu_arr.spec_index(cpu_id).view().view().current_process is Some && krnl.cpu_arr.spec_index(cpu_id).view().view().current_thread is Some) by { reveal(cpu_array_wf); };
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some && krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some) by { reveal(cpu_array_wf); };
     }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
-    let cpu = krnl.cpu_arr.borrow(cpu_id, Tracked(&cpu_lock_perm));
-    let parent_ptr = cpu.current_process.unwrap();
-    let current_thread_ptr = cpu.current_thread.unwrap();
-    let container_ptr = cpu.owning_container;
+    let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
+    let parent_ptr = cpu.current_process().unwrap();
+    let current_thread_ptr = cpu.current_thread().unwrap();
+    let container_ptr = cpu.owning_container();
     proof {
         assert(krnl.prc_mp.dom().contains(parent_ptr) && krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr) by { reveal(process_cpu_wf); };
         assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.ctn_mp.spec_index(container_ptr).view().owned_processes.view().contains(parent_ptr)) by { reveal(container_process_wf); };
@@ -95,12 +97,9 @@ pub fn syscall_new_process(
     let allocator_ptr = container_rodata.borrow().allocator_ptr_4k;
     proof {
         assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr) && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().wf() && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr) by { reveal(container_pcid_allocator_wf); reveal(pcid_allocator_perms_wf); };
-        assert(!krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).locked_by_thread(lctx.thread_id())) by {
-            reveal(LockedMap::typed_lock_map_aligned);
-        };
     }
     let Tracked(pcid_allocator_lock_perm) = krnl.wlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx));
-    let pcid_allocator = krnl.pcid_allc_mp.borrow(pcid_allocator_ptr, Tracked(&pcid_allocator_lock_perm));
+    let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));
     let pcid_option = pcid_allocator.find_lowest_free_nonzero();
     if let None = pcid_option {
         krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
@@ -133,14 +132,14 @@ pub fn syscall_new_process(
         return RetValueType::ErrorThreadKilled;
     }
     let Tracked(current_thread_lock_perm) = thread_res.1.unwrap();
-    let source_pagetable_ptr = krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm)).proc_pagetable_ptr;
+    let source_pagetable_ptr = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).proc_pagetable_ptr;
     proof {
-        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !krnl.pt_mp.spec_index(source_pagetable_ptr).locked_by_thread(lctx.thread_id())) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
+        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !lctx.pagetable_lock_map().dom().contains(source_pagetable_ptr)) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
     }
     let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
     let source_start_indices = va2index(va);
     proof { assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); }; }
-    let source_pt = krnl.pt_mp.borrow(source_pagetable_ptr, Tracked(&source_pagetable_lock_perm));
+    let source_pt = krnl.pt_mp.borrow_typed(source_pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&source_pagetable_lock_perm));
     if source_start_indices.0 < source_pt.kernel_l4_end {
         krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
         krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
@@ -162,7 +161,7 @@ pub fn syscall_new_process(
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::Error;
     }
-    if krnl.thr_mp.borrow(current_thread_ptr, Tracked(&current_thread_lock_perm)).quota_4k < 4 + 3 * range {
+    if krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).quota_4k < 4 + 3 * range {
         krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
         krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
         krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
@@ -176,7 +175,7 @@ pub fn syscall_new_process(
     proof {
         assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by { reveal(LocalContext::holds_no_allocator_locks); };
     }
-    let (child_ptr, thread_ptr) = commit_new_process(krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, pcid, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm));
+    let (child_ptr, thread_ptr) = commit_new_process(krnl, &source_range, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_pagetable_ptr, pcid, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm), initial_regs);
     RetValueType::SuccessPairUsize { value1: child_ptr, value2: thread_ptr }
 }
 

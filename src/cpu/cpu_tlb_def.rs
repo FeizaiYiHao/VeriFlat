@@ -36,6 +36,35 @@ pub struct CpuTLB{
 }
 
 impl CpuTLB{
+    /// PCIDE is enabled by boot. Non-default translations are non-global.
+    /// The caller binds `cpu_id` to this executing CPU; kernel mappings stay
+    /// accessible across the write. Bit 63 requests retention of translations.
+    #[verifier::external_body]
+    pub(super) fn write_cr3_pcid(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(self).inv(),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id == lctx.cpu_id(),
+            page_ptr_valid(cr3),
+            pcid_valid(pcid),
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            final(self).inv(),
+            !flush ==> *final(self) == *old(self),
+            forall|other_cpu: CpuId, other_pcid: Pcid|
+                #![trigger final(self).spec_index((other_cpu, other_pcid))]
+                #![trigger old(self).spec_index((other_cpu, other_pcid))]
+                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) ==>
+                    final(self).spec_index((other_cpu, other_pcid)) == if flush && other_cpu == cpu_id && other_pcid == pcid { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(self).spec_index((other_cpu, other_pcid)) },
+            final(self).view() == if flush { old(self).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(self).view() },
+    {
+        let value = cr3 | pcid | if flush { 0 } else { PCID_ENABLE_MASK };
+        unsafe { core::arch::asm!("mov cr3, {}", in(reg) value, options(nostack, preserves_flags)); }
+        if flush {
+            self.cpu_tlbs = Ghost(self.cpu_tlbs.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
+        }
+    }
+
     pub closed spec fn view(&self) -> Map<(CpuId, Pcid), SingleTLB>{
         self.cpu_tlbs.view()
     }

@@ -31,6 +31,7 @@ use vstd::simple_pptr::*;
             page_perm.addr() == page_ptr,
             value.inv(),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             ret.0.view().addr() == page_ptr,
             ret.0.view().is_init(),
             ret.0.view().value().is_init(),
@@ -76,6 +77,7 @@ use vstd::simple_pptr::*;
             page_perm.addr() == page_ptr,
             value.inv(),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             ret.0.view().addr() == page_ptr,
             ret.0.view().is_init(),
             ret.0.view().value().is_init(),
@@ -126,6 +128,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             old(lctx).typed_lock_entry(obj_id.view()) is None,
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(page_ptr),
             final(self).dom().contains(page_ptr),
@@ -170,6 +173,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             old(lctx).typed_lock_entry(obj_id.view()) is None,
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(page_ptr),
             final(self).dom().contains(page_ptr),
@@ -213,6 +217,7 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).pt_mp == old(self).pt_mp,
             final(self).it_mp == old(self).it_mp,
             final(self).irt == old(self).irt,
@@ -243,7 +248,7 @@ impl KernelK {
             final(self).thr_mp.spec_index(page_ptr).is_init(),
             final(self).thr_mp.spec_index(page_ptr).view() == thread_value,
             final(self).thr_mp.spec_index(page_ptr).being_killed() == false,
-            final(self).thr_mp.spec_index(page_ptr).wlocked_by(final(lctx)),
+            typed_lock_map_contains_mode(final(lctx).thread_lock_map(), page_ptr, TypedLockMode::Write),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).thr_mp.lock_id_by_key(page_ptr),

@@ -146,6 +146,7 @@ pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_
         mem_valid(value.addr),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).lock_id_set() == old(lctx).lock_id_set(),
@@ -184,6 +185,7 @@ pub(super) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(pa
         mem_valid(value.addr),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).lock_id_set() == old(lctx).lock_id_set(),

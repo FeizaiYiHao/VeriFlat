@@ -31,7 +31,7 @@ verus! {
             &&
             cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
             ==>
-            container_map.spec_index(cpu_array.spec_index(cpu_i).view().view().owning_container).view().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr)
+            container_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().owning_container).view().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr)
     }
 
     #[verifier::opaque]

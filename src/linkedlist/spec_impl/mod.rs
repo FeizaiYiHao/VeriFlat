@@ -590,6 +590,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.wf(),
             self.len() != 0,
         ensures
+            ret.0 == self.head.unwrap(),
             // address is the head, exposed only through the logical map.
             self.dom().contains(ret.0),
             self.map().dom().contains(ret.0),
@@ -655,6 +656,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             old(self).wf(),
             old(self).len() != 0,
         ensures
+            ret.0 == old(self).head.unwrap(),
             final(self).wf(),
             final(self).dom() == old(self).dom().remove(ret.0),
             final(self).view() == old(self).view().skip(1),

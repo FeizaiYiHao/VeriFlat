@@ -22,6 +22,7 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).pt_mp == old(self).pt_mp,
             final(self).it_mp == old(self).it_mp,
             final(self).irt == old(self).irt,
@@ -53,7 +54,7 @@ impl KernelK {
             final(self).prc_mp.spec_index(page_ptr).view_rodata() == rodata,
             final(self).prc_mp.spec_index(page_ptr).view_ghost() == process_ghost,
             !final(self).prc_mp.spec_index(page_ptr).being_killed(),
-            final(self).prc_mp.spec_index(page_ptr).wlocked_by(final(lctx)),
+            typed_lock_map_contains_mode(final(lctx).process_lock_map(), page_ptr, TypedLockMode::Write),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).prc_mp.lock_id_by_key(page_ptr),

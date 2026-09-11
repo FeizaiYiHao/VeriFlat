@@ -1,3 +1,4 @@
+mod cpu_cr3_pcid;
 pub mod cpu_def;
 pub mod cpu_tlb_def;
 

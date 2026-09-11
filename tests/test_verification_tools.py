@@ -16,6 +16,8 @@ class TimingToolsTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.captures = self.root / 'captures'
+        self.captures.mkdir()
         for name in ['smt_times.sh', 'module_times.sh', 'verification_times.sh', 'smt_parse.py']:
             shutil.copy2(ROOT / name, self.root / name)
         row = {'function': 'example::work', 'time-micros': 150000, 'rlimit': 80,
@@ -41,7 +43,8 @@ class TimingToolsTest(unittest.TestCase):
 
     def run_report(self, script='smt_times.sh', status=0):
         return subprocess.run([str(self.root / script), '-n', '2'], text=True,
-                              capture_output=True, env={**os.environ, 'TEST_VERIFY_EXIT': str(status)})
+                              capture_output=True, env={**os.environ, 'TEST_VERIFY_EXIT': str(status),
+                                                        'TMPDIR': str(self.captures)})
 
     def test_success_and_module_report(self):
         for script in ['smt_times.sh', 'module_times.sh']:
@@ -50,12 +53,13 @@ class TimingToolsTest(unittest.TestCase):
             self.assertIn('SMT run 150 ms', result.stdout)
             self.assertIn('Rust 20 ms; VIR 15 ms', result.stdout)
             self.assertIn('verification run #123', result.stderr)
+            self.assertEqual(list(self.captures.iterdir()), [])
 
     def test_verifier_exit_takes_precedence(self):
         result = self.run_report(status=7)
         self.assertEqual(result.returncode, 7)
         self.assertIn('diagnostic retained', result.stderr)
-        self.assertTrue(next((self.root / '.verus-log').glob('timings.*/stderr.log')).exists())
+        self.assertEqual(list(self.captures.iterdir()), [])
 
     def test_missing_malformed_and_empty_measurements_fail(self):
         for payload in ['', '{}', '{broken']:
@@ -74,16 +78,15 @@ class TimingToolsTest(unittest.TestCase):
 
     def test_concurrent_captures_are_independent(self):
         runs = [subprocess.Popen([str(self.root / 'smt_times.sh')], stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, text=True) for _ in range(2)]
+                                 stderr=subprocess.PIPE, text=True,
+                                 env={**os.environ, 'TMPDIR': str(self.captures)}) for _ in range(2)]
         for run in runs:
-            _, stderr = run.communicate(timeout=15)
+            stdout, stderr = run.communicate(timeout=15)
             self.assertEqual(run.returncode, 0, stderr)
-        captures = list((self.root / '.verus-log').glob('timings.*'))
-        self.assertEqual(len(captures), 2)
-        for capture in captures:
-            self.assertEqual(json.loads((capture / 'verus.json').read_text()), self.data)
+            self.assertIn('SMT run 150 ms', stdout)
+        self.assertEqual(list(self.captures.iterdir()), [])
 
-    def test_pipeline_forwards_arguments_status_and_records_runs(self):
+    def test_pipeline_forwards_arguments_status_and_counts_runs_without_logs(self):
         shutil.copy2(ROOT / 'verify-pipeline.sh', self.root / 'verify-pipeline.sh')
         backend = self.root / 'verus/source/target-verus/release/cargo-verus'
         backend.parent.mkdir(parents=True)
@@ -99,7 +102,7 @@ class TimingToolsTest(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), ['verify', '--workspace', '--exclude',
                 'VeriFlat', '--', '--num-threads', '32', '--time', '--output-json'])
         self.assertEqual((self.root / '.verus-log/verify-count').read_text(), '2\n')
-        self.assertEqual(len((self.root / '.verus-log/verify-runs.log').read_text().splitlines()), 2)
+        self.assertFalse((self.root / '.verus-log/verify-runs.log').exists())
 
 
 if __name__ == '__main__':
