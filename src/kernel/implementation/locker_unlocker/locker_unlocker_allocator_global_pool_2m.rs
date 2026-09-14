@@ -28,6 +28,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -55,6 +57,7 @@ impl KernelK {
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m), TypedHeldLock { lock_id: final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), mode: TypedLockMode::Write }),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert(
                     {
@@ -151,6 +154,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -182,6 +187,7 @@ impl KernelK {
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m)),
                 unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, alloc_ptr_2m), old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id()),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert({
                     &&& old(self).allc_2m_mp.perms_wf()

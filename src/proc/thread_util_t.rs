@@ -223,6 +223,8 @@ impl KernelK {
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
             final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_published == old(self).cpu_published,
             final(self).ctn_mp == old(self).ctn_mp,
             final(self).sched_mp == old(self).sched_mp,
             final(self).pcid_allc_mp == old(self).pcid_allc_mp,

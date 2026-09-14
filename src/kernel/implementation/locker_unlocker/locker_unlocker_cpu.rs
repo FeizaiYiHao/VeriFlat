@@ -19,6 +19,7 @@ impl KernelK {
                 lock_id_set_aligned(old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
+                final(self).cpu_published[cpu_id as int].view() == (final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
@@ -32,6 +33,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
                 final(self).ctn_mp     == old(self).ctn_mp,
@@ -57,22 +60,24 @@ impl KernelK {
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
                 !(final(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) ==> final(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert(old(self).cpu_arr.inv()) by { reveal(cpu_array_wf); };
                 assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(lock_id_set_aligned); };
             }
             assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
+            assert(old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_published_wf); };
             proof {
                 assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); };
                 assert(self.process_management_inv()) by {
                     assert(container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)) by { reveal(container_perms_wf); reveal(container_cpu_wf); };
                     assert(process_cpu_wf(self.prc_mp, self.cpu_arr)) by { reveal(process_cpu_wf); };
                     assert(thread_cpu_wf(self.thr_mp, self.cpu_arr)) by { reveal(thread_cpu_wf); };
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
-                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
+                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
                 assert(!(self.cpu_arr.spec_index(cpu_id).view().view().view().state is Off) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(cpu_array_wf); reveal(lock_id_set_aligned); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
@@ -99,6 +104,7 @@ impl KernelK {
                 lock_id_set_aligned(old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
+                final(self).cpu_published[cpu_id as int].view() == (final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 typed_lock_maps_aligned(final(self), final(lctx)),
@@ -108,6 +114,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_tlb == old(self).cpu_tlb,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
                 final(self).ctn_mp == old(self).ctn_mp,
@@ -132,22 +140,24 @@ impl KernelK {
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
                 final(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().is_init()) by { reveal(cpu_array_wf); };
                 assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); reveal(container_cpu_wf); };
             }
             assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
+            assert(old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_published_wf); };
             proof {
                 assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); };
                 assert(self.process_management_inv()) by {
                     reveal(container_cpu_wf);
                     reveal(process_cpu_wf);
                     reveal(thread_cpu_wf);
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
-                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
+                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
@@ -170,8 +180,10 @@ impl KernelK {
                 lock_perm.view().lock_id() == old(self).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
+                old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
+                final(self).cpu_published[cpu_id as int].view() == (final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
@@ -185,6 +197,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
                 final(self).ctn_mp     == old(self).ctn_mp,
@@ -216,7 +230,9 @@ impl KernelK {
                 final(lctx).kernel_view_locking_state() is Release,
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))),
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id)),
+                final(lctx).no_locks_held() ==> final(self).all_objects_unlocked(final(lctx)),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert(old(self).cpu_arr.inv()) by { reveal(cpu_array_wf); };
                 assert(old(lctx).lock_entry_contains(old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -229,15 +245,16 @@ impl KernelK {
             // other KernelK field is unchanged. Same template as wlock_cpu.
             proof {
                 assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); };
                 assert(self.process_management_inv()) by {
                     assert(container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)) by { reveal(container_perms_wf); reveal(container_cpu_wf); };
                     assert(process_cpu_wf(self.prc_mp, self.cpu_arr)) by { reveal(process_cpu_wf); };
                     assert(thread_cpu_wf(self.thr_mp, self.cpu_arr)) by { reveal(thread_cpu_wf); };
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
-                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { reveal(tlb_wf_spec); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
+                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
+                assert(lctx.no_locks_held() ==> self.all_objects_unlocked(lctx)) by { if lctx.no_locks_held() { no_locks_held_imply_all_objects_unlocked(&*self, &*lctx); } };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
         }

@@ -39,7 +39,6 @@ impl KernelK {
                     &&& cpus.contains(cpu_id)
                     &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr)
                     &&& {
-                        ||| {
                             &&& old(lctx).page_lock_map().dom().is_empty()
                             &&& old(lctx).process_lock_map().dom().is_empty()
                             &&& old(lctx).thread_lock_map().dom().is_empty()
@@ -57,31 +56,10 @@ impl KernelK {
                             &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                             &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                             &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                            &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                             &&& containers.subset_of(set![container_ptr])
                             &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
                             &&& (!pcid_allocators.is_empty() ==> containers.contains(container_ptr))
-                        }
-                        ||| {
-                            &&& old(lctx).page_lock_map().dom().is_empty()
-                            &&& old(lctx).container_lock_map().dom() =~= set![container_ptr]
-                            &&& old(lctx).process_lock_map().dom().is_empty()
-                            &&& old(lctx).thread_lock_map().dom().is_empty()
-                            &&& old(lctx).endpoint_lock_map().dom().is_empty()
-                            &&& old(lctx).scheduler_lock_map().dom().is_empty()
-                            &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
-                            &&& old(lctx).cpu_set_lock_map().dom().is_empty()
-                            &&& old(lctx).pagetable_lock_map().dom().is_empty()
-                            &&& old(lctx).iommu_table_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_quota_4k_lock_map().dom() =~= set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k]
-                            &&& old(lctx).allocator_cache_4k_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_quota_2m_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_cache_2m_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
-                            &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
-                        }
                     }
                 },
                 typed_lock_maps_aligned(old(self), old(lctx)),
@@ -101,6 +79,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -142,9 +122,10 @@ impl KernelK {
                     &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(process_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write })
                 },
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert(old(self).prc_mp.perms_wf()) by { reveal(process_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
             }
             assert(wlock_requires(self.prc_mp.spec_index(process_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let res = self.prc_mp.wlock_unless_killed(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)));
@@ -154,12 +135,12 @@ impl KernelK {
                 assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { process_no_change_imply_memory_management_inv(*old(self), *self); };
-                assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
+                assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_lists_wlocked); };
                 assert(self.process_management_inv()) by { process_no_change_imply_process_management_inv(*old(self), *self); };
                 assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
                 assert(process_pci_function_ownership_wf(&self.irt, self.prc_mp)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
                 assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(process_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
@@ -181,7 +162,9 @@ impl KernelK {
                 old(self).inv(),
                 old(self).prc_mp.dom().contains(process_ptr),
                 old(self).prc_mp.spec_index(process_ptr).being_killed() == false,
-                old(self).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
+                old(self).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
+                    || (old(self).prc_mp.spec_index(process_ptr).view().zombie
+                        && old(self).prc_mp.spec_index(process_ptr).view().children.view().len() != 0),
                 typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -203,6 +186,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -235,6 +220,7 @@ impl KernelK {
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))),
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Process(process_ptr)),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert({
                     &&& old(self).prc_mp.perms_wf()
@@ -254,12 +240,12 @@ impl KernelK {
                 assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { process_no_change_imply_memory_management_inv(*old(self), *self); };
-                assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
+                assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_lists_wlocked); };
                 assert(self.process_management_inv()) by { process_no_change_imply_process_management_inv(*old(self), *self); };
                 assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
                 assert(process_pci_function_ownership_wf(&self.irt, self.prc_mp)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
                 assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }

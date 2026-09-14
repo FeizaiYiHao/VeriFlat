@@ -125,16 +125,17 @@ pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post
 
 pub proof fn container_no_change_imply_cpu_dirty_map_wf(pre: KernelK, post: KernelK)
     requires
-        cpu_dirty_map_wf(pre.ctn_mp, pre.cpu_set_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp),
+        cpu_dirty_map_wf(pre.ctn_mp, pre.cpu_set_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp, pre.pcid_needflush),
         container_cpu_wf(pre.ctn_mp, pre.cpu_set_mp, pre.cpu_arr),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         post.pt_mp == pre.pt_mp,
         post.cpu_arr == pre.cpu_arr,
+        post.pcid_needflush == pre.pcid_needflush,
         post.cpu_set_mp == pre.cpu_set_mp,
         post.prc_mp == pre.prc_mp,
         post.cpu_tlb == pre.cpu_tlb,
     ensures
-        cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp),
+        cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
 {
     reveal(cpu_dirty_map_contains_container_processes);
     reveal(cpu_not_in_dirty_map_imply_not_in_tlb);

@@ -3,26 +3,31 @@ use crate::*;
 
 verus! {
 pub(super) struct CpuCr3Pcid {
-    cr3: PageTableRoot,
-    pcid: Pcid,
+    pub(super) hardware: Ghost<(PageTableRoot, Pcid)>,
 }
 
 impl CpuCr3Pcid {
-    pub(super) closed spec fn spec_cr3(&self) -> PageTableRoot { self.cr3 }
-    pub(super) closed spec fn spec_pcid(&self) -> Pcid { self.pcid }
+    pub(super) closed spec fn cr3(&self) -> PageTableRoot { self.hardware.view().0 }
+    pub(super) closed spec fn pcid(&self) -> Pcid { self.hardware.view().1 }
 
-    #[verifier(when_used_as_spec(spec_cr3))]
-    pub(super) fn cr3(&self) -> (ret: PageTableRoot)
-        ensures ret == self.cr3(),
+    pub(super) fn flush_current(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(tlb).inv(),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id == lctx.cpu_id(),
+            page_ptr_valid(cr3),
+            pcid_valid(pcid),
+            old(self).cr3() == cr3,
+            old(self).pcid() == pcid,
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            *final(self) == *old(self),
+            final(tlb).inv(),
+            forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
+            final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+            final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
     {
-        self.cr3
-    }
-
-    #[verifier(when_used_as_spec(spec_pcid))]
-    pub(super) fn pcid(&self) -> (ret: Pcid)
-        ensures ret == self.pcid(),
-    {
-        self.pcid
+        tlb.write_cr3_pcid(cpu_id, cr3, pcid, true, self, Tracked(lctx));
     }
 
     pub(super) fn write(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&mut LocalContext>)
@@ -52,11 +57,7 @@ impl CpuCr3Pcid {
             final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(tlb).view() },
     {
         proof { lctx.enter_kernel_view_release(); }
-        if self.cr3 != cr3 || self.pcid != pcid || flush {
-            tlb.write_cr3_pcid(cpu_id, cr3, pcid, flush, Tracked(&*lctx));
-        }
-        self.cr3 = cr3;
-        self.pcid = pcid;
+        tlb.write_cr3_pcid(cpu_id, cr3, pcid, flush, self, Tracked(&*lctx));
     }
 }
 }

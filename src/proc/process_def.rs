@@ -4,6 +4,8 @@ verus! {
 use crate::*;
 
 pub struct Process {
+    // Independent of the lock's kill state. Resource identifiers are historical when zombie.
+    pub zombie: bool,
     pub pcid: Pcid,
     pub pagetable: RwLockPageTableRoot,
     pub iommu_table: Option<RwLockPageTableRoot>,
@@ -28,7 +30,8 @@ pub struct ProcessGhost {
 pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
-    pub pagetable: PageTableU,
+    pub zombie: bool,
+    pub pagetable: Option<PageTableU>,
     pub iommu_table: Option<PageTableU>,
     
     pub quota_4k: usize,
@@ -81,6 +84,7 @@ impl Process{
             pcid != KERNEL_DEFAULT_PCID,
         ensures
             ret.inv(),
+            !ret.zombie,
             ret.pcid == pcid,
             ret.pagetable == pagetable,
             ret.iommu_table is None,
@@ -97,6 +101,7 @@ impl Process{
         let children = LinkedList::new(Some(container_depth), Some(depth));
         let owned_threads = LinkedList::new(Some(container_depth), Some(depth));
         Self {
+            zombie: false,
             pcid,
             pagetable,
             iommu_table: None,
@@ -122,6 +127,14 @@ impl Process{
         self.pagetable_iommu_table_different()
         &&&
         self.pci_function_ownership_wf()
+        &&& self.zombie ==> {
+            &&& self.owned_threads.view().len() == 0
+            &&& self.quota_4k == 0
+            &&& self.quota_2m == 0
+            &&& self.quota_1g == 0
+            &&& self.pci_function_ref_counter == 0
+            &&& self.owned_pci_functions.view().is_empty()
+        }
     }
     pub open spec fn pagetable_iommu_table_different(&self) -> bool {
         &&&

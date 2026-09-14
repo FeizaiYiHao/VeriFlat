@@ -478,6 +478,50 @@ impl PageAllocator{
 }
 
 impl PageAllocator{
+    pub fn push_cache_page(&mut self, cpu_id: CpuId, node_addr: usize, node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
+        requires
+            old(self).wf(),
+            index_valid(NUM_CPUS, cpu_id),
+            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            old(self).cpu_caches.spec_index(cpu_id).view().is_init(),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(self).cpu_caches.spec_index(cpu_id).view().view().view().len() < ALLOCATOR_MAX_WATERMARK,
+            node_perm.view().is_init(),
+            !old(self).cpu_caches.spec_index(cpu_id).view().view().view().contains(node_perm.view().value().view()),
+            node_perm.view().addr() == node_addr,
+            old(self).total_free_pages.view() < usize::MAX,
+        ensures
+            final(self).wf(),
+            final(self).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, node_perm.view().value().view()),
+            final(self).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, node_perm.view().value().view()),
+            !old(self).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
+            final(self).total_free_pages.view() == old(self).total_free_pages.view() + 1,
+            final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
+            final(self).cpu_caches.spec_index(cpu_id).view().is_init(),
+            final(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            final(self).cpu_caches.spec_index(cpu_id).view()
+                .write_lock_perm_match(lock_perm.view()),
+            final(self).cpu_caches.spec_index(cpu_id).lock_id()
+                == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
+            final(self).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread(),
+            final(self).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).cpu_caches.spec_index(cpu_id).view().being_killed(),
+            final(self).global_pool == old(self).global_pool,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+    {
+        {
+            let cache = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
+            assert(cache.linked_list.length != usize::MAX) by { reveal(LinkedList::wf_value_list); };
+            cache.linked_list.push_head(node_addr, node_perm);
+        }
+        self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
+        assert(self.wf()) by {
+            lemma_cache_len_fold_change_one_array(self.cpu_caches, old(self).cpu_caches, cpu_id);
+        };
+    }
+
     pub fn pop_cache_page(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
         requires
             old(self).wf(),
@@ -528,6 +572,50 @@ impl PageAllocator{
             lemma_cache_len_fold_change_one_array(old(self).cpu_caches, self.cpu_caches, cpu_id);
         }
         (node_addr, node_perm)
+    }
+
+    pub fn push_global_pool_page(&mut self, node_addr: usize, node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
+        requires
+            old(self).wf(),
+            old(self).global_pool.wlocked_by(lctx),
+            old(self).global_pool.is_init(),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
+            node_perm.view().is_init(),
+            node_perm.view().addr() == node_addr,
+            !old(self).global_pool.view().view().contains(node_perm.view().value().view()),
+            old(self).total_free_pages.view() < usize::MAX,
+        ensures
+            final(self).wf(),
+            final(self).global_pool.view().view() == old(self).global_pool.view().view().insert(0, node_perm.view().value().view()),
+            final(self).global_pool.view().map() == old(self).global_pool.view().map().insert(node_addr, node_perm.view().value().view()),
+            !old(self).global_pool.view().map().dom().contains(node_addr),
+            final(self).total_free_pages.view() == old(self).total_free_pages.view() + 1,
+            final(self).global_pool.is_init(),
+            final(self).global_pool.wlocked_by(lctx),
+            final(self).global_pool.write_lock_perm_match(lock_perm.view()),
+            final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
+            final(self).global_pool.locking_thread() == old(self).global_pool.locking_thread(),
+            final(self).global_pool.being_killed() == old(self).global_pool.being_killed(),
+            final(self).cpu_caches == old(self).cpu_caches,
+            final(self).quota == old(self).quota,
+            final(self).owning_container == old(self).owning_container,
+    {
+        assert(self.global_pool.view().linked_list.length != usize::MAX) by {
+            lemma_cache_len_fold_nonneg(self.cpu_caches.view());
+            reveal(LinkedList::wf_value_list);
+        };
+        {
+            let pool = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
+            pool.linked_list.push_head(node_addr, node_perm);
+        }
+        self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
+        assert(self.wf()) by {
+            self.global_pool.view().lemma_len_view();
+            old(self).global_pool.view().lemma_len_view();
+            lemma_cache_len_fold_congruence(old(self).cpu_caches.view(), self.cpu_caches.view());
+        };
     }
 
     pub fn pop_global_pool_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))

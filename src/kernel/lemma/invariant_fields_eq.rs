@@ -14,6 +14,7 @@ pub open spec fn process_quota_4k_framed_fields_unchanged(
         #![trigger post.spec_index(p_ptr)]
         pre.dom().contains(p_ptr) ==>
         {
+            &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
             &&& post.spec_index(p_ptr).view_rodata()
                 == pre.spec_index(p_ptr).view_rodata()
             &&& post.spec_index(p_ptr).view().pagetable
@@ -203,6 +204,7 @@ pub proof fn lemma_no_change_imply_process_pagetable_match_forall()
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
                     &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
                     &&& post.spec_index(p_ptr).view().pcid == pre.spec_index(p_ptr).view().pcid
@@ -226,6 +228,7 @@ pub proof fn lemma_no_change_imply_process_iommu_table_match_forall()
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
                     &&& post.spec_index(p_ptr).view().iommu_table == pre.spec_index(p_ptr).view().iommu_table
                 }) ==> process_iommu_table_match(post, iommu_table_map),
 {
@@ -394,6 +397,7 @@ pub proof fn lemma_no_change_imply_process_cpu_wf_forall()
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
                     &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
                     &&& post.spec_index(p_ptr).view().pcid == pre.spec_index(p_ptr).view().pcid
@@ -412,12 +416,13 @@ pub proof fn lemma_no_change_imply_process_thread_wf_forall()
                 process_thread_wf(post, thread_map)
             ]
             process_thread_wf(pre, thread_map)
-            && process_empty_thread_list_wlocked(post)
+            && process_empty_lists_wlocked(post)
             && post.dom() == pre.dom()
             && (forall|p_ptr: RwLockProcessPtr|
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
+                    &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
                     &&& post.spec_index(p_ptr).view().owned_threads == pre.spec_index(p_ptr).view().owned_threads
                     &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
@@ -433,6 +438,7 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
             pre: ProcessLockedMap,
             post: ProcessLockedMap,
             cpu_array: CpuLockedArray,
+            needflush: PcidNeedFlushArray,
             cpu_tlb: CpuTLB,
             pagetable_map: PageTableLockedMap|
             #![trigger
@@ -441,14 +447,14 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
                     pre,
                     cpu_array,
                     cpu_tlb,
-                    pagetable_map,
+                    pagetable_map, needflush,
                 ),
                 cpu_dirty_map_wf(
                     container_map, cpu_set_map,
                     post,
                     cpu_array,
                     cpu_tlb,
-                    pagetable_map,
+                    pagetable_map, needflush,
                 )
             ]
             cpu_dirty_map_wf(
@@ -456,7 +462,7 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
                 pre,
                 cpu_array,
                 cpu_tlb,
-                pagetable_map,
+                pagetable_map, needflush,
             )
             && process_cpu_wf(pre, cpu_array)
             && container_cpu_wf(container_map, cpu_set_map, cpu_array)
@@ -466,7 +472,7 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
                 post,
                 cpu_array,
                 cpu_tlb,
-                pagetable_map,
+                pagetable_map, needflush,
             ),
 {
     reveal(cpu_dirty_map_contains_container_processes);

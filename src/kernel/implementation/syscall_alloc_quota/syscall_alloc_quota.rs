@@ -76,10 +76,17 @@ verus! {
                 }
             ) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); };
 
+            assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr) by { reveal(container_process_wf); };
+            let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
+
             let Tracked(quota_lock_perm) = krnl.wlock_quota_4k(alloc_ptr_4k, Tracked(lctx));
 
             let quota_ref = krnl.allc_4k_mp.borrow_quota_typed(alloc_ptr_4k, Ghost(lctx.allocator_quota_4k_lock_map()), Tracked(&*lctx), Tracked(&quota_lock_perm));
             if quota_ref.value < alloc_amount {
+                if let (true, Some(process_lock_perm)) = process_res {
+                    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); }; }
+                    krnl.wunlock_process(process_ptr, Tracked(lctx), process_lock_perm);
+                }
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
@@ -92,8 +99,6 @@ verus! {
             }
 
 
-            assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr) by { reveal(container_process_wf); };
-            let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
             if let (false, _) = process_res {
                 krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(lctx), Tracked(quota_lock_perm));
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));

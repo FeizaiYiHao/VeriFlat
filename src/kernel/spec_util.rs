@@ -6,6 +6,9 @@ verus! {
 impl KernelK {
     #[verifier::opaque]
     pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool {
+        &&& forall|cpu_id: CpuId, pcid: Pcid|
+            #![trigger self.pcid_needflush.spec_index(cpu_id, pcid).locked_by_thread(lctx.thread_id())]
+            index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> !self.pcid_needflush.spec_index(cpu_id, pcid).locked_by_thread(lctx.thread_id())
         &&& forall|cpu_i: CpuId|
             #![trigger self.cpu_arr.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()), index_valid(NUM_CPUS, cpu_i)]
             index_valid(NUM_CPUS, cpu_i) ==> self.cpu_arr.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false

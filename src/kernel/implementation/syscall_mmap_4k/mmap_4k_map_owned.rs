@@ -98,6 +98,8 @@ use crate::*;
             final(krnl).it_mp == old(krnl).it_mp,
             final(krnl).irt == old(krnl).irt,
             final(krnl).cpu_arr == old(krnl).cpu_arr,
+            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+            final(krnl).cpu_published == old(krnl).cpu_published,
             final(krnl).ctn_mp == old(krnl).ctn_mp,
             final(krnl).sched_mp == old(krnl).sched_mp,
             final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
@@ -232,14 +234,14 @@ use crate::*;
                 assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp); };
                 assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.cpu_arr); };
             };
-            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
-            assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr, va); };
+            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+            assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr, va, krnl.pcid_needflush); };
             assert({
                 let process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
                 &&& kernel_k_to_kernel_u(*old(krnl)).process_map.dom().contains(process_ptr)
                 &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process_ptr)
-                &&& !kernel_k_to_kernel_u(*old(krnl)).process_map .spec_index(process_ptr).pagetable.mapping_4k.dom().contains(va)
-                &&& kernel_k_to_kernel_u(*krnl).process_map .spec_index(process_ptr).pagetable.mapping_4k.dom().contains(va)
+                &&& !kernel_k_to_kernel_u(*old(krnl)).process_map .spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
+                &&& kernel_k_to_kernel_u(*krnl).process_map .spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
             }) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
         }
     }

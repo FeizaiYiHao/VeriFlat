@@ -51,6 +51,7 @@ impl KernelK {
                             &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                             &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                             &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                            &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                             &&& containers.subset_of(set![thread.owning_container])
                             &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(thread.owning_container).view_rodata().view().pcid_allocator])
                             &&& (!pcid_allocators.is_empty() ==> containers.contains(thread.owning_container))
@@ -83,6 +84,7 @@ impl KernelK {
                             &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                             &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                             &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                            &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                         },
                         _ => {
                             &&& thread.state.is_endpoint_waiting()
@@ -120,6 +122,7 @@ impl KernelK {
                                     &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                                    &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                                 }
                         },
                     }
@@ -129,6 +132,7 @@ impl KernelK {
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
+                kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
                 final(self).pt_mp == old(self).pt_mp,
@@ -136,6 +140,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
@@ -154,6 +160,7 @@ impl KernelK {
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) && old(self).thr_mp.lock_id_by_key(thread_ptr).major < PAGE_TABLE_LOCK_MAJOR ==> final(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR),
+                old(lctx).held_lock_majors_lt(PCID_NEEDFLUSH_LOCK_MAJOR) ==> final(lctx).held_lock_majors_lt(PCID_NEEDFLUSH_LOCK_MAJOR),
                 old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) && old(self).thr_mp.lock_id_by_key(thread_ptr).major < PAGE_TABLE_LOCK_MAJOR ==> final(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
                 ret.0 == false ==> { &&& old(self).thr_mp.spec_index(thread_ptr).being_killed() &&& final(self).thr_mp.spec_index(thread_ptr) == old(self).thr_mp.spec_index(thread_ptr) &&& ret.1 is None &&& final(lctx).lock_id_set() =~= old(lctx).lock_id_set() &&& typed_lock_maps_unchanged(old(lctx), final(lctx)) },
                 ret.0 == true ==> {
@@ -192,7 +199,6 @@ impl KernelK {
                             .temp_alloc_clean()
                     ) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
                 }
-                assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             res
         }
@@ -242,6 +248,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,

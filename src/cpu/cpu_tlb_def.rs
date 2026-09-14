@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 
 use crate::*;
+use super::cpu_cr3_pcid::CpuCr3Pcid;
 
 verus! {
 
@@ -40,7 +41,7 @@ impl CpuTLB{
     /// The caller binds `cpu_id` to this executing CPU; kernel mappings stay
     /// accessible across the write. Bit 63 requests retention of translations.
     #[verifier::external_body]
-    pub(super) fn write_cr3_pcid(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, Tracked(lctx): Tracked<&LocalContext>)
+    pub(super) fn write_cr3_pcid(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, hardware: &mut CpuCr3Pcid, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
             index_valid(NUM_CPUS, cpu_id),
@@ -50,6 +51,8 @@ impl CpuTLB{
             lctx.kernel_view_locking_state() is Release,
         ensures
             final(self).inv(),
+            final(hardware).cr3() == cr3,
+            final(hardware).pcid() == pcid,
             !flush ==> *final(self) == *old(self),
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(self).spec_index((other_cpu, other_pcid))]
@@ -60,6 +63,7 @@ impl CpuTLB{
     {
         let value = cr3 | pcid | if flush { 0 } else { PCID_ENABLE_MASK };
         unsafe { core::arch::asm!("mov cr3, {}", in(reg) value, options(nostack, preserves_flags)); }
+        hardware.hardware = Ghost((cr3, pcid));
         if flush {
             self.cpu_tlbs = Ghost(self.cpu_tlbs.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
         }

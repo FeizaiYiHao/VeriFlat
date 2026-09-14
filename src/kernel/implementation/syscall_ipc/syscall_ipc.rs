@@ -487,7 +487,6 @@ verus! {
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).steps.len() == 0,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
     {
-        proof { reveal(KernelK::all_objects_unlocked); }
         if range == 0
             || range > usize::MAX / 4096usize
             || range > usize::MAX / 3usize

@@ -21,6 +21,7 @@ pub fn syscall_new_process_with_iommu_and_endpoint(
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         edp_idx_valid(endpoint_index),
         old(krnl).inv(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
@@ -68,7 +69,6 @@ pub fn syscall_new_process_with_iommu_and_endpoint(
         },
         ret is SuccessThreeUsize || ret is Error || ret is ErrorContainerKilled || ret is ErrorNoPcid || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
 {
-    proof { reveal(KernelK::all_objects_unlocked); }
     if range == 0
         || range > usize::MAX / 4096usize
         || range > (usize::MAX - 6usize) / 3usize

@@ -38,6 +38,7 @@ verus! {
             lock_id_set_aligned(old(lctx)),
             old(lctx).held_lock_majors_lt(FREE_PAGE_LOCK_MAJOR),
         ensures
+            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             forall|other_cpu: CpuId|
@@ -115,6 +116,8 @@ verus! {
             final(krnl).it_mp == old(krnl).it_mp,
             final(krnl).iommu_tlb == old(krnl).iommu_tlb,
             final(krnl).cpu_arr == old(krnl).cpu_arr,
+            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+            final(krnl).cpu_published == old(krnl).cpu_published,
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool,
     {
         assert(
@@ -240,6 +243,7 @@ verus! {
                     page_ptr_valid_imply_page_index_valid();
                 };
                 assert(container_allocator_cpu_cache_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by {
+                    page_ptr_roundtrip();
                     reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(LinkedList::value_list_unique);
                     seq_skip_lemma::<PagePtr>();
                 };
@@ -311,6 +315,7 @@ verus! {
             lock_id_set_aligned(old(lctx)),
             old(lctx).held_lock_majors_lt(FREE_PAGE_LOCK_MAJOR),
         ensures
+            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             page_ptr_valid(ret.0),
@@ -382,6 +387,8 @@ verus! {
             final(krnl).it_mp == old(krnl).it_mp,
             final(krnl).iommu_tlb == old(krnl).iommu_tlb,
             final(krnl).cpu_arr == old(krnl).cpu_arr,
+            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+            final(krnl).cpu_published == old(krnl).cpu_published,
     {
         assert(
             krnl.allc_2m_mp.perms_wf()
@@ -520,6 +527,7 @@ verus! {
                     reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
                     page_ptr_valid_imply_page_index_valid();
                     page_ptr2page_index_injective();
+                    reveal(allocator_perms_wf);
                 };
                 assert(container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); };
                 assert(container_allocator_global_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };

@@ -41,6 +41,7 @@ verus! {
                 &&& container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().no_duplicates()
                 &&& container_perms.spec_index(c_ptr).view().children.view().contains(c_ptr) == false
                 &&& container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().len() == container_perms.spec_index(c_ptr).view_rodata().view().depth
+                &&& container_perms.spec_index(c_ptr).view_rodata().view().depth <= MAX_CONTAINER_TREE_DEPTH
             }
     }
 

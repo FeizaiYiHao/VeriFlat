@@ -14,37 +14,8 @@ impl KernelK {
                 old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
                 !typed_lock_map_contains_mode(old(lctx).allocator_quota_4k_lock_map(), alloc_ptr_4k, TypedLockMode::Write),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(lctx).page_lock_map().dom().is_empty(),
-                old(lctx).container_lock_map().dom() =~= set![old(self).allc_4k_mp.spec_index(
-                        alloc_ptr_4k,
-                    ).owning_container],
-                old(lctx).process_lock_map().dom().is_empty(),
-                old(lctx).thread_lock_map().dom().is_empty(),
-                old(lctx).endpoint_lock_map().dom().is_empty(),
-                old(lctx).scheduler_lock_map().dom().is_empty(),
-                old(lctx).pcid_allocator_lock_map().dom().is_empty(),
-                old(lctx).cpu_set_lock_map().dom().is_empty(),
-                old(lctx).pagetable_lock_map().dom().is_empty(),
-                old(lctx).iommu_table_lock_map().dom().is_empty(),
-                old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
-                old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
-                old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
-                old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
-                old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
-                old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
-                old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
-                old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
-                old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
-                !old(lctx).cpu_lock_map().dom().is_empty(),
-                (forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> ((index_valid(NUM_CPUS, held_cpu_id)) && (old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == old(self).allc_4k_mp.spec_index(
-                        alloc_ptr_4k,
-                    ).owning_container))),
-                (forall|held_cpu_id: CpuId|
-                    #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)]
-                    old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> {
-                        &&& index_valid(NUM_CPUS, held_cpu_id)
-                        &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
-                    }),
+                old(lctx).held_lock_majors_lt(QUOTA_MAJOR)
+                    || old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id()),
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
@@ -57,6 +28,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -86,7 +59,7 @@ impl KernelK {
         {
             proof {
                 assert(old(self).allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by {    reveal(lock_id_set_aligned);  reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_allocator_wf); reveal(container_perms_wf); reveal(allocator_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by { reveal(allocator_perms_wf); };
             }
             assert(wlock_requires(self.allc_4k_mp.spec_index(alloc_ptr_4k).quota, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
             let ret = self.allc_4k_mp.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
@@ -134,6 +107,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,

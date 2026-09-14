@@ -13,6 +13,7 @@ pub open spec fn process_pcid_allocator_wf(
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger process_map.dom().contains(p_ptr)]
         process_map.dom().contains(p_ptr)
+        && !process_map.spec_index(p_ptr).view().zombie
         ==>
         {
             let c_ptr =
@@ -39,6 +40,7 @@ pub open spec fn process_pcid_allocator_wf(
         ==>
         {
             &&& process_map.dom().contains(p_ptr)
+            &&& !process_map.spec_index(p_ptr).view().zombie
             &&& process_map.spec_index(p_ptr).view().pcid == pcid
             &&& process_map.spec_index(p_ptr).view_rodata().view().owning_container
                 == pcid_allocator_map.spec_index(allocator_ptr)

@@ -82,6 +82,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             waiting_state.is_endpoint_waiting(),
             payload.wf(),
             waiting_state is RECEIVING_CALL ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().caller is None,
@@ -94,6 +95,7 @@ verus! {
                 },
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
+            old(lctx).held_lock_majors_lt(PCID_NEEDFLUSH_LOCK_MAJOR),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             ret is CpuIdle,
@@ -112,6 +114,7 @@ verus! {
         let tracked current_thread_lock_perm = current_thread_lock_perm.get();
         let tracked endpoint_lock_perm = endpoint_lock_perm.get();
 
+        let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
         let ghost old_current_thread_lock_id = krnl.thr_mp.lock_id_by_key(current_thread_ptr);
         proof {
             assert({
@@ -133,7 +136,7 @@ verus! {
         let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
         let default_cr3 = krnl.dflt_pt.borrow().cr3;
         assert(page_ptr_valid(default_cr3)) by { reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
-        krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+        krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
 
         proof {
             lctx.update_lock_id(KernelObjId::Thread(current_thread_ptr), old_current_thread_lock_id, krnl.thr_mp.lock_id_by_key(current_thread_ptr));
@@ -173,14 +176,12 @@ verus! {
                 };
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
             };
-            assert({
-                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
-                &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
-                &&& typed_lock_maps_aligned(krnl, &*lctx)
-                &&& lock_id_set_aligned(&*lctx)
-            }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
+            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
+            assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+
         }
 
+        krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
         krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
@@ -189,7 +190,6 @@ verus! {
             assert(lctx.no_locks_held()) by {
                 reveal(LocalContext::no_locks_held);
             };
-            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
             assert(
                 steps.snap_shot.cpu_array[cpu_id as int].state
                     != kernel_k_to_kernel_u(*krnl)
@@ -222,6 +222,7 @@ verus! {
         requires
             old(krnl).inv(),
             index_valid(NUM_CPUS, cpu_id),
+            old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             current_thread_ptr != peer_thread_ptr,
@@ -286,6 +287,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
@@ -410,8 +412,8 @@ verus! {
                 };
             };
             assert({
-                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
-                &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
+                &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)
+                &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)
                 &&& typed_lock_maps_aligned(krnl, &*lctx)
                 &&& lock_id_set_aligned(&*lctx)
             }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
@@ -423,7 +425,6 @@ verus! {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
             steps.end_kernel_step(&*krnl, &*lctx);
         }
         result

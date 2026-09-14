@@ -36,6 +36,7 @@ impl KernelK {
                 &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                 &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                 &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                 &&& (forall|held_cpu_id: CpuId|
                     #![trigger cpus.contains(held_cpu_id)]
                     cpus.contains(held_cpu_id) ==> {
@@ -57,6 +58,8 @@ impl KernelK {
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
             final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_published == old(self).cpu_published,
             final(self).cpu_tlb == old(self).cpu_tlb,
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,
@@ -79,6 +82,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PcidAllocator(allocator_ptr), TypedHeldLock { lock_id: final(self).pcid_allc_mp.lock_id_by_key(allocator_ptr), mode: TypedLockMode::Write }),
             final(lctx).held_lock_majors_lt(PROCESS_LOCK_MAJOR),
     {
+        hide(kernel_k_to_kernel_u);
         proof {
             assert(old(self).pcid_allc_mp.perms_wf()) by { reveal(pcid_allocator_perms_wf); };
             assert(old(lctx).held_lock_majors_lt(PCID_ALLOCATOR_LOCK_MAJOR)) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); };
@@ -124,6 +128,8 @@ impl KernelK {
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
             final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_published == old(self).cpu_published,
             final(self).cpu_tlb == old(self).cpu_tlb,
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,
@@ -149,6 +155,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PcidAllocator(allocator_ptr)),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::PcidAllocator(allocator_ptr), old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr)),
     {
+        hide(kernel_k_to_kernel_u);
         proof {
             assert({ &&& old(self).pcid_allc_mp.perms_wf() &&& old(self).pcid_allc_mp.spec_index(allocator_ptr).inv() }) by { reveal(pcid_allocator_perms_wf); };
             assert(old(lctx).lock_entry_contains(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr), KernelObjId::PcidAllocator(allocator_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };

@@ -22,6 +22,7 @@ verus! {
                 old(krnl).inv(),
                 page_ptr_valid(page_ptr),
                 old(krnl).prc_mp.dom().contains(process_ptr),
+                !old(krnl).prc_mp.spec_index(process_ptr).view().zombie,
                 old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
                 old(krnl).thr_mp.dom().contains(staging_thread_ptr),
                 old(krnl).ctn_mp.dom().contains(container_ptr),
@@ -126,6 +127,7 @@ verus! {
                     lock_id: final(krnl).thr_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write,
                 }),
                 final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+                final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
                 final(lctx).container_lock_map() == old(lctx).container_lock_map(),
                 final(lctx).process_lock_map() == old(lctx).process_lock_map(),
                 final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
@@ -173,7 +175,10 @@ verus! {
                 forall|c_ptr: RwLockContainerPtr|
                     #![trigger final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq]
                     old(krnl).ctn_mp.dom().contains(c_ptr) ==> final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq,
+                final(krnl).cpu_tlb == old(krnl).cpu_tlb,
                 final(krnl).cpu_arr == old(krnl).cpu_arr,
+                final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+                final(krnl).cpu_published == old(krnl).cpu_published,
                 final(lctx).lock_id_set() == old(lctx).lock_id_set()
                     .remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))
                     .insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))
@@ -408,14 +413,14 @@ verus! {
                         seq_push_lemma::<RwLockThreadPtr>();
                     };
                     assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
-                    assert(process_empty_thread_list_wlocked(krnl.prc_mp)) by { reveal(process_thread_wf); reveal(process_empty_thread_list_wlocked); };
+                    assert(process_empty_lists_wlocked(krnl.prc_mp)) by { reveal(process_thread_wf); reveal(process_empty_lists_wlocked); };
                     assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by {
                         assert(old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.wf()) by { reveal(process_perms_wf); };
                         seq_push_lemma::<RwLockThreadPtr>();
                         reveal(container_process_wf); reveal(process_pagetable_match); reveal(process_thread_wf);
                     };
-                    assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
-                    assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by { reveal(tlb_wf_spec); };
+                    assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
+                    assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
                     assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
                     assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
                     assert(iommu_tlb_wf_spec(krnl.iommu_tlb, &krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
@@ -490,6 +495,7 @@ verus! {
         &&& new_u.process_map.spec_index(process_ptr).quota_4k == old_u.process_map.spec_index(process_ptr).quota_4k
         &&& new_u.process_map.spec_index(process_ptr).owned_threads.len() == old_u.process_map.spec_index(process_ptr).owned_threads.len() + 1
         &&& new_u.process_map.spec_index(process_ptr).owned_threads.subrange(0, old_u.process_map.spec_index(process_ptr).owned_threads.len() as int) == old_u.process_map.spec_index(process_ptr).owned_threads
+        &&& new_u.process_map.spec_index(process_ptr).zombie == old_u.process_map.spec_index(process_ptr).zombie
         &&& new_u.process_map.spec_index(process_ptr).pagetable      == old_u.process_map.spec_index(process_ptr).pagetable
         &&& new_u.process_map.spec_index(process_ptr).iommu_table    == old_u.process_map.spec_index(process_ptr).iommu_table
         &&& new_u.process_map.spec_index(process_ptr).quota_2m       == old_u.process_map.spec_index(process_ptr).quota_2m

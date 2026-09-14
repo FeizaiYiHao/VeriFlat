@@ -65,9 +65,9 @@ pub ghost struct PageTableU {
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub open spec fn user_view(&self) -> PageTableU {
         PageTableU {
-            mapping_4k: self.mapping_4k(),
-            mapping_2m: self.mapping_2m(),
-            mapping_1g: self.mapping_1g(),
+            mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
+            mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
+            mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
         }
     }
 

@@ -54,6 +54,7 @@ impl KernelK {
                                     &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                                    &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                                 }
                                 ||| {
                                     &&& cpu.current_process() is Some
@@ -77,6 +78,7 @@ impl KernelK {
                                     &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                                    &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                                 }
                                 ||| {
                                     &&& old(lctx).page_lock_map().dom().is_empty()
@@ -97,6 +99,7 @@ impl KernelK {
                                     &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                                     &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                                    &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                                     &&& threads.contains(current_thread_ptr)
                                     &&& threads.len() == 2
                                     &&& forall|peer_thread_ptr: RwLockThreadPtr|
@@ -119,6 +122,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
@@ -197,6 +202,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,

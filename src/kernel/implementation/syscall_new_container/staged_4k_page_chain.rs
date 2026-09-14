@@ -114,6 +114,8 @@ pub(super) fn set_4k_page_staging_next(
         final(krnl).it_mp == old(krnl).it_mp,
         final(krnl).irt == old(krnl).irt,
         final(krnl).cpu_arr == old(krnl).cpu_arr,
+        final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+        final(krnl).cpu_published == old(krnl).cpu_published,
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
@@ -430,6 +432,7 @@ pub(super) fn cleanup_published_4k_page_chain(
                     == old(krnl).pg_arr.spec_index(page_index).view()
             },
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map()
             == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
@@ -454,6 +457,8 @@ pub(super) fn cleanup_published_4k_page_chain(
         final(krnl).it_mp == old(krnl).it_mp,
         final(krnl).irt == old(krnl).irt,
         final(krnl).cpu_arr == old(krnl).cpu_arr,
+        final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+        final(krnl).cpu_published == old(krnl).cpu_published,
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
@@ -563,6 +568,7 @@ pub(super) fn cleanup_published_4k_page_chain(
                 == old(lctx).page_lock_map()
                     .remove_keys(page_ptrs_to_indices(page_ptrs)),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
+            lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),
@@ -584,6 +590,8 @@ pub(super) fn cleanup_published_4k_page_chain(
             krnl.it_mp == old(krnl).it_mp,
             krnl.irt == old(krnl).irt,
             krnl.cpu_arr == old(krnl).cpu_arr,
+            krnl.pcid_needflush == old(krnl).pcid_needflush,
+            krnl.cpu_published == old(krnl).cpu_published,
             krnl.ctn_mp == old(krnl).ctn_mp,
             krnl.sched_mp == old(krnl).sched_mp,
             krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
@@ -1129,7 +1137,12 @@ pub(super) fn allocate_staged_4k_page_chain(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
     ensures
+        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            old(lctx).pagetable_lock_map().dom().contains(pt)
+            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         ret.1@.len() == count,
         ret.1@.no_duplicates(),
@@ -1211,6 +1224,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             old(lctx).page_lock_map().dom(),
         ),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map()
             == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
@@ -1322,6 +1336,10 @@ pub(super) fn allocate_staged_4k_page_chain(
     }
     while i < count
         invariant
+            forall|pt: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(pt)]
+                old(lctx).pagetable_lock_map().dom().contains(pt)
+                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
             krnl.inv(),
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).thr_mp.dom().contains(thread_ptr),
@@ -1398,6 +1416,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             ) >= count - i,
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.cpu_id() == old(lctx).cpu_id(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
             lctx.page_lock_map().remove_keys(page_ptrs_to_indices(page_ptrs)) == old(lctx).page_lock_map(),
             lctx.page_lock_map().dom()
                 == old(lctx).page_lock_map().dom().union(
@@ -1407,6 +1426,7 @@ pub(super) fn allocate_staged_4k_page_chain(
                 old(lctx).page_lock_map().dom(),
             ),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
+            lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),

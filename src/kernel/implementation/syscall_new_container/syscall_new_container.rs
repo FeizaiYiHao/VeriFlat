@@ -15,6 +15,7 @@ pub fn syscall_new_container(
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state
             == CpuState::Running,
@@ -55,7 +56,6 @@ pub fn syscall_new_container(
             || ret is ErrorThreadKilled
             || ret is ErrorNoQuota,
 {
-    proof { reveal(KernelK::all_objects_unlocked); }
     if process_quota_4k > funding_page_count
         || funding_page_count > usize::MAX - 9
     {

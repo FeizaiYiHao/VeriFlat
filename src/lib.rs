@@ -29,6 +29,7 @@ pub use allocator::*;
 pub use pagetable_seq::*;
 pub use iommu::*;
 pub use kernel::*;
+pub use kernel::implementation::free_4k_page::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_basd::allocate_free_4k_page;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::{
     allocate_free_4k_pages,
@@ -41,6 +42,7 @@ pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::lock_owned_2m_page_tails::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
+use kernel::implementation::map_4k::unmap_4k_range::unmap_4k_range;
 pub use kernel::implementation::map_4k::share_mapping_4k::{
     share_mapping_4k_build_and_share,
     share_mapping_4k_range_owner_compatible,

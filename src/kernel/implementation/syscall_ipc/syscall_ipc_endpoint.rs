@@ -63,6 +63,8 @@ pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_pt
         final(krnl).irt == old(krnl).irt,
         final(krnl).pg_arr == old(krnl).pg_arr,
         final(krnl).cpu_arr == old(krnl).cpu_arr,
+        final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+        final(krnl).cpu_published == old(krnl).cpu_published,
         final(krnl).ctn_mp == old(krnl).ctn_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
@@ -115,7 +117,7 @@ pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_pt
         assert(krnl.process_management_inv()) by {
             assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
             assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
-            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
             assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(old(krnl).thr_mp, krnl.thr_mp, old(krnl).ep_mp, krnl.ep_mp); };
             assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
             assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_scheduler_wf); };
@@ -207,10 +209,12 @@ pub(super) fn ipc_begin_endpoint_transfer(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -264,6 +268,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         final(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         final(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        final(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
 {
@@ -302,7 +307,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
                 &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                 &&& thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)
                 &&& thread_caller_callee_wf(krnl.thr_mp)
-            }) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
+            }) by { reveal(thread_perms_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
             assert({
                 &&& container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)
                 &&& container_thread_wf(krnl.ctn_mp, krnl.thr_mp)
@@ -318,8 +323,8 @@ pub(super) fn ipc_begin_endpoint_transfer(
             assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
         };
         assert({
-            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
-            &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
+            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)
+            &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)
             &&& typed_lock_maps_aligned(krnl, &*lctx)
         }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
     }
@@ -359,6 +364,7 @@ pub(super) fn ipc_finish_endpoint_transit(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         current_thread_ptr != peer_thread_ptr,
@@ -433,6 +439,7 @@ pub(super) fn ipc_finish_endpoint_transit(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
@@ -491,8 +498,8 @@ pub(super) fn ipc_finish_endpoint_transit(
             };
         };
         assert({
-            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)
-            &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)
+            &&& cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)
+            &&& tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)
             &&& typed_lock_maps_aligned(krnl, &*lctx)
         }) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); reveal(tlb_wf_spec); };
     }
@@ -504,7 +511,6 @@ pub(super) fn ipc_finish_endpoint_transit(
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
         steps.end_kernel_step(&*krnl, &*lctx);
     }
     result
@@ -533,6 +539,8 @@ pub(super) fn ipc_rendezvous_endpoint(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         current_thread_ptr != peer_thread_ptr,
@@ -603,6 +611,7 @@ pub(super) fn ipc_rendezvous_endpoint(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
