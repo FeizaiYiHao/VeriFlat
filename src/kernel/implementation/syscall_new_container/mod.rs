@@ -1,5 +1,7 @@
 mod staged_4k_page_chain;
 mod syscall_new_container;
 mod syscall_new_container_helpers;
+mod syscall_new_container_transfer_eof;
+mod syscall_new_container_transfer_spec;
 
 pub use syscall_new_container::syscall_new_container;

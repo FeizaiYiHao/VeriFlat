@@ -15,6 +15,7 @@ verus! {
             {
                 &&&
                 process_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap())
+                &&& !process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap()).view().zombie
                 &&&
                 cpu_array.spec_index(cpu_i).view().view().view().current_pagetable == Some(process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap()).view().pagetable)
                 &&&

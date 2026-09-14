@@ -81,6 +81,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             old(lctx).container_lock_map().dom().contains(container_ptr),
             old(lctx).process_lock_map().dom().contains(process_ptr),
             range.wf(),
@@ -94,7 +95,12 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, range.view().spec_index((range.len - 1) as int)),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range),
         ensures
+            forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+                old(lctx).pagetable_lock_map().dom().contains(pt)
+                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -150,7 +156,12 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
         let mut i: usize = 0;
         while i < range.len
             invariant
+                forall|pt: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(pt)]
+                    old(lctx).pagetable_lock_map().dom().contains(pt)
+                    && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                    ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
                 lctx.cpu_id() == old(lctx).cpu_id(),
+                index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
                 krnl.inv(),
                 lctx.kernel_view_locking_state() is Acquire,
                 typed_lock_maps_aligned(krnl, &*lctx),
@@ -200,6 +211,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 lctx.allocator_quota_1g_lock_map().dom().is_empty(),
                 lctx.allocator_cache_1g_lock_map().dom().is_empty(),
                 lctx.allocator_global_pool_1g_lock_map().dom().is_empty(),
+                lctx.pcid_needflush_lock_map().dom().is_empty(),
                 range.wf(),
                 range.len > 0,
                 range_start == range.start,

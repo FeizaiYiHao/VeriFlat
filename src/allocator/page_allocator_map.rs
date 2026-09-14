@@ -558,6 +558,72 @@ impl UnLockedMap<usize, PageAllocator> {
         self.borrow_mut_cache(alloc_ptr, cpu_id, Tracked(lctx), lp)
     }
 
+    pub fn push_cache_page_typed(
+        &mut self,
+        alloc_ptr: RwLockPageAllocatorPtr,
+        cpu_id: CpuId,
+        node_addr: usize,
+        node_perm: Tracked<PointsTo<Node<PagePtr>>>,
+        Ghost(quota_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Ghost(cache_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
+        Ghost(global_pool_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&LockPerm>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(alloc_ptr),
+            old(self).spec_index(alloc_ptr).wf(),
+            index_valid(NUM_CPUS, cpu_id),
+            old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
+            old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
+            old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            typed_lock_map_contains_mode(cache_locks, (alloc_ptr, cpu_id), TypedLockMode::Write),
+            lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() < ALLOCATOR_MAX_WATERMARK,
+            node_perm.view().is_init(),
+            !old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(node_perm.view().value().view()),
+            node_perm.view().addr() == node_addr,
+            old(self).spec_index(alloc_ptr).total_free_pages.view() < usize::MAX,
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
+            final(self).spec_index(alloc_ptr).wf(),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, node_perm.view().value().view()),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, node_perm.view().value().view()),
+            !old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
+            final(self).spec_index(alloc_ptr).total_free_pages.view() == old(self).spec_index(alloc_ptr).total_free_pages.view() + 1,
+            final(self).spec_index(alloc_ptr).cpu_caches.entries_unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view()),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread(),
+            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed(),
+            final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
+            final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
+            final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
+            final(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
+            final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
+            final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
+    {
+        proof {
+            assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
+        }
+        {
+            let alloc_mut = self.borrow_mut(alloc_ptr);
+            alloc_mut.push_cache_page(cpu_id, node_addr, node_perm, Tracked(lctx), lock_perm)
+        };
+        proof {
+            reveal(UnLockedMap::typed_quota_lock_map_aligned);
+            reveal(UnLockedMap::typed_cache_lock_map_aligned);
+            reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+        }
+    }
+
     pub fn pop_cache_page_typed(
         &mut self,
         alloc_ptr: RwLockPageAllocatorPtr,
@@ -621,6 +687,68 @@ impl UnLockedMap<usize, PageAllocator> {
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
         }
         ret
+    }
+
+    pub fn push_global_pool_page_typed(
+        &mut self,
+        alloc_ptr: RwLockPageAllocatorPtr,
+        node_addr: usize,
+        node_perm: Tracked<PointsTo<Node<PagePtr>>>,
+        Ghost(quota_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Ghost(cache_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
+        Ghost(global_pool_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+        Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&LockPerm>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(alloc_ptr),
+            old(self).spec_index(alloc_ptr).wf(),
+            old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
+            old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
+            old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == lctx.thread_id(),
+            typed_lock_map_contains_mode(global_pool_locks, alloc_ptr, TypedLockMode::Write),
+            lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
+            node_perm.view().is_init(),
+            node_perm.view().addr() == node_addr,
+            !old(self).spec_index(alloc_ptr).global_pool.view().view().contains(node_perm.view().value().view()),
+            old(self).spec_index(alloc_ptr).total_free_pages.view() < usize::MAX,
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() == old(self).dom(),
+            final(self).unchanged_except(old(self), alloc_ptr),
+            final(self).spec_index(alloc_ptr).wf(),
+            final(self).spec_index(alloc_ptr).global_pool.view().view() == old(self).spec_index(alloc_ptr).global_pool.view().view().insert(0, node_perm.view().value().view()),
+            final(self).spec_index(alloc_ptr).global_pool.view().map() == old(self).spec_index(alloc_ptr).global_pool.view().map().insert(node_addr, node_perm.view().value().view()),
+            !old(self).spec_index(alloc_ptr).global_pool.view().map().dom().contains(node_addr),
+            final(self).spec_index(alloc_ptr).total_free_pages.view() == old(self).spec_index(alloc_ptr).total_free_pages.view() + 1,
+            final(self).spec_index(alloc_ptr).global_pool.is_init(),
+            final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
+            final(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lock_perm.view()),
+            final(self).spec_index(alloc_ptr).global_pool.lock_id() == old(self).spec_index(alloc_ptr).global_pool.lock_id(),
+            final(self).spec_index(alloc_ptr).global_pool.locking_thread() == old(self).spec_index(alloc_ptr).global_pool.locking_thread(),
+            final(self).spec_index(alloc_ptr).global_pool.being_killed() == old(self).spec_index(alloc_ptr).global_pool.being_killed(),
+            final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
+            final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
+            final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
+            final(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
+            final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
+            final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
+    {
+        proof {
+            assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+        }
+        {
+            let alloc_mut = self.borrow_mut(alloc_ptr);
+            alloc_mut.push_global_pool_page(node_addr, node_perm, Tracked(lctx), lock_perm)
+        };
+        proof {
+            reveal(UnLockedMap::typed_quota_lock_map_aligned);
+            reveal(UnLockedMap::typed_cache_lock_map_aligned);
+            reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+        }
     }
 
     pub fn pop_global_pool_page_typed(

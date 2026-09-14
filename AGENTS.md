@@ -5,8 +5,10 @@ older notes. Preserve the user's dirty worktree and unrelated edits.
 
 ## Scope and semantics
 
-- Read this file before editing. Subagents receive explicit file ownership and
-  report changed files plus verification run numbers.
+- Read this file before editing.
+- Do not use subagents without explicit user permission. When authorized,
+  give subagents explicit file ownership and require them to report changed
+  files plus verification run numbers.
 - Do not reset, overwrite, restage, or clean unrelated changes. Freeze shared
   APIs before parallel verification.
 - Diagnose questions read-only. Implement only when asked. If a proof exposes

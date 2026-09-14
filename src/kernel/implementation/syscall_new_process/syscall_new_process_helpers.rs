@@ -44,7 +44,12 @@ pub(super) fn allocate_new_process_pages(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            old(lctx).pagetable_lock_map().dom().contains(pt)
+            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
@@ -58,6 +63,7 @@ pub(super) fn allocate_new_process_pages(
         final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -136,7 +142,11 @@ pub(super) fn allocate_new_process_pages(
 #[verifier::spinoff_prover]
 fn create_initial_thread_and_finish_new_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr, child_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, source_pagetable_ptr: RwLockPageTableRoot, target_pagetable_ptr: RwLockPageTableRoot, cpu_lock_perm: Tracked<LockPerm>, container_lock_perm: Tracked<LockPerm>, child_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, scheduler_lock_perm: Tracked<LockPerm>, source_pagetable_lock_perm: Tracked<LockPerm>, target_pagetable_lock_perm: Tracked<LockPerm>, initial_regs: &Registers) -> (new_thread_ptr: RwLockThreadPtr)
     requires
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, target_pagetable_ptr, old(krnl).pt_mp.spec_index(target_pagetable_ptr).view()),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
@@ -162,6 +172,7 @@ fn create_initial_thread_and_finish_new_process(krnl: &mut KernelK, Tracked(lctx
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -179,6 +190,7 @@ fn create_initial_thread_and_finish_new_process(krnl: &mut KernelK, Tracked(lctx
         old(krnl).prc_mp.dom().contains(child_ptr),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), child_ptr, TypedLockMode::Write),
         !old(krnl).prc_mp.spec_index(child_ptr).being_killed(),
+        !old(krnl).prc_mp.spec_index(child_ptr).view().zombie,
         old(krnl).prc_mp.spec_index(child_ptr).view_rodata().view().owning_container == container_ptr,
         child_lock_perm.view().state() is WriteLock,
         child_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -252,7 +264,6 @@ krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
         steps.end_kernel_step(&*krnl, &*lctx);
     }
     new_thread_ptr
@@ -261,7 +272,11 @@ krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock
 #[verifier::spinoff_prover]
 pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr, child_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, source_pagetable_ptr: RwLockPageTableRoot, target_pagetable_ptr: RwLockPageTableRoot, cpu_lock_perm: Tracked<LockPerm>, container_lock_perm: Tracked<LockPerm>, child_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, scheduler_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<LockPerm>, source_pagetable_lock_perm: Tracked<LockPerm>, target_pagetable_lock_perm: Tracked<LockPerm>, initial_regs: &Registers) -> (new_thread_ptr: RwLockThreadPtr)
     requires
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, target_pagetable_ptr, old(krnl).pt_mp.spec_index(target_pagetable_ptr).view()),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         edp_idx_valid(endpoint_index),
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
@@ -288,6 +303,7 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(krnl: &
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -305,6 +321,7 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(krnl: &
         old(krnl).prc_mp.dom().contains(child_ptr),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), child_ptr, TypedLockMode::Write),
         !old(krnl).prc_mp.spec_index(child_ptr).being_killed(),
+        !old(krnl).prc_mp.spec_index(child_ptr).view().zombie,
         old(krnl).prc_mp.spec_index(child_ptr).view_rodata().view().owning_container == container_ptr,
         child_lock_perm.view().state() is WriteLock,
         child_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -409,7 +426,6 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(krnl: &
             &&& krnl.thr_mp.spec_index(new_thread_ptr).view().owning_container == container_ptr
         }) by { reveal(thread_perms_wf); reveal(process_thread_wf); };
         assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
         steps.end_kernel_step(&*krnl, &*lctx);
     }
     new_thread_ptr
@@ -439,7 +455,10 @@ pub(super) fn commit_new_process(
     initial_regs: &Registers,
 ) -> (ret: (RwLockProcessPtr, RwLockThreadPtr))
     requires
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         source_range.wf(),
         source_range.len > 0,
         source_range.len <= (usize::MAX - 4) / 3,
@@ -517,6 +536,7 @@ pub(super) fn commit_new_process(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
@@ -606,7 +626,10 @@ pub(super) fn commit_new_process_with_endpoint(
     initial_regs: &Registers,
 ) -> (ret: (RwLockProcessPtr, RwLockThreadPtr))
     requires
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         edp_idx_valid(endpoint_index),
         source_range.wf(),
         source_range.len > 0,
@@ -700,6 +723,7 @@ pub(super) fn commit_new_process_with_endpoint(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures

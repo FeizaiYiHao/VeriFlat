@@ -19,6 +19,7 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, final(self).pt_mp.spec_index(pagetable_ptr).view()),
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
@@ -28,6 +29,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
@@ -68,6 +71,7 @@ impl KernelK {
             assert(wlock_requires(self.pt_mp.spec_index(pagetable_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
             proof {
+                assert(pagetable_tlb_entries_present(self.cpu_tlb, self.cpu_arr, self.pcid_needflush, pagetable_ptr, self.pt_mp.spec_index(pagetable_ptr).view())) by { reveal(tlb_wf_spec); };
                 assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp)) by { pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, pagetable_ptr); };
                 assert(self.subsystems_inv()) by {
                     assert(pagetable_perms_wf(self.pt_mp)) by { lemma_no_change_imply_pagetable_perms_wf_forall(); };
@@ -79,8 +83,8 @@ impl KernelK {
                     assert(container_process_page_pagetable_wf(self.ctn_mp, self.prc_mp, self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall(); };
                     assert(pagetable_pages_wf(self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall(); };
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
-                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
+                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
                 assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
@@ -106,6 +110,7 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, final(self).pt_mp.spec_index(pagetable_ptr).view()),
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
@@ -115,6 +120,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
@@ -181,10 +188,13 @@ impl KernelK {
                     &&& old(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                     &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                     &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                    &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                 },
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
+                pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, source_pagetable, final(self).pt_mp.spec_index(source_pagetable).view()),
+                pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, target_pagetable, final(self).pt_mp.spec_index(target_pagetable).view()),
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
@@ -194,6 +204,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
@@ -212,6 +224,7 @@ impl KernelK {
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 final(lctx).page_lock_map() == old(lctx).page_lock_map(),
                 final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+                final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
                 final(lctx).container_lock_map() == old(lctx).container_lock_map(),
                 final(lctx).process_lock_map() == old(lctx).process_lock_map(),
                 final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -274,6 +287,7 @@ impl KernelK {
             requires
                 old(self).inv(),
                 old(self).pt_mp.dom().contains(pagetable_ptr),
+                pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pagetable_ptr, old(self).pt_mp.spec_index(pagetable_ptr).view()),
                 typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -290,6 +304,8 @@ impl KernelK {
                 final(self).irt == old(self).irt,
                 final(self).pg_arr == old(self).pg_arr,
                 final(self).cpu_arr == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb == old(self).cpu_tlb,
                 final(self).iommu_tlb == old(self).iommu_tlb,
                 final(self).rt_ctn == old(self).rt_ctn,
@@ -317,6 +333,7 @@ impl KernelK {
                         && other_pagetable != pagetable_ptr
                     ==> final(lctx).lock_id_set().contains((final(self).pt_mp.lock_id_by_key(other_pagetable), KernelObjId::PageTable(other_pagetable))) == old(lctx).lock_id_set().contains((old(self).pt_mp.lock_id_by_key(other_pagetable), KernelObjId::PageTable(other_pagetable))),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert({
                     &&& old(self).pt_mp.perms_wf()
@@ -339,8 +356,8 @@ impl KernelK {
                     assert(container_process_page_pagetable_wf(self.ctn_mp, self.prc_mp, self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall(); };
                     assert(pagetable_pages_wf(self.pt_mp, self.pg_arr)) by { lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall(); };
                 };
-                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
-                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr)) by { lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall(); };
+                assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(); };
+                assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 broadcast use vstd::map::lemma_map_remove_domain;
                 broadcast use vstd::set::lemma_set_insert_same;

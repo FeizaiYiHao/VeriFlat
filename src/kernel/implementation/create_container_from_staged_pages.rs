@@ -108,6 +108,7 @@ fn build_staged_4k_global_pool(
                         .to_set(),
                 ),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map()
             == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
@@ -236,6 +237,7 @@ fn build_staged_4k_global_pool(
                             .to_set(),
                     ),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
+            lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),
@@ -733,7 +735,7 @@ pub fn publish_staged_container_root(
             == old(krnl).ctn_mp.spec_index(parent_container_ptr)
                 .locking_thread()->Write_lock_id,
         old(krnl).ctn_mp.spec_index(parent_container_ptr)
-            .view_rodata().view().depth < usize::MAX,
+            .view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
         old(krnl).thr_mp.dom().contains(current_thread_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
         !old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
@@ -988,6 +990,10 @@ pub fn publish_staged_container_root(
                 .view().locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_page), TypedLockMode::Write),
     ensures
+        final(krnl).cpu_tlb == old(krnl).cpu_tlb,
+        final(krnl).cpu_arr == old(krnl).cpu_arr,
+        final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+        final(krnl).cpu_published == old(krnl).cpu_published,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -1102,6 +1108,7 @@ pub fn publish_staged_container_root(
                 .remove(page_ptr2page_index(pagetable_page))
                 .remove(page_ptr2page_index(l4_page)),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map()
             == old(lctx).container_lock_map().insert(
                 container_page,
@@ -1199,6 +1206,7 @@ pub fn publish_staged_container_root(
         final(krnl).prc_mp.dom().contains(process_page),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_page, TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(process_page).being_killed(),
+        !final(krnl).prc_mp.spec_index(process_page).view().zombie,
         final(krnl).prc_mp.spec_index(process_page)
             .view_rodata().view().owning_container == container_page,
         final(krnl).prc_mp.spec_index(process_page)
@@ -2872,7 +2880,7 @@ pub fn publish_staged_container_root(
             reveal(container_thread_wf);
             reveal(process_cpu_wf);
             reveal(process_thread_wf);
-            reveal(process_empty_thread_list_wlocked);
+            reveal(process_empty_lists_wlocked);
             reveal(thread_cpu_wf);
         };
         assert(cpu_dirty_map_wf(
@@ -2880,14 +2888,14 @@ pub fn publish_staged_container_root(
             krnl.prc_mp,
             krnl.cpu_arr,
             krnl.cpu_tlb,
-            krnl.pt_mp,
+            krnl.pt_mp, krnl.pcid_needflush,
         )) by {
             reveal(cpu_dirty_map_contains_container_processes);
             reveal(cpu_dirty_map_proc_pcid_match);
             reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
             reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         };
-        assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr)) by {
+        assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by {
             reveal(tlb_wf_spec);
         };
         assert(iommu_root_table_process_wf(

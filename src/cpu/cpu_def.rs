@@ -114,20 +114,26 @@ impl Cpu{
 
     pub open spec fn spec_current_cr3(&self) -> PageTableRoot { self.view().current_cr3 }
 
-    #[verifier(when_used_as_spec(spec_current_cr3))]
-    pub fn current_cr3(&self) -> (ret: PageTableRoot)
-        ensures ret == self.current_cr3(),
-    {
-        self.cr3_pcid.cr3()
-    }
-
     pub open spec fn spec_current_pcid(&self) -> Pcid { self.view().current_pcid }
 
-    #[verifier(when_used_as_spec(spec_current_pcid))]
-    pub fn current_pcid(&self) -> (ret: Pcid)
-        ensures ret == self.current_pcid(),
+    pub fn flush_current_tlb(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(tlb).inv(),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id == lctx.cpu_id(),
+            page_ptr_valid(cr3),
+            pcid_valid(pcid),
+            old(self).view().current_cr3 == cr3,
+            old(self).view().current_pcid == pcid,
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            *final(self) == *old(self),
+            final(tlb).inv(),
+            forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
+            final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+            final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
     {
-        self.cr3_pcid.pcid()
+        self.cr3_pcid.flush_current(cpu_id, cr3, pcid, tlb, Tracked(lctx));
     }
 
     pub open spec fn wf(&self) -> bool{
@@ -165,7 +171,7 @@ impl Cpu{
 }
 
 impl CpuLockedArray {
-    pub fn block_current(&mut self, cpu_id: CpuId, default_cr3: PageTableRoot, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>)
+    pub fn block_current(&mut self, cpu_id: CpuId, default_cr3: PageTableRoot, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, published: &mut CpuPublishedArray, needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>)
         requires
             old(self).inv(),
             old(tlb).inv(),
@@ -181,8 +187,34 @@ impl CpuLockedArray {
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
             cpu_lock_perm.view().lock_id() == old(self).spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(needflush).typed_lock_map_aligned(old(lctx).pcid_needflush_lock_map(), old(lctx).thread_id()),
+            typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, KERNEL_DEFAULT_PCID), TypedLockMode::Write),
+            old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv(),
+            needflush_perm.view().state() is WriteLock,
+            needflush_perm.view().thread_id() == old(lctx).thread_id(),
+            needflush_perm.view().lock_id() == old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread()->Write_lock_id,
+            old(published)[cpu_id as int].owner_cpu() == cpu_id,
         ensures
-            *final(tlb) == *old(tlb),
+            pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*final(needflush)),
+            cpu_published_wf(*old(published), *old(self), *old(needflush)) ==> cpu_published_wf(*final(published), *final(self), *final(needflush)),
+            final(published)[cpu_id as int].inv(),
+            final(published)[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID),
+            final(published)[cpu_id as int].owner_cpu() == old(published)[cpu_id as int].owner_cpu(),
+            forall|c: CpuId| #![trigger final(published)[c as int]] #![trigger old(published)[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> final(published)[c as int] == old(published)[c as int],
+            final(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view() == (PcidNeedFlush { needflush: false, ..old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view() }),
+            final(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).is_init(),
+            final(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread() == old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread(),
+            final(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view_ghost() == old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view_ghost(),
+            final(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view_rodata() == old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view_rodata(),
+            final(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).being_killed() == old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).being_killed(),
+            final(needflush).typed_lock_map_aligned(final(lctx).pcid_needflush_lock_map(), final(lctx).thread_id()),
+            forall|c: CpuId, p: Pcid| #![trigger final(needflush).spec_index(c, p)] #![trigger old(needflush).spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID) ==> final(needflush).spec_index(c, p) == old(needflush).spec_index(c, p),
+            final(tlb).inv(),
+            final(tlb).view() == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush { old(tlb).view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(tlb).view() },
+            forall|c: CpuId, p: Pcid|
+                #![trigger final(tlb).spec_index((c, p))]
+                #![trigger old(tlb).spec_index((c, p))]
+                index_valid(NUM_CPUS, c) && pcid_valid(p) ==> final(tlb).spec_index((c, p)) == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(tlb).spec_index((c, p)) },
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -201,12 +233,21 @@ impl CpuLockedArray {
             final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
             final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..old(self).spec_index(cpu_id).view().view().view() }),
     {
+        let pending = needflush.borrow_typed(cpu_id, KERNEL_DEFAULT_PCID, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm).needflush;
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
-        cpu.cr3_pcid.write(cpu_id, default_cr3, KERNEL_DEFAULT_PCID, false, tlb, Tracked(&mut *lctx));
+        cpu.cr3_pcid.write(cpu_id, default_cr3, KERNEL_DEFAULT_PCID, pending, tlb, Tracked(&mut *lctx));
         cpu.current_process = None;
         cpu.current_thread = None;
         cpu.current_pagetable = None;
         cpu.state = CpuState::Idle;
+        published[cpu_id].store(default_cr3, KERNEL_DEFAULT_PCID, Tracked(&*lctx));
+        let entry = needflush.borrow_mut_typed(cpu_id, KERNEL_DEFAULT_PCID, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm);
+        entry.set(false);
+        proof {
+            assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
+            assert(pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*needflush)) by { reveal(pcid_needflush_wf); };
+            assert(cpu_published_wf(*old(published), *old(self), *old(needflush)) ==> cpu_published_wf(*published, *self, *needflush)) by { reveal(cpu_published_wf); };
+        }
     }
 
     /// Select a thread on this running or idle CPU without changing containers.
@@ -220,6 +261,9 @@ impl CpuLockedArray {
         pcid: Pcid,
         process_depth: usize,
         tlb: &mut CpuTLB,
+        needflush: &mut PcidNeedFlushArray,
+        published: &mut CpuPublishedArray,
+        needflush_perm: Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>,
         cpu_lock_perm: Tracked<&LockPerm>,
     )
@@ -240,19 +284,41 @@ impl CpuLockedArray {
             cpu_lock_perm.view().lock_id() == old(self).spec_index(cpu_id).view().locking_thread()->Write_lock_id,
             pcid_valid(pcid),
             pcid != KERNEL_DEFAULT_PCID,
+            old(needflush).typed_lock_map_aligned(old(lctx).pcid_needflush_lock_map(), old(lctx).thread_id()),
+            typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
+            old(needflush).spec_index(cpu_id, pcid).inv(),
+            needflush_perm.view().state() is WriteLock,
+            needflush_perm.view().thread_id() == old(lctx).thread_id(),
+            needflush_perm.view().lock_id() == old(needflush).spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
+            old(published)[cpu_id as int].owner_cpu() == cpu_id,
         ensures
+            pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*final(needflush)),
+            cpu_published_wf(*old(published), *old(self), *old(needflush)) ==> cpu_published_wf(*final(published), *final(self), *final(needflush)),
+            final(published)[cpu_id as int].inv(),
+            final(published)[cpu_id as int].view() == (cr3, pcid),
+            final(published)[cpu_id as int].owner_cpu() == old(published)[cpu_id as int].owner_cpu(),
+            forall|c: CpuId| #![trigger final(published)[c as int]] #![trigger old(published)[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> final(published)[c as int] == old(published)[c as int],
+            final(needflush).spec_index(cpu_id, pcid).view() == (PcidNeedFlush { needflush: false, ..old(needflush).spec_index(cpu_id, pcid).view() }),
+            final(needflush).spec_index(cpu_id, pcid).view().index() == old(needflush).spec_index(cpu_id, pcid).view().index(),
+            final(needflush).spec_index(cpu_id, pcid).is_init(),
+            final(needflush).spec_index(cpu_id, pcid).locking_thread() == old(needflush).spec_index(cpu_id, pcid).locking_thread(),
+            final(needflush).spec_index(cpu_id, pcid).view_ghost() == old(needflush).spec_index(cpu_id, pcid).view_ghost(),
+            final(needflush).spec_index(cpu_id, pcid).view_rodata() == old(needflush).spec_index(cpu_id, pcid).view_rodata(),
+            final(needflush).spec_index(cpu_id, pcid).being_killed() == old(needflush).spec_index(cpu_id, pcid).being_killed(),
+            final(needflush).typed_lock_map_aligned(final(lctx).pcid_needflush_lock_map(), final(lctx).thread_id()),
+            forall|c: CpuId, p: Pcid| #![trigger final(needflush).spec_index(c, p)] #![trigger old(needflush).spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(needflush).spec_index(c, p) == old(needflush).spec_index(c, p),
             final(tlb).inv(),
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(tlb).spec_index((other_cpu, other_pcid))]
                 #![trigger old(tlb).spec_index((other_cpu, other_pcid))]
                 index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) ==> {
                     let entry = old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                    let flush = entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr);
+                    let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
                     final(tlb).spec_index((other_cpu, other_pcid)) == if flush && other_cpu == cpu_id && other_pcid == pcid { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(tlb).spec_index((other_cpu, other_pcid)) }
                 },
             {
                 let entry = old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                let flush = entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr);
+                let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
                 &&& (!flush ==> *final(tlb) == *old(tlb))
                 &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(tlb).view() }
             },
@@ -272,20 +338,13 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
             final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
             final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
-            final(self).spec_index(cpu_id).view().view().view().state is Running,
-            final(self).spec_index(cpu_id).view().view().view().owning_container == old(self).spec_index(cpu_id).view().view().view().owning_container,
-            final(self).spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
-            final(self).spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-            final(self).spec_index(cpu_id).view().view().view().current_pagetable == Some(pagetable_ptr),
-            final(self).spec_index(cpu_id).view().view().view().current_cr3 == cr3,
-            final(self).spec_index(cpu_id).view().view().view().current_pcid == pcid,
+            final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Running, current_process: Some(process_ptr), current_thread: Some(thread_ptr), current_pagetable: Some(pagetable_ptr), current_cr3: cr3, current_pcid: pcid, process_depth, tlb_dirty_bitmap: final(self).spec_index(cpu_id).view().view().view().tlb_dirty_bitmap, ..old(self).spec_index(cpu_id).view().view().view() }),
             final(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap() == old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr, pagetable_ptr })),
-            final(self).spec_index(cpu_id).view().view().view().container_depth == old(self).spec_index(cpu_id).view().view().view().container_depth,
-            final(self).spec_index(cpu_id).view().view().view().process_depth == process_depth,
     {
+        let pending = needflush.borrow_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm).needflush;
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
         let dirty = cpu.tlb_dirty_bitmap.index(pcid);
-        let flush = match dirty {
+        let flush = pending || match dirty {
             Some(entry) => entry.process_ptr != process_ptr || entry.pagetable_ptr != pagetable_ptr,
             None => false,
         };
@@ -296,6 +355,14 @@ impl CpuLockedArray {
         cpu.current_pagetable = Some(pagetable_ptr);
         cpu.process_depth = process_depth;
         cpu.tlb_dirty_bitmap.update(pcid, Some(ProcessPageTablePair { process_ptr, pagetable_ptr }));
+        published[cpu_id].store(cr3, pcid, Tracked(&*lctx));
+        let entry = needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm);
+        entry.set(false);
+        proof {
+            assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
+            assert(pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*needflush)) by { reveal(pcid_needflush_wf); };
+            assert(cpu_published_wf(*old(published), *old(self), *old(needflush)) ==> cpu_published_wf(*published, *self, *needflush)) by { reveal(cpu_published_wf); };
+        }
     }
 }
 

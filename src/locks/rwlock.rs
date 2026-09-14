@@ -429,6 +429,17 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
     {
         self.ghost_value = Ghost(new_ghost);
     }
+
+    pub fn set_ghost(&mut self, Ghost(new_ghost): Ghost<GhostT>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>)
+        requires
+            old(self).wlocked_by(lctx),
+            lp.view().state() is WriteLock,
+            lp.view().thread_id() == lctx.thread_id(),
+            lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
+        ensures update_ghost_ensures(*old(self), *final(self), new_ghost),
+    {
+        self.ghost_value = Ghost(new_ghost);
+    }
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,

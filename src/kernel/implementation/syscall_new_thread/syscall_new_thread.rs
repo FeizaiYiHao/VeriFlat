@@ -16,6 +16,7 @@ verus! {
         ) -> (ret: RetValueType)
             requires
                 index_valid(NUM_CPUS, cpu_id),
+                cpu_id == old(lctx).cpu_id(),
                 old(krnl).inv(),
                 old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -45,7 +46,6 @@ verus! {
                 ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0; &&& final(steps).steps.len() == 1 &&& final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(krnl)) &&& kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, process_ptr) },
                 ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
         {
-            proof { reveal(KernelK::all_objects_unlocked); }
             proof {
                 assert(
                     krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some

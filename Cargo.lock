@@ -172,6 +172,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_unmap_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
 name = "verus_builtin"
 version = "0.0.0-2026-08-09-0044"
 

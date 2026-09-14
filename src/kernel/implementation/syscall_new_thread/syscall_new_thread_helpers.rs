@@ -26,6 +26,8 @@ verus! {
         )
             requires
                 index_valid(NUM_CPUS, cpu_id),
+                cpu_id == old(lctx).cpu_id(),
+                old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
                 old(krnl).inv(),
                 lctx.kernel_view_locking_state() is Acquire,
                 old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
@@ -82,6 +84,7 @@ verus! {
                 old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
                 old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
                 old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+                old(lctx).pcid_needflush_lock_map().dom().is_empty(),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -108,6 +111,7 @@ verus! {
             let page_index = page_ptr2page_index(page_ptr);
 
             proof {
+                assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_thread_wf); };
                 assert(page_ptr != current_thread_ptr) by { reveal(thread_pages_wf); };
                 assert({
                     &&& krnl.ctn_mp.dom().contains(container_ptr)
@@ -125,7 +129,6 @@ verus! {
 
             proof {
                 assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
-                no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
                 steps.end_kernel_step(&*krnl, &*lctx);
             }
         }

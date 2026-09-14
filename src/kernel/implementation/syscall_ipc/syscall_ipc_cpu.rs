@@ -26,6 +26,7 @@ verus! {
         requires
             old(krnl).inv(),
             index_valid(NUM_CPUS, cpu_id),
+            old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             index_valid(NUM_CPUS, transfer_cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
@@ -91,6 +92,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             old(lctx).held_lock_majors_lt(CPU_SET_LOCK_MAJOR),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
@@ -115,6 +117,7 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
     {
+        hide(kernel_k_to_kernel_u);
         proof {
             assert(
                 krnl.thr_mp.perms_wf()
@@ -230,7 +233,7 @@ verus! {
             lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
             assert(krnl.inv()) by {
                 assert(krnl.cpu_arr.inv()) by { reveal(cpu_array_wf); };
-                assert(ipc_cpu_and_waiter_transition_framing(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, result is Success, peer_result, lctx.thread_id())) by { reveal(ipc_cpu_and_waiter_transition_framing); };
+                assert(ipc_cpu_and_waiter_transition_framing(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, result is Success, peer_result, lctx.thread_id())) by { reveal(ipc_cpu_and_waiter_transition_framing); reveal(cpu_set_perms_wf); reveal(scheduler_perms_wf); };
                 ipc_cpu_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, result is Success, peer_result, lctx.thread_id());
             };
         }
@@ -246,11 +249,13 @@ verus! {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
             if result is Success {
                 assert(steps.snap_shot.cpu_array[transfer_cpu_id as int].owning_container != kernel_k_to_kernel_u(*krnl).cpu_array[transfer_cpu_id as int].owning_container) by {
+                    reveal(kernel_k_to_kernel_u);
                     krnl.cpu_arr.lemma_view_index(transfer_cpu_id);
                 };
+            } else {
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
             }
             steps.end_kernel_step(&*krnl, &*lctx);
         }

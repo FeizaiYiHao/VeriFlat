@@ -12,6 +12,7 @@ pub open spec fn process_iommu_table_match(
     &&& forall|proc_ptr: RwLockProcessPtr|
         #![trigger process_map.spec_index(proc_ptr).view().iommu_table]
         process_map.dom().contains(proc_ptr)
+        && !process_map.spec_index(proc_ptr).view().zombie
         && process_map.spec_index(proc_ptr).view().iommu_table is Some
         ==>
         {
@@ -28,6 +29,7 @@ pub open spec fn process_iommu_table_match(
         {
             let proc_ptr = iommu_table_map.spec_index(iommu_root).view().proc_ptr;
             &&& process_map.dom().contains(proc_ptr)
+            &&& !process_map.spec_index(proc_ptr).view().zombie
             &&& process_map.spec_index(proc_ptr).view().iommu_table
                 == Some(iommu_root)
         }

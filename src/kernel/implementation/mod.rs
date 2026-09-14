@@ -11,6 +11,8 @@ pub mod syscall_new_container;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_mmap_4k;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_unmap_4k;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_ipc;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_schedule;
@@ -30,3 +32,6 @@ pub mod allocate_free_2m_page;
 
 #[cfg(not(feature = "split-crates"))]
 pub(crate) mod allocator_cache_spec;
+
+#[cfg(not(feature = "split-crates"))]
+pub mod free_4k_page;

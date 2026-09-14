@@ -61,14 +61,16 @@ verus! {
                     let p_ghost = krnl.prc_mp.spec_index(ptr).view_ghost();
                     let p_ro = krnl.prc_mp.spec_index(ptr).view_rodata().view();
                     ProcessU {
-                        pagetable: pagetable_map_user_view(krnl.pt_mp)
-                            .spec_index(p.pagetable),
-                        iommu_table: match p.iommu_table {
-                            Some(iommu_table) => Some(
+                        zombie: p.zombie,
+                        pagetable: if p.zombie { None } else {
+                            Some(pagetable_map_user_view(krnl.pt_mp).spec_index(p.pagetable))
+                        },
+                        iommu_table: match (p.zombie, p.iommu_table) {
+                            (false, Some(iommu_table)) => Some(
                                 iommu_table_map_user_view(krnl.it_mp)
                                     .spec_index(iommu_table),
                             ),
-                            None => None,
+                            _ => None,
                         },
                         quota_4k: p.quota_4k,
                         quota_2m: p.quota_2m,
@@ -129,7 +131,8 @@ verus! {
             forall|ptr: RwLockProcessPtr|
                 #![trigger post.prc_mp.spec_index(ptr)]
                 pre.prc_mp.dom().contains(ptr) ==>
-                    post.prc_mp.spec_index(ptr).view().quota_4k == pre.prc_mp.spec_index(ptr).view().quota_4k
+                    post.prc_mp.spec_index(ptr).view().zombie == pre.prc_mp.spec_index(ptr).view().zombie
+                    && post.prc_mp.spec_index(ptr).view().quota_4k == pre.prc_mp.spec_index(ptr).view().quota_4k
                     && post.prc_mp.spec_index(ptr).view().quota_2m == pre.prc_mp.spec_index(ptr).view().quota_2m
                     && post.prc_mp.spec_index(ptr).view().quota_1g == pre.prc_mp.spec_index(ptr).view().quota_1g
                     && post.prc_mp.spec_index(ptr).view().children.view() == pre.prc_mp.spec_index(ptr).view().children.view()

@@ -14,3 +14,4 @@ mod locker_unlocker_endpoint;
 mod locker_unlocker_pagetable;
 mod locker_unlocker_iommu_table;
 mod locker_unlocker_cpu_set;
+mod locker_unlocker_pcid_needflush;

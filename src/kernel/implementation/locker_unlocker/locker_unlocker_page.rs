@@ -29,6 +29,8 @@ impl KernelK {
                 final(self).it_mp     == old(self).it_mp,
                 final(self).irt     == old(self).irt,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -56,6 +58,7 @@ impl KernelK {
                 wlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view(), old(self).pg_arr.lock_id_by_index(page_index), final(lctx), ret.view()),
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))),
         {
+            hide(kernel_k_to_kernel_u);
             proof {
                 assert(old(self).pg_arr.inv()) by { reveal(page_array_wf); };
                 assert(!lctx.page_lock_map().dom().contains(page_index)) by {
@@ -108,6 +111,8 @@ impl KernelK {
                 final(self).it_mp     == old(self).it_mp,
                 final(self).irt     == old(self).irt,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,

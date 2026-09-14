@@ -19,13 +19,6 @@ impl KernelK {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
-            forall|key: usize|
-                #![trigger old(self).cpu_set_mp.view().spec_index(key)]
-                #![trigger final(self).cpu_set_mp.view().spec_index(key)]
-                old(self).cpu_set_mp.dom().contains(key) ==> {
-                    &&& final(self).cpu_set_mp.view().spec_index(key).is_init() == old(self).cpu_set_mp.view().spec_index(key).is_init()
-                    &&& final(self).cpu_set_mp.view().spec_index(key).addr() == old(self).cpu_set_mp.view().spec_index(key).addr()
-                },
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init() == old(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init(),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
@@ -35,6 +28,8 @@ impl KernelK {
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
             final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_published == old(self).cpu_published,
             final(self).cpu_tlb == old(self).cpu_tlb,
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,
@@ -99,6 +94,8 @@ impl KernelK {
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
             final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_published == old(self).cpu_published,
             final(self).cpu_tlb == old(self).cpu_tlb,
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,

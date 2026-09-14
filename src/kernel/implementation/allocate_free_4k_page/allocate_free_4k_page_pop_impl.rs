@@ -114,7 +114,10 @@ verus! {
             final(krnl).irt == old(krnl).irt,
             final(krnl).it_mp == old(krnl).it_mp,
             final(krnl).iommu_tlb == old(krnl).iommu_tlb,
+            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
             final(krnl).cpu_arr == old(krnl).cpu_arr,
+            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+            final(krnl).cpu_published == old(krnl).cpu_published,
             final(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool,
     {
         assert(
@@ -381,7 +384,10 @@ verus! {
             final(krnl).irt == old(krnl).irt,
             final(krnl).it_mp == old(krnl).it_mp,
             final(krnl).iommu_tlb == old(krnl).iommu_tlb,
+            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
             final(krnl).cpu_arr == old(krnl).cpu_arr,
+            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+            final(krnl).cpu_published == old(krnl).cpu_published,
     {
         assert(
             krnl.allc_4k_mp.perms_wf()

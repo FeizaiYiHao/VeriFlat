@@ -29,6 +29,8 @@ impl KernelK {
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,
             final(self).cpu_arr == old(self).cpu_arr,
+            final(self).pcid_needflush == old(self).pcid_needflush,
+            final(self).cpu_published == old(self).cpu_published,
             final(self).cpu_tlb == old(self).cpu_tlb,
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,
@@ -51,6 +53,7 @@ impl KernelK {
             final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).it_mp.lock_id_by_key(iommu_table_ptr), KernelObjId::IommuTable(iommu_table_ptr))),
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::IommuTable(iommu_table_ptr)),
     {
+        hide(kernel_k_to_kernel_u);
         proof {
             assert(old(self).it_mp.perms_wf() && old(self).it_mp.spec_index(iommu_table_ptr).inv()) by { reveal(iommu_table_perms_wf); };
             assert(old(lctx).lock_entry_contains(old(self).it_mp.lock_id_by_key(iommu_table_ptr), KernelObjId::IommuTable(iommu_table_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };

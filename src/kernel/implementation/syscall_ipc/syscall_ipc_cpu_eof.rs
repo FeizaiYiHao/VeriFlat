@@ -50,6 +50,8 @@ pub(super) proof fn ipc_cpu_eof(
     requires
         ipc_cpu_and_waiter_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.cpu_arr.inv(),
+        post.pcid_needflush == pre.pcid_needflush,
+        post.cpu_published == pre.cpu_published,
         post.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.wf(),
         post.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.wf(),
         post.ep_mp.spec_index(endpoint_ptr).view().queue.wf(),
@@ -63,7 +65,7 @@ pub(super) proof fn ipc_cpu_eof(
             &&& endpoint_perms_wf(post.ep_mp)
             &&& scheduler_perms_wf(post.sched_mp)
         }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(KernelK::default_pagetable_wf);
+        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf);
     };
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };

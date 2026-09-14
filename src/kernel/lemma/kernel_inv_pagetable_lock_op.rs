@@ -140,23 +140,24 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(
             cpu_set_map: CpuSetLockedMap,
             process_map: ProcessLockedMap,
             cpu_array: CpuLockedArray,
+            needflush: PcidNeedFlushArray,
             cpu_tlb: CpuTLB,
             pre: PageTableLockedMap,
             post: PageTableLockedMap|
             #![trigger
                 cpu_dirty_map_wf(
-                    container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre,
+                    container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre, needflush,
                 ),
                 cpu_dirty_map_wf(
-                    container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post,
+                    container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post, needflush,
                 )
             ]
             cpu_dirty_map_wf(
-                container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre,
+                container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, pre, needflush,
             )
             && pagetable_invariant_fields_unchanged(pre, post)
             ==> cpu_dirty_map_wf(
-                container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post,
+                container_map, cpu_set_map, process_map, cpu_array, cpu_tlb, post, needflush,
             ),
 {
     reveal(cpu_dirty_map_contains_pagetable_pcid_match);
@@ -165,16 +166,18 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(
 pub proof fn lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall()
     ensures
         forall|cpu_tlb: CpuTLB,
+            needflush: PcidNeedFlushArray,
             cpu_array: CpuLockedArray,
             pre: PageTableLockedMap,
             post: PageTableLockedMap|
             #![trigger
-                tlb_wf_spec(cpu_tlb, pre, cpu_array),
-                tlb_wf_spec(cpu_tlb, post, cpu_array)
+                tlb_wf_spec(cpu_tlb, pre, cpu_array, needflush),
+                tlb_wf_spec(cpu_tlb, post, cpu_array, needflush)
             ]
-            tlb_wf_spec(cpu_tlb, pre, cpu_array)
+            tlb_wf_spec(cpu_tlb, pre, cpu_array, needflush)
             && pagetable_invariant_fields_unchanged(pre, post)
-            ==> tlb_wf_spec(cpu_tlb, post, cpu_array),
+            && (forall|pt: RwLockPageTableRoot| #![trigger pre.spec_index(pt).wlocked()] #![trigger post.spec_index(pt).wlocked()] pre.dom().contains(pt) ==> (post.spec_index(pt).wlocked() || !pre.spec_index(pt).wlocked()))
+            ==> tlb_wf_spec(cpu_tlb, post, cpu_array, needflush),
 {
     reveal(tlb_wf_spec);
 }

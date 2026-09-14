@@ -45,6 +45,7 @@ pub tracked struct LocalContext {
     cpu_id: CpuId,
     page_lock_map: Map<PageIndex, TypedHeldLock>,
     cpu_lock_map: Map<CpuId, TypedHeldLock>,
+    pcid_needflush_lock_map: Map<(CpuId, Pcid), TypedHeldLock>,
     container_lock_map: Map<RwLockContainerPtr, TypedHeldLock>,
     process_lock_map: Map<RwLockProcessPtr, TypedHeldLock>,
     thread_lock_map: Map<RwLockThreadPtr, TypedHeldLock>,
@@ -77,6 +78,10 @@ impl LocalContext {
 
     pub closed spec fn cpu_lock_map(&self) -> Map<CpuId, TypedHeldLock> {
         self.cpu_lock_map
+    }
+
+    pub closed spec fn pcid_needflush_lock_map(&self) -> Map<(CpuId, Pcid), TypedHeldLock> {
+        self.pcid_needflush_lock_map
     }
 
     pub closed spec fn container_lock_map(&self) -> Map<RwLockContainerPtr, TypedHeldLock> {
@@ -191,6 +196,9 @@ impl LocalContext {
             KernelObjId::Cpu(cpu_id) => if self.cpu_lock_map().dom().contains(cpu_id) {
                 Some(self.cpu_lock_map().index(cpu_id))
             } else { None },
+            KernelObjId::PcidNeedFlush(cpu_id, pcid) => if self.pcid_needflush_lock_map().dom().contains((cpu_id, pcid)) {
+                Some(self.pcid_needflush_lock_map().index((cpu_id, pcid)))
+            } else { None },
             KernelObjId::Container(ptr) => if self.container_lock_map().dom().contains(ptr) {
                 Some(self.container_lock_map().index(ptr))
             } else { None },
@@ -267,6 +275,7 @@ impl LocalContext {
     pub open spec fn no_locks_held(&self) -> bool {
         &&& self.page_lock_map().dom().is_empty()
         &&& self.cpu_lock_map().dom().is_empty()
+        &&& self.pcid_needflush_lock_map().dom().is_empty()
         &&& self.container_lock_map().dom().is_empty()
         &&& self.process_lock_map().dom().is_empty()
         &&& self.thread_lock_map().dom().is_empty()
@@ -427,6 +436,7 @@ pub open spec fn lock_id_set_aligned(lctx: &LocalContext) -> bool {
 pub open spec fn typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContext) -> bool {
     &&& new.page_lock_map() == old.page_lock_map()
     &&& new.cpu_lock_map() == old.cpu_lock_map()
+    &&& new.pcid_needflush_lock_map() == old.pcid_needflush_lock_map()
     &&& new.container_lock_map() == old.container_lock_map()
     &&& new.process_lock_map() == old.process_lock_map()
     &&& new.thread_lock_map() == old.thread_lock_map()
@@ -456,6 +466,10 @@ pub open spec fn typed_lock_maps_inserted(
     &&& new.cpu_lock_map() == match obj_id {
         KernelObjId::Cpu(cpu_id) => old.cpu_lock_map().insert(cpu_id, entry),
         _ => old.cpu_lock_map(),
+    }
+    &&& new.pcid_needflush_lock_map() == match obj_id {
+        KernelObjId::PcidNeedFlush(cpu_id, pcid) => old.pcid_needflush_lock_map().insert((cpu_id, pcid), entry),
+        _ => old.pcid_needflush_lock_map(),
     }
     &&& new.container_lock_map() == match obj_id {
         KernelObjId::Container(ptr) => old.container_lock_map().insert(ptr, entry),
@@ -541,13 +555,6 @@ pub open spec fn typed_lock_maps_inserted(
         },
         _ => old.allocator_1g_lock_maps(),
     }
-    &&& new.typed_lock_entry(obj_id) == Some(entry)
-    &&& (forall|other_obj_id: KernelObjId|
-        #![trigger old.typed_lock_entry(other_obj_id)]
-        #![trigger new.typed_lock_entry(other_obj_id)]
-        other_obj_id != obj_id
-        ==> new.typed_lock_entry(other_obj_id)
-            == old.typed_lock_entry(other_obj_id))
 }
 
 pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
@@ -567,7 +574,13 @@ pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
     ensures
         new.held_lock_majors_lt(major),
 {
-    reveal(lock_id_set_aligned);
+    if !new.held_lock_majors_lt(major) {
+        let held = choose|held: HeldLock| #![auto] new.lock_id_set().contains(held) && held.0.major >= major;
+        match old.typed_lock_entry(held.1) {
+            Some(old_entry) => { assert(new.typed_lock_entry(held.1) == Some(old_entry) && held.0.major < major) by { reveal(lock_id_set_aligned); }; },
+            None => { assert(new.typed_lock_entry(held.1) == Some(entry) && held.0.major < major) by { reveal(lock_id_set_aligned); }; },
+        }
+    }
 }
 
 pub broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
@@ -611,6 +624,10 @@ pub open spec fn typed_lock_maps_removed(
     &&& new.cpu_lock_map() == match obj_id {
         KernelObjId::Cpu(cpu_id) => old.cpu_lock_map().remove(cpu_id),
         _ => old.cpu_lock_map(),
+    }
+    &&& new.pcid_needflush_lock_map() == match obj_id {
+        KernelObjId::PcidNeedFlush(cpu_id, pcid) => old.pcid_needflush_lock_map().remove((cpu_id, pcid)),
+        _ => old.pcid_needflush_lock_map(),
     }
     &&& new.container_lock_map() == match obj_id {
         KernelObjId::Container(ptr) => old.container_lock_map().remove(ptr),
@@ -727,10 +744,6 @@ pub open spec fn unlock_ensures(
     &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
     &&& new.lock_id_set() == old.lock_id_set().remove((lock_id, obj_id))
     &&& typed_lock_maps_removed(old, new, obj_id)
-    &&& !new.lock_id_set().contains((lock_id, obj_id))
-    &&& forall|held: HeldLock|
-        #![trigger new.lock_id_set().contains((held.0, held.1))]
-        held.1 != obj_id ==> new.lock_id_set().contains((held.0, held.1)) == old.lock_id_set().contains((held.0, held.1))
     &&& lock_id_set_aligned(old) ==> lock_id_set_aligned(new)
 }
 

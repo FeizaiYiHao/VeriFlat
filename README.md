@@ -31,6 +31,8 @@ After a push operation, all execution returns to a kernel level call, and immedi
 #### TODO
 Talk about how to modify Verus to enforce this check. 
 
+- [x] After completing EOF optimization, optimize proof performance across the repository.
+
 ## Providing system call specification
 
 ### Visible kernel state

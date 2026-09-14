@@ -8,7 +8,8 @@ verus! {
 pub const CPU_LOCK_MAJOR_RUNNING:LockMajorId = 1;
 pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
 // An Off CPU is terminal after its owning CPU-set lock proves the slot closed.
-pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 30001;
+pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 30002;
+pub const PCID_NEEDFLUSH_LOCK_MAJOR:LockMajorId = 30001;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
 pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;
@@ -49,7 +50,7 @@ pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
 pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
 
-pub const QUOTA_MAJOR: LockMajorId = 102;
+pub const QUOTA_MAJOR: LockMajorId = THREAD_SCHEDULED_LOCK_MAJOR + 1;
 // -------------------- End of const --------------------------
 
 
@@ -249,6 +250,7 @@ pub ghost enum KernelObjId {
     IommuTable(RwLockPageTableRoot),
     Page(PageIndex),
     Cpu(CpuId),
+    PcidNeedFlush(CpuId, Pcid),
     AllocatorQuota(PageSize, RwLockPageAllocatorPtr),
     AllocatorCache(PageSize, RwLockPageAllocatorPtr, CpuId),
     AllocatorGlobalPoll(PageSize, RwLockPageAllocatorPtr),

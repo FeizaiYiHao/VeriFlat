@@ -2,6 +2,27 @@ use vstd::prelude::*;
 use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 verus! {
 
+pub proof fn set_fold_eq_lemma<A, B>(s: Set<A>, initial: B, f: spec_fn(B, A) -> B, g: spec_fn(B, A) -> B)
+    requires
+        vstd::iset::fold::is_fun_commutative(f),
+        vstd::iset::fold::is_fun_commutative(g),
+        forall|b: B, a: A| #![trigger f(b, a)] s.contains(a) ==> f(b, a) == g(b, a),
+    ensures s.fold(initial, f) == s.fold(initial, g),
+    decreases s.len(),
+{
+    if s.len() == 0 {
+        vstd::assert_isets_equal!(s.to_iset(), ISet::<A>::empty());
+        vstd::iset::fold::lemma_fold_empty(initial, f);
+        vstd::iset::fold::lemma_fold_empty(initial, g);
+    } else {
+        let a = s.choose();
+        set_fold_eq_lemma(s.remove(a), initial, f, g);
+        vstd::assert_isets_equal!(s.to_iset(), s.remove(a).to_iset().insert(a));
+        vstd::iset::fold::lemma_fold_insert(s.remove(a).to_iset(), initial, f, a);
+        vstd::iset::fold::lemma_fold_insert(s.remove(a).to_iset(), initial, g, a);
+    }
+}
+
 pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
     requires
         !m.dom().contains(key),
@@ -701,6 +722,31 @@ proof fn sum_fold_update_helper(s: Seq<int>, i: int, v: int)
         //                    = s.fold_left(0, f) - s[i] + v
         assert(s.drop_last().spec_index(i) == s.spec_index(i));
     }
+}
+
+pub proof fn seq_fold_upper_bound<A>(s: Seq<A>, f: spec_fn(int, A) -> int, upper: int)
+    requires
+        forall|i: int, sum: int| #![trigger f(sum, s.spec_index(i))] 0 <= i < s.len() ==> f(sum, s.spec_index(i)) <= sum + upper,
+    ensures
+        s.fold_left(0int, f) <= s.len() * upper,
+    decreases s.len(),
+{
+    if s.len() != 0 {
+        assert(s.drop_last().fold_left(0int, f) <= (s.len() - 1) * upper) by { seq_fold_upper_bound(s.drop_last(), f, upper); };
+        assert((s.len() - 1) * upper + upper == s.len() * upper) by(nonlinear_arith);
+    }
+}
+
+pub proof fn seq_unique_bounded_usize_len(s: Seq<usize>, bound: usize)
+    requires
+        s.no_duplicates(),
+        forall|value: usize| #![trigger s.contains(value)] s.contains(value) ==> value < bound,
+    ensures
+        s.len() <= bound,
+{
+    let range = <usize as vstd::set_lib::FiniteRange>::range_set(0usize, bound);
+    assert(s.to_set().subset_of(range) && range.len() == bound) by { <usize as vstd::set_lib::FiniteRange>::range_properties(0usize, bound); s.to_set_ensures(); };
+    assert(s.len() == s.to_set().len() && s.to_set().len() <= range.len()) by { s.unique_seq_to_set(); vstd::set_lib::lemma_len_subset(s.to_set(), range); };
 }
 
 } // verus!

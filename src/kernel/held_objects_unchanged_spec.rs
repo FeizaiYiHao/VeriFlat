@@ -284,7 +284,6 @@ pub open spec fn held_allocator_objects_unchanged(
         PageSize::SZ1g => lctx.allocator_global_pool_1g_lock_map(),
     };
     &&& (forall|p: RwLockPageAllocatorPtr|
-        #![trigger quota_lock_map.dom().contains(p)]
         #![trigger pre.spec_index(p)]
         #![trigger post.spec_index(p)]
         quota_lock_map.dom().contains(p) ==> {
@@ -292,7 +291,6 @@ pub open spec fn held_allocator_objects_unchanged(
             &&& post.spec_index(p).quota == pre.spec_index(p).quota
         })
     &&& (forall|p: RwLockPageAllocatorPtr|
-        #![trigger global_pool_lock_map.dom().contains(p)]
         #![trigger pre.spec_index(p)]
         #![trigger post.spec_index(p)]
         global_pool_lock_map.dom().contains(p) ==> {
@@ -300,7 +298,6 @@ pub open spec fn held_allocator_objects_unchanged(
             &&& post.spec_index(p).global_pool == pre.spec_index(p).global_pool
         })
     &&& (forall|p: RwLockPageAllocatorPtr, c: CpuId|
-        #![trigger cache_lock_map.dom().contains((p, c))]
         #![trigger pre.spec_index(p).cpu_caches.spec_index(c)]
         #![trigger post.spec_index(p).cpu_caches.spec_index(c)]
         cache_lock_map.dom().contains((p, c)) ==> {

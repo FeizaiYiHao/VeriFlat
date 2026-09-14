@@ -21,9 +21,14 @@ pub open spec fn kernel_u_new_process_shared(
     &&& shared_u.process_map.dom().contains(child_ptr)
     &&& range.wf()
     &&& range.len > 0
-    &&& child.pagetable.mapping_4k == share_mapping_4k_target_map_after(shared_u.process_map.spec_index(parent_ptr).pagetable.mapping_4k, created_child.pagetable.mapping_4k, range, range, range.len as nat)
-    &&& child.pagetable.mapping_2m == created_child.pagetable.mapping_2m
-    &&& child.pagetable.mapping_1g == created_child.pagetable.mapping_1g
+    &&& !child.zombie
+    &&& child.zombie == created_child.zombie
+    &&& child.pagetable is Some
+    &&& created_child.pagetable is Some
+    &&& shared_u.process_map.spec_index(parent_ptr).pagetable is Some
+    &&& child.pagetable.unwrap().mapping_4k == share_mapping_4k_target_map_after(shared_u.process_map.spec_index(parent_ptr).pagetable.unwrap().mapping_4k, created_child.pagetable.unwrap().mapping_4k, range, range, range.len as nat)
+    &&& child.pagetable.unwrap().mapping_2m == created_child.pagetable.unwrap().mapping_2m
+    &&& child.pagetable.unwrap().mapping_1g == created_child.pagetable.unwrap().mapping_1g
     &&& child.iommu_table == created_child.iommu_table
     &&& child.quota_4k == created_child.quota_4k
     &&& child.quota_2m == created_child.quota_2m

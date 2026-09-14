@@ -57,6 +57,10 @@ pub fn allocate_free_4k_pages<const N: usize>(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
     ensures
+        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            old(lctx).pagetable_lock_map().dom().contains(pt)
+            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         ret.0.wf(),
@@ -86,6 +90,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(ret.0.view())),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -119,6 +124,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
 {
     let mut pages = ArrayVec::<PagePtr, N>::new();
     let tracked mut page_lock_perms: Map<PagePtr, LockPerm> = Map::tracked_empty();
@@ -129,6 +135,10 @@ pub fn allocate_free_4k_pages<const N: usize>(
     }
     while i < N
         invariant
+            forall|pt: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(pt)]
+                old(lctx).pagetable_lock_map().dom().contains(pt)
+                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
             krnl.inv(),
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).thr_mp.dom().contains(thread_ptr),
@@ -164,6 +174,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
             lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view())),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
+            lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),
@@ -197,6 +208,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
             held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx)),
             held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx)),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
             i <= N,
         decreases N - i,
     {

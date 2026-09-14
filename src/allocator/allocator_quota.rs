@@ -29,7 +29,7 @@ impl LockMinorTrait for AllocatorQuota {
 }
 
 impl LockOwnerIdTrait for AllocatorQuota {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.container_depth) }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 

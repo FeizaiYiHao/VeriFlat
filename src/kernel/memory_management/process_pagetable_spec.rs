@@ -7,7 +7,8 @@ pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetabl
     &&&
     forall|proc_ptr:RwLockProcessPtr|
         #![trigger process_map.spec_index(proc_ptr).view().pagetable]
-        process_map.dom().contains(proc_ptr) 
+        process_map.dom().contains(proc_ptr)
+        && !process_map.spec_index(proc_ptr).view().zombie
         ==>
         pagetable_map.dom().contains(process_map.spec_index(proc_ptr).view().pagetable)
         &&
@@ -33,6 +34,7 @@ pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetabl
         pagetable_map.dom().contains(pt_ptr)
         ==>
         process_map.dom().contains(pagetable_map.spec_index(pt_ptr).view().proc_ptr)
+        && !process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().zombie
         &&
         process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
 

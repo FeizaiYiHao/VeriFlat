@@ -13,6 +13,7 @@ verus! {
     pub fn syscall_mmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
+            cpu_id == old(lctx).cpu_id(),
             old(krnl).inv(),
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -36,7 +37,6 @@ verus! {
             !(ret is Success) ==> final(steps).steps.len() == 0,
             ret is Success ==> { let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0; let pagetable_ptr = old(krnl).prc_mp.spec_index(process_ptr).view().pagetable; &&& range > 0 &&& va_4k_valid(va) &&& final(krnl).pt_mp.dom().contains(pagetable_ptr) &&& mmap_4k_syscall_range_mapped(final(krnl).pt_mp.spec_index(pagetable_ptr).view(), va, range) },
     {
-        proof { reveal(KernelK::all_objects_unlocked); }
         if range == 0
             || range > usize::MAX / 4096usize
             || range > usize::MAX / 4usize
@@ -127,6 +127,7 @@ verus! {
             &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
+            &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr
             &&& !lctx.pagetable_lock_map().dom().contains(pagetable_ptr)
         }) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
 
@@ -141,7 +142,6 @@ verus! {
         match precheck {
             Mmap4kPrecheck::Ready => {
                 assert(krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(va_range.start)) by { assert(spec_va2index(va_range.start).0 == spec_v2l4index(va_range.start)) by (bit_vector); };
-                assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr) by { reveal(process_pagetable_match); };
                 mmap_4k_map_leaf_range(krnl, &va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
                 proof {
                     assert(mmap_4k_syscall_range_mapped(krnl.pt_mp.spec_index(pagetable_ptr).view(), va, range)) by { va_range.va_range_lemma(); };
@@ -169,7 +169,6 @@ verus! {
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
-            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
             steps.end_kernel_step(&*krnl, &*lctx);
         }
         result

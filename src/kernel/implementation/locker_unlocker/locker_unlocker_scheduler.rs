@@ -20,13 +20,6 @@ impl KernelK {
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
-                forall|key: usize|
-                    #![trigger old(self).sched_mp.view().spec_index(key)]
-                    #![trigger final(self).sched_mp.view().spec_index(key)]
-                    old(self).sched_mp.dom().contains(key) ==> {
-                        &&& final(self).sched_mp.view().spec_index(key).is_init() == old(self).sched_mp.view().spec_index(key).is_init()
-                        &&& final(self).sched_mp.view().spec_index(key).addr() == old(self).sched_mp.view().spec_index(key).addr()
-                    },
                 final(self).sched_mp.spec_index(scheduler_ptr).is_init() == old(self).sched_mp.spec_index(scheduler_ptr).is_init(),
                 // ---- Every held lock still matches lctx (scheduler now locked) ----
                 // ---- Dynamic lock ids remain aligned ----
@@ -38,6 +31,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,
@@ -62,6 +57,7 @@ impl KernelK {
                 final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr), TypedHeldLock { lock_id: final(self).sched_mp.lock_id_by_key(scheduler_ptr), mode: TypedLockMode::Write }),
                 final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+                final(lctx).pcid_needflush_lock_map().dom().is_empty(),
         {
             proof {
                 assert(old(self).sched_mp.perms_wf() && old(self).sched_mp.spec_index(scheduler_ptr).is_init()) by { reveal(scheduler_perms_wf); };
@@ -84,6 +80,14 @@ impl KernelK {
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.pcid_needflush_lock_map().dom().is_empty()) by {
+                    if !lctx.pcid_needflush_lock_map().dom().is_empty() {
+                        let key = choose|key: (CpuId, Pcid)| lctx.pcid_needflush_lock_map().dom().contains(key);
+                        assert(lctx.lock_entry_contains(self.pcid_needflush.lock_id_by_index(key.0, key.1), KernelObjId::PcidNeedFlush(key.0, key.1))) by { reveal(LockedArray2D::typed_lock_map_aligned); };
+                        assert(lctx.lock_id_set().contains((self.pcid_needflush.lock_id_by_index(key.0, key.1), KernelObjId::PcidNeedFlush(key.0, key.1)))) by { reveal(lock_id_set_aligned); };
+
+                    }
+                };
                 broadcast use vstd::map::lemma_map_insert_domain;
             }
             ret
@@ -118,6 +122,8 @@ impl KernelK {
                 final(self).irt     == old(self).irt,
                 final(self).pg_arr        == old(self).pg_arr,
                 final(self).cpu_arr         == old(self).cpu_arr,
+                final(self).pcid_needflush == old(self).pcid_needflush,
+                final(self).cpu_published == old(self).cpu_published,
                 final(self).cpu_tlb           == old(self).cpu_tlb,
                 final(self).iommu_tlb           == old(self).iommu_tlb,
                 final(self).rt_ctn    == old(self).rt_ctn,

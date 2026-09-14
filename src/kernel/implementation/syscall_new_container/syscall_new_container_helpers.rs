@@ -12,6 +12,8 @@ use super::staged_4k_page_chain::{
     set_disjoint_from_right_subset,
     set_union_subset_of,
 };
+use super::syscall_new_container_transfer_eof::transfer_staged_thread_page_eof;
+use super::syscall_new_container_transfer_spec::transfer_staged_page_preserved_objects_transition_framing;
 
 verus! {
 #[verifier::spinoff_prover]
@@ -62,7 +64,12 @@ pub(super) fn allocate_new_container_pages(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            old(lctx).pagetable_lock_map().dom().contains(pt)
+            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
@@ -160,6 +167,7 @@ pub(super) fn allocate_new_container_pages(
                 .insert(page_ptr2page_index(ret.1))
                 .insert(page_ptr2page_index(ret.2)),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map()
             == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
@@ -486,12 +494,15 @@ pub(super) fn transfer_staged_thread_page_to_child(krnl: &mut KernelK, Tracked(l
         final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
         final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
         final(krnl).cpu_arr == old(krnl).cpu_arr,
+        final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+        final(krnl).cpu_published == old(krnl).cpu_published,
         final(krnl).cpu_tlb == old(krnl).cpu_tlb,
         final(krnl).iommu_tlb == old(krnl).iommu_tlb,
         final(krnl).irt == old(krnl).irt,
         final(krnl).rt_ctn == old(krnl).rt_ctn,
         final(krnl).dflt_pt == old(krnl).dflt_pt,
 {
+    let ghost pre = *krnl;
     let page_index = page_ptr2page_index(page_ptr);
     proof {
         page_ptr_valid_imply_page_index_valid();
@@ -551,127 +562,12 @@ pub(super) fn transfer_staged_thread_page_to_child(krnl: &mut KernelK, Tracked(l
         }
     }
     proof {
-        assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
-        assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); };
-
-        assert(container_tree_fields_wf(krnl.ctn_mp)) by {
-            reveal(container_tree_fields_wf);
-            reveal(container_perms_wf);
+        assert(transfer_staged_page_preserved_objects_transition_framing(pre, *krnl, page_ptr, staging_thread_ptr, parent_container_ptr, child_container_ptr)) by {
+            reveal(transfer_staged_page_preserved_objects_transition_framing);
         };
-        assert(container_perms_wf(krnl.ctn_mp)) by { reveal(container_perms_wf); };
-        assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-        assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
-            reveal(allocator_4k_pages_wf);
-            reveal(allocator_2m_pages_wf);
-            reveal(allocator_1g_pages_wf);
-        };
-        assert(container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr)) by { reveal(container_page_owner_wf); };
-        assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(hugepage_2m_wf); };
-        assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(hugepage_1g_wf); };
-        assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by {
-            reveal(mapped_4k_page_pagetable_wf);
-            reveal(mapped_2m_page_pagetable_wf);
-            reveal(mapped_1g_page_pagetable_wf);
-            reveal(pagetable_perms_wf);
-        };
-        assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by {
-            reveal(container_process_page_pagetable_wf);
-            reveal(container_process_wf);
-            reveal(container_page_owner_wf);
-            reveal(mapped_4k_page_pagetable_wf);
-            reveal(mapped_2m_page_pagetable_wf);
-            reveal(mapped_1g_page_pagetable_wf);
-            reveal(process_pagetable_match);
-        };
-        assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { reveal(container_pages_wf); };
-        assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { reveal(process_pages_wf); };
-        assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
-        assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(iommu_table_pages_wf); };
-        assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); };
-        assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); };
-        assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
-        assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); };
-        assert(thread_staged_pages_4k_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
-        assert(thread_staged_pages_2m_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
-        assert(thread_staged_pages_1g_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
-        assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { reveal(endpoint_pages_wf); };
-
-        assert(container_process_allocator_quota_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
-            reveal(container_process_allocator_quota_4k_wf);
-            reveal(container_process_allocator_quota_2m_wf);
-            reveal(container_process_allocator_quota_1g_wf);
-        };
-        assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
-        assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by {
-            reveal(container_allocator_free_4k_page_wf);
-            reveal(container_allocator_global_free_4k_page_wf);
-            reveal(container_allocator_cpu_cache_free_4k_page_wf);
-            reveal(allocator_free_page_ptrs_wf);
-        };
-        assert(container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by {
-            reveal(container_allocator_free_2m_page_wf);
-            reveal(container_allocator_global_free_2m_page_wf);
-            reveal(container_allocator_cpu_cache_free_2m_page_wf);
-            reveal(allocator_free_page_ptrs_wf);
-        };
-        assert(container_allocator_free_1g_page_wf(krnl.allc_1g_mp, krnl.pg_arr)) by {
-            reveal(container_allocator_free_1g_page_wf);
-            reveal(container_allocator_global_free_1g_page_wf);
-            reveal(container_allocator_cpu_cache_free_1g_page_wf);
-            reveal(allocator_free_page_ptrs_wf);
-        };
-
-        assert(container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)) by {
-            reveal(container_perms_wf);
-
-            reveal(LinkedList::wf_value_list);
-            reveal(container_tree_wf);
-            reveal(container_root_wf);
-            reveal(container_children_parent_wf);
-            reveal(containers_linkedlist_wf);
-            reveal(container_children_depth_wf);
-            reveal(container_subtree_set_wf);
-            reveal(container_uppertree_seq_wf);
-            reveal(container_subtree_set_exclusive);
-        };
-        assert(krnl.ctn_mp.spec_index(krnl.rt_ctn).view().root_process_in_processes()) by { reveal(container_root_wf); };
-        assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_process_wf); };
-        assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(per_container_process_tree_wf); };
-        assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
-        assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
-        assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
-
-        assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
-            reveal(container_endpoint_wf);
-            reveal(thread_endpoint_ref_counter_wf);
-            reveal(thread_endpoint_queue_wf);
-            reveal(container_thread_endpoint_wf);
-        };
-        assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
-        assert(container_pcid_allocator_wf(krnl.ctn_mp, krnl.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
-        assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by {
-            reveal(container_process_wf);
-            reveal(process_pcid_allocator_wf);
-        };
-        assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by {
-            reveal(container_thread_wf);
-            reveal(container_scheduler_wf);
-            reveal(container_thread_scheduler_wf);
-        };
-        assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); reveal(thread_perms_wf); };
-
-        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp)) by {
-            reveal(cpu_dirty_map_contains_container_processes);
-            reveal(cpu_dirty_map_proc_pcid_match);
-            reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-            reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-            reveal(container_cpu_wf);
-        };
-
-        assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
-        assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-
+        transfer_staged_thread_page_eof(pre, *krnl, page_ptr, staging_thread_ptr, parent_container_ptr, child_container_ptr);
     }
+
 }
 
 #[verifier::rlimit(80)]
@@ -892,6 +788,7 @@ fn finish_staged_container_publish(
                 pages_4k.view().spec_index(7),
             )).view().locking_thread()->Write_lock_id,
     ensures
+        final(krnl).cpu_tlb == old(krnl).cpu_tlb,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         kernel_k_to_kernel_u(*final(krnl))
@@ -902,6 +799,7 @@ fn finish_staged_container_publish(
         lock_id_set_aligned(final(lctx)),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom().difference(page_2m_tail_indices(page_ptr2page_index(container_page))).difference(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page))).remove(page_ptr2page_index(pages_4k.view().spec_index(0))).remove(page_ptr2page_index(pages_4k.view().spec_index(1))).remove(page_ptr2page_index(pages_4k.view().spec_index(2))).remove(page_ptr2page_index(pages_4k.view().spec_index(3))).remove(page_ptr2page_index(pages_4k.view().spec_index(8))).remove(page_ptr2page_index(pages_4k.view().spec_index(4))).remove(page_ptr2page_index(pages_4k.view().spec_index(5))).remove(page_ptr2page_index(pages_4k.view().spec_index(6))).remove(page_ptr2page_index(container_page)).remove(page_ptr2page_index(pcid_allocator_page)),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
+        final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -920,6 +818,8 @@ fn finish_staged_container_publish(
         final(krnl).pt_mp == old(krnl).pt_mp,
         final(krnl).sched_mp == old(krnl).sched_mp,
         final(krnl).cpu_arr == old(krnl).cpu_arr,
+        final(krnl).pcid_needflush == old(krnl).pcid_needflush,
+        final(krnl).cpu_published == old(krnl).cpu_published,
         final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
         final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
         final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
@@ -1251,7 +1151,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
         old(krnl).ctn_mp.dom().contains(parent_container_ptr),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
-        old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth < usize::MAX,
+        old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
         parent_container_lock_perm.state() is WriteLock,
         parent_container_lock_perm.thread_id() == old(lctx).thread_id(),
         parent_container_lock_perm.lock_id() == old(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
@@ -1299,6 +1199,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(page_ptrs_to_indices(funding_pages)).insert(page_ptr2page_index(container_page)).insert(page_ptr2page_index(pcid_allocator_page)),
         old(lctx).page_lock_map().dom().disjoint(page_2m_tail_indices(page_ptr2page_index(container_page)).union(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)))),
         old(lctx).lock_id_acyclic(merged_page_lock_id((page_ptr2page_index(container_page) + 1) as usize)),
@@ -1307,7 +1208,10 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
     ensures
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()) ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, final(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
+        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pages_4k.view().spec_index(5), final(krnl).pt_mp.spec_index(pages_4k.view().spec_index(5)).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -1333,6 +1237,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
         final(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         final(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         final(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        final(lctx).pcid_needflush_lock_map().dom().is_empty(),
         final(krnl).ctn_mp.dom().contains(parent_container_ptr),
         final(krnl).prc_mp.dom().contains(parent_process_ptr),
         final(krnl).thr_mp.dom().contains(current_thread_ptr),
@@ -1356,6 +1261,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
         final(krnl).prc_mp.dom().contains(pages_4k.view().spec_index(4)),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), pages_4k.view().spec_index(4), TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(pages_4k.view().spec_index(4)).being_killed(),
+        !final(krnl).prc_mp.spec_index(pages_4k.view().spec_index(4)).view().zombie,
         final(krnl).prc_mp.spec_index(pages_4k.view().spec_index(4)).view_rodata().view().owning_container == container_page,
         final(krnl).prc_mp.spec_index(pages_4k.view().spec_index(4)).view_rodata().view().pagetable == pages_4k.view().spec_index(5),
         final(krnl).pt_mp.dom().contains(pages_4k.view().spec_index(5)),
@@ -1382,7 +1288,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
         final(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().contains(pages_4k.view().spec_index(7)),
         !final(krnl).ctn_mp.spec_index(container_page).view().owned_pages.view().contains(pages_4k.view().spec_index(7)),
         source_pagetable_ptr != pages_4k.view().spec_index(5),
-        final(krnl).cpu_arr.spec_index(caller_cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(caller_cpu_id).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(caller_cpu_id).view() == old(krnl).cpu_arr.spec_index(caller_cpu_id).view(),
         final(krnl).prc_mp.spec_index(parent_process_ptr).locking_thread() == old(krnl).prc_mp.spec_index(parent_process_ptr).locking_thread(),
         final(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread() == old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread(),
         parent_container_lock_perm.lock_id() == final(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
@@ -1418,6 +1324,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
             &&& page_4k_lock_perms.dom().contains(allocator_2m_page)
             &&& page_4k_lock_perms.dom().contains(allocator_1g_page)
             &&& page_4k_lock_perms.dom().contains(scheduler_page)
+            &&& page_4k_lock_perms.dom().contains(cpu_set_page)
             &&& page_4k_lock_perms.dom().contains(process_page)
             &&& page_4k_lock_perms.dom().contains(pagetable_page)
             &&& page_4k_lock_perms.dom().contains(l4_page)
@@ -1550,27 +1457,6 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
                 funding_pages.to_set_ensures();
                 reveal(Seq::contains);
             };
-            assert(page_ptr_valid(page_ptr)) by { reveal(staged_4k_page_chain); };
-            page_ptr_valid_imply_page_index_valid();
-            page_ptr_roundtrip();
-            let page_index = page_ptr2page_index(page_ptr);
-            assert(!page_2m_tail_indices(container_head).contains(page_index)) by {
-                if page_2m_tail_indices(container_head).contains(page_index)
-                {
-                    assert(container_head <= page_index < container_head + 512) by { reveal(page_2m_tail_indices); };
-                    page_2m_all_ptrs_contains_index(container_head, page_index);
-                    assert(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(page_ptr)) by { reveal(new_container_moved_pages); };
-                }
-            };
-            assert(!page_2m_tail_indices(pcid_allocator_head).contains(page_index)) by {
-                if page_2m_tail_indices(pcid_allocator_head).contains(page_index)
-                {
-                    assert(pcid_allocator_head <= page_index < pcid_allocator_head + 512) by { reveal(page_2m_tail_indices); };
-                    page_2m_all_ptrs_contains_index(pcid_allocator_head, page_index);
-                    assert(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(page_ptr)) by { reveal(new_container_moved_pages); };
-                }
-            };
-            reveal(page_2m_tail_indices);
         };
         assert(staged_4k_page_chain(krnl.pg_arr, funding_pages)) by { reveal(staged_4k_page_chain); };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
@@ -1646,6 +1532,7 @@ pub(super) fn publish_new_container_base(krnl: &mut KernelK, Tracked(lctx): Trac
     proof {
         assert(krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_processes.view().contains(parent_process_ptr)) by { reveal(container_process_wf); };
     }
+    proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pages_4k.view().spec_index(5), krnl.pt_mp.spec_index(pages_4k.view().spec_index(5)).view())) by { reveal(tlb_wf_spec); }; }
     (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(child_scheduler_lock_perm), Tracked(thread_page_lock_perm),)
 }
 
@@ -1677,9 +1564,12 @@ pub(super) fn create_root_thread_and_finish_new_container(
     initial_regs: &Registers,
 ) -> (new_thread_ptr: RwLockThreadPtr)
     requires
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, child_pagetable_ptr, old(krnl).pt_mp.spec_index(child_pagetable_ptr).view()),
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Release,
         index_valid(NUM_CPUS, caller_cpu_id),
+        old(krnl).cpu_published[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         page_ptr_valid(thread_page_ptr),
         parent_container_ptr != child_container_ptr,
         parent_process_ptr != child_process_ptr,
@@ -1704,6 +1594,7 @@ pub(super) fn create_root_thread_and_finish_new_container(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), caller_cpu_id, TypedLockMode::Write),
@@ -1784,6 +1675,7 @@ pub(super) fn create_root_thread_and_finish_new_container(
         old(krnl).prc_mp.dom().contains(child_process_ptr),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), child_process_ptr, TypedLockMode::Write),
         !old(krnl).prc_mp.spec_index(child_process_ptr).being_killed(),
+        !old(krnl).prc_mp.spec_index(child_process_ptr).view().zombie,
         old(krnl).prc_mp.spec_index(child_process_ptr)
             .view_rodata().view().owning_container == child_container_ptr,
         old(krnl).prc_mp.spec_index(child_process_ptr)
@@ -2018,7 +1910,6 @@ pub(super) fn create_root_thread_and_finish_new_container(
         assert(lctx.no_locks_held()) by {
             reveal(LocalContext::no_locks_held);
         };
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
         steps.end_kernel_step(&*krnl, &*lctx);
     }
     new_thread_ptr
@@ -2048,10 +1939,13 @@ pub(super) fn commit_new_container(
     RwLockThreadPtr,
 ))
     requires
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
         index_valid(NUM_CPUS, caller_cpu_id),
+        caller_cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_published[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         process_quota_4k <= funding_page_count,
         funding_page_count <= usize::MAX - 9,
         old(lctx).page_lock_map().dom().is_empty(),
@@ -2074,6 +1968,7 @@ pub(super) fn commit_new_container(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         lock_id_set_aligned(old(lctx)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), caller_cpu_id, TypedLockMode::Write),
@@ -2090,7 +1985,7 @@ pub(super) fn commit_new_container(
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
         old(krnl).ctn_mp.spec_index(parent_container_ptr)
-            .view_rodata().view().depth < usize::MAX,
+            .view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
         parent_container_lock_perm.view().state() is WriteLock,
         parent_container_lock_perm.view().thread_id()
             == old(lctx).thread_id(),
