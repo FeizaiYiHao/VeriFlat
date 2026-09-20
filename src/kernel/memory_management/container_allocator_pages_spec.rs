@@ -4,6 +4,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+        // Proof dependencies (confirmed): allocator_4k_pages_wf,
+        // allocator_2m_pages_wf, allocator_1g_pages_wf.
         pub open spec fn allocator_pages_wf(
             page_array: PageLockedArray, 
                     allocator_4k_map: PageAllocatorUnLockedMap, 
@@ -17,12 +19,10 @@ verus! {
             allocator_1g_pages_wf(page_array, allocator_1g_map)
         }
 
-        #[verifier::opaque]
-        pub open spec fn allocator_4k_pages_wf(
+        pub open spec fn allocator_4k_pages_forward_wf(
             page_array: PageLockedArray, 
             allocator_4k_map: PageAllocatorUnLockedMap
         ) -> bool{
-            &&&
             forall|page_index:PageIndex|
                 #![trigger page_array.spec_index(page_index)]
                 #![trigger allocator_4k_map.dom().contains(page_index2page_ptr(page_index))]
@@ -31,7 +31,12 @@ verus! {
                 (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator})
                 ==>
                 allocator_4k_map.dom().contains(page_index2page_ptr(page_index))
-            &&&
+        }
+
+        pub open spec fn allocator_4k_pages_backward_wf(
+            page_array: PageLockedArray,
+            allocator_4k_map: PageAllocatorUnLockedMap,
+        ) -> bool {
             forall|a_ptr:RwLockPageAllocatorPtr|
                 #![trigger page_array.spec_index(page_ptr2page_index(a_ptr))]
                 #![trigger allocator_4k_map.dom().contains(a_ptr)]
@@ -42,12 +47,19 @@ verus! {
                 page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator}
         }
 
-    #[verifier::opaque]
-    pub open spec fn allocator_2m_pages_wf(
+        #[verifier::opaque]
+        pub open spec fn allocator_4k_pages_wf(
+            page_array: PageLockedArray,
+            allocator_4k_map: PageAllocatorUnLockedMap,
+        ) -> bool {
+            &&& allocator_4k_pages_forward_wf(page_array, allocator_4k_map)
+            &&& allocator_4k_pages_backward_wf(page_array, allocator_4k_map)
+        }
+
+    pub open spec fn allocator_2m_pages_forward_wf(
         page_array: PageLockedArray, 
         allocator_2m_map: PageAllocatorUnLockedMap
     ) -> bool{
-        &&&
         forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index)]
         #![trigger allocator_2m_map.dom().contains(page_index2page_ptr(page_index))]
@@ -56,8 +68,12 @@ verus! {
         (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator})
         ==>
         allocator_2m_map.dom().contains(page_index2page_ptr(page_index))
+    }
 
-        &&&
+    pub open spec fn allocator_2m_pages_backward_wf(
+        page_array: PageLockedArray,
+        allocator_2m_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|a_ptr:RwLockPageAllocatorPtr|
         #![trigger page_array.spec_index(page_ptr2page_index(a_ptr))]
         #![trigger allocator_2m_map.dom().contains(a_ptr)]
@@ -70,10 +86,18 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn allocator_1g_pages_wf(page_array: PageLockedArray, 
-            allocator_1g_map: PageAllocatorUnLockedMap
-            ) -> bool{
-        &&&
+    pub open spec fn allocator_2m_pages_wf(
+        page_array: PageLockedArray,
+        allocator_2m_map: PageAllocatorUnLockedMap,
+    ) -> bool {
+        &&& allocator_2m_pages_forward_wf(page_array, allocator_2m_map)
+        &&& allocator_2m_pages_backward_wf(page_array, allocator_2m_map)
+    }
+
+    pub open spec fn allocator_1g_pages_forward_wf(
+        page_array: PageLockedArray,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index)]
         #![trigger allocator_1g_map.dom().contains(page_index2page_ptr(page_index))]
@@ -82,8 +106,12 @@ verus! {
         (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator})
         ==>
         allocator_1g_map.dom().contains(page_index2page_ptr(page_index))
+    }
 
-        &&&
+    pub open spec fn allocator_1g_pages_backward_wf(
+        page_array: PageLockedArray,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|a_ptr:RwLockPageAllocatorPtr|
         #![trigger page_array.spec_index(page_ptr2page_index(a_ptr))]
         #![trigger allocator_1g_map.dom().contains(a_ptr)]
@@ -96,95 +124,179 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_wf(container_map: ContainerLockedMap, 
-            allocator_4k_map: PageAllocatorUnLockedMap, 
-            allocator_2m_map: PageAllocatorUnLockedMap, 
-            allocator_1g_map: PageAllocatorUnLockedMap
-        ) -> bool {
-        &&&
+    pub open spec fn allocator_1g_pages_wf(
+        page_array: PageLockedArray,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+    ) -> bool {
+        &&& allocator_1g_pages_forward_wf(page_array, allocator_1g_map)
+        &&& allocator_1g_pages_backward_wf(page_array, allocator_1g_map)
+    }
+
+    pub open spec fn container_allocator_4k_forward_wf(
+        container_map: ContainerLockedMap,
+        allocator_4k_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|alloc_ptr:RwLockPageAllocatorPtr,|
-            #![trigger allocator_4k_map.spec_index(alloc_ptr).owning_container]
-            allocator_4k_map.dom().contains(alloc_ptr) 
-            ==>
-            container_map.dom().contains(allocator_4k_map.spec_index(alloc_ptr).owning_container)
-            &&
-            container_map.spec_index(allocator_4k_map.spec_index(alloc_ptr).owning_container).view_rodata().view().allocator_ptr_4k == alloc_ptr
-        &&&
+        #![trigger allocator_4k_map.spec_index(alloc_ptr).owning_container]
+        allocator_4k_map.dom().contains(alloc_ptr)
+        ==>
+        container_map.dom().contains(allocator_4k_map.spec_index(alloc_ptr).owning_container)
+        &&
+        container_map.spec_index(allocator_4k_map.spec_index(alloc_ptr).owning_container)
+            .view_rodata().view().allocator_ptr_4k == alloc_ptr
+    }
+
+    pub open spec fn container_allocator_4k_backward_wf(
+        container_map: ContainerLockedMap,
+        allocator_4k_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|c_ptr:RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k]
-            container_map.dom().contains(c_ptr)
-            ==>
-            allocator_4k_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k)
-            &&
-            allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).owning_container == c_ptr
-            &&
-            allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).quota.view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
-        &&&
+        #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k]
+        container_map.dom().contains(c_ptr)
+        ==>
+        allocator_4k_map.dom().contains(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k)
+        &&
+        allocator_4k_map.spec_index(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k)
+            .owning_container == c_ptr
+        &&
+        allocator_4k_map.spec_index(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k)
+            .quota.view().container_depth
+            == container_map.spec_index(c_ptr).view_rodata().view().depth
+    }
+
+    pub open spec fn container_allocator_2m_forward_wf(
+        container_map: ContainerLockedMap,
+        allocator_2m_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|alloc_ptr:RwLockPageAllocatorPtr,|
-            #![trigger allocator_2m_map.spec_index(alloc_ptr).owning_container]
-            allocator_2m_map.dom().contains(alloc_ptr) 
-            ==>
-            container_map.dom().contains(allocator_2m_map.spec_index(alloc_ptr).owning_container)
-            &&
-            container_map.spec_index(allocator_2m_map.spec_index(alloc_ptr).owning_container).view_rodata().view().allocator_ptr_2m == alloc_ptr
-        &&&
+        #![trigger allocator_2m_map.spec_index(alloc_ptr).owning_container]
+        allocator_2m_map.dom().contains(alloc_ptr)
+        ==>
+        container_map.dom().contains(allocator_2m_map.spec_index(alloc_ptr).owning_container)
+        &&
+        container_map.spec_index(allocator_2m_map.spec_index(alloc_ptr).owning_container)
+            .view_rodata().view().allocator_ptr_2m == alloc_ptr
+    }
+
+    pub open spec fn container_allocator_2m_backward_wf(
+        container_map: ContainerLockedMap,
+        allocator_2m_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|c_ptr:RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
-            container_map.dom().contains(c_ptr)
-            ==>
-            allocator_2m_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m)
-            &&
-            allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).owning_container == c_ptr
-            &&
-            allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
-        &&&
+        #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
+        container_map.dom().contains(c_ptr)
+        ==>
+        allocator_2m_map.dom().contains(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m)
+        &&
+        allocator_2m_map.spec_index(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m)
+            .owning_container == c_ptr
+        &&
+        allocator_2m_map.spec_index(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m)
+            .quota.view().container_depth
+            == container_map.spec_index(c_ptr).view_rodata().view().depth
+    }
+
+    pub open spec fn container_allocator_1g_forward_wf(
+        container_map: ContainerLockedMap,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|alloc_ptr:RwLockPageAllocatorPtr,|
-            #![trigger allocator_1g_map.spec_index(alloc_ptr).owning_container]
-            allocator_1g_map.dom().contains(alloc_ptr) 
-            ==>
-            container_map.dom().contains(allocator_1g_map.spec_index(alloc_ptr).owning_container)
-            &&
-            container_map.spec_index(allocator_1g_map.spec_index(alloc_ptr).owning_container).view_rodata().view().allocator_ptr_1g == alloc_ptr
-        &&&
+        #![trigger allocator_1g_map.spec_index(alloc_ptr).owning_container]
+        allocator_1g_map.dom().contains(alloc_ptr)
+        ==>
+        container_map.dom().contains(allocator_1g_map.spec_index(alloc_ptr).owning_container)
+        &&
+        container_map.spec_index(allocator_1g_map.spec_index(alloc_ptr).owning_container)
+            .view_rodata().view().allocator_ptr_1g == alloc_ptr
+    }
+
+    pub open spec fn container_allocator_1g_backward_wf(
+        container_map: ContainerLockedMap,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+    ) -> bool {
         forall|c_ptr:RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
-            container_map.dom().contains(c_ptr)
-            ==>
-            allocator_1g_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g)
-            &&
-            allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).owning_container == c_ptr
-            &&
-            allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
+        #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
+        container_map.dom().contains(c_ptr)
+        ==>
+        allocator_1g_map.dom().contains(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g)
+        &&
+        allocator_1g_map.spec_index(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g)
+            .owning_container == c_ptr
+        &&
+        allocator_1g_map.spec_index(
+            container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g)
+            .quota.view().container_depth
+            == container_map.spec_index(c_ptr).view_rodata().view().depth
     }
 
     #[verifier::opaque]
-    pub open spec fn container_page_owner_wf(container_map: ContainerLockedMap, 
-            page_array: PageLockedArray
-        ) -> bool {
-        &&&
+    pub open spec fn container_allocator_wf(
+        container_map: ContainerLockedMap,
+        allocator_4k_map: PageAllocatorUnLockedMap,
+        allocator_2m_map: PageAllocatorUnLockedMap,
+        allocator_1g_map: PageAllocatorUnLockedMap,
+    ) -> bool {
+        &&& container_allocator_4k_forward_wf(container_map, allocator_4k_map)
+        &&& container_allocator_4k_backward_wf(container_map, allocator_4k_map)
+        &&& container_allocator_2m_forward_wf(container_map, allocator_2m_map)
+        &&& container_allocator_2m_backward_wf(container_map, allocator_2m_map)
+        &&& container_allocator_1g_forward_wf(container_map, allocator_1g_map)
+        &&& container_allocator_1g_backward_wf(container_map, allocator_1g_map)
+    }
+
+    pub open spec fn container_page_owner_forward_wf(
+        container_map: ContainerLockedMap,
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|c_ptr:RwLockContainerPtr, page_ptr: PagePtr|
-            #![trigger container_map.spec_index(c_ptr).view().owned_pages.view().contains(page_ptr)]
-            container_map.dom().contains(c_ptr) && container_map.spec_index(c_ptr).view().owned_pages.view().contains(page_ptr)
-            ==>
-            page_ptr_valid(page_ptr)
-            &&
-            page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == c_ptr
-        &&&
+        #![trigger container_map.spec_index(c_ptr).view().owned_pages.view().contains(page_ptr)]
+        container_map.dom().contains(c_ptr)
+        && container_map.spec_index(c_ptr).view().owned_pages.view().contains(page_ptr)
+        ==>
+        page_ptr_valid(page_ptr)
+        &&
+        page_array.spec_index(page_ptr2page_index(page_ptr))
+            .view().view().owning_container == c_ptr
+    }
+
+    pub open spec fn container_page_owner_backward_wf(
+        container_map: ContainerLockedMap,
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i: PageIndex|
-            #![trigger page_array.spec_index(p_i).view().view().owning_container]
-            index_valid(NUM_PAGES, p_i)
-            ==>
-            container_map.dom().contains(page_array.spec_index(p_i).view().view().owning_container)
-            &&
-            container_map.spec_index(page_array.spec_index(p_i).view().view().owning_container).view().owned_pages.view().contains(page_index2page_ptr(p_i))
+        #![trigger page_array.spec_index(p_i).view().view().owning_container]
+        index_valid(NUM_PAGES, p_i)
+        ==>
+        container_map.dom().contains(
+            page_array.spec_index(p_i).view().view().owning_container)
+        &&
+        container_map.spec_index(
+            page_array.spec_index(p_i).view().view().owning_container)
+            .view().owned_pages.view().contains(page_index2page_ptr(p_i))
     }
 
     #[verifier::opaque]
-    pub open spec fn container_allocator_global_free_4k_page_wf(
+    pub open spec fn container_page_owner_wf(
+        container_map: ContainerLockedMap,
+        page_array: PageLockedArray,
+    ) -> bool {
+        &&& container_page_owner_forward_wf(container_map, page_array)
+        &&& container_page_owner_backward_wf(container_map, page_array)
+    }
+
+    pub open spec fn container_allocator_global_free_4k_forward_wf(
         allocator_4k_map: PageAllocatorUnLockedMap,
         page_array: PageLockedArray,
     ) -> bool {
-        &&& forall|page_index: PageIndex|
+        forall|page_index: PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
             index_valid(NUM_PAGES, page_index)
             && (page_array.spec_index(page_index).view().view().state matches
@@ -209,7 +321,13 @@ verus! {
                         .view().view().free_list_node_storage.addr())
                     == page_index2page_ptr(page_index)
             }
-        &&& forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
+    }
+
+    pub open spec fn container_allocator_global_free_4k_backward_wf(
+        allocator_4k_map: PageAllocatorUnLockedMap,
+        page_array: PageLockedArray,
+    ) -> bool {
+        forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
             #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
             #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool, page_ptr2page_index(page_ptr)]
             allocator_4k_map.dom().contains(alloc_ptr)
@@ -223,6 +341,17 @@ verus! {
                 && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view()
                     .owning_container
                     == allocator_4k_map.spec_index(alloc_ptr).owning_container
+    }
+
+    #[verifier::opaque]
+    pub open spec fn container_allocator_global_free_4k_page_wf(
+        allocator_4k_map: PageAllocatorUnLockedMap,
+        page_array: PageLockedArray,
+    ) -> bool {
+        &&& container_allocator_global_free_4k_forward_wf(
+            allocator_4k_map, page_array)
+        &&& container_allocator_global_free_4k_backward_wf(
+            allocator_4k_map, page_array)
     }
 
     #[verifier::opaque]
@@ -286,6 +415,8 @@ verus! {
                     == allocator_4k_map.spec_index(alloc_ptr).owning_container
     }
 
+    // Proof dependencies (confirmed for nonfree-page preservation):
+    // page_array_wf, allocator_free_page_ptrs_wf.
     #[verifier::opaque]
     pub open spec fn container_allocator_free_4k_page_wf(
         allocator_4k_map: PageAllocatorUnLockedMap,
@@ -392,6 +523,8 @@ verus! {
                     == allocator_2m_map.spec_index(alloc_ptr).owning_container
     }
 
+    // Proof dependencies (confirmed for nonfree-page preservation):
+    // page_array_wf, allocator_free_page_ptrs_wf.
     #[verifier::opaque]
     pub open spec fn container_allocator_free_2m_page_wf(
         allocator_2m_map: PageAllocatorUnLockedMap,
@@ -498,6 +631,8 @@ verus! {
                     == allocator_1g_map.spec_index(alloc_ptr).owning_container
     }
 
+    // Proof dependencies (confirmed for nonfree-page preservation):
+    // page_array_wf, allocator_free_page_ptrs_wf.
     #[verifier::opaque]
     pub open spec fn container_allocator_free_1g_page_wf(
         allocator_1g_map: PageAllocatorUnLockedMap,

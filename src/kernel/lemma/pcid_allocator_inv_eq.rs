@@ -4,7 +4,7 @@ use crate::kernel::*;
 
 verus! {
 
-pub proof fn lemma_no_change_imply_container_pcid_allocator_wf_forall()
+pub proof fn lemma_container_pcid_allocator_wf_preserved_for_container_invariant_fields_forall()
     ensures
         forall|pre: ContainerLockedMap,
             post: ContainerLockedMap,
@@ -20,7 +20,7 @@ pub proof fn lemma_no_change_imply_container_pcid_allocator_wf_forall()
     reveal(container_pcid_allocator_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_pcid_allocator_wf_for_container_fields_forall()
+pub proof fn lemma_process_pcid_allocator_wf_preserved_for_container_invariant_fields_forall()
     ensures
         forall|pre: ContainerLockedMap,
             post: ContainerLockedMap,
@@ -39,7 +39,7 @@ pub proof fn lemma_no_change_imply_process_pcid_allocator_wf_for_container_field
     reveal(container_process_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_pcid_allocator_wf_forall()
+pub proof fn lemma_process_pcid_allocator_wf_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             pre: ProcessLockedMap,

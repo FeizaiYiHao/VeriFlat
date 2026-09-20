@@ -8,9 +8,6 @@ import sys
 import tempfile
 
 
-CANONICAL_PREFIX = "src/kernel/implementation/syscall_alloc_quota/"
-
-
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -100,8 +97,9 @@ def session_start(event: dict) -> int:
             "hookEventName": "SessionStart",
             "additionalContext": (
                 "VeriFlat style gate is active. Before editing src/**/*.rs, "
-                "read AGENTS.md and mirror the hand-edited "
-                "src/kernel/implementation/syscall_alloc_quota/ directory. "
+                "read AGENTS.md and the matching veriflat-proof skill. Use the "
+                "hand-edited src/kernel/implementation/syscall_alloc_quota/ "
+                "directory as a style reference. "
                 "If this session changes Verus source, Stop will require a "
                 "final style pass over the exact changed files."
             ),
@@ -145,21 +143,13 @@ def stop(event: dict) -> int:
     file_list = "\n".join(f"- {path}" for path in shown)
     if len(changed) > len(shown):
         file_list += f"\n- ... and {len(changed) - len(shown)} more"
-    canonical_changed = any(
-        path.startswith(CANONICAL_PREFIX) for path in changed
-    )
-    canonical_warning = ""
-    if canonical_changed:
-        canonical_warning = (
-            "\nThe canonical syscall_alloc_quota directory changed during "
-            "this session. It is user-owned and must remain byte-identical; "
-            "remove only this session's edits before finishing.\n"
-        )
 
     reason = (
         "Run the required final VeriFlat style pass before finishing. Review "
         "the current forms of the files below against AGENTS.md and the "
-        "hand-edited src/kernel/implementation/syscall_alloc_quota/ directory. "
+        "veriflat-proof style rules, using the hand-edited "
+        "src/kernel/implementation/syscall_alloc_quota/ directory as a style "
+        "reference. "
         "Check compact spec/proof/exec contracts, one-line short assert-by "
         "blocks, no live mutable reference at invariant closure, scoped reveals, triggers, "
         "dead proof scaffolding, and EOF invariant-closure rules. Fix every "
@@ -167,7 +157,7 @@ def stop(event: dict) -> int:
         "during that pass, Stop will request one final pass over the resulting "
         "content; if the content is already clean, finish again without "
         "changing it."
-        f"{canonical_warning}\nSession-changed Verus files:\n{file_list}"
+        f"\nSession-changed Verus files:\n{file_list}"
     )
     emit({"decision": "block", "reason": reason})
     return 0

@@ -67,12 +67,48 @@ impl LockUserVisibilityTrait for Scheduler {
 }
 
 impl Scheduler {
+    pub fn new_boot_root(
+        scheduler_ptr: RwLockSchedulerPtr,
+        owning_container: RwLockContainerPtr,
+        root_thread: RwLockThreadPtr,
+        thread_node_addr: usize,
+        thread_node_perm:
+            Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    ) -> (ret: Self)
+        requires
+            thread_node_perm.view().is_init(),
+            thread_node_perm.view().addr() == thread_node_addr,
+            thread_node_perm.view().value().view() == root_thread,
+        ensures
+            ret.inv(),
+            ret.owning_container == owning_container,
+            ret.queue.view() =~= seq![root_thread],
+            ret.queue.map()
+                =~= Map::<usize, RwLockThreadPtr>::empty()
+                    .insert(thread_node_addr, root_thread),
+            ret.queue.container_depth == Some(0),
+            ret.queue.lock_minor() == scheduler_ptr,
+    {
+        let mut ret = Self::new_empty(
+            scheduler_ptr,
+            owning_container,
+            0,
+        );
+        ret.enqueue_scheduled_thread(
+            root_thread,
+            thread_node_addr,
+            thread_node_perm,
+        );
+        ret
+    }
+
     pub fn new_empty(scheduler_ptr: RwLockSchedulerPtr, owning_container: RwLockContainerPtr, container_depth: usize) -> (ret: Self)
         ensures
             ret.inv(),
             ret.owning_container == owning_container,
             ret.queue.view() == Seq::<RwLockThreadPtr>::empty(),
             ret.queue.map() == Map::<usize, RwLockThreadPtr>::empty(),
+            ret.queue.length == 0,
             ret.queue.container_depth == Some(container_depth),
             ret.queue.lock_minor() == scheduler_ptr,
     {

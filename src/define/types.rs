@@ -358,8 +358,66 @@ pub open spec fn spec_va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaR
         0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_1.view().spec_index(i) != va_range_2.view().spec_index(j)
 }
 
+proof fn spec_va_4k_valid_implies_aligned(va: VAddr)
+    requires
+        spec_va_4k_valid(va),
+    ensures
+        va % 4096 == 0,
+{
+    assert(va & (!MEM_4K_MASK) as usize == 0);
+    assert(va % 4096 == 0) by (bit_vector)
+        requires va & (!MEM_4K_MASK) as usize == 0;
+}
+
+proof fn aligned_difference_mod_4k(x: int, y: int)
+    requires
+        x % 4096 == 0,
+        y % 4096 == 0,
+    ensures
+        (y - x) % 4096 == 0,
+{
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(x, 4096);
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(y, 4096);
+    assert(x == 4096 * (x / 4096));
+    assert(y == 4096 * (y / 4096));
+    vstd::arithmetic::mul::lemma_mul_is_commutative(4096, x / 4096);
+    vstd::arithmetic::mul::lemma_mul_is_commutative(4096, y / 4096);
+    vstd::arithmetic::mul::lemma_mul_is_distributive_sub_other_way(
+        4096,
+        y / 4096,
+        x / 4096,
+    );
+    assert(y - x == (y / 4096 - x / 4096) * 4096);
+    vstd::arithmetic::div_mod::lemma_mod_multiples_basic(
+        y / 4096 - x / 4096,
+        4096,
+    );
+}
+
+proof fn spec_va_add_range_bounds(va: VAddr, index: usize, len: usize)
+    requires
+        index < len,
+        len <= usize::MAX / 4096,
+        va < usize::MAX - len * 4096,
+    ensures
+        va <= spec_va_add_range(va, index),
+        spec_va_add_range(va, index) < va + len * 4096,
+        spec_va_add_range(va, index) as int
+            == va as int + index as int * 4096,
+{
+    reveal(spec_va_add_range);
+    assert(index * 4096 < len * 4096) by (bit_vector)
+        requires
+            index < len,
+            len <= usize::MAX / 4096;
+    assert(va + index * 4096 < usize::MAX) by (bit_vector)
+        requires
+            index < len,
+            len <= usize::MAX / 4096,
+            va < usize::MAX - len * 4096;
+}
+
 #[verifier(when_used_as_spec(spec_va_range_disjoint))]
-#[verifier(external_body)]
 pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret: bool)
     requires
         va_range_1.wf(),
@@ -367,31 +425,141 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
     ensures
         ret == va_range_disjoint(va_range_1, va_range_2),
 {
+    let ret = if va_range_1.len == 0 || va_range_2.len == 0 {
+        true
+    } else if va_range_1.start < va_range_2.start {
+        va_range_1.start + va_range_1.len * 4096 <= va_range_2.start
+    } else {
+        va_range_2.start + va_range_2.len * 4096 <= va_range_1.start
+    };
     proof {
-        va_range_lemma();
+        reveal(spec_va_range_disjoint);
+        reveal(spec_va_add_range);
         va_range_1.va_range_lemma();
         va_range_2.va_range_lemma();
-    }
-    if va_range_1.start > va_range_2.start {
-        if va_range_2.start + va_range_2.len * 4096 < va_range_1.start {
-            assert(forall|i: usize, j: usize|
-                #![auto]
-                0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_2.view().spec_index(j as int)
-                    == va_range_2.start + j * 4096 && va_range_1.view().spec_index(i as int) == va_range_1.start + i
-                    * 4096 && va_range_2.start + j * 4096 < va_range_1.start + i * 4096);
-            return true;
+        spec_va_4k_valid_implies_aligned(va_range_1.start);
+        spec_va_4k_valid_implies_aligned(va_range_2.start);
+        if ret {
+            assert forall|i: int, j: int|
+                0 <= i < va_range_1.len && 0 <= j < va_range_2.len
+                    implies va_range_1.view().spec_index(i)
+                        != va_range_2.view().spec_index(j)
+            by {
+                assert((i as usize) < va_range_1.len);
+                assert((j as usize) < va_range_2.len);
+                assert(i as usize as int == i);
+                assert(j as usize as int == j);
+                spec_va_add_range_bounds(
+                    va_range_1.start,
+                    i as usize,
+                    va_range_1.len,
+                );
+                spec_va_add_range_bounds(
+                    va_range_2.start,
+                    j as usize,
+                    va_range_2.len,
+                );
+                assert(va_range_1.view().spec_index(i)
+                    == spec_va_add_range(va_range_1.start, i as usize));
+                assert(va_range_2.view().spec_index(j)
+                    == spec_va_add_range(va_range_2.start, j as usize));
+                if va_range_1.start < va_range_2.start {
+                    assert(va_range_1.start + va_range_1.len * 4096
+                        <= va_range_2.start);
+                    assert(spec_va_add_range(va_range_1.start, i as usize)
+                        < va_range_1.start + va_range_1.len * 4096);
+                    assert(spec_va_add_range(va_range_1.start, i as usize)
+                        < va_range_2.start);
+                } else {
+                    assert(va_range_2.start + va_range_2.len * 4096
+                        <= va_range_1.start);
+                    assert(spec_va_add_range(va_range_2.start, j as usize)
+                        < va_range_2.start + va_range_2.len * 4096);
+                    assert(spec_va_add_range(va_range_2.start, j as usize)
+                        < va_range_1.start);
+                }
+            };
+        } else if va_range_1.start < va_range_2.start {
+            let delta = va_range_2.start as int - va_range_1.start as int;
+            let page_offset = delta / 4096;
+            aligned_difference_mod_4k(
+                va_range_1.start as int,
+                va_range_2.start as int,
+            );
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(delta, 4096);
+            vstd::arithmetic::div_mod::lemma_multiply_divide_lt(
+                delta,
+                4096,
+                va_range_1.len as int,
+            );
+            assert(0 <= page_offset < va_range_1.len);
+            assert(page_offset as usize as int == page_offset);
+            spec_va_add_range_bounds(
+                va_range_1.start,
+                page_offset as usize,
+                va_range_1.len,
+            );
+            assert(delta == va_range_2.start as int - va_range_1.start as int);
+            assert(delta == 4096 * page_offset);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(page_offset, 4096);
+            assert(page_offset * 4096 == delta);
+            assert(va_range_1.start as int + delta
+                == va_range_2.start as int);
+            assert(va_range_1.start as int + page_offset * 4096
+                == va_range_2.start as int);
+            assert(spec_va_add_range(
+                va_range_1.start,
+                page_offset as usize,
+            ) as int == va_range_1.start as int
+                + (page_offset as usize) as int * 4096);
+            assert(spec_va_add_range(
+                va_range_1.start,
+                page_offset as usize,
+            ) as int == va_range_2.start as int);
+            assert(va_range_1.view().spec_index(page_offset)
+                == va_range_2.view().spec_index(0));
         } else {
-            return false;
-        }
-    } else if va_range_1.start == va_range_2.start {
-        return false;
-    } else {
-        if va_range_1.start + va_range_1.len < va_range_2.start {
-            return true;
-        } else {
-            return false;
+            let delta = va_range_1.start as int - va_range_2.start as int;
+            let page_offset = delta / 4096;
+            aligned_difference_mod_4k(
+                va_range_2.start as int,
+                va_range_1.start as int,
+            );
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(delta, 4096);
+            vstd::arithmetic::div_mod::lemma_multiply_divide_lt(
+                delta,
+                4096,
+                va_range_2.len as int,
+            );
+            assert(0 <= page_offset < va_range_2.len);
+            assert(page_offset as usize as int == page_offset);
+            spec_va_add_range_bounds(
+                va_range_2.start,
+                page_offset as usize,
+                va_range_2.len,
+            );
+            assert(delta == va_range_1.start as int - va_range_2.start as int);
+            assert(delta == 4096 * page_offset);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(page_offset, 4096);
+            assert(page_offset * 4096 == delta);
+            assert(va_range_2.start as int + delta
+                == va_range_1.start as int);
+            assert(va_range_2.start as int + page_offset * 4096
+                == va_range_1.start as int);
+            assert(spec_va_add_range(
+                va_range_2.start,
+                page_offset as usize,
+            ) as int == va_range_2.start as int
+                + (page_offset as usize) as int * 4096);
+            assert(spec_va_add_range(
+                va_range_2.start,
+                page_offset as usize,
+            ) as int == va_range_1.start as int);
+            assert(va_range_2.view().spec_index(page_offset)
+                == va_range_1.view().spec_index(0));
         }
     }
+    ret
 }
 
 impl VaRange4K {
@@ -402,9 +570,7 @@ impl VaRange4K {
             forall|i: usize|
                 0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range(self.start, i),
     {
-        assert(forall|i: usize|
-            0 <= i < self.len ==>
-                self.view().spec_index(i as int) == spec_va_add_range(self.start, i)) by { reveal(VaRange4K::view_match_spec); };
+        reveal(VaRange4K::view_match_spec);
     }
 
     pub closed spec fn view(&self) -> Seq<VAddr> {
@@ -437,9 +603,6 @@ impl VaRange4K {
             ret.wf(),
             ret == (Self { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(va, i as usize))) }),
     {
-        proof {
-            va_range_lemma();
-        }
         let seq = Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(va, i as usize)));
         Self { start: va, len: len, view: seq }
     }

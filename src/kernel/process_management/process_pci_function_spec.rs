@@ -55,22 +55,13 @@ pub proof fn zero_pci_function_ref_counter_implies_no_root_ownership(
             pci_bdf_valid(bus, device, function)
             ==> root_table.spec_index_owner(bus, device, function) != proc_ptr,
 {
-    assert forall|bus: usize, device: usize, function: usize|
-        #![trigger root_table.spec_index_owner(bus, device, function)]
-        pci_bdf_valid(bus, device, function)
-        implies root_table.spec_index_owner(bus, device, function) != proc_ptr
-    by {
+    let owned = process_map.spec_index(proc_ptr).view()
+        .owned_pci_functions.view();
+    assert(owned == Set::<PciBdf>::empty()) by {
         reveal(process_perms_wf);
-        reveal(process_pci_function_ownership_wf);
-        if root_table.spec_index_owner(bus, device, function) == proc_ptr {
-            let owned = process_map.spec_index(proc_ptr).view()
-                .owned_pci_functions.view();
-            vstd::set::lemma_set_contains_len(
-                owned,
-                (bus, device, function),
-            );
-        }
+        owned.lemma_len0_is_empty();
     };
+    reveal(process_pci_function_ownership_wf);
 }
 
 }

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_sets_equal;
 verus! {
 
 use crate::*;
@@ -54,7 +55,7 @@ pub fn page_index2page_ptr(i: usize) -> (ret: usize)
         ret == spec_page_index2page_ptr(i),
 {
     proof {
-        lemma_usize_u64(MAX_USIZE);
+        lemma_u64_to_usize_roundtrip(MAX_USIZE);
     }
     i * 4096usize
 }
@@ -137,16 +138,29 @@ pub open spec fn spec_va_4k_range_valid(va: usize, len: usize) -> bool {
 pub fn va_4k_range_valid(va: usize, len: usize) -> (ret: bool)
     requires
         va_4k_valid(va),
+        len <= usize::MAX / 4096,
+        va < usize::MAX - len * 4096,
     ensures
         spec_va_4k_range_valid(va, len) == ret,
 {
     for idx in iter: 0..len
         invariant
             va_4k_valid(va),
+            len <= usize::MAX / 4096,
+            va < usize::MAX - len * 4096,
             forall|i: usize|
                 #![trigger spec_va_add_range(va, i)]
                 0 <= i < idx ==> spec_va_4k_valid(spec_va_add_range(va, i)),
     {
+        assert(idx <= usize::MAX / 4096) by (bit_vector)
+            requires
+                idx < len,
+                len <= usize::MAX / 4096;
+        assert(va <= usize::MAX - idx * 4096) by (bit_vector)
+            requires
+                idx < len,
+                len <= usize::MAX / 4096,
+                va < usize::MAX - len * 4096;
         if va_4k_valid(va_add_range(va, idx)) == false {
             return false;
         }
@@ -203,6 +217,68 @@ pub open spec fn spec_v2l4index(va: usize) -> L4Index {
     (va >> 39 & 0x1ff) as usize
 }
 
+pub proof fn spec_v2l4index_monotonic(start: VAddr, end: VAddr)
+    requires
+        spec_va_4k_valid(start),
+        spec_va_4k_valid(end),
+        start <= end,
+    ensures
+        spec_v2l4index(start) <= spec_v2l4index(end),
+{
+    assert(spec_v2l4index(start) <= spec_v2l4index(end)) by (bit_vector)
+        requires
+            spec_va_4k_valid(start),
+            spec_va_4k_valid(end),
+            start <= end,
+    ;
+}
+
+pub proof fn spec_index2va_le_implies_4k_indices_lex_le(
+    start: (L4Index, L3Index, L2Index, L1Index),
+    end: (L4Index, L3Index, L2Index, L1Index),
+)
+    requires
+        pei_valid(start.0),
+        pei_valid(start.1),
+        pei_valid(start.2),
+        pei_valid(start.3),
+        pei_valid(end.0),
+        pei_valid(end.1),
+        pei_valid(end.2),
+        pei_valid(end.3),
+        spec_index2va(start) <= spec_index2va(end),
+    ensures
+        start.0 < end.0
+            || (start.0 == end.0
+                && (start.1 < end.1
+                    || (start.1 == end.1
+                        && (start.2 < end.2
+                            || (start.2 == end.2 && start.3 <= end.3))))),
+{
+    let (start_l4i, start_l3i, start_l2i, start_l1i) = start;
+    let (end_l4i, end_l3i, end_l2i, end_l1i) = end;
+    assert(
+        start_l4i < end_l4i
+            || (start_l4i == end_l4i
+                && (start_l3i < end_l3i
+                    || (start_l3i == end_l3i
+                        && (start_l2i < end_l2i
+                            || (start_l2i == end_l2i && start_l1i <= end_l1i)))))
+    ) by (bit_vector)
+        requires
+            pei_valid(start_l4i),
+            pei_valid(start_l3i),
+            pei_valid(start_l2i),
+            pei_valid(start_l1i),
+            pei_valid(end_l4i),
+            pei_valid(end_l3i),
+            pei_valid(end_l2i),
+            pei_valid(end_l1i),
+            spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i))
+                <= spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i)),
+    ;
+}
+
 pub open spec fn spec_va2index(va: usize) -> (L4Index, L3Index, L2Index, L1Index) {
     (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))
 }
@@ -227,6 +303,13 @@ pub open spec fn spec_index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> usize
     (i.0 as usize) << 39 | (i.1 as usize) << 30 | (i.2 as usize) << 21 | (i.3 as usize) << 12
 }
 
+pub proof fn mask_9_bits_le(value: u64)
+    ensures
+        value & 0x1ffu64 <= 0x1ffu64,
+{
+    assert(value & 0x1ffu64 <= 0x1ffu64) by (bit_vector);
+}
+
 pub fn index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> (ret: usize)
     ensures
         ret == spec_index2va(i),
@@ -242,7 +325,9 @@ pub fn v2l1index(va: usize) -> (ret: L1Index)
         ret == spec_v2l1index(va),
         ret <= 0x1ff,
 {
-    assert((va as u64 >> 12u64 & 0x1ffu64) as usize <= 0x1ff) by (bit_vector);
+    proof {
+        mask_9_bits_le(va as u64 >> 12u64);
+    }
     (va as u64 >> 12u64 & 0x1ffu64) as usize
 }
 
@@ -254,7 +339,9 @@ pub fn v2l2index(va: usize) -> (ret: L2Index)
         ret == spec_v2l2index(va),
         ret <= 0x1ff,
 {
-    assert((va as u64 >> 21u64 & 0x1ffu64) as usize <= 0x1ff) by (bit_vector);
+    proof {
+        mask_9_bits_le(va as u64 >> 21u64);
+    }
     (va as u64 >> 21u64 & 0x1ffu64) as usize
 }
 
@@ -266,7 +353,9 @@ pub fn v2l3index(va: usize) -> (ret: L3Index)
         ret == spec_v2l3index(va),
         ret <= 0x1ff,
 {
-    assert((va as u64 >> 30u64 & 0x1ffu64) as usize <= 0x1ff) by (bit_vector);
+    proof {
+        mask_9_bits_le(va as u64 >> 30u64);
+    }
     (va as u64 >> 30u64 & 0x1ffu64) as usize
 }
 
@@ -278,7 +367,9 @@ pub fn v2l4index(va: usize) -> (ret: L4Index)
         ret == spec_v2l4index(va),
         KERNEL_MEM_END_L4INDEX <= ret <= 0x1ff,
 {
-    assert((va as u64 >> 39u64 & 0x1ffu64) as usize <= 0x1ff) by (bit_vector);
+    proof {
+        mask_9_bits_le(va as u64 >> 39u64);
+    }
     (va as u64 >> 39u64 & 0x1ffu64) as usize
 }
 
@@ -286,9 +377,9 @@ pub fn va21gindex(va: usize) -> (ret: (L4Index, L3Index))
     requires
         va_4k_valid(va) || va_2m_valid(va) || va_1g_valid(va),
     ensures
-        ret.0 == spec_v2l4index(va) && KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
-        ret.1 == spec_v2l3index(va) && ret.1 <= 0x1ff,
         ret == spec_va21gindex(va),
+        KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
+        ret.1 <= 0x1ff,
 {
     (v2l4index(va), v2l3index(va))
 }
@@ -297,10 +388,10 @@ pub fn va22mindex(va: usize) -> (ret: (L4Index, L3Index, L2Index))
     requires
         va_4k_valid(va) || va_2m_valid(va) || va_1g_valid(va),
     ensures
-        ret.0 == spec_v2l4index(va) && KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
-        ret.1 == spec_v2l3index(va) && ret.1 <= 0x1ff,
-        ret.2 == spec_v2l2index(va) && ret.2 <= 0x1ff,
         ret == spec_va22mindex(va),
+        KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
+        ret.1 <= 0x1ff,
+        ret.2 <= 0x1ff,
 {
     (v2l4index(va), v2l3index(va), v2l2index(va))
 }
@@ -309,11 +400,11 @@ pub fn va2index(va: usize) -> (ret: (L4Index, L3Index, L2Index, L1Index))
     requires
         va_4k_valid(va) || va_2m_valid(va) || va_1g_valid(va),
     ensures
-        ret.0 == spec_v2l4index(va) && KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
-        ret.1 == spec_v2l3index(va) && ret.1 <= 0x1ff,
-        ret.2 == spec_v2l2index(va) && ret.2 <= 0x1ff,
-        ret.3 == spec_v2l1index(va) && ret.3 <= 0x1ff,
         ret == spec_va2index(va),
+        KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
+        ret.1 <= 0x1ff,
+        ret.2 <= 0x1ff,
+        ret.3 <= 0x1ff,
 {
     (v2l4index(va), v2l3index(va), v2l2index(va), v2l1index(va))
 }
@@ -322,30 +413,49 @@ pub open spec fn spec_va_add_range(va: usize, i: usize) -> usize {
     (va + (i * 4096)) as usize
 }
 
-#[verifier(external_body)]
 pub fn va_add_range(va: usize, i: usize) -> (ret: usize)
+    requires
+        i <= usize::MAX / 4096,
+        va <= usize::MAX - i * 4096,
     ensures
         ret == spec_va_add_range(va, i),
 {
     (va + (i * 4096)) as usize
 }
 
-// Arithmetic injectivity is only valid for a range whose byte span and end
-// address do not wrap.  Keep those hypotheses on the quantified theorem so it
-// cannot be used to manufacture distinct addresses from an overflowing range.
-#[verifier(external_body)]
-pub proof fn va_range_lemma()
+// Arithmetic injectivity is only valid while the byte span does not wrap.
+pub proof fn va_range_lemma(va: VAddr, len: usize, i: usize, j: usize)
+    requires
+        len <= usize::MAX / 4096,
+        va < usize::MAX - len * 4096,
+        i < len,
+        j < len,
     ensures
-        forall|va: VAddr, len: usize, i: usize, j: usize|
-            #![trigger spec_va_4k_range_valid(va,len), spec_va_add_range(va, i), spec_va_add_range(va, j)]
-            va_4k_valid(va)
-            && spec_va_4k_range_valid(va, len)
-            && len <= usize::MAX / 4096
-            && va < usize::MAX - len * 4096
-            && 0 <= i < len
-            && 0 <= j < len ==> (
-            (i == j) == (spec_va_add_range(va, i) == spec_va_add_range(va, j))),
+        (i == j) == (spec_va_add_range(va, i) == spec_va_add_range(va, j)),
 {
+    reveal(spec_va_add_range);
+    assert(spec_va_add_range(va, i) as int == va as int + i as int * 4096) by (bit_vector)
+        requires
+            i < len,
+            len <= usize::MAX / 4096,
+            va < usize::MAX - len * 4096;
+    assert(spec_va_add_range(va, j) as int == va as int + j as int * 4096) by (bit_vector)
+        requires
+            j < len,
+            len <= usize::MAX / 4096,
+            va < usize::MAX - len * 4096;
+    if spec_va_add_range(va, i) == spec_va_add_range(va, j) {
+        assert(spec_va_add_range(va, i) as int == spec_va_add_range(va, j) as int);
+        assert(i as int * 4096 == j as int * 4096);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(i as int, 4096);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(j as int, 4096);
+        vstd::arithmetic::mul::lemma_mul_equality_converse(
+            4096,
+            i as int,
+            j as int,
+        );
+        assert(i == j);
+    }
 }
 
 pub proof fn page_ptr_valid_imply_page_index_valid()
@@ -364,15 +474,6 @@ pub proof fn page_index_valid_imply_page_ptr_valid()
             #![trigger page_index2page_ptr(i)]
             index_valid(NUM_PAGES, i) ==> page_ptr_valid(page_index2page_ptr(i)),
 {
-    assert forall|i: usize| #[trigger] index_valid(NUM_PAGES, i)
-        implies page_ptr_valid(page_index2page_ptr(i)) by {
-        let ptr = (i * 4096) as usize;
-        assert(ptr == i * 4096);
-        assert(ptr % 4096 == 0) by (nonlinear_arith)
-            requires ptr == i * 4096;
-        assert(ptr / 4096 == i) by (nonlinear_arith)
-            requires ptr == i * 4096;
-    }
 }
 
 pub proof fn page_ptr_roundtrip()
@@ -382,11 +483,6 @@ pub proof fn page_ptr_roundtrip()
             #![trigger page_ptr2page_index(pa)]
             page_ptr_valid(pa) ==> pa == page_index2page_ptr(page_ptr2page_index(pa)),
 {
-    assert forall|pa: PagePtr| #[trigger] page_ptr_valid(pa) implies pa == page_index2page_ptr(page_ptr2page_index(pa)) by {
-        let i = (pa / 4096usize) as usize;
-        assert(i * 4096 == pa) by (nonlinear_arith)
-            requires pa % 4096 == 0, i == pa / 4096;
-    }
 }
 
 pub proof fn page_index_roundtrip()
@@ -396,11 +492,6 @@ pub proof fn page_index_roundtrip()
             #![trigger page_index2page_ptr(i)]
             index_valid(NUM_PAGES, i) ==> i == page_ptr2page_index(page_index2page_ptr(i)),
 {
-    assert forall|i: usize| #[trigger] index_valid(NUM_PAGES, i) implies i == page_ptr2page_index(page_index2page_ptr(i)) by {
-        let p = (i * 4096usize) as usize;
-        assert(p / 4096 == i) by (nonlinear_arith)
-            requires p == i * 4096;
-    }
 }
 
 pub proof fn page_ptr2page_index_injective()
@@ -410,21 +501,99 @@ pub proof fn page_ptr2page_index_injective()
             page_ptr_valid(pi) && page_ptr_valid(pj) && pi != pj ==> page_ptr2page_index(pi)
                 != page_ptr2page_index(pj),
 {
-    assert forall|pi: usize, pj: usize|
-        page_ptr_valid(pi) && page_ptr_valid(pj) && pi != pj implies
-        #[trigger] page_ptr2page_index(pi) != #[trigger] page_ptr2page_index(pj) by {
-        let i = (pi / 4096usize) as usize;
-        let j = (pj / 4096usize) as usize;
-        assert(i * 4096 == pi) by (nonlinear_arith)
-            requires pi % 4096 == 0, i == pi / 4096;
-        assert(j * 4096 == pj) by (nonlinear_arith)
-            requires pj % 4096 == 0, j == pj / 4096;
+}
+
+pub proof fn page_ptr2page_index_neq(left: PagePtr, right: PagePtr)
+    requires
+        page_ptr_valid(left),
+        page_ptr_valid(right),
+        left != right,
+    ensures
+        page_ptr2page_index(left) != page_ptr2page_index(right),
+{
+    page_ptr2page_index_injective();
+}
+
+pub proof fn page_ptr_seq_indices_no_duplicates(pages: Seq<PagePtr>)
+    requires
+        pages.no_duplicates(),
+        forall|i: int|
+            #![trigger page_ptr_valid(pages.spec_index(i))]
+            0 <= i < pages.len() ==> page_ptr_valid(pages.spec_index(i)),
+    ensures
+        pages.map_values(
+            |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+        ).no_duplicates(),
+{
+    let indices = pages.map_values(
+        |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+    );
+    assert forall|i: int, j: int|
+        0 <= i < j < indices.len()
+        implies indices.spec_index(i) != indices.spec_index(j)
+    by {
+        assert(pages.spec_index(i) != pages.spec_index(j)) by {
+            reveal(Seq::no_duplicates);
+        };
+        page_ptr2page_index_neq(pages.spec_index(i), pages.spec_index(j));
+        reveal(Seq::map_values);
+    };
+    reveal(Seq::no_duplicates);
+}
+
+pub proof fn page_ptr_seq_indices_excludes_page(
+    pages: Seq<PagePtr>,
+    excluded_page: PagePtr,
+)
+    requires
+        page_ptr_valid(excluded_page),
+        forall|i: int|
+            #![trigger page_ptr_valid(pages.spec_index(i))]
+            0 <= i < pages.len()
+                ==> page_ptr_valid(pages.spec_index(i)),
+        !pages.to_set().contains(excluded_page),
+    ensures
+        !pages.map_values(
+            |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+        ).to_set().contains(page_ptr2page_index(excluded_page)),
+{
+    pages.to_set_ensures();
+    reveal(Seq::contains);
+    let page_ptr_set = pages.to_set();
+    let mapped = pages.map_values(
+        |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+    ).to_set();
+    let mapped_by = page_ptr_set.map_by(
+        |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+        |index: PageIndex| spec_page_index2page_ptr(index),
+    );
+    assert(mapped =~= mapped_by) by {
+        broadcast use Seq::lemma_to_set_map_commutes;
+        page_ptr_roundtrip();
+        assert_sets_equal!(mapped == mapped_by, index => {
+            page_ptr_set.lemma_map_contains(
+                |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+                index,
+            );
+            page_ptr_set.lemma_map_by_contains(
+                |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+                |index: PageIndex| spec_page_index2page_ptr(index),
+                index,
+            );
+        });
+    };
+    if mapped.contains(page_ptr2page_index(excluded_page)) {
+        page_ptr_set.lemma_map_by_contains(
+            |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
+            |index: PageIndex| spec_page_index2page_ptr(index),
+            page_ptr2page_index(excluded_page),
+        );
+        page_ptr_roundtrip();
     }
 }
 
 // Keep each trusted VA/index fact in its own lemma so callers import only the
 // quantifier and trigger needed by the assertion currently being proved.
-#[verifier(external_body)]
 pub proof fn spec_va_4k_valid_imply_indices_valid()
     ensures
         forall|va: VAddr|
@@ -435,9 +604,24 @@ pub proof fn spec_va_4k_valid_imply_indices_valid()
             spec_va_4k_valid(va) ==> pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va))
                 && pei_valid(spec_v2l2index(va)) && pei_valid(spec_v2l1index(va)),
 {
+    assert forall|va: VAddr|
+        #![trigger spec_va_4k_valid(va), spec_v2l4index(va)]
+        #![trigger spec_va_4k_valid(va), spec_v2l3index(va)]
+        #![trigger spec_va_4k_valid(va), spec_v2l2index(va)]
+        #![trigger spec_va_4k_valid(va), spec_v2l1index(va)]
+        spec_va_4k_valid(va) implies
+            pei_valid(spec_v2l4index(va))
+            && pei_valid(spec_v2l3index(va))
+            && pei_valid(spec_v2l2index(va))
+            && pei_valid(spec_v2l1index(va))
+    by {
+        assert(spec_v2l4index(va) < 512) by (bit_vector);
+        assert(spec_v2l3index(va) < 512) by (bit_vector);
+        assert(spec_v2l2index(va) < 512) by (bit_vector);
+        assert(spec_v2l1index(va) < 512) by (bit_vector);
+    };
 }
 
-#[verifier(external_body)]
 pub proof fn spec_index2va_injective()
     ensures
         forall|
@@ -459,17 +643,95 @@ pub proof fn spec_index2va_injective()
             ==
             ((l4i, l3i, l2i, l1i) =~= (l4j, l3j, l2j, l1j)),
 {
+    assert forall|
+        l4i: L4Index,
+        l3i: L3Index,
+        l2i: L2Index,
+        l1i: L1Index,
+        l4j: L4Index,
+        l3j: L3Index,
+        l2j: L2Index,
+        l1j: L1Index,
+    |
+        #![trigger spec_index2va((l4i,l3i,l2i,l1i)), spec_index2va((l4j,l3j,l2j,l1j))]
+        pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
+        &&
+        pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j)
+        implies
+        (spec_index2va((l4i, l3i, l2i, l1i))
+            == spec_index2va((l4j, l3j, l2j, l1j)))
+        ==
+        ((l4i, l3i, l2i, l1i) =~= (l4j, l3j, l2j, l1j))
+    by {
+        assert(
+            ((l4i, l3i, l2i, l1i) =~= (l4j, l3j, l2j, l1j))
+            ==
+            (l4i == l4j && l3i == l3j && l2i == l2j && l1i == l1j)
+        );
+        assert(
+            (spec_index2va((l4i, l3i, l2i, l1i))
+                == spec_index2va((l4j, l3j, l2j, l1j)))
+            ==
+            (l4i == l4j && l3i == l3j && l2i == l2j && l1i == l1j)
+        ) by (bit_vector)
+            requires
+                pei_valid(l4i),
+                pei_valid(l3i),
+                pei_valid(l2i),
+                pei_valid(l1i),
+                pei_valid(l4j),
+                pei_valid(l3j),
+                pei_valid(l2j),
+                pei_valid(l1j);
+        assert(
+            (spec_index2va((l4i, l3i, l2i, l1i))
+                == spec_index2va((l4j, l3j, l2j, l1j)))
+            ==
+            ((l4i, l3i, l2i, l1i) =~= (l4j, l3j, l2j, l1j))
+        );
+    };
 }
 
-#[verifier(external_body)]
-pub proof fn spec_va_4k_index_roundtrip()
+pub broadcast proof fn spec_va_4k_index_roundtrip_at(
+    va: VAddr,
+    l4i: L4Index,
+    l3i: L3Index,
+    l2i: L2Index,
+    l1i: L1Index,
+)
     ensures
-        forall|va: VAddr, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger spec_index2va((l4i,l3i,l2i,l1i)), spec_va2index(va)]
-            va_4k_valid(va) && spec_va2index(va) == (l4i, l3i, l2i, l1i) <==> KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_index2va(
-                (l4i, l3i, l2i, l1i),
-            ) == va,
+        va_4k_valid(va)
+            && #[trigger] spec_va2index(va) == (l4i, l3i, l2i, l1i)
+        <==>
+        KERNEL_MEM_END_L4INDEX <= l4i
+            && pei_valid(l4i)
+            && pei_valid(l3i)
+            && pei_valid(l2i)
+            && pei_valid(l1i)
+            && #[trigger] spec_index2va((l4i, l3i, l2i, l1i)) == va,
 {
+    assert(
+        (spec_va2index(va) == (l4i, l3i, l2i, l1i))
+        ==
+        (spec_v2l4index(va) == l4i
+            && spec_v2l3index(va) == l3i
+            && spec_v2l2index(va) == l2i
+            && spec_v2l1index(va) == l1i)
+    );
+    assert(
+        spec_va_4k_valid(va)
+            && spec_v2l4index(va) == l4i
+            && spec_v2l3index(va) == l3i
+            && spec_v2l2index(va) == l2i
+            && spec_v2l1index(va) == l1i
+        <==>
+        KERNEL_MEM_END_L4INDEX <= l4i
+            && pei_valid(l4i)
+            && pei_valid(l3i)
+            && pei_valid(l2i)
+            && pei_valid(l1i)
+            && spec_index2va((l4i, l3i, l2i, l1i)) == va
+    ) by (bit_vector);
 }
 
 } // verus!

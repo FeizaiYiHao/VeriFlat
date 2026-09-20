@@ -38,7 +38,15 @@ impl<T> ExternalNode<T>{
         ensures
             ret.is_init(),
     {
-        unimplemented!()
+        Self {
+            storage: Node {
+                value,
+                next: None,
+                prev: None,
+            },
+            is_init: Ghost(true),
+            addr: Ghost(0),
+        }
     }
 
     #[verifier(when_used_as_spec(spec_addr))]

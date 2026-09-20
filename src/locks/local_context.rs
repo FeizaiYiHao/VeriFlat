@@ -1,8 +1,9 @@
 use vstd::prelude::*;
+use vstd::assert_sets_equal;
 use crate::*;
 
 verus! {
-pub ghost enum LCtxtLockState {
+pub tracked enum LCtxtLockState {
     Acquire,
     Release,
 }
@@ -41,28 +42,81 @@ pub open spec fn typed_lock_map_contains_mode<K>(
 /// lock. If a held object's dynamic ordering id changes during Release, the
 /// corresponding pair is replaced explicitly by `update_lock_id`.
 pub tracked struct LocalContext {
-    thread_id: LockThreadId,
-    cpu_id: CpuId,
-    page_lock_map: Map<PageIndex, TypedHeldLock>,
-    cpu_lock_map: Map<CpuId, TypedHeldLock>,
-    pcid_needflush_lock_map: Map<(CpuId, Pcid), TypedHeldLock>,
-    container_lock_map: Map<RwLockContainerPtr, TypedHeldLock>,
-    process_lock_map: Map<RwLockProcessPtr, TypedHeldLock>,
-    thread_lock_map: Map<RwLockThreadPtr, TypedHeldLock>,
-    endpoint_lock_map: Map<RwLockEndpointPtr, TypedHeldLock>,
-    scheduler_lock_map: Map<RwLockSchedulerPtr, TypedHeldLock>,
-    pcid_allocator_lock_map: Map<RwLockPcidAllocatorPtr, TypedHeldLock>,
-    cpu_set_lock_map: Map<RwLockCpuSetPtr, TypedHeldLock>,
-    pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
-    iommu_table_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
-    allocator_4k_lock_maps: AllocatorLockMaps,
-    allocator_2m_lock_maps: AllocatorLockMaps,
-    allocator_1g_lock_maps: AllocatorLockMaps,
-    lock_id_set: Set<HeldLock>,
+    ghost thread_id: LockThreadId,
+    ghost cpu_id: CpuId,
+    ghost page_lock_map: Map<PageIndex, TypedHeldLock>,
+    ghost cpu_lock_map: Map<CpuId, TypedHeldLock>,
+    ghost pcid_needflush_lock_map: Map<(CpuId, Pcid), TypedHeldLock>,
+    ghost container_lock_map: Map<RwLockContainerPtr, TypedHeldLock>,
+    ghost process_lock_map: Map<RwLockProcessPtr, TypedHeldLock>,
+    ghost thread_lock_map: Map<RwLockThreadPtr, TypedHeldLock>,
+    ghost endpoint_lock_map: Map<RwLockEndpointPtr, TypedHeldLock>,
+    ghost scheduler_lock_map: Map<RwLockSchedulerPtr, TypedHeldLock>,
+    ghost pcid_allocator_lock_map: Map<RwLockPcidAllocatorPtr, TypedHeldLock>,
+    ghost cpu_set_lock_map: Map<RwLockCpuSetPtr, TypedHeldLock>,
+    ghost pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
+    ghost iommu_table_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
+    ghost allocator_4k_lock_maps: AllocatorLockMaps,
+    ghost allocator_2m_lock_maps: AllocatorLockMaps,
+    ghost allocator_1g_lock_maps: AllocatorLockMaps,
+    ghost lock_id_set: Set<HeldLock>,
     state: LCtxtState,
 }
 
 impl LocalContext {
+    pub proof fn new_bootstrap(cpu_id: CpuId, thread_id: LockThreadId) -> (tracked ret: Self)
+        requires
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            ret.cpu_id() == cpu_id,
+            ret.thread_id() == thread_id,
+            ret.kernel_view_locking_state() is Acquire,
+            ret.no_locks_held(),
+            ret.lock_id_set() =~= Set::<HeldLock>::empty(),
+            lock_id_set_aligned(&ret),
+    {
+        let tracked state = LCtxtState {
+            kernel_view_locking_state: LCtxtLockState::Acquire,
+        };
+        let tracked ret = LocalContext {
+            thread_id,
+            cpu_id,
+            page_lock_map: Map::empty(),
+            cpu_lock_map: Map::empty(),
+            pcid_needflush_lock_map: Map::empty(),
+            container_lock_map: Map::empty(),
+            process_lock_map: Map::empty(),
+            thread_lock_map: Map::empty(),
+            endpoint_lock_map: Map::empty(),
+            scheduler_lock_map: Map::empty(),
+            pcid_allocator_lock_map: Map::empty(),
+            cpu_set_lock_map: Map::empty(),
+            pagetable_lock_map: Map::empty(),
+            iommu_table_lock_map: Map::empty(),
+            allocator_4k_lock_maps: AllocatorLockMaps {
+                quota: Map::empty(),
+                cache: Map::empty(),
+                global_pool: Map::empty(),
+            },
+            allocator_2m_lock_maps: AllocatorLockMaps {
+                quota: Map::empty(),
+                cache: Map::empty(),
+                global_pool: Map::empty(),
+            },
+            allocator_1g_lock_maps: AllocatorLockMaps {
+                quota: Map::empty(),
+                cache: Map::empty(),
+                global_pool: Map::empty(),
+            },
+            lock_id_set: Set::empty(),
+            state,
+        };
+        assert(lock_id_set_aligned(&ret)) by {
+            reveal(lock_id_set_aligned);
+        }
+        ret
+    }
+
     /// The executing CPU, fixed for this kernel execution; must be bound at entry.
     pub closed spec fn cpu_id(&self) -> CpuId {
         self.cpu_id
@@ -250,15 +304,15 @@ impl LocalContext {
                 if self.allocator_cache_1g_lock_map().dom().contains((ptr, cpu_id)) {
                     Some(self.allocator_cache_1g_lock_map().index((ptr, cpu_id)))
                 } else { None },
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, ptr) =>
+            KernelObjId::AllocatorGlobalPool(PageSize::SZ4k, ptr) =>
                 if self.allocator_global_pool_4k_lock_map().dom().contains(ptr) {
                     Some(self.allocator_global_pool_4k_lock_map().index(ptr))
                 } else { None },
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, ptr) =>
+            KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, ptr) =>
                 if self.allocator_global_pool_2m_lock_map().dom().contains(ptr) {
                     Some(self.allocator_global_pool_2m_lock_map().index(ptr))
                 } else { None },
-            KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, ptr) =>
+            KernelObjId::AllocatorGlobalPool(PageSize::SZ1g, ptr) =>
                 if self.allocator_global_pool_1g_lock_map().dom().contains(ptr) {
                     Some(self.allocator_global_pool_1g_lock_map().index(ptr))
                 } else { None },
@@ -516,7 +570,7 @@ pub open spec fn typed_lock_maps_inserted(
         _ => old.allocator_cache_4k_lock_map(),
     }
     &&& new.allocator_global_pool_4k_lock_map() == match obj_id {
-        KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, ptr) => old.allocator_global_pool_4k_lock_map().insert(ptr, entry),
+        KernelObjId::AllocatorGlobalPool(PageSize::SZ4k, ptr) => old.allocator_global_pool_4k_lock_map().insert(ptr, entry),
         _ => old.allocator_global_pool_4k_lock_map(),
     }
     &&& new.allocator_2m_lock_maps() == match obj_id {
@@ -530,7 +584,7 @@ pub open spec fn typed_lock_maps_inserted(
             cache: old.allocator_cache_2m_lock_map().insert((ptr, cpu_id), entry),
             global_pool: old.allocator_global_pool_2m_lock_map(),
         },
-        KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, ptr) => AllocatorLockMaps {
+        KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, ptr) => AllocatorLockMaps {
             quota: old.allocator_quota_2m_lock_map(),
             cache: old.allocator_cache_2m_lock_map(),
             global_pool: old.allocator_global_pool_2m_lock_map().insert(ptr, entry),
@@ -548,7 +602,7 @@ pub open spec fn typed_lock_maps_inserted(
             cache: old.allocator_cache_1g_lock_map().insert((ptr, cpu_id), entry),
             global_pool: old.allocator_global_pool_1g_lock_map(),
         },
-        KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, ptr) => AllocatorLockMaps {
+        KernelObjId::AllocatorGlobalPool(PageSize::SZ1g, ptr) => AllocatorLockMaps {
             quota: old.allocator_quota_1g_lock_map(),
             cache: old.allocator_cache_1g_lock_map(),
             global_pool: old.allocator_global_pool_1g_lock_map().insert(ptr, entry),
@@ -574,13 +628,27 @@ pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
     ensures
         new.held_lock_majors_lt(major),
 {
-    if !new.held_lock_majors_lt(major) {
-        let held = choose|held: HeldLock| #![auto] new.lock_id_set().contains(held) && held.0.major >= major;
-        match old.typed_lock_entry(held.1) {
-            Some(old_entry) => { assert(new.typed_lock_entry(held.1) == Some(old_entry) && held.0.major < major) by { reveal(lock_id_set_aligned); }; },
-            None => { assert(new.typed_lock_entry(held.1) == Some(entry) && held.0.major < major) by { reveal(lock_id_set_aligned); }; },
-        }
-    }
+    let inserted = old.lock_id_set().insert((entry.lock_id, obj_id));
+    assert(new.lock_id_set() =~= inserted) by {
+        assert_sets_equal!(
+            new.lock_id_set() == inserted,
+            held => {
+                reveal(lock_id_set_aligned);
+                if held.1 == obj_id {
+                    match old.typed_lock_entry(held.1) {
+                        Some(_) => {},
+                        None => {},
+                    }
+                } else {
+                    match old.typed_lock_entry(held.1) {
+                        Some(_) => {},
+                        None => {},
+                    }
+                }
+            }
+        );
+    };
+    reveal(LocalContext::held_lock_majors_lt);
 }
 
 pub broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
@@ -674,7 +742,7 @@ pub open spec fn typed_lock_maps_removed(
         _ => old.allocator_cache_4k_lock_map(),
     }
     &&& new.allocator_global_pool_4k_lock_map() == match obj_id {
-        KernelObjId::AllocatorGlobalPoll(PageSize::SZ4k, ptr) => old.allocator_global_pool_4k_lock_map().remove(ptr),
+        KernelObjId::AllocatorGlobalPool(PageSize::SZ4k, ptr) => old.allocator_global_pool_4k_lock_map().remove(ptr),
         _ => old.allocator_global_pool_4k_lock_map(),
     }
     &&& new.allocator_2m_lock_maps() == match obj_id {
@@ -688,7 +756,7 @@ pub open spec fn typed_lock_maps_removed(
             cache: old.allocator_cache_2m_lock_map().remove((ptr, cpu_id)),
             global_pool: old.allocator_global_pool_2m_lock_map(),
         },
-        KernelObjId::AllocatorGlobalPoll(PageSize::SZ2m, ptr) => AllocatorLockMaps {
+        KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, ptr) => AllocatorLockMaps {
             quota: old.allocator_quota_2m_lock_map(),
             cache: old.allocator_cache_2m_lock_map(),
             global_pool: old.allocator_global_pool_2m_lock_map().remove(ptr),
@@ -706,7 +774,7 @@ pub open spec fn typed_lock_maps_removed(
             cache: old.allocator_cache_1g_lock_map().remove((ptr, cpu_id)),
             global_pool: old.allocator_global_pool_1g_lock_map(),
         },
-        KernelObjId::AllocatorGlobalPoll(PageSize::SZ1g, ptr) => AllocatorLockMaps {
+        KernelObjId::AllocatorGlobalPool(PageSize::SZ1g, ptr) => AllocatorLockMaps {
             quota: old.allocator_quota_1g_lock_map(),
             cache: old.allocator_cache_1g_lock_map(),
             global_pool: old.allocator_global_pool_1g_lock_map().remove(ptr),

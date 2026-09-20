@@ -150,14 +150,11 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(
     ensures
         page_pagetable_wf(new_pagetable_map, new_page_array),
 {
-    assert(page_pagetable_wf(new_pagetable_map, new_page_array)) by {
- 
-        reveal(mapped_4k_page_pagetable_wf);
-        reveal(mapped_2m_page_pagetable_wf);
-        reveal(mapped_1g_page_pagetable_wf);
-        reveal(pagetable_perms_wf);
-        page_ptr_valid_imply_page_index_valid();
-    };
+    reveal(mapped_4k_page_pagetable_wf);
+    reveal(mapped_2m_page_pagetable_wf);
+    reveal(mapped_1g_page_pagetable_wf);
+    reveal(pagetable_perms_wf);
+    page_ptr_valid_imply_page_index_valid();
 }
 
 }

@@ -10,6 +10,16 @@ impl CpuCr3Pcid {
     pub(super) closed spec fn cr3(&self) -> PageTableRoot { self.hardware.view().0 }
     pub(super) closed spec fn pcid(&self) -> Pcid { self.hardware.view().1 }
 
+    pub(super) fn new(cr3: PageTableRoot, pcid: Pcid) -> (ret: Self)
+        ensures
+            ret.cr3() == cr3,
+            ret.pcid() == pcid,
+    {
+        Self {
+            hardware: Ghost((cr3, pcid)),
+        }
+    }
+
     pub(super) fn flush_current(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(tlb).inv(),

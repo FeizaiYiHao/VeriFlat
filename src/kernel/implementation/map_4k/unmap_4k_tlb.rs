@@ -39,7 +39,13 @@ pub fn mark_pcid_needflush_and_load(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pci
 {
     krnl.mark_pcid_needflush(cpu_id, pcid, Tracked(&*lctx), needflush_perm);
     assert(krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid)) by { reveal(pcid_needflush_wf); };
-    krnl.load_published_pcid_cr3(cpu_id, Tracked(&mut *lctx))
+    let ret = krnl.load_published_pcid_cr3(cpu_id, Tracked(&mut *lctx));
+    proof {
+        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
+        };
+    }
+    ret
 }
 pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, needflush_perm: Tracked<&LockPerm>)
     requires
@@ -75,6 +81,9 @@ pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid
     entry.set(false);
     proof {
         assert(krnl.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
+        };
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
         assert(typed_lock_maps_aligned(krnl, lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };

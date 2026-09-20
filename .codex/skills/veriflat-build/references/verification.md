@@ -20,9 +20,16 @@
   independently hot/cold; a fully cached no-op is not a benchmark.
 - Typecheck first, then verify the smallest function/module/package. Completed
   cross-crate work requires full workspace and 32-thread monolith checks.
-- Treat >50 seconds as suspicious. Performance reports include Rust, VIR,
-  verification, SMT, wall, and rlimit under identical cache/thread scope.
-  Rlimit alone does not determine proof speed.
+- Use `--time-expanded` to inspect equation-level cost. A structurally large
+  equation may justify a higher `--rlimit` or `#[verifier::rlimit]`; high rlimit
+  alone does not determine proof quality or speed. Measure the uncapped cost,
+  report the old and new ceilings, and use the smallest practical ceiling.
+- Any single verification equation exceeding 10 seconds of SMT time is
+  abnormal. Diagnose accumulated context, producer/trigger shape, quantifier
+  expansion, and proof boundaries; simplify, isolate, or split the equation
+  before handoff. Do not use a higher rlimit to excuse a >10-second equation.
+  Performance reports include Rust, VIR, verification, SMT, wall, and rlimit
+  under identical cache/thread scope.
 - For comparisons, freeze the source versions and keep the binary, arguments,
   threads, source path, and artifact reuse equivalent; disclose unavoidable
   differences. Interleave baseline/candidate runs, include every sample in the
@@ -46,6 +53,7 @@
 - Before handoff run `git diff --check` and a style audit only on files changed
   in this session. Check bare/empty asserts, `assert forall`, loose reveals,
   assumes, dead ghosts, duplicate reveals, and new wrappers. Exclude pre-existing
-  dirty files and the canonical `syscall_alloc_quota/` directory.
+  dirty files. Use the hand-edited `syscall_alloc_quota/` directory as a style
+  reference, not as an immutable or excluded path.
 - The Codex hooks in `.codex/hooks.json` enforce a session-level two-pass
   reminder/gate for changed Rust files; they do not certify proof correctness.

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-pub proof fn thread_endpoint_no_change_imply_memory_management_inv(pre: KernelK, post: KernelK)
+pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
         container_thread_wf(pre.ctn_mp, pre.thr_mp),
@@ -36,9 +36,9 @@ pub proof fn thread_endpoint_no_change_imply_memory_management_inv(pre: KernelK,
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
     assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
-        thread_staged_pages_4k_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_2m_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_1g_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
     };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);

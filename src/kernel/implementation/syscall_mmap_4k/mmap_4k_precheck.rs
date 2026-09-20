@@ -4,74 +4,43 @@ use crate::*;
 
 verus! {
 
-/// Result of the two checks that precede PageTable construction for mmap(4K).
+/// Result of the PageTable checks that precede construction for mmap(4K).
 pub(super) enum Mmap4kPrecheck {
     Ready,
-    NoQuota,
     Invalid,
     InUse,
 }
 
-    /// Check the conservative `4 * range.len` quota bound first, then check
-    /// the entire inclusive VA interval for existing abstract 4K mappings.
-    /// No krnl or LocalContext state changes.
+    /// Check the entire inclusive VA interval for existing abstract 4K
+    /// mappings. No krnl or LocalContext state changes.
     pub(super) fn mmap_4k_precheck(
         krnl: &KernelK,
         range: &VaRange4K,
-        thread_ptr: RwLockThreadPtr,
         pagetable_ptr: RwLockPageTableRoot,
         Tracked(lctx): Tracked<&LocalContext>,
-        Tracked(thread_lock_perm): Tracked<&LockPerm>,
         Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: Mmap4kPrecheck)
         requires
             krnl.inv(),
-            krnl.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
             krnl.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
             range.wf(),
             range.len > 0,
-            range.len <= usize::MAX / 4usize,
-            krnl.thr_mp.dom().contains(thread_ptr),
-            typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-            thread_lock_perm.state() is WriteLock,
-            thread_lock_perm.thread_id() == lctx.thread_id(),
-            thread_lock_perm.lock_id() == krnl.thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             krnl.pt_mp.dom().contains(pagetable_ptr),
             typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             pagetable_lock_perm.state() is WriteLock,
             pagetable_lock_perm.thread_id() == lctx.thread_id(),
             pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         ensures
-            ret is Ready ==> { let end_va = range.view().spec_index((range.len - 1) as int); &&& krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 4 * range.len &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(range.start).0 &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, end_va) &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range) },
-            ret is NoQuota ==> krnl.thr_mp.spec_index(thread_ptr).view().quota_4k < 4 * range.len,
-            ret is Invalid ==> { &&& krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 4 * range.len &&& spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end },
-            ret is InUse ==> { let end_va = range.view().spec_index((range.len - 1) as int); &&& krnl.thr_mp.spec_index(thread_ptr).view().quota_4k >= 4 * range.len &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(range.start).0 &&& (!krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va)) || !krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range)) },
+            ret is Ready ==> { let end_va = range.view().spec_index((range.len - 1) as int); &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start) &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, end_va) &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range) },
+            ret is Invalid ==> spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
+            ret is InUse ==> { let end_va = range.view().spec_index((range.len - 1) as int); &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(range.start).0 &&& (!krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va)) || !krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range)) },
     {
         let range_len = range.len;
         let range_start = range.start;
-        let credit = 4usize * range_len;
-        proof {
-            assert(
-                krnl.thr_mp.perms_wf()
-                    && krnl.thr_mp.spec_index(thread_ptr).inv()
-            ) by { reveal(thread_perms_wf); };
-        }
-        let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm));
-        if thread.quota_4k < credit {
-            return Mmap4kPrecheck::NoQuota;
-        }
-
         let end_index = range_len - 1;
         let end_va = range.index(end_index);
         assert(end_va == spec_va_add_range(range_start, end_index)) by { range.va_range_lemma(); };
-        assert(range_start <= end_va) by (bit_vector)
-            requires
-                range_len > 0,
-                range_len <= usize::MAX / 4096usize,
-                range_start < usize::MAX - range_len * 4096usize,
-                end_index == range_len - 1,
-                end_va == (range_start + end_index * 4096usize) as usize,
-        ;
+        assert(range_start <= end_va) by { range.va_range_lemma(); };
         let start_indices = va2index(range_start);
         proof {
             assert(

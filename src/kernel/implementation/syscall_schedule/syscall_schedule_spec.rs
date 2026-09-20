@@ -3,7 +3,9 @@ use crate::*;
 
 verus! {
 #[verifier::opaque]
-pub open spec fn schedule_switch_unchanged_objects_and_entries_transition_framing(
+/// Switches the CPU to the scheduler queue head, optionally requeues the
+/// previous thread, and updates the affected PCID publication and TLB state.
+pub open spec fn scheduler_context_switch_transition(
     pre: KernelK, post: KernelK, cpu_id: CpuId,
     scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
     entry_regs: Registers,
@@ -45,21 +47,15 @@ pub open spec fn schedule_switch_unchanged_objects_and_entries_transition_framin
         &&& pre.thr_mp.dom().contains(prev)
         &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
     })
-    &&& post.pt_mp == pre.pt_mp
-    &&& post.it_mp == pre.it_mp
-    &&& post.irt == pre.irt
-    &&& post.pg_arr == pre.pg_arr
-    &&& post.ctn_mp == pre.ctn_mp
-    &&& post.pcid_allc_mp == pre.pcid_allc_mp
-    &&& post.cpu_set_mp == pre.cpu_set_mp
-    &&& post.prc_mp == pre.prc_mp
-    &&& post.ep_mp == pre.ep_mp
-    &&& post.allc_4k_mp == pre.allc_4k_mp
-    &&& post.allc_2m_mp == pre.allc_2m_mp
-    &&& post.allc_1g_mp == pre.allc_1g_mp
-    &&& post.iommu_tlb == pre.iommu_tlb
-    &&& post.rt_ctn == pre.rt_ctn
-    &&& post.dflt_pt == pre.dflt_pt
+    &&& post == (KernelK {
+        cpu_arr: post.cpu_arr,
+        pcid_needflush: post.pcid_needflush,
+        cpu_published: post.cpu_published,
+        sched_mp: post.sched_mp,
+        thr_mp: post.thr_mp,
+        cpu_tlb: post.cpu_tlb,
+        ..pre
+    })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId|
         #![trigger pre.cpu_arr.spec_index(c)]

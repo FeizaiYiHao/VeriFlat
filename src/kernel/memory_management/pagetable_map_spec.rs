@@ -18,4 +18,24 @@ verus! {
             pagetable_perms.spec_index(pagetable_p).inv()
     }
 
+    pub proof fn pagetable_perms_wf_at(
+        pagetable_perms: PageTableLockedMap,
+        pagetable_ptr: RwLockPageTableRoot,
+    )
+        requires
+            pagetable_perms_wf(pagetable_perms),
+            pagetable_perms.dom().contains(pagetable_ptr),
+        ensures
+            pagetable_perms.perms_wf(),
+            pagetable_perms.view().spec_index(pagetable_ptr).is_init(),
+            pagetable_perms.view().spec_index(pagetable_ptr).addr()
+                == pagetable_ptr,
+            pagetable_perms.spec_index(pagetable_ptr).inv(),
+            pagetable_perms.spec_index(pagetable_ptr).is_init(),
+            pagetable_perms.spec_index(pagetable_ptr).view().inv(),
+    {
+        reveal(pagetable_perms_wf);
+        reveal(pagetables_inv);
+    }
+
 }

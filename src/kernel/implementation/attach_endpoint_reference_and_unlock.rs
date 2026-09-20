@@ -52,25 +52,11 @@ verus! {
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             final(krnl).thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr),
             final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, endpoint_ptr),
-            final(krnl).pt_mp == old(krnl).pt_mp,
-            final(krnl).it_mp == old(krnl).it_mp,
-            final(krnl).irt == old(krnl).irt,
-            final(krnl).pg_arr == old(krnl).pg_arr,
-            final(krnl).cpu_arr == old(krnl).cpu_arr,
-            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
-            final(krnl).cpu_published == old(krnl).cpu_published,
-            final(krnl).ctn_mp == old(krnl).ctn_mp,
-            final(krnl).sched_mp == old(krnl).sched_mp,
-            final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
-            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
-            final(krnl).prc_mp == old(krnl).prc_mp,
-            final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
-            final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
-            final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
-            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
-            final(krnl).iommu_tlb == old(krnl).iommu_tlb,
-            final(krnl).rt_ctn == old(krnl).rt_ctn,
-            final(krnl).dflt_pt == old(krnl).dflt_pt,
+            *final(krnl) == (KernelK {
+                thr_mp: final(krnl).thr_mp,
+                ep_mp: final(krnl).ep_mp,
+                ..*old(krnl)
+            }),
             final(krnl).thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -130,7 +116,7 @@ verus! {
                 assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
                 reveal(KernelK::default_pagetable_wf);
             };
-            assert(krnl.memory_management_inv()) by { thread_endpoint_no_change_imply_memory_management_inv(*old(krnl), *krnl); };
+            assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
             assert(krnl.process_management_inv()) by {
                 assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
                 assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
@@ -156,6 +142,9 @@ verus! {
             }) by {
                 reveal(thread_perms_wf);
                 lock_id_fields_eq_imply_eq();
+            };
+            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
             };
         }
     }

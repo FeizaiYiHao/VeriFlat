@@ -23,6 +23,8 @@ verus! {
             container_map.spec_index(scheduler_map.spec_index(s_ptr).view().owning_container).view_rodata().view().scheduler == s_ptr
     }
 
+    // Proof dependencies (confirmed): container_thread_wf,
+    // container_scheduler_wf.
     #[verifier::opaque]
     pub open spec fn container_thread_scheduler_wf(container_map: ContainerLockedMap,
             thread_map: ThreadLockedMap, 

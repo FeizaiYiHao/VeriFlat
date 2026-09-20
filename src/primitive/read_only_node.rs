@@ -25,7 +25,6 @@ impl<V> ReadOnlyNode<V>{
     pub closed spec fn owner_addr(&self) -> usize{
         self.owner_ptr.view()
     }
-    #[verifier(external_body)]
     pub fn new(v: V, owner_addr: Ghost<usize>) -> (ret :Self)
         ensures 
             ret.view() == v,
@@ -36,7 +35,6 @@ impl<V> ReadOnlyNode<V>{
             owner_ptr: owner_addr
         }
     }
-    #[verifier(external_body)]
     pub fn borrow(&self) -> (ret: &V)
         ensures
             ret == self.view()

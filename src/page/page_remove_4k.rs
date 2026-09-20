@@ -15,9 +15,6 @@ pub fn remove_shared_4k_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableR
         final(page).ref_count == old(page).ref_count - 1,
         *final(page) == (Page { mappings: final(page).mappings, ref_count: final(page).ref_count, ..*old(page) }),
 {
-    proof {
-        assert(page.mappings().remove((pagetable_ptr, va)).len() == page.mappings().len() - 1) by { vstd::set::lemma_set_remove_len(page.mappings(), (pagetable_ptr, va)); };
-    }
     page.mappings = Ghost(page.mappings().remove((pagetable_ptr, va)));
     page.ref_count = page.ref_count - 1;
 }
@@ -43,9 +40,6 @@ pub fn remove_last_4k_mapping_to_cache(page: &mut Page, pagetable_ptr: RwLockPag
         final(page).free_list_node_storage.addr() == old(page).free_list_node_storage.addr(),
         *final(page) == (Page { state: final(page).state, mappings: final(page).mappings, ref_count: 0, free_list_node_storage: final(page).free_list_node_storage, ..*old(page) }),
 {
-    proof {
-        assert(page.mappings().remove((pagetable_ptr, va)).is_empty()) by { vstd::set::lemma_set_remove_len(page.mappings(), (pagetable_ptr, va)); };
-    }
     let (node_addr, mut node_perm) = page.free_list_node_storage.take();
     node_update_value(node_addr, &mut node_perm, page.addr);
     page.mappings = Ghost(Set::empty());
@@ -71,7 +65,6 @@ pub fn remove_last_4k_io_mapping(page: &mut Page, pagetable_ptr: RwLockPageTable
         *final(page) == (Page { state: PageState::Unavailable, mappings: final(page).mappings, ref_count: 0, perm_4k: final(page).perm_4k, ..*old(page) }),
 {
     proof {
-        assert(page.mappings().remove((pagetable_ptr, va)).is_empty()) by { vstd::set::lemma_set_remove_len(page.mappings(), (pagetable_ptr, va)); };
         let tracked _retired_perm = page.perm_4k.borrow_mut().tracked_take();
     }
     page.mappings = Ghost(Set::empty());

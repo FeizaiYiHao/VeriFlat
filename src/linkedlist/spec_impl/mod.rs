@@ -158,35 +158,33 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         ensures
             a == b,
     {
-        reveal(LinkedList::wf_perms);
-        reveal(LinkedList::wf_addr_list);
-        reveal(LinkedList::wf_value_list);
-        reveal(LinkedList::wf_map);
-        reveal(LinkedList::value_list_unique);
-        // a, b are in addr_list (wf_perms: perms.dom == addr_list membership).
-        assert(self.perms.view().dom().contains(a));
-        assert(self.perms.view().dom().contains(b));
-        assert(self.addr_list.view().contains(a));
-        assert(self.addr_list.view().contains(b));
+        assert(
+            self.perms.view().dom().contains(a) && self.perms.view().dom().contains(b)
+            && self.addr_list.view().contains(a) && self.addr_list.view().contains(b)
+        ) by { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_map); };
         let ia = self.addr_list.view().index_of(a);
         let ib = self.addr_list.view().index_of(b);
-        // index_of lands in range and recovers the element.
-        assert(self.addr_list.view().spec_index(ia) == a);
-        assert(self.addr_list.view().spec_index(ib) == b);
-        // wf_value_list: view()[i] == perms[addr_list[i]].value()@; wf_map:
-        // map[addr] == perms[addr].value()@. So both positions hold the value.
-        assert(self.view().spec_index(ia) == self.perms.view().spec_index(a).value().view());
-        assert(self.view().spec_index(ib) == self.perms.view().spec_index(b).value().view());
-        assert(self.map().spec_index(a) == self.perms.view().spec_index(a).value().view());
-        assert(self.map().spec_index(b) == self.perms.view().spec_index(b).value().view());
-        assert(self.view().spec_index(ia) == self.view().spec_index(ib));
-        // values have no duplicates ⟹ equal value at two positions ⟹ ia == ib.
-        if ia != ib {
-            assert(self.view().spec_index(ia) != self.view().spec_index(ib));
-        }
-        assert(ia == ib);
-        assert(a == self.addr_list.view().spec_index(ia));
-        assert(b == self.addr_list.view().spec_index(ib));
+        assert(
+            self.view().len() == self.length
+            && 0 <= ia < self.length && 0 <= ib < self.length
+            && self.addr_list.view().spec_index(ia) == a
+            && self.addr_list.view().spec_index(ib) == b
+        ) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); };
+        assert(
+            self.view().spec_index(ia) == self.perms.view().spec_index(a).value().view()
+            && self.view().spec_index(ib) == self.perms.view().spec_index(b).value().view()
+            && self.map().spec_index(a) == self.perms.view().spec_index(a).value().view()
+            && self.map().spec_index(b) == self.perms.view().spec_index(b).value().view()
+        ) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); };
+        assert(ia == ib) by {
+            if ia != ib {
+                assert(
+                    self.view().spec_index(ia) != self.view().spec_index(ib)
+                ) by {
+                    reveal(Seq::no_duplicates);
+                };
+            }
+        };
     }
 
     #[verifier::opaque]
@@ -343,18 +341,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.container_depth == container_depth,
             ret.minor == minor,
     {
-        proof{
-            reveal(LinkedList::wf_perms);
-            reveal(LinkedList::wf_addr_list);
-            reveal(LinkedList::wf_value_list);
-            reveal(LinkedList::wf_head);
-            reveal(LinkedList::wf_tail);
-            reveal(LinkedList::wf_prev);
-            reveal(LinkedList::wf_next);
-            reveal(LinkedList::wf_map);
-            reveal(LinkedList::value_list_unique);
-        }
-        Self {
+        let ret = Self {
             perms: Tracked(Map::<usize, PointsTo<Node<T>>>::tracked_empty()),
             addr_list: Ghost(Seq::empty()),
             value_list: Ghost(Seq::empty()),
@@ -364,7 +351,19 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             map: Ghost(Map::empty()),
             container_depth: container_depth,
             minor:minor,
-        }
+        };
+        assert(ret.wf()) by {
+            reveal(LinkedList::wf_perms);
+            reveal(LinkedList::wf_addr_list);
+            reveal(LinkedList::wf_value_list);
+            reveal(LinkedList::wf_head);
+            reveal(LinkedList::wf_tail);
+            reveal(LinkedList::wf_prev);
+            reveal(LinkedList::wf_next);
+            reveal(LinkedList::wf_map);
+            reveal(LinkedList::value_list_unique);
+        };
+        ret
     }
 
     pub fn push_tail(&mut self, addr: usize, perm: Tracked<PointsTo<Node<T>>>)
@@ -384,13 +383,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 #![trigger final(self).view().contains(value)]
                 old(self).view().contains(value)
                     ==> final(self).view().contains(value),
-            forall|old_addr: usize|
-                #![trigger final(self).map().dom().contains(old_addr)]
-                old(self).map().dom().contains(old_addr) ==> {
-                    &&& final(self).map().dom().contains(old_addr)
-                    &&& final(self).map().spec_index(old_addr)
-                        == old(self).map().spec_index(old_addr)
-                },
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
             old(self).dom().contains(addr) == false,
@@ -424,15 +416,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             proof{
                 seq_push_lemma::<usize>();
             }
-            assert(self.wf_perms());
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.wf_tail());
-            assert(self.wf_prev());
-            assert(self.wf_next());
-            assert(self.value_list_unique());
-            assert(self.wf());
+            assert(self.wf()) by {
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_head);
+                reveal(LinkedList::wf_tail);
+                reveal(LinkedList::wf_prev);
+                reveal(LinkedList::wf_next);
+                reveal(LinkedList::wf_map);
+                reveal(LinkedList::value_list_unique);
+            };
         }else {
             proof{
                 node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut());
@@ -462,19 +456,27 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 seq_push_unique_lemma::<usize>();
             }
 
-            assert(self.wf_perms());
-            assert(old(self).dom().contains(addr) == false);
-            assert(old(self).addr_list.view().contains(addr) == false);
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap());
-            assert(self.perms.view().spec_index(self.tail.unwrap()).value().next is None);
-            assert(self.wf_tail());
-            assert(self.wf_prev());
-            assert(self.wf_next());
-            assert(self.value_list_unique());
-            assert(self.wf());
+            assert(self.wf()) by {
+                assert({
+                    &&& !old(self).dom().contains(addr)
+                    &&& !old(self).addr_list.view().contains(addr)
+                    &&& self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap()
+                    &&& self.perms.view().spec_index(self.tail.unwrap()).value().next is None
+                }) by {
+                    reveal(LinkedList::wf_perms);
+                    reveal(LinkedList::wf_addr_list);
+                    reveal(LinkedList::wf_tail);
+                };
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_head);
+                reveal(LinkedList::wf_tail);
+                reveal(LinkedList::wf_prev);
+                reveal(LinkedList::wf_next);
+                reveal(LinkedList::wf_map);
+                reveal(LinkedList::value_list_unique);
+            };
         }
     }
 
@@ -493,7 +495,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).map() == old(self).map().insert(addr, perm.view().value().view()),
             final(self).container_depth == old(self).container_depth,
             final(self).minor == old(self).minor,
-            final(self).lock_minor() == old(self).lock_minor(),
             old(self).dom().contains(addr) == false,
             old(self).map().dom().contains(addr) == false,
     {
@@ -525,15 +526,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             proof{
                 seq_push_lemma::<usize>();
             }
-            assert(self.wf_perms());
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.wf_tail());
-            assert(self.wf_prev());
-            assert(self.wf_next());
-            assert(self.value_list_unique());
-            assert(self.wf());
+            assert(self.wf()) by {
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_head);
+                reveal(LinkedList::wf_tail);
+                reveal(LinkedList::wf_prev);
+                reveal(LinkedList::wf_next);
+                reveal(LinkedList::wf_map);
+                reveal(LinkedList::value_list_unique);
+            };
         }else {
             proof{
                 node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut());
@@ -563,19 +566,27 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 seq_push_head_unique_lemma::<usize>();
             }
 
-            assert(self.wf_perms());
-            assert(old(self).dom().contains(addr) == false);
-            assert(old(self).addr_list.view().contains(addr) == false);
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap());
-            assert(self.perms.view().spec_index(self.tail.unwrap()).value().next is None);
-            assert(self.wf_tail());
-            assert(self.wf_prev());
-            assert(self.wf_next());
-            assert(self.value_list_unique());
-            assert(self.wf());
+            assert(self.wf()) by {
+                assert({
+                    &&& !old(self).dom().contains(addr)
+                    &&& !old(self).addr_list.view().contains(addr)
+                    &&& self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap()
+                    &&& self.perms.view().spec_index(self.tail.unwrap()).value().next is None
+                }) by {
+                    reveal(LinkedList::wf_perms);
+                    reveal(LinkedList::wf_addr_list);
+                    reveal(LinkedList::wf_tail);
+                };
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_head);
+                reveal(LinkedList::wf_tail);
+                reveal(LinkedList::wf_prev);
+                reveal(LinkedList::wf_next);
+                reveal(LinkedList::wf_map);
+                reveal(LinkedList::value_list_unique);
+            };
         }
     }
 
@@ -726,15 +737,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.value_list = Ghost(self.value_list.view().skip(1));
             self.map = Ghost(self.map.view().remove(old_head_addr));
 
-            assert(self.wf_perms());
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.wf_tail());
-            assert(self.wf_prev());
-            assert(self.wf_next());
-            assert(self.value_list_unique());
-            assert(self.wf());
+            assert(self.wf()) by {
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_head);
+                reveal(LinkedList::wf_tail);
+                reveal(LinkedList::wf_prev);
+                reveal(LinkedList::wf_next);
+                reveal(LinkedList::wf_map);
+                reveal(LinkedList::value_list_unique);
+            };
 
             (old_head_addr, Tracked(old_head_perm))
         }else{
@@ -747,15 +760,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.tail = None;
             self.map = Ghost(self.map.view().remove(old_head_addr));
 
-            assert(self.wf_perms());
-            assert(self.wf_addr_list());
-            assert(self.wf_value_list());
-            assert(self.wf_head());
-            assert(self.wf_tail());
-            assert(self.wf_prev());
-            assert(self.wf_next());
-            assert(self.value_list_unique());
-            assert(self.wf());
+            assert(self.wf()) by {
+                reveal(LinkedList::wf_perms);
+                reveal(LinkedList::wf_addr_list);
+                reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_head);
+                reveal(LinkedList::wf_tail);
+                reveal(LinkedList::wf_prev);
+                reveal(LinkedList::wf_next);
+                reveal(LinkedList::wf_map);
+                reveal(LinkedList::value_list_unique);
+            };
 
             (old_head_addr, Tracked(old_head_perm))
         }
@@ -874,28 +889,30 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         };
 
         // ---- ret.wf() ----
-        assert(ret.wf_perms());
-        assert(ret.wf_addr_list());
-        assert(ret.wf_value_list());
-        assert(ret.wf_head());
-        assert(ret.wf_tail());
-        assert(ret.wf_prev());
-        assert(ret.wf_next());
-        assert(ret.wf_map());
-        assert(ret.value_list_unique());
-        assert(ret.wf());
+        assert(ret.wf()) by {
+            reveal(LinkedList::wf_perms);
+            reveal(LinkedList::wf_addr_list);
+            reveal(LinkedList::wf_value_list);
+            reveal(LinkedList::wf_head);
+            reveal(LinkedList::wf_tail);
+            reveal(LinkedList::wf_prev);
+            reveal(LinkedList::wf_next);
+            reveal(LinkedList::wf_map);
+            reveal(LinkedList::value_list_unique);
+        };
 
         // ---- self.wf() (suffix) ----
-        assert(self.wf_perms());
-        assert(self.wf_addr_list());
-        assert(self.wf_value_list());
-        assert(self.wf_head());
-        assert(self.wf_tail());
-        assert(self.wf_prev());
-        assert(self.wf_next());
-        assert(self.wf_map());
-        assert(self.value_list_unique());
-        assert(self.wf());
+        assert(self.wf()) by {
+            reveal(LinkedList::wf_perms);
+            reveal(LinkedList::wf_addr_list);
+            reveal(LinkedList::wf_value_list);
+            reveal(LinkedList::wf_head);
+            reveal(LinkedList::wf_tail);
+            reveal(LinkedList::wf_prev);
+            reveal(LinkedList::wf_next);
+            reveal(LinkedList::wf_map);
+            reveal(LinkedList::value_list_unique);
+        };
 
         ret
     }
@@ -916,7 +933,14 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
     {
-        proof{
+        self.perms = prefix.perms;
+        self.addr_list = prefix.addr_list;
+        self.value_list = prefix.value_list;
+        self.length = prefix.length;
+        self.head = prefix.head;
+        self.tail = prefix.tail;
+        self.map = prefix.map;
+        assert(self.wf()) by {
             reveal(LinkedList::wf_perms);
             reveal(LinkedList::wf_addr_list);
             reveal(LinkedList::wf_value_list);
@@ -926,25 +950,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             reveal(LinkedList::wf_next);
             reveal(LinkedList::wf_map);
             reveal(LinkedList::value_list_unique);
-        }
-        self.perms = prefix.perms;
-        self.addr_list = prefix.addr_list;
-        self.value_list = prefix.value_list;
-        self.length = prefix.length;
-        self.head = prefix.head;
-        self.tail = prefix.tail;
-        self.map = prefix.map;
-
-        assert(self.wf_perms());
-        assert(self.wf_addr_list());
-        assert(self.wf_value_list());
-        assert(self.wf_head());
-        assert(self.wf_tail());
-        assert(self.wf_prev());
-        assert(self.wf_next());
-        assert(self.wf_map());
-        assert(self.value_list_unique());
-        assert(self.wf());
+        };
     }
 
 }

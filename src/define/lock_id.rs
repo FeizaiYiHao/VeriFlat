@@ -146,7 +146,6 @@ pub struct LockId{
     pub minor:LockMinorId,
 }
 
-#[verifier(external_body)]
 pub proof fn lock_id_fields_eq_imply_eq()
     ensures 
         forall|lock_id1: LockId, lock_id2: LockId|
@@ -253,7 +252,7 @@ pub ghost enum KernelObjId {
     PcidNeedFlush(CpuId, Pcid),
     AllocatorQuota(PageSize, RwLockPageAllocatorPtr),
     AllocatorCache(PageSize, RwLockPageAllocatorPtr, CpuId),
-    AllocatorGlobalPoll(PageSize, RwLockPageAllocatorPtr),
+    AllocatorGlobalPool(PageSize, RwLockPageAllocatorPtr),
 }
 
 /// One lock currently held by a thread, paired with the unique logical kernel

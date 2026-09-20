@@ -22,6 +22,7 @@ pub(super) enum MissingPageTableLevel {
     /// Hidden Page/Thread state is made consistent while the krnl phase is
     /// Acquire. The single parent-entry store closes it into Release. Directory
     /// topology is absent from `PageTableU`, so the following boundary stutters.
+    #[verifier::spinoff_prover]
     pub(super) fn install_staged_4k_page_table_page(krnl: &mut KernelK, level: MissingPageTableLevel, page_ptr: PagePtr, quota_thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), Tracked(lctx): Tracked<&mut LocalContext>, page_lock_perm: Tracked<&LockPerm>, quota_thread_lock_perm: Tracked<&LockPerm>, pagetable_lock_perm: Tracked<&LockPerm>)
         requires
             old(krnl).inv(),
@@ -79,12 +80,9 @@ pub(super) enum MissingPageTableLevel {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr)))).insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr)))),
-            forall|held: HeldLock| #![trigger final(lctx).lock_id_set().contains((held.0, held.1))] held.1 != KernelObjId::Page(page_ptr2page_index(page_ptr)) ==> final(lctx).lock_id_set().contains((held.0, held.1)) == old(lctx).lock_id_set().contains((held.0, held.1)),
             typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
             typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-            final(krnl).thr_mp.lock_id_by_key(quota_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(quota_thread_ptr),
-            final(krnl).pt_mp.lock_id_by_key(pagetable_ptr) == old(krnl).pt_mp.lock_id_by_key(pagetable_ptr),
             page_lock_perm.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
             quota_thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(quota_thread_ptr).locking_thread()->Write_lock_id,
             pagetable_lock_perm.view().lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
@@ -110,28 +108,15 @@ pub(super) enum MissingPageTableLevel {
             final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, quota_thread_ptr),
-            final(krnl).it_mp == old(krnl).it_mp,
-            final(krnl).irt == old(krnl).irt,
-            final(krnl).cpu_arr == old(krnl).cpu_arr,
-            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
-            final(krnl).cpu_published == old(krnl).cpu_published,
-            final(krnl).ctn_mp == old(krnl).ctn_mp,
-            final(krnl).sched_mp == old(krnl).sched_mp,
-            final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
-            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
-            final(krnl).prc_mp == old(krnl).prc_mp,
-            final(krnl).ep_mp == old(krnl).ep_mp,
-            final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
-            final(krnl).allc_2m_mp == old(krnl).allc_2m_mp,
-            final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
-            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
-            final(krnl).iommu_tlb == old(krnl).iommu_tlb,
-            final(krnl).rt_ctn == old(krnl).rt_ctn,
-            final(krnl).dflt_pt == old(krnl).dflt_pt,
+            *final(krnl) == (KernelK {
+                pt_mp: final(krnl).pt_mp,
+                pg_arr: final(krnl).pg_arr,
+                thr_mp: final(krnl).thr_mp,
+                ..*old(krnl)
+            }),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![quota_thread_ptr]),
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
-            pagetable_map_user_view(final(krnl).pt_mp) == pagetable_map_user_view(old(krnl).pt_mp),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
@@ -160,12 +145,32 @@ pub(super) enum MissingPageTableLevel {
             },
     {
         let page_index = page_ptr2page_index(page_ptr);
-        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(quota_thread_ptr).inv()) by { reveal(pagetable_perms_wf); reveal(thread_perms_wf); };
-        assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().is_init() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().inv() && krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by {
-            reveal(page_array_wf);
-            page_ptr_valid_imply_page_index_valid();
+        assert(
+            krnl.pt_mp.perms_wf()
+                && krnl.pt_mp.spec_index(pagetable_ptr).inv()
+                && krnl.thr_mp.perms_wf()
+                && krnl.thr_mp.spec_index(quota_thread_ptr).inv()
+        ) by {
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
+            thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr);
         };
-        assert(!krnl.pt_mp.spec_index(pagetable_ptr).view().page_closure().contains(page_ptr)) by { reveal(pagetable_pages_wf); };
+        assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().is_init() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().inv() && krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by {
+            page_ptr_valid_imply_page_index_valid();
+            page_array_wf_at(krnl.pg_arr, page_index);
+        };
+        assert(!krnl.pt_mp.spec_index(pagetable_ptr).view()
+            .page_closure().contains(page_ptr)) by {
+            if krnl.pt_mp.spec_index(pagetable_ptr).view()
+                .page_closure().contains(page_ptr)
+            {
+                pagetable_pages_wf_closure_entry_at(
+                    krnl.pt_mp,
+                    krnl.pg_arr,
+                    pagetable_ptr,
+                    page_ptr,
+                );
+            }
+        };
 
         let parent_page_map_ptr;
         {
@@ -220,7 +225,7 @@ pub(super) enum MissingPageTableLevel {
                     allocator_2m_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_2m_mp, krnl.allc_2m_mp);
                     allocator_1g_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_1g_mp, krnl.allc_1g_mp);
                 };
-                assert(container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr)) by { container_page_owner_wf_preserved_for_owning_container_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).pg_arr, krnl.pg_arr); };
+                assert(container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(hugepage_2m_wf(krnl.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
                 assert(hugepage_1g_wf(krnl.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
                 assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by {
@@ -247,8 +252,8 @@ pub(super) enum MissingPageTableLevel {
                 assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).pcid_allc_mp, krnl.pcid_allc_mp); };
                 assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by {
                     assert(thread_staged_pages_4k_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
-                    assert(thread_staged_pages_2m_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
-                    assert(thread_staged_pages_1g_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
+                    assert(thread_staged_pages_2m_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
+                    assert(thread_staged_pages_1g_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 };
                 assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(old(krnl).ep_mp, krnl.ep_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(container_process_allocator_quota_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {

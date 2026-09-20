@@ -119,6 +119,8 @@ verus! {
                 .indirect_free_quota_pending_1g.view().spec_index(depth))
     }
 
+    // Proof dependencies (confirmed for thread-map preservation):
+    // container_thread_wf.
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_4k_wf(
             container_map: ContainerLockedMap,
@@ -154,6 +156,8 @@ verus! {
                     allocator_4k_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k).total_free_pages.view()
         }
 
+    // Proof dependencies (confirmed for thread-map preservation):
+    // container_thread_wf.
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_2m_wf(
             container_map: ContainerLockedMap,
@@ -179,6 +183,8 @@ verus! {
                     allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
         }
 
+    // Proof dependencies (confirmed for thread-map preservation):
+    // container_thread_wf.
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_1g_wf(
             container_map: ContainerLockedMap,

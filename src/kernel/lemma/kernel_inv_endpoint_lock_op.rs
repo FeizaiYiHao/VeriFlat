@@ -29,7 +29,7 @@ pub proof fn endpoint_lock_op_preserves_invariant_fields(
 {
 }
 
-pub proof fn lemma_no_change_imply_endpoint_perms_wf_forall()
+pub proof fn lemma_endpoint_perms_wf_preserved_for_lock_op_forall()
     ensures
         forall|pre: EndpointLockedMap,
             post: EndpointLockedMap,
@@ -49,7 +49,7 @@ pub proof fn lemma_no_change_imply_endpoint_perms_wf_forall()
     reveal(endpoint_perms_wf);
 }
 
-pub proof fn lemma_no_change_imply_endpoint_pages_wf_forall()
+pub proof fn lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
         forall|pre: EndpointLockedMap,
             post: EndpointLockedMap,
@@ -65,7 +65,7 @@ pub proof fn lemma_no_change_imply_endpoint_pages_wf_forall()
     reveal(endpoint_pages_wf);
 }
 
-pub proof fn lemma_no_change_imply_container_endpoint_wf_forall()
+pub proof fn lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             pre: EndpointLockedMap,
@@ -81,7 +81,7 @@ pub proof fn lemma_no_change_imply_container_endpoint_wf_forall()
     reveal(container_endpoint_wf);
 }
 
-pub proof fn lemma_no_change_imply_thread_endpoint_ref_counter_wf_forall()
+pub proof fn lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
         forall|thread_map: ThreadLockedMap,
             pre: EndpointLockedMap,
@@ -97,7 +97,7 @@ pub proof fn lemma_no_change_imply_thread_endpoint_ref_counter_wf_forall()
     reveal(thread_endpoint_ref_counter_wf);
 }
 
-pub proof fn lemma_no_change_imply_thread_endpoint_queue_wf_forall()
+pub proof fn lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
         forall|thread_map: ThreadLockedMap,
             pre: EndpointLockedMap,
@@ -118,7 +118,7 @@ pub proof fn lemma_no_change_imply_thread_endpoint_queue_wf_forall()
     reveal(thread_endpoint_queue_wf);
 }
 
-pub proof fn lemma_no_change_imply_container_thread_endpoint_wf_forall()
+pub proof fn lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             thread_map: ThreadLockedMap,

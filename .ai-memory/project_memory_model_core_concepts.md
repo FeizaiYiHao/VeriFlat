@@ -9,7 +9,7 @@ metadata:
 # Memory model
 
 - `PagePtr` is a physical address and `PageIndex` selects the corresponding
-  metadata slot in `KernelK::page_array`. Valid pointers and indices are related
+  metadata slot in `KernelK::pg_arr`. Valid pointers and indices are related
   by `page_ptr2page_index` and `page_index2page_ptr`.
 - `Page` is the metadata payload stored in the locked page array. It currently
   includes `addr`, `state`, ownership/mapping metadata, list-node storage, and
@@ -24,7 +24,12 @@ metadata:
   `Free*`/`Owned*` states and absent for other states, including published
   `Mapped*` pages. An unmap path must reclaim a fresh permission after mappings
   and stale TLB entries are gone; it must not resurrect a pre-publication token.
+- `PcidAllocator` has one machine-word counter for each of the 4096 PCIDs. Its
+  payload size is compile-time checked, the complete `RwLock` object must fit in
+  one 2 MiB page, and `pcid_allocator_pages_wf` ties each allocator object to an
+  `Allocated2m { AsPcidAllocator }` backing page.
 
 Primary code: `src/page/page_def.rs`, `src/define/types.rs`,
 `src/kernel/memory_management/page_array_spec.rs`, and
-`src/util/page_ptr_util_u.rs`.
+`src/util/page_ptr_util_u.rs`, plus `src/proc/pcid_allocator.rs` and
+`src/kernel/memory_management/pages_pcid_allocator_spec.rs`.

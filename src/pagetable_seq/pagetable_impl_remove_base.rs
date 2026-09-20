@@ -72,7 +72,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             let v = l1_perm.value().ar.view().spec_index(target_l1i as int);
             // wf says spec_seq@[i] =~= usize2page_entry(ar@[i])
             assert(usize2page_entry(v) =~= l1_perm.value().spec_seq.view().spec_index(target_l1i as int)) by { reveal(PageTable::wf_l1); };
-            assert(spec_usize2pa(v) & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector);
+            spec_usize2pa_mem_valid(v);
         }
         l1_entry.perm.present = false;
         page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i, l1_entry, Tracked(&mut *lctx));
@@ -127,7 +127,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             pei_valid(target_l1i),
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
-            old(self).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is Some || old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == true,
             old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -208,7 +207,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
             old(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None || old(self).mapping_2m().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
             old(self).page_closure().contains(target_entry.addr) == false,
-            page_ptr_valid(target_entry.addr),
             page_ptr_2m_valid(target_entry.addr),
             page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0,))),
             target_entry.present,
@@ -412,7 +410,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             pei_valid(target_l3i),
             old(self).spec_resolve_mapping_l4(target_l4i) is Some,
             old(self).spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
-            old(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,old(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
+            old(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             old(self).spec_resolve_mapping_l3(target_l4i, target_l3i).unwrap().addr == target_l2_p,
             forall|i: L2Index| #![auto] pei_valid(i) ==> old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, i) is None,
             forall|i: L2Index| #![auto] pei_valid(i) ==> old(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
@@ -605,7 +603,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 self.page_closure() == old(self).page_closure().remove(target_l3_p),
                 page_ptr => {
                     reveal(PageTable::table_pages_wf);
-                    broadcast use vstd::set::group_set_lemmas;
                 }
             );
         }

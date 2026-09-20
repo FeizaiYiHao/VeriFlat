@@ -503,7 +503,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     ROT, GhostT>
     RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
-    pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret:(bool, Option<Tracked<LockPerm>>))
+    pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).view().container_depth() == lock_id.view().container,
             old(self).view().process_depth() == lock_id.view().process,
@@ -512,33 +512,29 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             wlock_requires(*old(self), old(lctx)),
             old(lctx).lock_id_acyclic(lock_id.view()),
         ensures
-            ret.0 == false ==> 
+            ret is None ==>
             {
                 &&&
                 old(self).being_killed() == true
                 &&&
                 *old(self) == *final(self)
                 &&&
-                ret.1 is None
-                &&&
                 *final(lctx) == *old(lctx)
             },
-            ret.0 == true ==>{
+            ret is Some ==>{
                 &&&                
                 old(self).being_killed() == false
                 &&&
-                ret.1 is Some
-                &&&
-                wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.1.unwrap().view())
+                wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.unwrap().view())
                 &&&
                 lock_ensures(old(lctx), final(lctx),
                     lock_id.view(), obj_id.view())
             } 
     {
         if self.lock.wlock_unless_killed().is_err(){
-            (false, None)
+            None
         }else{
-            (true, Some(Tracked::assume_new()))
+            Some(Tracked::assume_new())
         }
 
     }
@@ -660,7 +656,9 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 
 }
 
-pub open spec fn wlock_requires<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
+pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
+    &&&
+    old.inv()
     &&&
     // LocalContext records write ownership only.  Reader contention is handled
     // by the physical lock; there is no verified rlock acquisition path.

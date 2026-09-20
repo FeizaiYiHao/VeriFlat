@@ -1,10 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
-use super::unmap_4k_reclaim_spec::remove_last_4k_mapping_to_allocator_transition_framing;
+use super::unmap_4k_reclaim_spec::reclaim_last_4k_mapping_to_cpu_cache_transition;
 
 verus! {
 #[verifier::spinoff_prover]
-proof fn remove_last_4k_mapping_to_allocator_eof_process(
+proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_process_management_inv(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
     va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, depth: usize,
@@ -13,11 +13,11 @@ proof fn remove_last_4k_mapping_to_allocator_eof_process(
 )
     requires
         pre.inv(),
-        remove_last_4k_mapping_to_allocator_transition_framing(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_transition(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(remove_last_4k_mapping_to_allocator_transition_framing);
+    reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
@@ -31,7 +31,8 @@ proof fn remove_last_4k_mapping_to_allocator_eof_process(
 }
 
 #[verifier::spinoff_prover]
-proof fn remove_last_4k_mapping_to_allocator_eof_memory_pages(
+#[verifier::rlimit(60)]
+proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
     va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, depth: usize,
@@ -40,7 +41,7 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_pages(
 )
     requires
         pre.inv(),
-        remove_last_4k_mapping_to_allocator_transition_framing(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_transition(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
@@ -67,12 +68,12 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_pages(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(remove_last_4k_mapping_to_allocator_transition_framing);
+    reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); };
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
+    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
@@ -101,7 +102,8 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_pages(
     assert(post.allocator_free_pages_wf()) by { reveal(KernelK::allocator_free_pages_wf); reveal(allocator_free_page_ptrs_wf); };
 }
 
-proof fn remove_last_4k_mapping_to_allocator_eof_memory_quota(
+#[verifier::spinoff_prover]
+proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
     va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, depth: usize,
@@ -110,7 +112,7 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_quota(
 )
     requires
         pre.inv(),
-        remove_last_4k_mapping_to_allocator_transition_framing(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_transition(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures container_process_allocator_quota_wf(
         post.ctn_mp,
@@ -121,7 +123,7 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_quota(
         post.allc_1g_mp,
     ),
 {
-    reveal(remove_last_4k_mapping_to_allocator_transition_framing);
+    reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
             reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
@@ -149,7 +151,7 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_quota(
                         &&& (|sum: int, t: RwLockThreadPtr| sum + pre_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + pre.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view())
                         &&& (|sum: int, t: RwLockThreadPtr| sum + post_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + post.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view())
                         &&& direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + post_value(t)) == direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + pre_value(t)) + 1
-                    }) by { lemma_int_set_fold_change_by(direct, pre_value, post_value, thread_ptr, 1int); };
+                    }) by { lemma_set_fold_int_sum_change_by(direct, pre_value, post_value, thread_ptr, 1int); };
                 } else {
                     lemma_thread_direct_pending_4k_fold_eq(direct, pre.thr_mp, post.thr_mp);
                 }
@@ -165,7 +167,7 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_quota(
                         &&& (|sum: int, t: RwLockThreadPtr| sum + pre_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + pre.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(c_depth))
                         &&& (|sum: int, t: RwLockThreadPtr| sum + post_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + post.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(c_depth))
                         &&& indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + post_value(t)) == indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + pre_value(t)) + 1
-                    }) by { lemma_int_set_fold_change_by(indirect, pre_value, post_value, thread_ptr, 1int); };
+                    }) by { lemma_set_fold_int_sum_change_by(indirect, pre_value, post_value, thread_ptr, 1int); };
                 } else {
                     lemma_thread_indirect_pending_4k_fold_eq_at_depth(indirect, pre.thr_mp, post.thr_mp, c_depth);
                 }
@@ -251,7 +253,7 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory_quota(
     };
 }
 
-proof fn remove_last_4k_mapping_to_allocator_eof_memory(
+proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
     va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, depth: usize,
@@ -260,16 +262,16 @@ proof fn remove_last_4k_mapping_to_allocator_eof_memory(
 )
     requires
         pre.inv(),
-        remove_last_4k_mapping_to_allocator_transition_framing(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_transition(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    remove_last_4k_mapping_to_allocator_eof_memory_pages(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
-    remove_last_4k_mapping_to_allocator_eof_memory_quota(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
+    reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
+    reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(post.memory_management_inv()) by { reveal(KernelK::memory_management_inv); };
 }
 
-pub(super) proof fn remove_last_4k_mapping_to_allocator_eof(
+pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
     va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, depth: usize,
@@ -279,7 +281,7 @@ pub(super) proof fn remove_last_4k_mapping_to_allocator_eof(
     requires
         pre.inv(),
         page_ptr_valid(page_ptr),
-        remove_last_4k_mapping_to_allocator_transition_framing(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_4k_mapping_to_cpu_cache_transition(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.pt_mp.perms_wf(),
         post.pt_mp.spec_index(pagetable).inv(),
         post.pg_arr.inv(),
@@ -290,10 +292,10 @@ pub(super) proof fn remove_last_4k_mapping_to_allocator_eof(
         post.allc_4k_mp.spec_index(allocator_ptr).wf(),
     ensures post.inv(),
 {
-    reveal(remove_last_4k_mapping_to_allocator_transition_framing);
+    reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     assert(post.subsystems_inv()) by { reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };
-    remove_last_4k_mapping_to_allocator_eof_memory(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
-    remove_last_4k_mapping_to_allocator_eof_process(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
+    reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
+    reclaim_last_4k_mapping_to_cpu_cache_eof_process_management_inv(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }

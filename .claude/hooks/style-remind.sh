@@ -11,7 +11,7 @@ input="$(cat)"
 fp="$(printf '%s' "$input" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
 case "$fp" in
   */src/*.rs | src/*.rs)
-    printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"VeriFlat Verus style — read AGENTS.md and mirror the entire hand-edited src/kernel/implementation/syscall_alloc_quota/ directory before writing. Minimize vertical space in spec/proof/exec contracts and bodies: &&& stays with its operand, one logical contract clause per line, plain calls and tuples stay intact, and short assert-by blocks stay on one line. Rely on NLL in ordinary exec flow; explicitly end a live mutable reference only before invariant closure or for a real alias/callee conflict. Keep proof blocks comment-free; use hand triggers for deep quantifiers, never #![all_triggers]. spinoff_prover is decided only by paired wall time, never rlimit."}}'
+    printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"VeriFlat Verus style — read AGENTS.md and .codex/skills/veriflat-proof/references/style-and-discipline.md before writing. Use the hand-edited src/kernel/implementation/syscall_alloc_quota/ directory as a style reference. Keep proof facts and reveals narrowly scoped, preserve deliberate triggers, and follow the build skill for verification and performance decisions."}}'
     ;;
 esac
 exit 0

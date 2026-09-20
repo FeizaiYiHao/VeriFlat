@@ -25,10 +25,9 @@ verus! {
                 ret.inv(),
                 ret.view() == array.view(),
         {
-            let ghost user_seq = array.view();
             Self {
+                user_seq: Ghost(array.view()),
                 array,
-                user_seq: Ghost(user_seq),
             }
         }
 
@@ -57,10 +56,10 @@ verus! {
            }
         }
 
+        #[verifier::inline]
         pub open spec fn entries_unchanged_except(&self, old: &Self, index: usize) -> bool {
             forall|i:usize|
                 #![trigger self.spec_index(i)]
-                #![trigger old.spec_index(i)]
                 index_valid(N, i) && i != index
                 ==>
                 self.spec_index(i) == old.spec_index(i)
@@ -149,6 +148,7 @@ verus! {
                 0 <= index < N,
 
                 old(self).spec_index(index).view().wlocked_by(lctx),
+                old(self).spec_index(index).view().is_init() == false,
 
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == lctx.thread_id(),
@@ -170,6 +170,7 @@ verus! {
             requires
                 self.inv(),
                 0 <= index < N,
+                self.spec_index(index).view().is_init(),
 
                 lp.view().state() is WriteLock ==> self.spec_index(index).view().write_lock_perm_match(lp.view()),
                 lp.view().state() is ReadLock ==> self.spec_index(index).view().read_lock_perm_match(lp.view()),
@@ -188,6 +189,7 @@ verus! {
             requires
                 self.inv(),
                 index_valid(N, index),
+                self.spec_index(index).view().is_init(),
                 self.typed_lock_map_aligned(held_locks, lctx.thread_id()),
                 lock_perm.view().thread_id() == lctx.thread_id(),
                 lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, index, TypedLockMode::Write),

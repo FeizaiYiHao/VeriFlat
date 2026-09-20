@@ -91,8 +91,12 @@ if [[ -n "$INPUT" ]]; then
     PROFILE_OUTPUT="$INPUT"
 else
     RAW="$(mktemp "$CURRENT_DIR/.verus-log/quant-profile.raw.XXXXXX")"
+    verify_command=("$VERIFY" --smt-option smt.qi.profile=true)
+    if ((${#VERUS_ARGS[@]} > 0)); then
+        verify_command+=("${VERUS_ARGS[@]}")
+    fi
     set +e
-    "$VERIFY" --smt-option smt.qi.profile=true "${VERUS_ARGS[@]}" 2>&1 \
+    "${verify_command[@]}" 2>&1 \
         | tee "$RAW" \
         | sed '/^\[quantifier_instances\]/d'
     verify_status=${PIPESTATUS[0]}

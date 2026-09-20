@@ -100,6 +100,7 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
                 ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((c, pcid)), krnl.pt_mp.spec_index(pagetable).view()),
         decreases NUM_CPUS - cpu_id,
     {
+        let ghost iteration_start = *krnl;
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
         let published = mark_pcid_needflush_and_load(krnl, cpu_id, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
         if cpu_id == local_cpu {
@@ -115,7 +116,11 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedHeldLock { lock_id: krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid), mode: TypedLockMode::Write }); };
             assert(lctx.held_lock_majors_lt(PCID_NEEDFLUSH_LOCK_MAJOR)) by { broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged; };
+            assert(kernel_k_to_kernel_u(iteration_start) == kernel_k_to_kernel_u(*krnl)) by {
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(&iteration_start, krnl);
+            };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
+            assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
         }
         cpu_id = cpu_id + 1;
     }

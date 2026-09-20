@@ -52,6 +52,37 @@ pub open spec fn pci_bdf_did(bus: usize, device: usize, function: usize) -> usiz
     (bus * PCI_DEVFN_COUNT + device * PCI_FUNCTION_COUNT + function) as usize
 }
 
+fn iommu_context_table_address(
+    table_base: PAddr,
+    bus: usize,
+) -> (ret: PAddr)
+    requires
+        bus < PCI_BUS_COUNT,
+        table_base % VTD_TABLE_SIZE == 0,
+        0 < VTD_TABLE_SIZE,
+        table_base as int
+            + VTD_TABLE_SIZE as int * (bus as int + 1)
+            <= usize::MAX as int,
+    ensures
+        ret as int == table_base as int
+            + VTD_TABLE_SIZE as int * (bus as int + 1),
+        ret % VTD_TABLE_SIZE == 0,
+{
+    assert(VTD_TABLE_SIZE == 4096) by (compute);
+    assert(VTD_TABLE_SIZE as int == 4096) by (compute);
+    let offset = VTD_TABLE_SIZE * (bus + 1);
+    let ret = table_base + offset;
+    proof {
+        vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(
+            bus as int + 1,
+            table_base as int,
+            VTD_TABLE_SIZE as int,
+        );
+    }
+    assert(ret % VTD_TABLE_SIZE == 0);
+    ret
+}
+
 /// Common 128-bit legacy VT-d root/context-entry representation. This is an
 /// internal encoding detail; clients use the two `spec_index_*` interfaces.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -62,6 +93,18 @@ struct VtdLegacyEntry {
 }
 
 impl VtdLegacyEntry {
+    fn disabled() -> (ret: Self)
+        ensures
+            ret.lower == 0,
+            ret.upper == 0,
+            !ret.present(),
+    {
+        let ret = Self { lower: 0, upper: 0 };
+        assert(0usize & 1usize != 1usize) by (bit_vector);
+        assert(!ret.present());
+        ret
+    }
+
     closed spec fn present(&self) -> bool {
         self.lower & 1 == 1
     }
@@ -90,6 +133,34 @@ struct IommuContextTable {
 }
 
 impl IommuContextTable {
+    closed spec fn all_disabled(&self) -> bool {
+        &&& self.wf()
+        &&& forall|device: usize, function: usize|
+            #![trigger self.entry(device, function)]
+            device < PCI_DEVICE_COUNT
+            && function < PCI_FUNCTION_COUNT
+            ==> {
+                &&& self.entry(device, function).lower == 0
+                &&& self.entry(device, function).upper == 0
+                &&& !self.entry(device, function).present()
+            }
+    }
+
+    fn new_disabled() -> (ret: Self)
+        ensures
+            ret.all_disabled(),
+    {
+        let ret = Self {
+            entries: Array::new_with_init_value(
+                VtdLegacyEntry::disabled(),
+            ),
+        };
+        proof {
+            broadcast use vstd::seq::lemma_seq_new_index;
+        }
+        ret
+    }
+
     closed spec fn wf(&self) -> bool {
         self.entries.wf()
     }
@@ -112,6 +183,23 @@ struct IommuDeviceMetadata {
 }
 
 impl IommuDeviceMetadata {
+    fn new_owner(owner_process: RwLockProcessPtr) -> (ret: Self)
+        ensures
+            ret.wf(),
+            forall|function: usize|
+                #![trigger ret.functions.spec_index(function)]
+                function < PCI_FUNCTION_COUNT
+                ==> ret.functions.spec_index(function) == owner_process,
+    {
+        let ret = Self {
+            functions: Array::new_with_init_value(owner_process),
+        };
+        proof {
+            broadcast use vstd::seq::lemma_seq_new_index;
+        }
+        ret
+    }
+
     closed spec fn wf(&self) -> bool {
         self.functions.wf()
     }
@@ -123,6 +211,55 @@ struct IommuBusMetadata {
 }
 
 impl IommuBusMetadata {
+    closed spec fn all_owned_by(
+        &self,
+        owner_process: RwLockProcessPtr,
+    ) -> bool {
+        &&& self.wf()
+        &&& forall|device: usize, function: usize|
+            #![trigger self.devices.spec_index(device)
+                .functions.spec_index(function)]
+            device < PCI_DEVICE_COUNT
+            && function < PCI_FUNCTION_COUNT
+            ==> self.devices.spec_index(device)
+                .functions.spec_index(function) == owner_process
+    }
+
+    fn new_owner(owner_process: RwLockProcessPtr) -> (ret: Self)
+        ensures
+            ret.all_owned_by(owner_process),
+    {
+        let mut devices:
+            Array<IommuDeviceMetadata, PCI_DEVICE_COUNT> = Array::new();
+        let mut device = 0;
+        while device < PCI_DEVICE_COUNT
+            invariant
+                0 <= device <= PCI_DEVICE_COUNT,
+                devices.wf(),
+                forall|old_device: usize|
+                    #![trigger devices.spec_index(old_device).wf()]
+                    old_device < device
+                    ==> devices.spec_index(old_device).wf(),
+                forall|old_device: usize, function: usize|
+                    #![trigger devices.spec_index(old_device)
+                        .functions.spec_index(function)]
+                    old_device < device
+                    && function < PCI_FUNCTION_COUNT
+                    ==> devices.spec_index(old_device)
+                        .functions.spec_index(function) == owner_process,
+            decreases PCI_DEVICE_COUNT - device,
+        {
+            devices.set(
+                device,
+                IommuDeviceMetadata::new_owner(owner_process),
+            );
+            device = device + 1;
+        }
+        let ret = Self { devices };
+        assert(ret.all_owned_by(owner_process));
+        ret
+    }
+
     closed spec fn wf(&self) -> bool {
         &&& self.devices.wf()
         &&& forall|device: usize|
@@ -148,6 +285,243 @@ pub struct IommuRootTable {
 }
 
 impl IommuRootTable {
+    pub fn new_disabled(
+        table_base: PAddr,
+        owner_process: RwLockProcessPtr,
+    ) -> (ret: Self)
+        requires
+            table_base % VTD_TABLE_SIZE == 0,
+            table_base as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int
+                <= MEM_MASK as int,
+            table_base as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int
+                <= usize::MAX as int,
+            0 < VTD_TABLE_SIZE,
+        ensures
+            ret.wf(),
+            forall|bus: usize, device: usize, function: usize|
+                #![trigger ret.spec_index_iommu_root(bus, device, function)]
+                pci_bdf_valid(bus, device, function)
+                ==> ret.spec_index_iommu_root(bus, device, function) is None,
+            forall|bus: usize, device: usize, function: usize|
+                #![trigger ret.spec_index_owner(bus, device, function)]
+                pci_bdf_valid(bus, device, function)
+                ==> ret.spec_index_owner(bus, device, function) == owner_process,
+    {
+        let mut root_entries: Array<VtdLegacyEntry, PCI_BUS_COUNT> =
+            Array::new();
+        let mut context_tables:
+            Array<IommuContextTable, PCI_BUS_COUNT> = Array::new();
+        let mut metadata: Array<IommuBusMetadata, PCI_BUS_COUNT> =
+            Array::new();
+        let mut bus = 0;
+        while bus < PCI_BUS_COUNT
+            invariant
+                0 <= bus <= PCI_BUS_COUNT,
+                root_entries.wf(),
+                context_tables.wf(),
+                metadata.wf(),
+                table_base % VTD_TABLE_SIZE == 0,
+                table_base as int
+                    + IOMMU_ROOT_TABLE_STATIC_SIZE as int
+                    <= MEM_MASK as int,
+                table_base as int
+                    + IOMMU_ROOT_TABLE_STATIC_SIZE as int
+                    <= usize::MAX as int,
+                0 < VTD_TABLE_SIZE,
+                forall|old_bus: usize|
+                    #![trigger root_entries.spec_index(old_bus)]
+                    old_bus < bus
+                    ==> {
+                        let address: usize =
+                            (table_base + VTD_TABLE_SIZE
+                                * (old_bus + 1)) as usize;
+                        &&& root_entries.spec_index(old_bus).lower
+                            == (address | 1)
+                        &&& root_entries.spec_index(old_bus).upper == 0
+                        &&& root_entries.spec_index(old_bus).present()
+                        &&& root_entries.spec_index(old_bus).address()
+                            == address
+                    },
+                forall|old_bus: usize|
+                    #![trigger context_tables.spec_index(old_bus)
+                        .all_disabled()]
+                    old_bus < bus
+                    ==> context_tables.spec_index(old_bus).all_disabled(),
+                forall|old_bus: usize|
+                    #![trigger context_tables.spec_index(old_bus).wf()]
+                    old_bus < bus
+                    ==> context_tables.spec_index(old_bus).wf(),
+                forall|old_bus: usize, device: usize, function: usize|
+                    #![trigger context_tables.spec_index(old_bus)
+                        .entry(device, function)]
+                    old_bus < bus
+                    && device < PCI_DEVICE_COUNT
+                    && function < PCI_FUNCTION_COUNT
+                    ==> {
+                        &&& context_tables.spec_index(old_bus)
+                            .entry(device, function).lower == 0
+                        &&& context_tables.spec_index(old_bus)
+                            .entry(device, function).upper == 0
+                        &&& !context_tables.spec_index(old_bus)
+                            .entry(device, function).present()
+                    },
+                forall|old_bus: usize|
+                    #![trigger metadata.spec_index(old_bus)
+                        .all_owned_by(owner_process)]
+                    old_bus < bus
+                    ==> metadata.spec_index(old_bus)
+                        .all_owned_by(owner_process),
+                forall|old_bus: usize|
+                    #![trigger metadata.spec_index(old_bus).wf()]
+                    old_bus < bus
+                    ==> metadata.spec_index(old_bus).wf(),
+                forall|old_bus: usize, device: usize, function: usize|
+                    #![trigger metadata.spec_index(old_bus)
+                        .devices.spec_index(device)
+                        .functions.spec_index(function)]
+                    old_bus < bus
+                    && device < PCI_DEVICE_COUNT
+                    && function < PCI_FUNCTION_COUNT
+                    ==> metadata.spec_index(old_bus)
+                        .devices.spec_index(device)
+                        .functions.spec_index(function) == owner_process,
+            decreases PCI_BUS_COUNT - bus,
+        {
+            assert(VTD_TABLE_SIZE == 4096) by (compute);
+            assert(VTD_TABLE_SIZE as int == 4096) by (compute);
+            assert(PCI_BUS_COUNT as int == 256) by (compute);
+            assert(
+                IOMMU_ROOT_TABLE_STATIC_SIZE as int == 1_576_960
+            )
+                by (compute);
+            assert(bus as int + 1 <= 256);
+            assert(
+                4096 * (bus as int + 1) <= 1_048_576
+            ) by {
+                assert(bus as int + 1 <= 256);
+            }
+            assert(1_048_576 <= 1_576_960);
+            assert(
+                table_base as int
+                    + 4096 * (bus as int + 1)
+                    <= MEM_MASK as int
+            ) by {
+                assert(
+                    table_base as int + 1_576_960
+                        <= MEM_MASK as int
+                );
+            }
+            assert(
+                table_base as int
+                    + 4096 * (bus as int + 1)
+                    <= usize::MAX as int
+            ) by {
+                assert(
+                    table_base as int + 1_576_960
+                        <= usize::MAX as int
+                );
+            }
+            let context_address =
+                iommu_context_table_address(table_base, bus);
+            assert({
+                &&& (context_address | 1)
+                    & VTD_CONTEXT_ADDRESS_MASK == context_address
+                &&& (context_address | 1) & 1 == 1
+            }) by (bit_vector)
+                requires
+                    context_address % VTD_TABLE_SIZE == 0,
+                    context_address <= MEM_MASK as usize,
+            ;
+            root_entries.set(
+                bus,
+                VtdLegacyEntry {
+                    lower: context_address | 1,
+                    upper: 0,
+                },
+            );
+            let context_table = IommuContextTable::new_disabled();
+            proof {
+                reveal(IommuContextTable::all_disabled);
+            }
+            context_tables.set(bus, context_table);
+            let bus_metadata =
+                IommuBusMetadata::new_owner(owner_process);
+            proof {
+                reveal(IommuBusMetadata::all_owned_by);
+            }
+            metadata.set(bus, bus_metadata);
+            bus = bus + 1;
+        }
+        let ret = Self {
+            root_entries,
+            context_tables,
+            metadata,
+            table_base: Ghost(table_base),
+        };
+        assert(ret.iommu_roots().len() == PCI_BUS_COUNT) by {
+            reveal(IommuRootTable::iommu_roots);
+        }
+        assert(ret.owners().len() == PCI_BUS_COUNT) by {
+            reveal(IommuRootTable::owners);
+        }
+        assert(
+            ret.table_base.view()
+                <= usize::MAX - IOMMU_ROOT_TABLE_STATIC_SIZE
+        ) by {
+            assert(
+                ret.table_base.view() as int
+                    + IOMMU_ROOT_TABLE_STATIC_SIZE as int
+                    <= usize::MAX as int
+            );
+        }
+        assert(ret.wf()) by {
+            reveal(IommuRootTable::wf);
+            reveal(IommuRootTable::context_table_address);
+            reveal(IommuRootTable::context_entry);
+            reveal(IommuRootTable::iommu_roots);
+            reveal(IommuRootTable::owners);
+            reveal(IommuContextTable::all_disabled);
+            reveal(IommuContextTable::wf);
+            reveal(IommuContextTable::entry);
+            reveal(IommuBusMetadata::all_owned_by);
+            reveal(IommuBusMetadata::wf);
+            reveal(IommuDeviceMetadata::wf);
+            reveal(VtdLegacyEntry::present);
+            reveal(VtdLegacyEntry::address);
+            broadcast use vstd::seq::lemma_seq_new_index;
+        }
+        assert(
+            forall|bus: usize, device: usize, function: usize|
+                #![trigger ret.spec_index_iommu_root(
+                    bus, device, function)]
+                pci_bdf_valid(bus, device, function)
+                ==> ret.spec_index_iommu_root(
+                    bus, device, function) is None
+        ) by {
+            reveal(IommuRootTable::spec_index_iommu_root);
+            reveal(IommuRootTable::iommu_roots);
+            reveal(IommuRootTable::context_entry);
+            reveal(IommuContextTable::all_disabled);
+            reveal(IommuContextTable::entry);
+            reveal(VtdLegacyEntry::present);
+            broadcast use vstd::seq::lemma_seq_new_index;
+        }
+        assert(
+            forall|bus: usize, device: usize, function: usize|
+                #![trigger ret.spec_index_owner(
+                    bus, device, function)]
+                pci_bdf_valid(bus, device, function)
+                ==> ret.spec_index_owner(
+                    bus, device, function) == owner_process
+        ) by {
+            reveal(IommuRootTable::spec_index_owner);
+            reveal(IommuRootTable::owners);
+            reveal(IommuBusMetadata::all_owned_by);
+            broadcast use vstd::seq::lemma_seq_new_index;
+        }
+        ret
+    }
+
     closed spec fn context_table_address(&self, bus: usize) -> PAddr
         recommends bus < PCI_BUS_COUNT,
     {

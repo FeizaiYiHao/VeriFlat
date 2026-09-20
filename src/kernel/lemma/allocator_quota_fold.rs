@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 
-proof fn lemma_iset_int_fold_congruence<A>(
+proof fn lemma_iset_fold_int_sum_congruence<A>(
     s: ISet<A>,
     lhs: spec_fn(A) -> int,
     rhs: spec_fn(A) -> int,
@@ -19,28 +19,128 @@ proof fn lemma_iset_int_fold_congruence<A>(
 {
     let lhs_fold = |sum: int, a: A| sum + lhs(a);
     let rhs_fold = |sum: int, a: A| sum + rhs(a);
-    if s =~= ISet::empty() {
+    let pred = |part: ISet<A>|
+        part.subset_of(s) ==> part.fold(0int, lhs_fold) == part.fold(0int, rhs_fold);
+    assert(pred(ISet::empty())) by {
         vstd::iset::fold::lemma_fold_empty(0int, lhs_fold);
         vstd::iset::fold::lemma_fold_empty(0int, rhs_fold);
-    } else {
-        let a = s.choose();
-        assert(s.contains(a)) by {
-            broadcast use vstd::iset::lemma_iset_ext_equal;
-            broadcast use vstd::iset::lemma_iset_empty;
-        };
-        let rest = s.remove(a);
-        vstd::iset::lemma_iset_remove_finite(s, a);
-        vstd::iset::lemma_iset_remove_len(s, a);
-        lemma_iset_int_fold_congruence(rest, lhs, rhs);
-        assert(vstd::iset::fold::is_fun_commutative(lhs_fold)) by { reveal(vstd::iset::fold::is_fun_commutative); };
-        assert(vstd::iset::fold::is_fun_commutative(rhs_fold)) by { reveal(vstd::iset::fold::is_fun_commutative); };
-        vstd::iset::fold::lemma_fold_insert(rest, 0int, lhs_fold, a);
-        vstd::iset::fold::lemma_fold_insert(rest, 0int, rhs_fold, a);
-        vstd::iset::lemma_iset_remove_insert(s, a);
-    }
+    };
+    assert forall|part: ISet<A>, a: A|
+        pred(part) && part.finite() && !part.contains(a)
+        implies #[trigger] pred(part.insert(a)) by {
+        if part.insert(a).subset_of(s) {
+            assert(part.subset_of(s)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(s.contains(a)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(lhs(a) == rhs(a)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(vstd::iset::fold::is_fun_commutative(lhs_fold)) by { reveal(vstd::iset::fold::is_fun_commutative); };
+            assert(vstd::iset::fold::is_fun_commutative(rhs_fold)) by { reveal(vstd::iset::fold::is_fun_commutative); };
+            vstd::iset::fold::lemma_fold_insert(part, 0int, lhs_fold, a);
+            vstd::iset::fold::lemma_fold_insert(part, 0int, rhs_fold, a);
+        }
+    };
+    vstd::iset::fold::lemma_finite_set_induct(s, pred);
+    assert(s.subset_of(s)) by {
+        broadcast use vstd::iset::group_iset_lemmas;
+    };
 }
 
-proof fn lemma_iset_int_fold_nonneg<A>(
+pub proof fn lemma_set_fold_int_sum_congruence<A>(
+    s: Set<A>,
+    lhs: spec_fn(A) -> int,
+    rhs: spec_fn(A) -> int,
+)
+    requires
+        forall|a: A| #![trigger s.contains(a)]
+            s.contains(a) ==> lhs(a) == rhs(a),
+    ensures
+        s.fold(0int, |sum: int, a: A| sum + lhs(a))
+            == s.fold(0int, |sum: int, a: A| sum + rhs(a)),
+{
+    vstd::set::lemma_to_iset_finite(s);
+    lemma_iset_fold_int_sum_congruence(s.to_iset(), lhs, rhs);
+}
+
+pub proof fn lemma_set_ext_equal_three_distinct_len<A>(
+    s: Set<A>,
+    first: A,
+    second: A,
+    third: A,
+)
+    requires
+        s =~= set![first, second, third],
+        first != second,
+        first != third,
+        second != third,
+    ensures
+        s.len() == 3,
+{
+    vstd::set::axiom_set_ext_equal(
+        s,
+        set![first, second, third],
+    );
+    broadcast use vstd::set::lemma_set_empty_len;
+    broadcast use vstd::set::lemma_set_insert_len;
+    broadcast use vstd::set::lemma_set_insert_different;
+}
+
+pub proof fn lemma_set_fold_int_sum_empty<A>(
+    s: Set<A>,
+    value: spec_fn(A) -> int,
+)
+    requires
+        s =~= Set::<A>::empty(),
+    ensures
+        s.fold(
+            0int,
+            |sum: int, a: A| sum + value(a),
+        ) == 0,
+{
+    let fold = |sum: int, a: A| sum + value(a);
+    vstd::iset::fold::lemma_fold_empty(0int, fold);
+    assert(s.to_iset() =~= ISet::<A>::empty()) by {
+        broadcast use vstd::set::group_set_lemmas;
+        broadcast use vstd::iset::group_iset_lemmas;
+    };
+}
+
+pub proof fn lemma_set_fold_int_sum_singleton<A>(
+    s: Set<A>,
+    member: A,
+    value: spec_fn(A) -> int,
+)
+    requires
+        s =~= Set::<A>::empty().insert(member),
+    ensures
+        s.fold(
+            0int,
+            |sum: int, a: A| sum + value(a),
+        ) == value(member),
+{
+    let fold = |sum: int, a: A| sum + value(a);
+    assert(vstd::iset::fold::is_fun_commutative(fold)) by {
+        reveal(vstd::iset::fold::is_fun_commutative);
+    };
+    vstd::iset::fold::lemma_fold_empty(0int, fold);
+    vstd::iset::fold::lemma_fold_insert(
+        ISet::<A>::empty(),
+        0int,
+        fold,
+        member,
+    );
+    assert(s.to_iset()
+        =~= ISet::<A>::empty().insert(member)) by {
+        broadcast use vstd::set::group_set_lemmas;
+        broadcast use vstd::iset::group_iset_lemmas;
+    };
+}
+
+proof fn lemma_iset_fold_int_sum_nonneg<A>(
     s: ISet<A>,
     value: spec_fn(A) -> int,
 )
@@ -53,27 +153,37 @@ proof fn lemma_iset_int_fold_nonneg<A>(
     decreases s.len(),
 {
     let fold = |sum: int, a: A| sum + value(a);
-    if s =~= ISet::empty() {
+    let pred = |part: ISet<A>|
+        part.subset_of(s) ==> part.fold(0int, fold) >= 0;
+    assert(pred(ISet::empty())) by {
         vstd::iset::fold::lemma_fold_empty(0int, fold);
-    } else {
-        let a = s.choose();
-        assert(s.contains(a)) by {
-            broadcast use vstd::iset::lemma_iset_ext_equal;
-            broadcast use vstd::iset::lemma_iset_empty;
+    };
+    assert forall|part: ISet<A>, a: A|
+        pred(part) && part.finite() && !part.contains(a)
+        implies #[trigger] pred(part.insert(a)) by {
+        if part.insert(a).subset_of(s) {
+            assert(part.subset_of(s)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(s.contains(a)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(value(a) >= 0) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(vstd::iset::fold::is_fun_commutative(fold)) by {
+                reveal(vstd::iset::fold::is_fun_commutative);
+            };
+            vstd::iset::fold::lemma_fold_insert(part, 0int, fold, a);
         };
-        let rest = s.remove(a);
-        vstd::iset::lemma_iset_remove_finite(s, a);
-        vstd::iset::lemma_iset_remove_len(s, a);
-        lemma_iset_int_fold_nonneg(rest, value);
-        assert(vstd::iset::fold::is_fun_commutative(fold)) by {
-            reveal(vstd::iset::fold::is_fun_commutative);
-        };
-        vstd::iset::fold::lemma_fold_insert(rest, 0int, fold, a);
-        vstd::iset::lemma_iset_remove_insert(s, a);
-    }
+    };
+    vstd::iset::fold::lemma_finite_set_induct(s, pred);
+    assert(s.subset_of(s)) by {
+        broadcast use vstd::iset::group_iset_lemmas;
+    };
 }
 
-pub proof fn lemma_int_set_fold_nonneg<A>(
+pub proof fn lemma_set_fold_int_sum_nonneg<A>(
     s: Set<A>,
     value: spec_fn(A) -> int,
 )
@@ -84,10 +194,10 @@ pub proof fn lemma_int_set_fold_nonneg<A>(
         s.fold(0int, |sum: int, a: A| sum + value(a)) >= 0,
 {
     vstd::set::lemma_to_iset_finite(s);
-    lemma_iset_int_fold_nonneg(s.to_iset(), value);
+    lemma_iset_fold_int_sum_nonneg(s.to_iset(), value);
 }
 
-pub proof fn lemma_int_set_fold_ge_member<A>(
+pub proof fn lemma_set_fold_int_sum_ge_member<A>(
     s: Set<A>,
     value: spec_fn(A) -> int,
     member: A,
@@ -104,7 +214,7 @@ pub proof fn lemma_int_set_fold_ge_member<A>(
     let fold = |sum: int, a: A| sum + value(a);
     vstd::set::lemma_to_iset_finite(s);
     vstd::iset::lemma_iset_remove_finite(is, member);
-    lemma_iset_int_fold_nonneg(rest, value);
+    lemma_iset_fold_int_sum_nonneg(rest, value);
     assert(vstd::iset::fold::is_fun_commutative(fold)) by {
         reveal(vstd::iset::fold::is_fun_commutative);
     };
@@ -112,7 +222,7 @@ pub proof fn lemma_int_set_fold_ge_member<A>(
     vstd::iset::lemma_iset_remove_insert(is, member);
 }
 
-pub proof fn lemma_int_set_fold_change_by<A>(
+pub proof fn lemma_set_fold_int_sum_change_by<A>(
     s: Set<A>,
     pre: spec_fn(A) -> int,
     post: spec_fn(A) -> int,
@@ -134,12 +244,40 @@ pub proof fn lemma_int_set_fold_change_by<A>(
     let post_fold = |sum: int, a: A| sum + post(a);
     vstd::set::lemma_to_iset_finite(s);
     vstd::iset::lemma_iset_remove_finite(is, changed);
-    lemma_iset_int_fold_congruence(rest, pre, post);
+    lemma_iset_fold_int_sum_congruence(rest, pre, post);
     assert(vstd::iset::fold::is_fun_commutative(pre_fold)) by { reveal(vstd::iset::fold::is_fun_commutative); };
     assert(vstd::iset::fold::is_fun_commutative(post_fold)) by { reveal(vstd::iset::fold::is_fun_commutative); };
     vstd::iset::fold::lemma_fold_insert(rest, 0int, pre_fold, changed);
     vstd::iset::fold::lemma_fold_insert(rest, 0int, post_fold, changed);
     vstd::iset::lemma_iset_remove_insert(is, changed);
+}
+
+pub proof fn lemma_set_fold_int_sum_insert_zero<A>(
+    s: Set<A>,
+    pre: spec_fn(A) -> int,
+    post: spec_fn(A) -> int,
+    inserted: A,
+)
+    requires
+        !s.contains(inserted),
+        post(inserted) == 0,
+        forall|a: A| #![trigger s.contains(a)]
+            s.contains(a) ==> post(a) == pre(a),
+    ensures
+        s.insert(inserted).fold(0int, |sum: int, a: A| sum + post(a))
+            == s.fold(0int, |sum: int, a: A| sum + pre(a)),
+{
+    let post_fold = |sum: int, a: A| sum + post(a);
+    lemma_set_fold_int_sum_congruence(s, post, pre);
+    vstd::set::lemma_to_iset_finite(s);
+    assert(vstd::iset::fold::is_fun_commutative(post_fold)) by {
+        reveal(vstd::iset::fold::is_fun_commutative);
+    };
+    vstd::iset::fold::lemma_fold_insert(s.to_iset(), 0int, post_fold, inserted);
+    assert(s.insert(inserted).to_iset() =~= s.to_iset().insert(inserted)) by {
+        broadcast use vstd::set::group_set_lemmas;
+        broadcast use vstd::iset::group_iset_lemmas;
+    };
 }
 
 pub proof fn lemma_thread_effective_quota_2m_fold_change_by(
@@ -168,7 +306,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_change_by(
         |t: RwLockThreadPtr| thread_effective_quota_2m(pre.spec_index(t));
     let post_value =
         |t: RwLockThreadPtr| thread_effective_quota_2m(post.spec_index(t));
-    lemma_int_set_fold_change_by(
+    lemma_set_fold_int_sum_change_by(
         s,
         pre_value,
         post_value,
@@ -207,7 +345,7 @@ pub proof fn lemma_process_effective_quota_2m_fold_nonneg(
 {
     let value = |p: RwLockProcessPtr|
         process_effective_quota_2m(process_map.spec_index(p));
-    lemma_int_set_fold_nonneg(s, value);
+    lemma_set_fold_int_sum_nonneg(s, value);
     let value_fold = |sum: int, p: RwLockProcessPtr| sum + value(p);
     let direct_fold = |sum: int, p: RwLockProcessPtr|
         sum + process_effective_quota_2m(process_map.spec_index(p));
@@ -236,7 +374,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_ge_member(
 {
     let value = |t: RwLockThreadPtr|
         thread_effective_quota_2m(thread_map.spec_index(t));
-    lemma_int_set_fold_ge_member(s, value, member);
+    lemma_set_fold_int_sum_ge_member(s, value, member);
     let value_fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr|
         sum + thread_effective_quota_2m(thread_map.spec_index(t));
@@ -261,7 +399,7 @@ pub proof fn lemma_thread_direct_pending_2m_fold_nonneg(
     let value = |t: RwLockThreadPtr|
         thread_map.spec_index(t).view()
             .direct_free_quota_pending_2m.view() as int;
-    lemma_int_set_fold_nonneg(s, value);
+    lemma_set_fold_int_sum_nonneg(s, value);
     let value_fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr|
         sum + thread_map.spec_index(t).view()
@@ -288,7 +426,7 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_nonneg(
         thread_map.spec_index(t).view()
             .indirect_free_quota_pending_2m.view()
             .spec_index(depth) as int;
-    lemma_int_set_fold_nonneg(s, value);
+    lemma_set_fold_int_sum_nonneg(s, value);
     let value_fold = |sum: int, t: RwLockThreadPtr| sum + value(t);
     let direct_fold = |sum: int, t: RwLockThreadPtr|
         sum + thread_map.spec_index(t).view()
@@ -323,32 +461,27 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fi
             container_map, new_process_map, thread_map, allocator_2m_map,
         ),
 {
-    assert(container_process_allocator_quota_2m_wf(
-        container_map, new_process_map, thread_map, allocator_2m_map,
-    )) by {
-        reveal(container_process_allocator_quota_2m_wf);
-        reveal(container_process_wf);
-        assert forall|c_ptr: RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
-            container_map.dom().contains(c_ptr)
-        implies
-            container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(new_process_map.spec_index(p_ptr))})
-                + thread_effective_quota_2m_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    thread_map,
-                )
-                + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
-                + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
-                + allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
-                == allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
-        by {
-            assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
-                reveal(container_process_wf);
-            };
-            lemma_process_effective_quota_2m_fold_eq(
-                container_map.spec_index(c_ptr).view().owned_processes.view(),
-                old_process_map, new_process_map);
+    reveal(container_process_allocator_quota_2m_wf);
+    assert forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
+        container_map.dom().contains(c_ptr)
+    implies
+        container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(new_process_map.spec_index(p_ptr))})
+            + thread_effective_quota_2m_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                thread_map,
+            )
+            + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
+            + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+            + allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
+            == allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
+    by {
+        assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
+            reveal(container_process_wf);
         };
+        lemma_process_effective_quota_2m_fold_eq(
+            container_map.spec_index(c_ptr).view().owned_processes.view(),
+            old_process_map, new_process_map);
     };
 }
 
@@ -374,32 +507,27 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fi
             container_map, new_process_map, thread_map, allocator_1g_map,
         ),
 {
-    assert(container_process_allocator_quota_1g_wf(
-        container_map, new_process_map, thread_map, allocator_1g_map,
-    )) by {
-        reveal(container_process_allocator_quota_1g_wf);
-        reveal(container_process_wf);
-        assert forall|c_ptr: RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
-            container_map.dom().contains(c_ptr)
-        implies
-            container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(new_process_map.spec_index(p_ptr))})
-                + thread_effective_quota_1g_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    thread_map,
-                )
-                + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
-                + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
-                + allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
-                == allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view()
-        by {
-            assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
-                reveal(container_process_wf);
-            };
-            lemma_process_effective_quota_1g_fold_eq(
-                container_map.spec_index(c_ptr).view().owned_processes.view(),
-                old_process_map, new_process_map);
+    reveal(container_process_allocator_quota_1g_wf);
+    assert forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
+        container_map.dom().contains(c_ptr)
+    implies
+        container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(new_process_map.spec_index(p_ptr))})
+            + thread_effective_quota_1g_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                thread_map,
+            )
+            + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
+            + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
+            + allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
+            == allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view()
+    by {
+        assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
+            reveal(container_process_wf);
         };
+        lemma_process_effective_quota_1g_fold_eq(
+            container_map.spec_index(c_ptr).view().owned_processes.view(),
+            old_process_map, new_process_map);
     };
 }
 
@@ -606,111 +734,235 @@ pub proof fn lemma_thread_effective_quota_2m_fold_change_by_forall(
     };
 }
 
-pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
+pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
+    root: RwLockContainerPtr,
     pre_ctn: ContainerLockedMap,
     post_ctn: ContainerLockedMap,
+    pre_prc: ProcessLockedMap,
+    post_prc: ProcessLockedMap,
     pre_thr: ThreadLockedMap,
     post_thr: ThreadLockedMap,
     dc: RwLockContainerPtr,
     new_t: RwLockThreadPtr,
-    uppers: Set<RwLockContainerPtr>,
 )
     requires
+        container_process_wf(pre_ctn, pre_prc),
         container_thread_wf(pre_ctn, pre_thr),
+        container_uppertree_seq_wf(root, pre_ctn),
         pre_ctn.dom().contains(dc),
         post_ctn.dom() == pre_ctn.dom(),
-        post_ctn.spec_index(dc).view_ghost().owned_threads.view() =~= pre_ctn.spec_index(dc).view_ghost().owned_threads.view().insert(new_t),
         forall|c: RwLockContainerPtr|
-            #![trigger pre_ctn.spec_index(c).view_ghost().owned_threads]
-            #![trigger post_ctn.spec_index(c).view_ghost().owned_threads]
-            pre_ctn.dom().contains(c) && c != dc ==>
-                post_ctn.spec_index(c).view_ghost().owned_threads == pre_ctn.spec_index(c).view_ghost().owned_threads,
-        forall|c: RwLockContainerPtr|
-            #![trigger pre_ctn.spec_index(c).view_ghost().owned_indirect_threads]
-            #![trigger post_ctn.spec_index(c).view_ghost().owned_indirect_threads]
-            uppers.contains(c) ==>
-                post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view() =~= pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().insert(new_t),
-        forall|c: RwLockContainerPtr|
-            #![trigger pre_ctn.spec_index(c).view_ghost().owned_indirect_threads]
-            #![trigger post_ctn.spec_index(c).view_ghost().owned_indirect_threads]
-            pre_ctn.dom().contains(c) && !uppers.contains(c) ==>
-                post_ctn.spec_index(c).view_ghost().owned_indirect_threads == pre_ctn.spec_index(c).view_ghost().owned_indirect_threads,
-        forall|c: RwLockContainerPtr| #![auto]
-            pre_ctn.dom().contains(c) ==>
-                post_ctn.spec_index(c).view() == pre_ctn.spec_index(c).view()
-                && post_ctn.spec_index(c).view_rodata() == pre_ctn.spec_index(c).view_rodata(),
+            #![trigger post_ctn.spec_index(c)]
+            pre_ctn.dom().contains(c) ==> {
+                &&& post_ctn.spec_index(c).view()
+                    == pre_ctn.spec_index(c).view()
+                &&& post_ctn.spec_index(c).view_rodata()
+                    == pre_ctn.spec_index(c).view_rodata()
+                &&& post_ctn.spec_index(c).view_ghost()
+                    == ContainerGhost {
+                        uppertree_seq: pre_ctn.spec_index(c)
+                            .view_ghost().uppertree_seq,
+                        subtree_set: pre_ctn.spec_index(c)
+                            .view_ghost().subtree_set,
+                        owned_threads: if c == dc {
+                            Ghost(
+                                pre_ctn.spec_index(c).view_ghost()
+                                    .owned_threads.view().insert(new_t),
+                            )
+                        } else {
+                            pre_ctn.spec_index(c).view_ghost().owned_threads
+                        },
+                        owned_indirect_threads: if pre_ctn.spec_index(dc)
+                            .view_ghost().uppertree_seq.view().to_set()
+                            .contains(c) {
+                            Ghost(
+                                pre_ctn.spec_index(c).view_ghost()
+                                    .owned_indirect_threads.view().insert(new_t),
+                            )
+                        } else {
+                            pre_ctn.spec_index(c).view_ghost()
+                                .owned_indirect_threads
+                        },
+                    }
+            },
+        pre_prc.dom().subset_of(post_prc.dom()),
+        forall|p: RwLockProcessPtr|
+            #![trigger post_prc.spec_index(p).view()]
+            pre_prc.dom().contains(p) ==> {
+                &&& process_effective_quota_4k(post_prc.spec_index(p))
+                    == process_effective_quota_4k(pre_prc.spec_index(p))
+                &&& process_effective_quota_2m(post_prc.spec_index(p))
+                    == process_effective_quota_2m(pre_prc.spec_index(p))
+                &&& process_effective_quota_1g(post_prc.spec_index(p))
+                    == process_effective_quota_1g(pre_prc.spec_index(p))
+            },
         !pre_thr.dom().contains(new_t),
+        pre_thr.dom().subset_of(post_thr.dom()),
+        post_thr.dom().contains(new_t),
+        post_thr.spec_index(new_t).inv(),
+        post_thr.spec_index(new_t).view().upper_container_seq
+            == pre_ctn.spec_index(dc).view_ghost().uppertree_seq,
         forall|t: RwLockThreadPtr|
             #![trigger post_thr.spec_index(t).view()]
             pre_thr.dom().contains(t) ==>
                 thread_effective_quota_4k(post_thr.spec_index(t)) == thread_effective_quota_4k(pre_thr.spec_index(t))
                 && thread_effective_quota_2m(post_thr.spec_index(t)) == thread_effective_quota_2m(pre_thr.spec_index(t))
                 && thread_effective_quota_1g(post_thr.spec_index(t)) == thread_effective_quota_1g(pre_thr.spec_index(t))
-                && post_thr.spec_index(t).view().direct_free_quota_pending_4k == pre_thr.spec_index(t).view().direct_free_quota_pending_4k
-                && post_thr.spec_index(t).view().direct_free_quota_pending_2m == pre_thr.spec_index(t).view().direct_free_quota_pending_2m
-                && post_thr.spec_index(t).view().direct_free_quota_pending_1g == pre_thr.spec_index(t).view().direct_free_quota_pending_1g
-                && post_thr.spec_index(t).view().indirect_free_quota_pending_4k == pre_thr.spec_index(t).view().indirect_free_quota_pending_4k
-                && post_thr.spec_index(t).view().indirect_free_quota_pending_2m == pre_thr.spec_index(t).view().indirect_free_quota_pending_2m
-                && post_thr.spec_index(t).view().indirect_free_quota_pending_1g == pre_thr.spec_index(t).view().indirect_free_quota_pending_1g,
+                && post_thr.spec_index(t).view()
+                    .free_quota_pending_fields_equal(
+                        &pre_thr.spec_index(t).view(),
+                    ),
         thread_effective_quota_4k(post_thr.spec_index(new_t)) == 0,
         thread_effective_quota_2m(post_thr.spec_index(new_t)) == 0,
         thread_effective_quota_1g(post_thr.spec_index(new_t)) == 0,
-        post_thr.spec_index(new_t).view().direct_free_quota_pending_4k.view() == 0,
-        post_thr.spec_index(new_t).view().direct_free_quota_pending_2m.view() == 0,
-        post_thr.spec_index(new_t).view().direct_free_quota_pending_1g.view() == 0,
-        forall|c: RwLockContainerPtr|
-            #![trigger post_ctn.spec_index(c).view_rodata().view().depth]
-            uppers.contains(c) ==>
-                post_thr.spec_index(new_t).view().indirect_free_quota_pending_4k.view().spec_index(post_ctn.spec_index(c).view_rodata().view().depth as int) == 0
-                && post_thr.spec_index(new_t).view().indirect_free_quota_pending_2m.view().spec_index(post_ctn.spec_index(c).view_rodata().view().depth as int) == 0
-                && post_thr.spec_index(new_t).view().indirect_free_quota_pending_1g.view().spec_index(post_ctn.spec_index(c).view_rodata().view().depth as int) == 0,
+        post_thr.spec_index(new_t).view().free_quota_pending_clean(),
     ensures
         forall|c: RwLockContainerPtr|
-            #![trigger post_ctn.dom().contains(c)]
+            #![trigger post_ctn.spec_index(c).view_rodata().view()
+                .allocator_ptr_4k]
             post_ctn.dom().contains(c) ==> {
+                let pre_processes = pre_ctn.spec_index(c).view()
+                    .owned_processes.view();
+                let post_processes = post_ctn.spec_index(c).view()
+                    .owned_processes.view();
                 let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
                 let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
                 let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
                 let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
                 let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
+                &&& process_effective_quota_4k_fold_sum(
+                    post_processes,
+                    post_prc,
+                ) == process_effective_quota_4k_fold_sum(
+                    pre_processes,
+                    pre_prc,
+                )
                 &&& thread_effective_quota_4k_fold_sum(post_direct, post_thr) == thread_effective_quota_4k_fold_sum(pre_direct, pre_thr)
                 &&& thread_direct_pending_4k_fold_sum(post_direct, post_thr) == thread_direct_pending_4k_fold_sum(pre_direct, pre_thr)
                 &&& thread_indirect_pending_4k_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_4k_fold_sum_at_depth(pre_indirect, pre_thr, depth)
+            },
+        forall|c: RwLockContainerPtr|
+            #![trigger post_ctn.spec_index(c).view_rodata().view()
+                .allocator_ptr_2m]
+            post_ctn.dom().contains(c) ==> {
+                let pre_processes = pre_ctn.spec_index(c).view()
+                    .owned_processes.view();
+                let post_processes = post_ctn.spec_index(c).view()
+                    .owned_processes.view();
+                let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
+                let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
+                let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+                let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+                let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
+                &&& process_effective_quota_2m_fold_sum(
+                    post_processes,
+                    post_prc,
+                ) == process_effective_quota_2m_fold_sum(
+                    pre_processes,
+                    pre_prc,
+                )
                 &&& thread_effective_quota_2m_fold_sum(post_direct, post_thr) == thread_effective_quota_2m_fold_sum(pre_direct, pre_thr)
                 &&& thread_direct_pending_2m_fold_sum(post_direct, post_thr) == thread_direct_pending_2m_fold_sum(pre_direct, pre_thr)
                 &&& thread_indirect_pending_2m_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_2m_fold_sum_at_depth(pre_indirect, pre_thr, depth)
+            },
+        forall|c: RwLockContainerPtr|
+            #![trigger post_ctn.spec_index(c).view_rodata().view()
+                .allocator_ptr_1g]
+            post_ctn.dom().contains(c) ==> {
+                let pre_processes = pre_ctn.spec_index(c).view()
+                    .owned_processes.view();
+                let post_processes = post_ctn.spec_index(c).view()
+                    .owned_processes.view();
+                let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
+                let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
+                let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+                let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
+                let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
+                &&& process_effective_quota_1g_fold_sum(
+                    post_processes,
+                    post_prc,
+                ) == process_effective_quota_1g_fold_sum(
+                    pre_processes,
+                    pre_prc,
+                )
                 &&& thread_effective_quota_1g_fold_sum(post_direct, post_thr) == thread_effective_quota_1g_fold_sum(pre_direct, pre_thr)
                 &&& thread_direct_pending_1g_fold_sum(post_direct, post_thr) == thread_direct_pending_1g_fold_sum(pre_direct, pre_thr)
                 &&& thread_indirect_pending_1g_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_1g_fold_sum_at_depth(pre_indirect, pre_thr, depth)
             },
 {
+    let uppers = pre_ctn.spec_index(dc)
+        .view_ghost().uppertree_seq.view().to_set();
     assert forall|c: RwLockContainerPtr|
         #![trigger post_ctn.dom().contains(c)]
         post_ctn.dom().contains(c) implies {
+            let pre_processes = pre_ctn.spec_index(c).view()
+                .owned_processes.view();
+            let post_processes = post_ctn.spec_index(c).view()
+                .owned_processes.view();
             let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
             let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
             let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
             let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
             let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
+            &&& process_effective_quota_4k_fold_sum(
+                post_processes,
+                post_prc,
+            ) == process_effective_quota_4k_fold_sum(
+                pre_processes,
+                pre_prc,
+            )
             &&& thread_effective_quota_4k_fold_sum(post_direct, post_thr) == thread_effective_quota_4k_fold_sum(pre_direct, pre_thr)
             &&& thread_direct_pending_4k_fold_sum(post_direct, post_thr) == thread_direct_pending_4k_fold_sum(pre_direct, pre_thr)
             &&& thread_indirect_pending_4k_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_4k_fold_sum_at_depth(pre_indirect, pre_thr, depth)
+            &&& process_effective_quota_2m_fold_sum(
+                post_processes,
+                post_prc,
+            ) == process_effective_quota_2m_fold_sum(
+                pre_processes,
+                pre_prc,
+            )
             &&& thread_effective_quota_2m_fold_sum(post_direct, post_thr) == thread_effective_quota_2m_fold_sum(pre_direct, pre_thr)
             &&& thread_direct_pending_2m_fold_sum(post_direct, post_thr) == thread_direct_pending_2m_fold_sum(pre_direct, pre_thr)
             &&& thread_indirect_pending_2m_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_2m_fold_sum_at_depth(pre_indirect, pre_thr, depth)
+            &&& process_effective_quota_1g_fold_sum(
+                post_processes,
+                post_prc,
+            ) == process_effective_quota_1g_fold_sum(
+                pre_processes,
+                pre_prc,
+            )
             &&& thread_effective_quota_1g_fold_sum(post_direct, post_thr) == thread_effective_quota_1g_fold_sum(pre_direct, pre_thr)
             &&& thread_direct_pending_1g_fold_sum(post_direct, post_thr) == thread_direct_pending_1g_fold_sum(pre_direct, pre_thr)
             &&& thread_indirect_pending_1g_fold_sum_at_depth(post_indirect, post_thr, depth) == thread_indirect_pending_1g_fold_sum_at_depth(pre_indirect, pre_thr, depth)
         }
     by {
+        reveal(container_process_wf);
         reveal(container_thread_wf);
+        let pre_processes = pre_ctn.spec_index(c).view()
+            .owned_processes.view();
+        let post_processes = post_ctn.spec_index(c).view()
+            .owned_processes.view();
         let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
         let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
         let pre_indirect = pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
         let post_indirect = post_ctn.spec_index(c).view_ghost().owned_indirect_threads.view();
         let depth = post_ctn.spec_index(c).view_rodata().view().depth as int;
+        lemma_process_effective_quota_4k_fold_eq(
+            pre_processes,
+            pre_prc,
+            post_prc,
+        );
+        lemma_process_effective_quota_2m_fold_eq(
+            pre_processes,
+            pre_prc,
+            post_prc,
+        );
+        lemma_process_effective_quota_1g_fold_eq(
+            pre_processes,
+            pre_prc,
+            post_prc,
+        );
         if c == dc {
-            vstd::set::axiom_set_ext_equal(post_direct, pre_direct.insert(new_t));
             lemma_thread_effective_quota_4k_fold_insert_zero(pre_direct, pre_thr, post_thr, new_t);
             lemma_thread_direct_pending_4k_fold_insert_zero(pre_direct, pre_thr, post_thr, new_t);
             lemma_thread_effective_quota_2m_fold_insert_zero(pre_direct, pre_thr, post_thr, new_t);
@@ -718,7 +970,6 @@ pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
             lemma_thread_effective_quota_1g_fold_insert_zero(pre_direct, pre_thr, post_thr, new_t);
             lemma_thread_direct_pending_1g_fold_insert_zero(pre_direct, pre_thr, post_thr, new_t);
         } else {
-            vstd::set::axiom_set_ext_equal(post_direct, pre_direct);
             lemma_thread_effective_quota_4k_fold_eq(pre_direct, pre_thr, post_thr);
             lemma_thread_direct_pending_4k_fold_eq(pre_direct, pre_thr, post_thr);
             lemma_thread_effective_quota_2m_fold_eq(pre_direct, pre_thr, post_thr);
@@ -727,12 +978,39 @@ pub proof fn lemma_container_thread_quota_folds_insert_zero_forall(
             lemma_thread_direct_pending_1g_fold_eq(pre_direct, pre_thr, post_thr);
         }
         if uppers.contains(c) {
-            vstd::set::axiom_set_ext_equal(post_indirect, pre_indirect.insert(new_t));
+            assert(
+                0 <= depth
+                    < post_thr.spec_index(new_t).view()
+                        .indirect_free_quota_pending_4k.view().len()
+                && 0 <= depth
+                    < post_thr.spec_index(new_t).view()
+                        .indirect_free_quota_pending_2m.view().len()
+                && 0 <= depth
+                    < post_thr.spec_index(new_t).view()
+                        .indirect_free_quota_pending_1g.view().len()
+            ) by {
+                pre_ctn.spec_index(dc).view_ghost()
+                    .uppertree_seq.view().to_set_ensures();
+                reveal(container_uppertree_seq_wf);
+                reveal(Seq::index_of);
+            };
+            assert(
+                post_thr.spec_index(new_t).view()
+                    .indirect_free_quota_pending_4k.view()
+                    .spec_index(depth) == 0
+                && post_thr.spec_index(new_t).view()
+                    .indirect_free_quota_pending_2m.view()
+                    .spec_index(depth) == 0
+                && post_thr.spec_index(new_t).view()
+                    .indirect_free_quota_pending_1g.view()
+                    .spec_index(depth) == 0
+            ) by {
+                reveal(Thread::free_quota_pending_clean);
+            };
             lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(pre_indirect, pre_thr, post_thr, new_t, depth);
             lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(pre_indirect, pre_thr, post_thr, new_t, depth);
             lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(pre_indirect, pre_thr, post_thr, new_t, depth);
         } else {
-            vstd::set::axiom_set_ext_equal(post_indirect, pre_indirect);
             lemma_thread_indirect_pending_4k_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
             lemma_thread_indirect_pending_2m_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);
             lemma_thread_indirect_pending_1g_fold_eq_at_depth(pre_indirect, pre_thr, post_thr, depth);

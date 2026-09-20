@@ -88,6 +88,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             kernel_entries_ghost.view().len() == mem_end_l4_index,
             forall|i: usize|
                 #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                #![trigger page_map_perm.value().spec_index(i)]
                 mem_end_l4_index <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
             forall|i: usize|
                 #![trigger kernel_entries_ghost.view().spec_index(i as int)]
@@ -99,21 +100,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             TABLE_TYPE == IOMMU_TYPE ==> mem_end_l4_index == 0,
         ensures
             ret.wf(),
+            ret.cr3 == page_map_ptr,
             ret.pcid == pcid,
             ret.kernel_l4_end == mem_end_l4_index,
-            ret.page_closure() == Set::empty().insert(page_map_ptr),
-            ret.mapping_4k() == Map::<VAddr, MapEntry>::empty(),
-            ret.mapping_2m() == Map::<VAddr, MapEntry>::empty(),
-            ret.mapping_1g() == Map::<VAddr, MapEntry>::empty(),
             ret.kernel_entries =~= kernel_entries_ghost,
             ret.is_empty(),
+            ret.page_closure() =~= set![page_map_ptr],
             ret.proc_ptr == proc_ptr,
     {
-        assert(forall|i: usize|
-            #![trigger page_map_perm.value().spec_index(i).is_empty()]
-            #![trigger page_map_perm.value().spec_index(i)]
-            mem_end_l4_index <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty()
-            );
         let mut ret = Self {
             cr3: page_map_ptr,
             pcid,
@@ -796,15 +790,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==> self.spec_resolve_mapping_l3(l4i, l3i)->0.addr
                     != self.spec_resolve_mapping_l3(l4j, l3j)->0.addr,
     {
-        assert((l4i, l3i) != (l4j, l3j)
-            && self.spec_resolve_mapping_l3(l4i, l3i) is Some
-            && self.spec_resolve_mapping_l3(l4j, l3j) is Some
-            ==> self.spec_resolve_mapping_l3(l4i, l3i)->0.addr
-                != self.spec_resolve_mapping_l3(l4j, l3j)->0.addr) by {
-            reveal(PageTable::wf_l4);
-            reveal(PageTable::disjoint_l4);
-            reveal(PageTable::disjoint_l3);
-        };
+        reveal(PageTable::wf_l4);
+        reveal(PageTable::disjoint_l4);
+        reveal(PageTable::disjoint_l3);
     }
 
     pub broadcast proof fn resolve_l2_addr_unique_at(
@@ -836,17 +824,11 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr
                     != self.spec_resolve_mapping_l2(l4j, l3j, l2j)->0.addr,
     {
-        assert((l4i, l3i, l2i) != (l4j, l3j, l2j)
-            && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
-            && self.spec_resolve_mapping_l2(l4j, l3j, l2j) is Some
-            ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr
-                != self.spec_resolve_mapping_l2(l4j, l3j, l2j)->0.addr) by {
-            reveal(PageTable::wf_l4);
-            reveal(PageTable::wf_l3);
-            reveal(PageTable::disjoint_l4);
-            reveal(PageTable::disjoint_l3);
-            reveal(PageTable::disjoint_l2);
-        };
+        reveal(PageTable::wf_l4);
+        reveal(PageTable::wf_l3);
+        reveal(PageTable::disjoint_l4);
+        reveal(PageTable::disjoint_l3);
+        reveal(PageTable::disjoint_l2);
     }
 
     pub broadcast proof fn l2_entry_addr_unique_at(
@@ -872,15 +854,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                 ==> self.l2_tables.view().spec_index(pi).value().spec_index(l2i).addr
                     != self.l2_tables.view().spec_index(pj).value().spec_index(l2j).addr,
     {
-        assert((pi, l2i) != (pj, l2j)
-            && self.l2_tables.view().spec_index(pi).value().spec_index(l2i).perm.present
-            && self.l2_tables.view().spec_index(pj).value().spec_index(l2j).perm.present
-            && !self.l2_tables.view().spec_index(pi).value().spec_index(l2i).perm.ps
-            && !self.l2_tables.view().spec_index(pj).value().spec_index(l2j).perm.ps
-            ==> self.l2_tables.view().spec_index(pi).value().spec_index(l2i).addr
-                != self.l2_tables.view().spec_index(pj).value().spec_index(l2j).addr) by {
-            reveal(PageTable::disjoint_l2);
-        };
+        reveal(PageTable::disjoint_l2);
     }
 
     pub broadcast proof fn resolve_l2_target_exists(
@@ -903,14 +877,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr,
                 ),
     {
-        assert(self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
-            ==> self.l1_tables.view().dom().contains(
-                self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr,
-            )) by {
-            reveal(PageTable::wf_l4);
-            reveal(PageTable::wf_l3);
-            reveal(PageTable::wf_l2);
-        };
+        reveal(PageTable::wf_l4);
+        reveal(PageTable::wf_l3);
+        reveal(PageTable::wf_l2);
     }
 
     pub proof fn resolve_l2_unchanged(&self, other: &Self)

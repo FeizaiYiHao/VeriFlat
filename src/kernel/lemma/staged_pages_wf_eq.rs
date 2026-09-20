@@ -3,15 +3,13 @@ use crate::*;
 use crate::kernel::*;
 verus! {
 
-// Framing lemmas for the 2m/1g halves of `thread_staged_pages_wf`.
-// Reusable by any syscall that leaves the 2m/1g staging untouched (e.g. a 4k
-// alloc/free). The 4k half genuinely reasons about a 4k stage, so it has NO twin
-// here. Hypothesis: same thread dom, per-thread temp_alloc_cache_{2m,1g}
-// unchanged, and every Owned{2m,1g} page slot (old or new) keeps its state -- the
-// only fields the halves read.
+// Framing lemmas for each page-size component of `thread_staged_pages_wf`.
+// Hypothesis: same thread domain, the corresponding per-thread
+// `temp_alloc_cache_*` unchanged, and every page slot that is old or new
+// `Owned*` keeps its state—the only fields each component reads.
 
-// thread_staged_pages_2m_wf: Owned2m <-> thread temp_alloc_cache_2m.
-pub proof fn thread_staged_pages_4k_wf_preserved_for_eq(
+// thread_staged_pages_4k_wf: Owned4k <-> thread temp_alloc_cache_4k.
+pub proof fn thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(
     old_thread_map: ThreadLockedMap,
     new_thread_map: ThreadLockedMap,
     old_page_array: PageLockedArray,
@@ -39,7 +37,7 @@ pub proof fn thread_staged_pages_4k_wf_preserved_for_eq(
 }
 
 // thread_staged_pages_2m_wf: Owned2m <-> thread temp_alloc_cache_2m.
-pub proof fn thread_staged_pages_2m_wf_preserved_for_eq(
+pub proof fn thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(
     old_thread_map: ThreadLockedMap,
     new_thread_map: ThreadLockedMap,
     old_page_array: PageLockedArray,
@@ -65,7 +63,7 @@ pub proof fn thread_staged_pages_2m_wf_preserved_for_eq(
 }
 
 // thread_staged_pages_1g_wf: Owned1g <-> thread temp_alloc_cache_1g.
-pub proof fn thread_staged_pages_1g_wf_preserved_for_eq(
+pub proof fn thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(
     old_thread_map: ThreadLockedMap,
     new_thread_map: ThreadLockedMap,
     old_page_array: PageLockedArray,

@@ -62,6 +62,33 @@ pub struct IommuTLB {
 }
 
 impl IommuTLB {
+    pub fn new_empty() -> (ret: Self)
+        ensures
+            ret.inv(),
+            forall|did: VtdDomainId|
+                #![trigger ret.spec_index(did)]
+                vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
+    {
+        let ghost domain_ids = Set::range(0usize, VTD_DOMAIN_COUNT);
+        proof {
+            broadcast use vstd::set_lib::range_set_properties;
+        }
+        let ret = Self {
+            domain_tlbs: Ghost(Map::new(
+                domain_ids,
+                |_did: VtdDomainId| SingleIotlb {
+                    entries_4k: Map::empty(),
+                    entries_2m: Map::empty(),
+                    entries_1g: Map::empty(),
+                },
+            )),
+        };
+        assert(ret.inv()) by {
+            reveal(IommuTLB::inv);
+        }
+        ret
+    }
+
     pub open spec fn view(&self) -> Map<VtdDomainId, SingleIotlb> {
         self.domain_tlbs.view()
     }

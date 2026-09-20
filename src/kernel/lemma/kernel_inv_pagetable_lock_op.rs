@@ -30,7 +30,7 @@ pub proof fn pagetable_lock_op_preserves_invariant_fields(
 {
 }
 
-pub proof fn lemma_no_change_imply_pagetable_perms_wf_forall()
+pub proof fn lemma_pagetable_perms_wf_preserved_for_lock_op_forall()
     ensures
         forall|pre: PageTableLockedMap,
             post: PageTableLockedMap,
@@ -50,7 +50,7 @@ pub proof fn lemma_no_change_imply_pagetable_perms_wf_forall()
     reveal(pagetable_perms_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_pagetable_match_for_pagetable_fields_forall()
+pub proof fn lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|process_map: ProcessLockedMap,
             pre: PageTableLockedMap,
@@ -66,7 +66,7 @@ pub proof fn lemma_no_change_imply_process_pagetable_match_for_pagetable_fields_
     reveal(process_pagetable_match);
 }
 
-pub proof fn lemma_no_change_imply_page_pagetable_wf_for_pagetable_fields_forall()
+pub proof fn lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|pre: PageTableLockedMap,
             post: PageTableLockedMap,
@@ -84,7 +84,7 @@ pub proof fn lemma_no_change_imply_page_pagetable_wf_for_pagetable_fields_forall
     reveal(mapped_1g_page_pagetable_wf);
 }
 
-pub proof fn lemma_no_change_imply_container_process_page_pagetable_wf_for_pagetable_fields_forall()
+pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             process_map: ProcessLockedMap,
@@ -118,7 +118,7 @@ pub proof fn lemma_no_change_imply_container_process_page_pagetable_wf_for_paget
     reveal(mapped_1g_page_pagetable_wf);
 }
 
-pub proof fn lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_forall()
+pub proof fn lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|pre: PageTableLockedMap,
             post: PageTableLockedMap,
@@ -134,7 +134,7 @@ pub proof fn lemma_no_change_imply_pagetable_pages_wf_for_pagetable_fields_foral
     reveal(pagetable_pages_wf);
 }
 
-pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall()
+pub proof fn lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             cpu_set_map: CpuSetLockedMap,
@@ -163,7 +163,7 @@ pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_for_pagetable_fields_forall(
     reveal(cpu_dirty_map_contains_pagetable_pcid_match);
 }
 
-pub proof fn lemma_no_change_imply_tlb_wf_spec_for_pagetable_fields_forall()
+pub proof fn lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|cpu_tlb: CpuTLB,
             needflush: PcidNeedFlushArray,

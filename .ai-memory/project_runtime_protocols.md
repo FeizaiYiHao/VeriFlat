@@ -36,5 +36,5 @@ metadata:
 
 Primary code: `src/kernel/kernel_total_define_spec.rs`,
 `src/kernel/implementation/allocate_free_4k_page/`,
-`src/kernel/implementation/syscall_new_thread.rs`, and
+`src/kernel/implementation/syscall_new_thread/`, and
 `src/kernel/implementation/locker_unlocker/locker_unlocker_thread.rs`.

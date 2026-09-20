@@ -1,8 +1,7 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 verus! {
 
-pub proof fn set_fold_eq_lemma<A, B>(s: Set<A>, initial: B, f: spec_fn(B, A) -> B, g: spec_fn(B, A) -> B)
+pub proof fn lemma_set_fold_congruence<A, B>(s: Set<A>, initial: B, f: spec_fn(B, A) -> B, g: spec_fn(B, A) -> B)
     requires
         vstd::iset::fold::is_fun_commutative(f),
         vstd::iset::fold::is_fun_commutative(g),
@@ -10,17 +9,32 @@ pub proof fn set_fold_eq_lemma<A, B>(s: Set<A>, initial: B, f: spec_fn(B, A) -> 
     ensures s.fold(initial, f) == s.fold(initial, g),
     decreases s.len(),
 {
-    if s.len() == 0 {
-        vstd::assert_isets_equal!(s.to_iset(), ISet::<A>::empty());
+    let universe = s.to_iset();
+    let pred = |part: ISet<A>|
+        part.subset_of(universe) ==> part.fold(initial, f) == part.fold(initial, g);
+    assert(pred(ISet::empty())) by {
         vstd::iset::fold::lemma_fold_empty(initial, f);
         vstd::iset::fold::lemma_fold_empty(initial, g);
-    } else {
-        let a = s.choose();
-        set_fold_eq_lemma(s.remove(a), initial, f, g);
-        vstd::assert_isets_equal!(s.to_iset(), s.remove(a).to_iset().insert(a));
-        vstd::iset::fold::lemma_fold_insert(s.remove(a).to_iset(), initial, f, a);
-        vstd::iset::fold::lemma_fold_insert(s.remove(a).to_iset(), initial, g, a);
-    }
+    };
+    assert forall|part: ISet<A>, a: A|
+        pred(part) && part.finite() && !part.contains(a)
+        implies #[trigger] pred(part.insert(a)) by {
+        if part.insert(a).subset_of(universe) {
+            assert(part.subset_of(universe)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            assert(s.contains(a)) by {
+                broadcast use vstd::iset::group_iset_lemmas;
+            };
+            vstd::iset::fold::lemma_fold_insert(part, initial, f, a);
+            vstd::iset::fold::lemma_fold_insert(part, initial, g, a);
+        }
+    };
+    vstd::set::lemma_to_iset_finite(s);
+    vstd::iset::fold::lemma_finite_set_induct(universe, pred);
+    assert(universe.subset_of(universe)) by {
+        broadcast use vstd::iset::group_iset_lemmas;
+    };
 }
 
 pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
@@ -29,14 +43,12 @@ pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V
     ensures
         m.insert(key, value).remove(key) == m,
 {
-    assert_maps_equal!(m.insert(key, value).remove(key), m);
 }
 
 pub proof fn map_insert_overwrite_lemma<K, V>(m: Map<K, V>, key: K, old_value: V, new_value: V)
     ensures
         m.insert(key, old_value).insert(key, new_value) == m.insert(key, new_value),
 {
-    assert_maps_equal!(m.insert(key, old_value).insert(key, new_value), m.insert(key, new_value));
 }
 
 pub proof fn map_union_remove_right_domain_disjoint_lemma<K, V>(left: Map<K, V>, right: Map<K, V>)
@@ -45,7 +57,6 @@ pub proof fn map_union_remove_right_domain_disjoint_lemma<K, V>(left: Map<K, V>,
     ensures
         left.union_prefer_right(right).remove_keys(right.dom()) == left,
 {
-    assert_maps_equal!(left.union_prefer_right(right).remove_keys(right.dom()), left);
 }
 
 pub broadcast proof fn map_equal_implies_submap_each_other<K, V>(a: Map<K, V>, b: Map<K, V>)
@@ -55,7 +66,6 @@ pub broadcast proof fn map_equal_implies_submap_each_other<K, V>(a: Map<K, V>, b
         #[trigger] a.submap_of(b),
         b.submap_of(a),
 {
-    assert(a == b);
 }
 
 pub broadcast proof fn submap_by_transitivity<K, V>(a: Map<K, V>, b: Map<K, V>, c: Map<K, V>)
@@ -65,10 +75,7 @@ pub broadcast proof fn submap_by_transitivity<K, V>(a: Map<K, V>, b: Map<K, V>, 
     ensures
         a.submap_of(c),
 {
-    assert(forall|k: K|
-        #![trigger a.dom().contains(k)]
-        #![trigger b.dom().contains(k)]
-        a.dom().contains(k) ==> b.dom().contains(k) && a.spec_index(k) == b.spec_index(k));
+    assert(a.submap_of(c)) by { vstd::map_lib::lemma_submap_of_trans(a, b, c); };
 }
 pub proof fn set_insert_remove_absent_lemma<A>(s: Set<A>, a: A)
     requires
@@ -76,19 +83,6 @@ pub proof fn set_insert_remove_absent_lemma<A>(s: Set<A>, a: A)
     ensures
         s.insert(a).remove(a) == s,
 {
-    assert_sets_equal!(
-        s.insert(a).remove(a) == s,
-        x => {
-            if x == a {
-                vstd::set::lemma_set_remove_same(s.insert(a), a);
-            } else {
-                vstd::set::lemma_set_insert_different(s, x, a);
-                vstd::set::lemma_set_remove_different(
-                    s.insert(a), x, a,
-                );
-            }
-        }
-    );
 }
 
 
@@ -112,31 +106,9 @@ pub proof fn seq_push_head_lemma<A>()
     assert forall|s: Seq<A>, v: A, x: A|
         s.contains(x) implies #[trigger] s.insert(0, v).contains(v) && #[trigger] s.insert(0, v).contains(x) by {
         s.insert_ensures(0, v);
-        let s2 = s.insert(0, v);
-        let i = choose|i: int| 0 <= i < s.len() && s.spec_index(i) == x;
-        assert(0 <= i + 1 < s2.len() && 0 < s2.len()) by { reveal(Seq::contains); };
-        assert(s2.spec_index(i + 1) == x);
-        assert(s2.spec_index(0) == v);
     }
     assert forall|s: Seq<A>, v: A| #[trigger] s.insert(0, v).contains(v) by {
         s.insert_ensures(0, v);
-        let s2 = s.insert(0, v);
-        assert(s2.spec_index(0) == v);
-    }
-    assert forall|s: Seq<A>, v: A, x: A|
-        !s.contains(x) && v != x implies !#[trigger] s.insert(0, v).contains(x) by {
-        s.insert_ensures(0, v);
-        let s2 = s.insert(0, v);
-        if s2.contains(x) {
-            let i = choose|i: int| 0 <= i < s2.len() && s2.spec_index(i) == x;
-            if i == 0 {
-                assert(s2.spec_index(0) == v);
-            } else {
-                assert(0 <= i - 1 < s.len());
-                assert(s.spec_index(i - 1) == s2.spec_index(i));
-                assert(s.contains(x));
-            }
-        }
     }
 }
 
@@ -152,23 +124,9 @@ pub proof fn seq_skip_index_of_lemma<A>()
         s.len() != 0 && s.no_duplicates() && #[trigger] s.contains(v) && s.spec_index(0) != v implies
         s.skip(1).index_of(v) == s.index_of(v) - 1 by
     {
-        let s2 = s.skip(1);
-        assert(s2.len() == s.len() - 1);
-        let i = s.index_of(v);
-        // i != 0 because s[0] != v
-        assert(i != 0);
-        // s2[i-1] == s[i] == v
-        assert(s2.spec_index(i - 1) == s.spec_index((i - 1) + 1));
-        assert(s2.spec_index(i - 1) == v);
-        // The chosen index of v in s2:
-        let k = s2.index_of(v);
-        if k != i - 1 {
-            // s[k+1] == s2[k] == v, and s[i] == v, with k+1 != i, contradicting no_duplicates
-            assert(s2.spec_index(k) == s.spec_index(k + 1));
-            assert(s.spec_index(k + 1) == v);
-            assert(s.spec_index(i) == v);
-            assert(s.no_duplicates());
-        }
+        assert(s.skip(1).spec_index(s.index_of(v) - 1) == v) by {
+            vstd::seq_lib::lemma_seq_skip_index2(s, 1, s.index_of(v));
+        };
     }
 }
 pub proof fn seq_to_set_lemma<A>()
@@ -178,11 +136,6 @@ pub proof fn seq_to_set_lemma<A>()
             #![trigger s.to_set().contains(a)]
             s.contains(a) == s.to_set().contains(a),
 {
-    assert forall|s: Seq<A>, a: A|
-        #![trigger s.contains(a)]
-        #![trigger s.to_set().contains(a)]
-        s.contains(a) == s.to_set().contains(a) by {
-    }
 }
 
 pub proof fn seq_update_lemma<A>()
@@ -196,8 +149,6 @@ pub proof fn seq_update_lemma<A>()
                 // && s.len() == s.update(i, v).len()
             ,
 {
-    broadcast use vstd::seq::axiom_seq_update_same;
-    broadcast use vstd::seq::axiom_seq_update_different;
 }
 
 // SPEC FIX: 1st conjunct now requires s.len() > 0 (s[0] is uninterp when len == 0).
@@ -212,56 +163,19 @@ pub proof fn seq_skip_lemma<A>()
         forall|s: Seq<A>, v: A| s.len() > 0 && s.spec_index(0) == v && s.no_duplicates() ==> s.skip(1) =~= s.remove_value(v),
         forall|s: Seq<A>, i: int| 0 <= i < s.len() - 1 ==> s.skip(1).spec_index(i) == s.spec_index(i + 1),
 {
-    broadcast use vstd::seq_lib::lemma_seq_skip_index;
-    broadcast use vstd::seq_lib::lemma_seq_skip_len;
-
     assert forall|s: Seq<A>, v: A|
         s.len() > 0 && s.spec_index(0) != v && s.no_duplicates() implies
         (s.skip(1).contains(v) == s.contains(v)) by {
-        if s.skip(1).contains(v) {
-            let i = choose|i: int| 0 <= i < s.skip(1).len() && s.skip(1).spec_index(i) == v;
-            assert(s.spec_index(i + 1) == v);
-        }
         if s.contains(v) {
-            let i = choose|i: int| 0 <= i < s.len() && s.spec_index(i) == v;
-            assert(i != 0);
-            assert(s.skip(1).spec_index(i - 1) == s.spec_index(i));
-        }
-    }
-
-    assert forall|s: Seq<A>| s.len() > 0 implies s.contains(#[trigger] s.spec_index(0)) by {
-    }
-
-    assert forall|s: Seq<A>|
-        s.len() > 0 && s.no_duplicates() implies !s.skip(1).contains(#[trigger] s.spec_index(0)) by {
-        if s.skip(1).contains(s.spec_index(0)) {
-            let i = choose|i: int| 0 <= i < s.skip(1).len() && s.skip(1).spec_index(i) == s.spec_index(0);
-            assert(s.spec_index(i + 1) == s.spec_index(0));
-            assert(i + 1 != 0);
+            assert(s.skip(1).contains(v)) by {
+                vstd::seq_lib::lemma_seq_skip_index2(s, 1, s.index_of(v));
+            };
         }
     }
 
     assert forall|s: Seq<A>, v: A|
         s.len() > 0 && s.spec_index(0) == v && s.no_duplicates() implies s.skip(1) =~= s.remove_value(v) by {
         s.index_of_first_ensures(v);
-        match s.index_of_first(v) {
-            Some(idx) => {
-                if idx != 0 {
-                    assert(s.spec_index(0) != v);
-                }
-                s.remove_ensures(0);
-                let s1 = s.skip(1);
-                let s2 = s.remove(0);
-                assert(s1.len() == s2.len());
-                assert forall|k: int| 0 <= k < s1.len() implies s1.spec_index(k) == s2.spec_index(k) by {
-                    assert(s1.spec_index(k) == s.spec_index(k + 1));
-                    assert(s2.spec_index(k) == s.spec_index(k + 1));
-                }
-            }
-            None => {
-                assert(s.contains(v));
-            }
-        }
     }
 }
 
@@ -318,59 +232,10 @@ pub proof fn seq_subrange_split_lemma<A>()
             ==>
             (s.contains(a) == (s.subrange(0, i).contains(a) || s.subrange(i, s.len() as int).contains(a))),
 {
-    assert forall|s: Seq<A>, i: int|
-        0 <= i <= s.len() && s.no_duplicates() implies
-        #[trigger] s.subrange(0, i).no_duplicates() by {
-        let p = s.subrange(0, i);
-        assert forall|j: int, k: int| 0 <= j < p.len() && 0 <= k < p.len() && j != k implies p.spec_index(j) != p.spec_index(k) by {
-            assert(p.spec_index(j) == s.spec_index(j));
-            assert(p.spec_index(k) == s.spec_index(k));
-        }
-    }
-
-    assert forall|s: Seq<A>, i: int|
-        0 <= i <= s.len() && s.no_duplicates() implies
-        #[trigger] s.subrange(i, s.len() as int).no_duplicates() by {
-        let q = s.subrange(i, s.len() as int);
-        assert forall|j: int, k: int| 0 <= j < q.len() && 0 <= k < q.len() && j != k implies q.spec_index(j) != q.spec_index(k) by {
-            assert(q.spec_index(j) == s.spec_index(i + j));
-            assert(q.spec_index(k) == s.spec_index(i + k));
-        }
-    }
-
     broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
-
-    assert forall|s: Seq<A>, i: int, a: A|
-        0 <= i <= s.len() && s.no_duplicates() && #[trigger] s.subrange(0, i).contains(a) implies
-        !s.subrange(i, s.len() as int).contains(a) by {
-        if s.subrange(i, s.len() as int).contains(a) {
-            let j = choose|j: int| 0 <= j < i && s.spec_index(j) == a;
-            let k = choose|k: int| i <= k < s.len() && s.spec_index(k) == a;
-            assert(j != k);
-        }
-    }
-
-    assert forall|s: Seq<A>, i: int, a: A|
-        0 <= i <= s.len() && s.no_duplicates() && #[trigger] s.subrange(i, s.len() as int).contains(a) implies
-        !s.subrange(0, i).contains(a) by {
-        if s.subrange(0, i).contains(a) {
-            let j = choose|j: int| 0 <= j < i && s.spec_index(j) == a;
-            let k = choose|k: int| i <= k < s.len() && s.spec_index(k) == a;
-            assert(j != k);
-        }
-    }
-
-    assert forall|s: Seq<A>, i: int, a: A|
-        0 <= i <= s.len() implies
-        (s.contains(a) == (#[trigger] s.subrange(0, i).contains(a) || #[trigger] s.subrange(i, s.len() as int).contains(a))) by {
-        if s.contains(a) {
-            let j = choose|j: int| 0 <= j < s.len() && s.spec_index(j) == a;
-        }
-    }
 }
 
 // SPEC FIX: bounded i to [0, s.len()) so subrange(0,i) and subrange(i+1, len) are well-defined.
-// PERF: ~13 ms / ~137k rlimit. Heavy due to multiple choose-based case analyses over subrange.
 pub proof fn seq_remove_lemma<A>()
     ensures
         forall|s: Seq<A>, v: A, i: int|
@@ -411,80 +276,18 @@ pub proof fn seq_remove_lemma<A>()
         0 <= i < s.len() && s.contains(v) && s.spec_index(i) != v && s.no_duplicates() implies
         #[trigger] s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).contains(v) by {
         let s2 = s.subrange(0, i).add(s.subrange(i + 1, s.len() as int));
-        let k = choose|k: int| 0 <= k < s.len() && s.spec_index(k) == v;
-        assert(k != i);
+        let k = s.index_of(v);
         if k < i {
-            assert(s.subrange(0, i).spec_index(k) == s.spec_index(k));
-            assert(s2.spec_index(k) == s.subrange(0, i).spec_index(k));
+            assert(0 <= k < s2.len() && s2.spec_index(k) == v) by { s.remove_ensures(i); };
         } else {
-            assert(s.subrange(i + 1, s.len() as int).spec_index(k - i - 1) == s.spec_index(k));
-            assert(s2.spec_index(k - 1) == s.spec_index(k));
+            assert(0 <= k - 1 < s2.len() && s2.spec_index(k - 1) == v) by { s.remove_ensures(i); };
         }
-    }
-
-    assert forall|s: Seq<A>, v: A, i: int|
-        0 <= i < s.len() && s.contains(v) && s.spec_index(i) == v && s.no_duplicates() implies
-        #[trigger] s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).contains(v) == false by {
-        let s2 = s.subrange(0, i).add(s.subrange(i + 1, s.len() as int));
-        if s2.contains(v) {
-            let j = choose|j: int| 0 <= j < s2.len() && s2.spec_index(j) == v;
-            if j < i {
-                assert(s2.spec_index(j) == s.subrange(0, i).spec_index(j));
-                assert(s.subrange(0, i).spec_index(j) == s.spec_index(j));
-                assert(s.spec_index(j) == v);
-                assert(j != i);
-                assert(s.no_duplicates());
-            } else {
-                assert(s2.spec_index(j) == s.subrange(i + 1, s.len() as int).spec_index(j - i));
-                assert(s.subrange(i + 1, s.len() as int).spec_index(j - i) == s.spec_index(j + 1));
-                assert(s.spec_index(j + 1) == v);
-                assert(j + 1 != i);
-                assert(s.no_duplicates());
-            }
-        }
-    }
-
-    assert forall|s: Seq<A>, i: int, j: int|
-        0 <= j < i <= s.len() implies
-        #[trigger] s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).spec_index(j) == s.spec_index(j) by {
-        if i < s.len() {
-            assert(s.subrange(0, i).spec_index(j) == s.spec_index(j));
-        } else {
-            assert(s.subrange(0, i).spec_index(j) == s.spec_index(j));
-        }
-    }
-
-    assert forall|s: Seq<A>, i: int, j: int|
-        0 <= i <= j < s.len() - 1 implies
-        #[trigger] s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).spec_index(j) == s.spec_index(j + 1) by {
-        assert(s.subrange(i + 1, s.len() as int).spec_index(j - i) == s.spec_index(j + 1));
     }
 
     assert forall|s: Seq<A>, v: A, i: int|
         0 <= i < s.len() && s.contains(v) && s.spec_index(i) == v && s.no_duplicates() implies
         #[trigger] s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)) == #[trigger] s.remove_value(v) by {
         s.index_of_first_ensures(v);
-        match s.index_of_first(v) {
-            Some(idx) => {
-                if idx < i {
-                    assert(s.spec_index(idx) == v);
-                    assert(s.spec_index(i) == v);
-                    assert(s.no_duplicates());
-                }
-                if idx > i {
-                    assert(s.spec_index(i) == v);
-                    // index_of_first means smallest idx; idx > i and s[i] == v contradicts smallest
-                }
-                s.remove_ensures(idx);
-                let lhs = s.subrange(0, i).add(s.subrange(i + 1, s.len() as int));
-                let rhs = s.remove(idx);
-                assert(rhs == s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int)));
-                assert(lhs =~= rhs);
-            }
-            None => {
-                assert(s.contains(v));
-            }
-        }
     }
 }
 
@@ -506,28 +309,13 @@ pub proof fn seq_push_unique_lemma<A>()
         s.no_duplicates() && !#[trigger] s.contains(v) implies s.push(v).no_duplicates()
         && s.push(v).index_of(v) == s.push(v).len() - 1 by {
         let s2 = s.push(v);
-        // s2[s.len()] == v
-        assert(s2.spec_index(s.len() as int) == v);
-        // s2 has no_duplicates: any two distinct indices i,j in [0, s2.len()) — if both < s.len(), no_dup of s; if one == s.len(), value v differs from anything in s
-        assert(s2.no_duplicates()) by {
-            assert forall|i: int, j: int|
-                0 <= i < s2.len() && 0 <= j < s2.len() && i != j implies s2.spec_index(i) != s2.spec_index(j) by {
-                if i < s.len() && j < s.len() {
-                    assert(s.no_duplicates());
-                } else if i == s.len() {
-                    // s2[i] == v, s2[j] == s[j], v not in s
-                } else {
-                    // j == s.len()
-                }
+        assert(s2.index_of(v) == s.len()) by {
+            vstd::seq::lemma_seq_push_index_same(s, v, s.len() as int);
+            let k = s2.index_of(v);
+            if k != s.len() {
+                vstd::seq::lemma_seq_push_index_different(s, v, k);
             }
-        }
-        // s2.index_of(v): chose any k with s2[k] == v. Since s2 has no_duplicates, k must be unique == s.len()
-        let k = s2.index_of(v);
-        if k != s.len() {
-            assert(0 <= k < s.len());
-            assert(s2.spec_index(k) == s.spec_index(k));
-            assert(s.contains(v));
-        }
+        };
     }
 
     assert forall|s: Seq<A>, v: A, y: A|
@@ -535,22 +323,17 @@ pub proof fn seq_push_unique_lemma<A>()
         == s.index_of(v) by {
         let s2 = s.push(y);
         let i = s.index_of(v);
-        assert(s2.spec_index(i) == s.spec_index(i));
-        assert(s2.spec_index(i) == v);
-        let k = s2.index_of(v);
-        if k != i {
-            if k == s.len() {
-                assert(s2.spec_index(k) == y);
-                assert(y == v);
-                // y == v but s.contains(v), so s.contains(y) — contradicts hypothesis
-                assert(s.contains(y));
-            } else {
-                // k < s.len(), s[k] == v, s[i] == v, k != i, contradicts no_dup
-                assert(s2.spec_index(k) == s.spec_index(k));
-                assert(s.spec_index(k) == v);
-                assert(s.no_duplicates());
+        assert(s2.index_of(v) == i) by {
+            vstd::seq::lemma_seq_push_index_different(s, y, i);
+            let k = s2.index_of(v);
+            if k != i {
+                if k == s.len() {
+                    vstd::seq::lemma_seq_push_index_same(s, y, k);
+                } else {
+                    vstd::seq::lemma_seq_push_index_different(s, y, k);
+                }
             }
-        }
+        };
     }
 }
 
@@ -569,35 +352,16 @@ pub proof fn seq_push_head_unique_lemma<A>()
         && s.insert(0, v).index_of(v) == 0 by {
         s.insert_ensures(0, v);
         let s2 = s.insert(0, v);
-        // s2[0] == v, s2[i+1] == s[i] for 0 <= i < s.len()
-        assert(s2.no_duplicates()) by {
-            assert forall|i: int, j: int|
-                0 <= i < s2.len() && 0 <= j < s2.len() && i != j implies s2.spec_index(i) != s2.spec_index(j) by {
-                if i == 0 {
-                    // s2[0] = v, s2[j] = s[j-1], v not in s
-                    assert(s2.spec_index(j) == s.spec_index(j - 1));
-                } else if j == 0 {
-                    assert(s2.spec_index(i) == s.spec_index(i - 1));
-                } else {
-                    // both > 0
-                    assert(s2.spec_index(i) == s.spec_index(i - 1));
-                    assert(s2.spec_index(j) == s.spec_index(j - 1));
-                    assert(s.no_duplicates());
-                }
-            }
-        }
-        // index_of: chosen index k with s2[k] == v. k must be 0 because v not in s.
-        let k = s2.index_of(v);
-        if k != 0 {
-            assert(s2.spec_index(k) == s.spec_index(k - 1));
-            assert(s.contains(v));
-        }
+        assert(s2.index_of(v) == 0) by {
+            let k = s2.index_of(v);
+            if k != 0 {}
+        };
     }
 }
 
 // PERF: ~16 ms / ~240k rlimit. Two large assert-forall blocks dispatching on
 // index_of_first(x) being Some/None and then doing position arithmetic in remove(i).
-pub proof fn seq_remove_lemma_2<A>()
+pub proof fn lemma_seq_remove_value_membership<A>()
     ensures
         forall|s: Seq<A>, v: A, x: A|
             x != v && s.no_duplicates() ==> s.remove_value(x).contains(v) == s.contains(v),
@@ -613,26 +377,18 @@ pub proof fn seq_remove_lemma_2<A>()
                 let s2 = s.remove(i);
                 s.remove_ensures(i);
                 if s2.contains(v) {
-                    let j = choose|j: int| 0 <= j < s2.len() && s2.spec_index(j) == v;
-                    if j < i {
-                        assert(s2.spec_index(j) == s.spec_index(j));
-                        assert(s.contains(v));
-                    } else {
-                        assert(s2.spec_index(j) == s.spec_index(j + 1));
-                        assert(s.contains(v));
-                    }
+                    s2.index_of_first_ensures(v);
+                    let j = s2.index_of_first(v).unwrap();
+                    assert(s.contains(v)) by { s.remove_ensures(i); };
                 }
                 if s.contains(v) {
-                    let j = choose|j: int| 0 <= j < s.len() && s.spec_index(j) == v;
-                    assert(s.spec_index(i) == x);
+                    s.index_of_first_ensures(v);
+                    let j = s.index_of_first(v).unwrap();
                     assert(j != i);
                     if j < i {
-                        assert(s2.spec_index(j) == s.spec_index(j));
-                        assert(s2.contains(v));
+                        assert(0 <= j < s2.len() && s2.spec_index(j) == v) by { s.remove_ensures(i); };
                     } else {
-                        // j > i
-                        assert(s2.spec_index(j - 1) == s.spec_index(j));
-                        assert(s2.contains(v));
+                        assert(0 <= j - 1 < s2.len() && s2.spec_index(j - 1) == v) by { s.remove_ensures(i); };
                     }
                 }
             }
@@ -651,20 +407,20 @@ pub proof fn seq_remove_lemma_2<A>()
                 let s2 = s.remove(i);
                 s.remove_ensures(i);
                 if s2.contains(v) {
-                    let j = choose|j: int| 0 <= j < s2.len() && s2.spec_index(j) == v;
-                    if j < i {
-                        assert(s2.spec_index(j) == s.spec_index(j));
-                        assert(s.spec_index(j) == v);
-                        assert(s.spec_index(i) == v);
-                        // j != i, contradicts no_duplicates
-                        assert(s.no_duplicates());
-                    } else {
-                        assert(s2.spec_index(j) == s.spec_index(j + 1));
-                        assert(s.spec_index(j + 1) == v);
-                        assert(s.spec_index(i) == v);
-                        assert(j + 1 != i);
-                        assert(s.no_duplicates());
-                    }
+                    s2.index_of_first_ensures(v);
+                    let j = s2.index_of_first(v).unwrap();
+                    let original_j = if j < i { j } else { j + 1 };
+                    assert({
+                        &&& 0 <= original_j < s.len()
+                        &&& original_j != i
+                        &&& s.spec_index(original_j) == v
+                    }) by {
+                        s.remove_ensures(i);
+                    };
+                    assert(s.spec_index(i) == v);
+                    assert(original_j == i) by {
+                        reveal(Seq::no_duplicates);
+                    };
                 }
             }
             None => {
@@ -681,47 +437,6 @@ pub proof fn seq_index_lemma<A>()
             #![trigger s.spec_index(i)]
             0 <= i < s.len() && s.no_duplicates() ==> s.index_of(s.spec_index(i)) == i,
 {
-    assert forall|s: Seq<A>, i: int|
-        0 <= i < s.len() && s.no_duplicates() implies s.index_of(#[trigger] s.spec_index(i)) == i by {
-        let v = s.spec_index(i);
-        let k = s.index_of(v);
-        if k != i {
-            assert(s.no_duplicates());
-        }
-    }
-}
-
-proof fn sum_fold_update_helper(s: Seq<int>, i: int, v: int)
-    requires
-        0 <= i < s.len(),
-    ensures
-        s.fold_left(0int, |sum: int, i: int| sum + i) - s.spec_index(i) + v
-            == s.update(i, v).fold_left(0int, |sum: int, i: int| sum + i),
-    decreases s.len(),
-{
-    let f = |sum: int, i: int| sum + i;
-    let s2 = s.update(i, v);
-    if i == s.len() - 1 {
-        // s2.drop_last() == s.drop_last(); s2.last() == v; s.last() == s[i]
-        assert(s2.drop_last() =~= s.drop_last());
-        assert(s2.last() == v);
-        assert(s.last() == s.spec_index(i));
-    } else {
-        // 0 <= i < s.len() - 1
-        assert(s2.last() == s.last()) by {
-            assert(s2.spec_index((s.len() - 1) as int) == s.spec_index((s.len() - 1) as int));
-        }
-        // s2.drop_last() == s.drop_last().update(i, v)
-        assert(s2.drop_last() =~= s.drop_last().update(i, v));
-        sum_fold_update_helper(s.drop_last(), i, v);
-        // s.fold_left(0, f) = s.drop_last().fold_left(0, f) + s.last()
-        // s2.fold_left(0, f) = s2.drop_last().fold_left(0, f) + s2.last()
-        //                    = s.drop_last().update(i, v).fold_left(0, f) + s.last()
-        //                    = (s.drop_last().fold_left(0, f) - s.drop_last()[i] + v) + s.last()
-        //                    = (s.drop_last().fold_left(0, f) + s.last()) - s[i] + v
-        //                    = s.fold_left(0, f) - s[i] + v
-        assert(s.drop_last().spec_index(i) == s.spec_index(i));
-    }
 }
 
 pub proof fn seq_fold_upper_bound<A>(s: Seq<A>, f: spec_fn(int, A) -> int, upper: int)
@@ -733,7 +448,9 @@ pub proof fn seq_fold_upper_bound<A>(s: Seq<A>, f: spec_fn(int, A) -> int, upper
 {
     if s.len() != 0 {
         assert(s.drop_last().fold_left(0int, f) <= (s.len() - 1) * upper) by { seq_fold_upper_bound(s.drop_last(), f, upper); };
-        assert((s.len() - 1) * upper + upper == s.len() * upper) by(nonlinear_arith);
+        assert((s.len() - 1) * upper + upper == s.len() * upper) by {
+            vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(upper, s.len() - 1, 1);
+        };
     }
 }
 

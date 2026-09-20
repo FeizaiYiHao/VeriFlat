@@ -151,7 +151,9 @@ pub fn unmap_4k_range(krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPa
         let va = range.index(i);
         proof {
             assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.va_range_lemma(); };
-            assert(spec_va2index(start).0 <= spec_va2index(va).0) by (bit_vector) requires spec_va_4k_valid(start), spec_va_4k_valid(va), start <= va;
+            assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0) by {
+                spec_v2l4index_monotonic(start, va);
+            };
         }
         clear_4k_mapping_present(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm);
         proof {
@@ -236,7 +238,9 @@ pub fn unmap_4k_range(krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPa
         let va = range.index(i);
         proof {
             assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.va_range_lemma(); };
-            assert(spec_va2index(start).0 <= spec_va2index(va).0) by (bit_vector) requires spec_va_4k_valid(start), spec_va_4k_valid(va), start <= va;
+            assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0) by {
+                spec_v2l4index_monotonic(start, va);
+            };
         }
         reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), pagetable_perm, thread_perm);
         i = i + 1;

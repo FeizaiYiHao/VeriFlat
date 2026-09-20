@@ -63,6 +63,42 @@ impl LockInvTrait for Container {
 }
 
 impl Container{
+    pub fn new_boot_root(
+        container_ptr: RwLockContainerPtr,
+        root_process: RwLockProcessPtr,
+        root_endpoint: RwLockEndpointPtr,
+        owned_pages: Ghost<Set<PagePtr>>,
+    ) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.parent_linkedlist_node.is_init(),
+            ret.children.view()
+                == Seq::<RwLockContainerPtr>::empty(),
+            ret.children.map()
+                == Map::<usize, RwLockContainerPtr>::empty(),
+            ret.root_process == root_process,
+            ret.owned_processes.view()
+                =~= set![root_process],
+            ret.owned_endpoints.view()
+                =~= set![root_endpoint],
+            ret.owned_pages == owned_pages,
+    {
+        let mut ret = Self::new_staged(
+            container_ptr,
+            root_process,
+            0,
+        );
+        ret.owned_processes = Ghost(
+            Set::empty().insert(root_process),
+        );
+        ret.owned_endpoints = Ghost(
+            Set::empty().insert(root_endpoint),
+        );
+        ret.owned_pages = owned_pages;
+        assert(ret.inv());
+        ret
+    }
+
     pub fn new_staged(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
         ensures
             ret.inv(),
@@ -82,6 +118,23 @@ impl Container{
             owned_endpoints: Ghost(Set::empty()),
             owned_pages: Ghost(Set::empty()),
         }
+    }
+
+    pub fn add_owned_process(&mut self, process_ptr: RwLockProcessPtr)
+        requires
+            old(self).inv(),
+            old(self).root_process_in_processes(),
+        ensures
+            final(self).inv(),
+            *final(self) == (Container {
+                owned_processes: final(self).owned_processes,
+                ..*old(self)
+            }),
+            final(self).owned_processes.view()
+                == old(self).owned_processes.view().insert(process_ptr),
+    {
+        self.owned_processes =
+            Ghost(self.owned_processes.view().insert(process_ptr));
     }
 
     pub open spec fn wf(&self) -> bool {

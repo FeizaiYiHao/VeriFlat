@@ -7,6 +7,14 @@
 - Minimize vertical space in spec, proof, and exec code. Keep one logical
   contract clause per line; keep plain calls, equalities, tuples, and set
   updates intact; put `&&&`/`|||` with the operand.
+- Pack function parameters, call arguments, tuple elements, and set/seq/map
+  literal elements into compact readable groups. Do not default to one item per
+  line, and do not force a long signature, call, tuple, or literal onto one
+  enormous line; wrap it across the fewest balanced lines that remain readable.
+- Never staircase one accessor chain, comparison, implication, arithmetic
+  expression, or logical clause across lines. Keep it intact on one line when
+  practical; if it must wrap, do so at a real semantic boundary rather than
+  before each `.view()`, operator, or operand.
 - Keep short obligations on one line:
   `assert(goal) by { reveal(predicate); };`. No blank padding in braces.
 - Rely on NLL through ordinary exec flow; do not add a `{}` scope merely to
@@ -30,7 +38,11 @@
   ghost sequence, so consumers can use that fact across crate boundaries.
   New framing specs and framing lemmas require the specific approval defined
   in `AGENTS.md`. Ordinary `requires`/`ensures` edits do not require separate
-  approval, including direct preservation guarantees.
+  approval, including direct preservation guarantees. The operation-specific
+  complete S and independent closure functions for full EOF of a long equation
+  are the documented exception: they need no separate approval and S may be
+  reshaped freely within the semantic and proof-boundary constraints in
+  `AGENTS.md` and `slow-equation.md`.
 - Keep preconditions limited to safety, semantics, and direct callees. Before
   removing a parameter, inspect exec uses, proof consumers, and dependencies
   across kernel-step boundaries; an argument unused by exec may still be needed.
@@ -38,12 +50,10 @@
   guarantees. Preserve semantic guarantees; absence of an in-tree consumer alone
   does not authorize weakening a public contract. Avoid repeating immutable
   input facts in postconditions when the existing interface already supplies them.
-- Invariants and cross-function contracts must not hide objects with `exists`
-  or `choose`, including through a helper spec. Use explicit arguments, return
-  fields, known indices, or deterministic constructions instead.
-- Local `choose`/`exists` used entirely within a proof for an index, counterexample,
-  or induction witness are allowed. Prefer an already available witness to
-  choosing it again; do not remove useful local choices merely to reach zero.
+- Do not introduce `exists` or `choose` in specs, contracts, or proofs,
+  including through a helper spec. Use explicit arguments, return fields, known
+  indices, deterministic constructions, repaired producer contracts, or repaired
+  triggers instead.
 
 # Proof discipline
 
@@ -103,4 +113,6 @@
   move it after paired same-scope wall measurements. Ignore rlimit for this
   decision.
 - Prefer direct operation facts. Do not hide a hard callsite inside a new helper
-  or split equations merely for prover parallelism.
+  or split equations merely for prover parallelism. Splitting is appropriate
+  when required to isolate solver context or bring a >10-second equation below
+  the repository limit.

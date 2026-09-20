@@ -219,48 +219,18 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             spec_va_4k_valid_imply_indices_valid();
         };
         assert(spec_index2va(spec_va2index(va)) == va) by {
-            spec_va_4k_index_roundtrip();
+            spec_va_4k_index_roundtrip_at(
+                va, va_l4i, va_l3i, va_l2i, va_l1i,
+            );
         };
-        assert(
-            start_l4i < va_l4i
-                || (start_l4i == va_l4i
-                    && (start_l3i < va_l3i
-                        || (start_l3i == va_l3i
-                            && (start_l2i < va_l2i
-                                || (start_l2i == va_l2i && start_l1i <= va_l1i)))))
-        ) by (bit_vector)
-            requires
-                pei_valid(start_l4i),
-                pei_valid(start_l3i),
-                pei_valid(start_l2i),
-                pei_valid(start_l1i),
-                pei_valid(va_l4i),
-                pei_valid(va_l3i),
-                pei_valid(va_l2i),
-                pei_valid(va_l1i),
-                spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i))
-                    <= spec_index2va((va_l4i, va_l3i, va_l2i, va_l1i)),
-        ;
-        assert(
-            va_l4i < end_l4i
-                || (va_l4i == end_l4i
-                    && (va_l3i < end_l3i
-                        || (va_l3i == end_l3i
-                            && (va_l2i < end_l2i
-                                || (va_l2i == end_l2i && va_l1i <= end_l1i)))))
-        ) by (bit_vector)
-            requires
-                pei_valid(va_l4i),
-                pei_valid(va_l3i),
-                pei_valid(va_l2i),
-                pei_valid(va_l1i),
-                pei_valid(end_l4i),
-                pei_valid(end_l3i),
-                pei_valid(end_l2i),
-                pei_valid(end_l1i),
-                spec_index2va((va_l4i, va_l3i, va_l2i, va_l1i))
-                    <= spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i)),
-        ;
+        spec_index2va_le_implies_4k_indices_lex_le(
+            (start_l4i, start_l3i, start_l2i, start_l1i),
+            (va_l4i, va_l3i, va_l2i, va_l1i),
+        );
+        spec_index2va_le_implies_4k_indices_lex_le(
+            (va_l4i, va_l3i, va_l2i, va_l1i),
+            (end_l4i, end_l3i, end_l2i, end_l1i),
+        );
     }
 
     pub fn mapping_4k_va_range_empty(
@@ -285,26 +255,17 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         let end = va2index(end_va);
         proof {
             assert(spec_index2va(start) == start_va) by {
-                spec_va_4k_index_roundtrip();
+                spec_va_4k_index_roundtrip_at(
+                    start_va, start.0, start.1, start.2, start.3,
+                );
             };
             assert(spec_index2va(end) == end_va) by {
-                spec_va_4k_index_roundtrip();
+                spec_va_4k_index_roundtrip_at(
+                    end_va, end.0, end.1, end.2, end.3,
+                );
             };
+            spec_index2va_le_implies_4k_indices_lex_le(start, end);
         }
-        assert(
-            spec_v2l4index(start_va) < spec_v2l4index(end_va)
-                || (spec_v2l4index(start_va) == spec_v2l4index(end_va)
-                    && (spec_v2l3index(start_va) < spec_v2l3index(end_va)
-                        || (spec_v2l3index(start_va) == spec_v2l3index(end_va)
-                            && (spec_v2l2index(start_va) < spec_v2l2index(end_va)
-                                || (spec_v2l2index(start_va) == spec_v2l2index(end_va)
-                                    && spec_v2l1index(start_va) <= spec_v2l1index(end_va))))))
-        ) by (bit_vector)
-            requires
-                spec_va_4k_valid(start_va),
-                spec_va_4k_valid(end_va),
-                start_va <= end_va,
-        ;
         let ret = self.mapping_4k_range_empty(start, end);
         if ret {
             assert(self.spec_mapping_4k_va_range_empty(start_va, end_va)) by {
@@ -666,16 +627,13 @@ impl PageTable<PT_TYPE> {
             proof {
                 assert(self.kernel_l4_end <= l4i) by {
                     assert(
-                        spec_v2l4index(range_start) <= l4i
-                    ) by (bit_vector)
-                        requires
-                            va == spec_va_add_range(range_start, i),
-                            l4i == spec_v2l4index(va),
-                            spec_va_4k_valid(range_start),
-                            spec_va_4k_valid(va),
-                            range_len <= usize::MAX / 4096,
-                            range_start < usize::MAX - range_len * 4096,
-                            i < range_len;
+                        spec_va_4k_valid(range_start)
+                            && spec_va_4k_valid(va)
+                            && range_start <= va
+                    ) by {
+                        range.va_range_lemma();
+                    };
+                    spec_v2l4index_monotonic(range_start, va);
                 };
             }
             let resolved = self.resolve_mapping_4k_l1(
@@ -695,7 +653,9 @@ impl PageTable<PT_TYPE> {
                     assert(!self.spec_mapping_4k_va_range_present(range)) by {
                         range.va_range_lemma();
                         assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
-                            spec_va_4k_index_roundtrip();
+                            spec_va_4k_index_roundtrip_at(
+                                va, l4i, l3i, l2i, l1i,
+                            );
                         };
                     };
                 }
@@ -729,7 +689,9 @@ impl PageTable<PT_TYPE> {
                 }) by {
                     range.va_range_lemma();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
-                        spec_va_4k_index_roundtrip();
+                        spec_va_4k_index_roundtrip_at(
+                            va, l4i, l3i, l2i, l1i,
+                        );
                     };
                     reveal(PageTable::wf_mapping_4k);
                 };
@@ -755,7 +717,7 @@ impl PageTable<PT_TYPE> {
                 spec_va2index(range.view().spec_index(i)).3,
             )]
             0 <= i < range.len
-                ==> self.spec_4k_entry_useable(
+                ==> self.spec_4k_entry_usable(
                     spec_va2index(range.view().spec_index(i)).0,
                     spec_va2index(range.view().spec_index(i)).1,
                     spec_va2index(range.view().spec_index(i)).2,
@@ -806,7 +768,7 @@ impl PageTable<PT_TYPE> {
                     )]
                     0 <= j < i ==> {
                         let indices = spec_va2index(range.view().spec_index(j));
-                        self.spec_4k_entry_useable(
+                        self.spec_4k_entry_usable(
                             indices.0, indices.1, indices.2, indices.3,
                         )
                     },
@@ -821,16 +783,14 @@ impl PageTable<PT_TYPE> {
             let (l4i, l3i, l2i, l1i) = va2index(va);
             proof {
                 assert(self.kernel_l4_end <= l4i) by {
-                    assert(spec_v2l4index(range_start) <= l4i)
-                        by (bit_vector)
-                        requires
-                            va == spec_va_add_range(range_start, i),
-                            l4i == spec_v2l4index(va),
-                            spec_va_4k_valid(range_start),
-                            spec_va_4k_valid(va),
-                            range_len <= usize::MAX / 4096,
-                            range_start < usize::MAX - range_len * 4096,
-                            i < range_len;
+                    assert(
+                        spec_va_4k_valid(range_start)
+                            && spec_va_4k_valid(va)
+                            && range_start <= va
+                    ) by {
+                        range.va_range_lemma();
+                    };
+                    spec_v2l4index_monotonic(range_start, va);
                 };
             }
             let resolved = self.resolve_mapping_4k_l1(
@@ -842,7 +802,7 @@ impl PageTable<PT_TYPE> {
                 | PageTableErrorCode::EntryTakenBy1g
                 | PageTableErrorCode::EntryTakenBy2m => {
                     proof {
-                        assert(!self.spec_4k_entry_useable(
+                        assert(!self.spec_4k_entry_usable(
                             spec_va2index(va).0,
                             spec_va2index(va).1,
                             spec_va2index(va).2,
@@ -862,7 +822,7 @@ impl PageTable<PT_TYPE> {
                 | PageTableErrorCode::L1EntryNotExist => {},
             }
             proof {
-                assert(self.spec_4k_entry_useable(
+                assert(self.spec_4k_entry_usable(
                     l4i, l3i, l2i, l1i,
                 )) by {
                     spec_va_4k_valid_imply_indices_valid();
@@ -876,7 +836,7 @@ impl PageTable<PT_TYPE> {
                     &&& pei_valid(checked_indices.1)
                     &&& pei_valid(checked_indices.2)
                     &&& pei_valid(checked_indices.3)
-                    &&& self.spec_4k_entry_useable(
+                    &&& self.spec_4k_entry_usable(
                         checked_indices.0,
                         checked_indices.1,
                         checked_indices.2,
@@ -885,7 +845,9 @@ impl PageTable<PT_TYPE> {
                 }) by {
                     range.va_range_lemma();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
-                        spec_va_4k_index_roundtrip();
+                        spec_va_4k_index_roundtrip_at(
+                            va, l4i, l3i, l2i, l1i,
+                        );
                     };
                 };
             }

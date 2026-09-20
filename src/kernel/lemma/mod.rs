@@ -1,4 +1,4 @@
-pub mod kernel_fold_axioms;
+pub mod kernel_fold_lemmas;
 pub mod kernel_cardinality_axioms;
 pub mod allocator_quota_fold;
 pub mod allocator_free_page_lock_op;
@@ -21,7 +21,7 @@ pub mod thread_endpoint_memory_fields_eq;
 pub mod invariant_fields_eq;
 pub mod thread_process_management_fields_eq;
 
-pub use kernel_fold_axioms::*;
+pub use kernel_fold_lemmas::*;
 pub use kernel_cardinality_axioms::*;
 pub use allocator_quota_fold::*;
 pub use allocator_free_page_lock_op::*;

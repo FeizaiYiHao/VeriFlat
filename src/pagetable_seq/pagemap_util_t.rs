@@ -92,10 +92,8 @@ pub fn page_map_copy_kernel_entry_range(
                 0 <= i < index ==> target_perm.value().spec_index(i) =~= source_perm.value().spec_index(i),
     {
         let raw = *source.ar.get(index);
+        let addr = usize2pa(raw);
         let value = usize2page_entry(raw);
-        assert(mem_valid(value.addr)) by {
-            assert((raw & 0x0000_ffff_ffff_f000u64 as usize) & (!0x0000_ffff_ffff_f000u64) as usize == 0) by (bit_vector);
-        };
         page_map_set_raw(target_ptr, Tracked(&mut *target_perm), index, value);
     }
 }
@@ -164,10 +162,6 @@ pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_
             ]
             pei_valid(i) && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
-        final(page_map_perm).value().spec_index(index).addr == value.addr,
-        final(page_map_perm).value().spec_index(index).perm.present == value.perm.present,
-        final(page_map_perm).value().spec_index(index).perm.ps == value.perm.ps,
-        value.is_empty() ==> final(page_map_perm).value().spec_index(index).is_empty(),
 {
     proof {
         lctx.enter_kernel_view_release();
@@ -202,15 +196,6 @@ pub(super) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(pa
             #![trigger final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i)]
             pei_valid(i) && i != index ==> final(page_map_perms).spec_index(page_map_ptr).value().spec_index(i) =~= old(page_map_perms).spec_index(page_map_ptr).value().spec_index(i),
         final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index) =~= value,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).addr == value.addr,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.present == value.perm.present,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.ps == value.perm.ps,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.write == value.perm.write,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.execute_disable == value.perm.execute_disable,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.user == value.perm.user,
-        final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).perm.kernel_present == value.perm.kernel_present,
-        value.is_empty() ==>
-            final(page_map_perms).spec_index(page_map_ptr).value().spec_index(index).is_empty(),
 {
     let tracked mut page_map_perm = page_map_perms.tracked_remove(page_map_ptr);
     page_map_set_published(page_map_ptr, Tracked(&mut page_map_perm), index, value, Tracked(&mut *lctx));
@@ -266,13 +251,6 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
     let mut cpu_id = 0;
     let mut ret_map = tlbmap_4k;
 
-    assert(forall|cpu_id: CpuId|
-        #![trigger ret_map.view().spec_index(cpu_id as int)]
-        index_valid(NUM_CPUS, cpu_id) ==> ret_map.view().spec_index(cpu_id as int) =~= tlbmap_4k.view().spec_index(cpu_id as int));
-    assert(forall|cpu_id: CpuId|
-        #![trigger ret_map.view().spec_index(cpu_id as int)]
-        index_valid(NUM_CPUS, cpu_id) ==> ret_map.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
-
     // #[verifier::loop_isolation(false)]
     for cpu_id in 0..NUM_CPUS
         invariant
@@ -287,29 +265,17 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
                 index_valid(NUM_CPUS, cpu_i) ==> ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)),
     {
         proof {
-            assert(cpu_id < ret_map.view().len());
             let old_at_i = ret_map.view().spec_index(cpu_id as int);
             let tlbmap = old_at_i.remove(va.view());
-            assert(!tlbmap.contains_key(va.view()));
             // tlbmap is a submap of old_at_i, which (by loop invariant) is a submap of tlbmap_4k[cpu_id]
-            assert(tlbmap.submap_of(old_at_i));
-            assert(old_at_i.submap_of(tlbmap_4k.view().spec_index(cpu_id as int)));
             assert(tlbmap.submap_of(tlbmap_4k.view().spec_index(cpu_id as int))) by {
+                assert(tlbmap.submap_of(old_at_i)) by {
+                    broadcast use vstd::map::axiom_map_remove_different;
+                };
                 broadcast use submap_by_transitivity;
             }
             let tlbseq = ret_map.view().update(cpu_id as int, tlbmap);
-            assert(tlbseq.index(cpu_id as int) =~= tlbmap);
             *ret_map.borrow_mut() = tlbseq;
-            // After update, ret_map@[cpu_id] = tlbmap, all others unchanged.
-            assert(!ret_map.view().spec_index(cpu_id as int).contains_key(va.view()));
-            assert forall|cpu_i: CpuId| index_valid(NUM_CPUS, cpu_i) implies
-                #[trigger] ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)) by {
-                if cpu_i as int == cpu_id as int {
-                    assert(ret_map.view().spec_index(cpu_i as int) == tlbmap);
-                } else {
-                    // unchanged
-                }
-            }
         }
     }
     ret_map

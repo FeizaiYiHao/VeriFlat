@@ -40,6 +40,7 @@ verus! {
     /// spec-level mapping used at every kernel boundary.  The boundary
     /// compares this projection with the preceding snapshot; only a changed
     /// projection is recorded as a user-visible step.
+    #[verifier::opaque]
     pub open spec fn kernel_k_to_kernel_u(krnl: KernelK) -> KernelU {
         KernelU {
             cpu_array: Seq::new(
@@ -152,6 +153,7 @@ verus! {
         ensures
             kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
     {
+        reveal(kernel_k_to_kernel_u);
         let pre_u = kernel_k_to_kernel_u(*pre);
         let post_u = kernel_k_to_kernel_u(*post);
         assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);

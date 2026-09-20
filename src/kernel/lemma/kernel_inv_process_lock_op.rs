@@ -41,7 +41,7 @@ pub proof fn process_lock_op_preserves_invariant_fields(
 {
 }
 
-pub proof fn process_no_change_imply_memory_management_inv(pre: KernelK, post: KernelK)
+pub proof fn memory_management_inv_preserved_for_process_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
         container_process_wf(pre.ctn_mp, pre.prc_mp),
@@ -61,8 +61,8 @@ pub proof fn process_no_change_imply_memory_management_inv(pre: KernelK, post: K
     ensures
         post.memory_management_inv(),
 {
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { lemma_no_change_imply_container_process_page_pagetable_wf_forall(); };
-    assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_no_change_imply_process_pages_wf_forall(); };
+    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf);
         reveal(container_process_wf);
@@ -70,11 +70,11 @@ pub proof fn process_no_change_imply_memory_management_inv(pre: KernelK, post: K
     };
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thr_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thr_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp); };
-    assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_no_change_imply_process_pagetable_match_forall(); };
-    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_no_change_imply_process_iommu_table_match_forall(); };
+    assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
+    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
 }
 
-pub proof fn process_no_change_imply_process_management_inv(pre: KernelK, post: KernelK)
+pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
         process_thread_wf(post.prc_mp, post.thr_mp),
@@ -90,10 +90,10 @@ pub proof fn process_no_change_imply_process_management_inv(pre: KernelK, post: 
     ensures
         post.process_management_inv(),
 {
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_no_change_imply_process_pcid_allocator_wf_forall(); };
-    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_no_change_imply_container_process_wf_forall(); };
-    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { lemma_no_change_imply_per_container_process_tree_wf_forall(); };
-    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_no_change_imply_process_cpu_wf_forall(); };
+    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
+    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
 }
 
 }

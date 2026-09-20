@@ -20,6 +20,47 @@ impl CpuSet {
     {
         Self { owning_container: Ghost(owning_container), container_depth: Ghost(container_depth), owned_cpus: ArraySet::new() }
     }
+
+    pub fn new_root(owning_container: RwLockContainerPtr) -> (ret: Self)
+        requires
+            0 < NUM_CPUS,
+        ensures
+            ret.inv(),
+            ret.owning_container.view() == owning_container,
+            ret.container_depth.view() == 0,
+            forall|cpu_id: CpuId|
+                #![trigger ret.owned_cpus.view().contains(cpu_id)]
+                ret.owned_cpus.view().contains(cpu_id)
+                    <==> index_valid(NUM_CPUS, cpu_id),
+            forall|cpu_id: CpuId|
+                #![trigger ret.owned_cpus.closed_view().contains(cpu_id)]
+                ret.owned_cpus.closed_view().contains(cpu_id)
+                    <==> index_valid(NUM_CPUS, cpu_id) && cpu_id != 0,
+    {
+        let mut ret = Self::new_empty(owning_container, 0);
+        ret.owned_cpus.insert(0);
+        let mut cpu_id = 1;
+        while cpu_id < NUM_CPUS
+            invariant
+                1 <= cpu_id <= NUM_CPUS,
+                ret.inv(),
+                ret.owning_container.view() == owning_container,
+                ret.container_depth.view() == 0,
+                forall|old_cpu: CpuId|
+                    #![trigger ret.owned_cpus.view().contains(old_cpu)]
+                    ret.owned_cpus.view().contains(old_cpu)
+                        <==> old_cpu < cpu_id,
+                forall|old_cpu: CpuId|
+                    #![trigger ret.owned_cpus.closed_view().contains(old_cpu)]
+                    ret.owned_cpus.closed_view().contains(old_cpu)
+                        <==> 0 < old_cpu < cpu_id,
+            decreases NUM_CPUS - cpu_id,
+        {
+            ret.owned_cpus.insert_closed(cpu_id);
+            cpu_id = cpu_id + 1;
+        }
+        ret
+    }
 }
 
 impl LockInvTrait for CpuSet {

@@ -158,7 +158,7 @@ HAS_KILL_STATE>>,
 HAS_KILL_STATE>>>,
     Tracked(lctx): Tracked<&mut LocalContext>,
     obj_id: Ghost<KernelObjId>,
-) -> (ret: (bool, Option<Tracked<LockPerm>>))
+) -> (ret: Option<Tracked<LockPerm>>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -172,29 +172,25 @@ HAS_KILL_STATE>>>,
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
 
-        ret.0 == false ==> 
+        ret is None ==>
         {
             &&&
             old(perm).value().being_killed() == true
             &&&
             old(perm).value() == final(perm).value()
             &&&
-            ret.1 is None
-            &&&
             *final(lctx) == *old(lctx)
         },
-        ret.0 == true ==>{
+        ret is Some ==>{
             &&&                
             old(perm).value().being_killed() == false
-            &&&
-            ret.1 is Some
             &&&
             wlock_ensures(old(perm).value(), final(perm).value(), LockId{
                 container: old(perm).value().container_depth(),
                 process: old(perm).value().process_depth(),
                 major: old(perm).value().view().current_lock_major(),
                 minor: old(perm).lock_minor(),
-            }, final(lctx), ret.1.unwrap().view())
+            }, final(lctx), ret.unwrap().view())
             &&&
             lock_ensures(old(lctx), final(lctx), LockId{
                 container: old(perm).value().container_depth(),

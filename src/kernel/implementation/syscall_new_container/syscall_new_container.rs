@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
-use super::syscall_new_container_helpers::commit_new_container;
+use super::syscall_new_container_commit::commit_new_container;
 
 verus! {
 
@@ -44,6 +44,19 @@ pub fn syscall_new_container(
             &&& final(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().parent == Some(parent_container_ptr)
             &&& final(krnl).prc_mp.dom().contains(child_process_ptr)
             &&& final(krnl).prc_mp.spec_index(child_process_ptr).view_rodata().view().owning_container == child_container_ptr
+            &&& final(krnl).prc_mp.spec_index(child_process_ptr).view().quota_4k == process_quota_4k
+            &&& final(krnl).allc_4k_mp.dom().contains(
+                final(krnl).ctn_mp.spec_index(child_container_ptr)
+                    .view_rodata().view().allocator_ptr_4k,
+            )
+            &&& final(krnl).allc_4k_mp.spec_index(
+                final(krnl).ctn_mp.spec_index(child_container_ptr)
+                    .view_rodata().view().allocator_ptr_4k,
+            ).total_free_pages.view() == funding_page_count
+            &&& final(krnl).allc_4k_mp.spec_index(
+                final(krnl).ctn_mp.spec_index(child_container_ptr)
+                    .view_rodata().view().allocator_ptr_4k,
+            ).quota.view().view() == funding_page_count - process_quota_4k
             &&& final(krnl).thr_mp.dom().contains(child_thread_ptr)
             &&& final(krnl).thr_mp.spec_index(child_thread_ptr).view().state is SCHEDULED
             &&& final(krnl).thr_mp.spec_index(child_thread_ptr).view().owning_container == child_container_ptr
@@ -114,7 +127,7 @@ pub fn syscall_new_container(
         parent_container_ptr,
         Tracked(&mut *lctx),
     );
-    if let (false, _) = container_res {
+    if container_res.is_none() {
         krnl.wunlock_cpu(
             cpu_id,
             Tracked(&mut *lctx),
@@ -123,7 +136,7 @@ pub fn syscall_new_container(
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorContainerKilled;
     }
-    let Tracked(container_lock_perm) = container_res.1.unwrap();
+    let Tracked(container_lock_perm) = container_res.unwrap();
     proof { assert(!krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_processes.view().is_empty()) by { reveal(container_process_wf); }; }
     let parent_depth = krnl.ctn_mp
         .borrow_rodata(parent_container_ptr).borrow().depth;
@@ -143,7 +156,7 @@ pub fn syscall_new_container(
     }
 
     let process_res = krnl.wlock_process_unless_killed(parent_process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-    if let (false, _) = process_res {
+    if process_res.is_none() {
         krnl.wunlock_container(
             parent_container_ptr,
             Tracked(&mut *lctx),
@@ -157,13 +170,13 @@ pub fn syscall_new_container(
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorProcessKilled;
     }
-    let Tracked(process_lock_perm) = process_res.1.unwrap();
+    let Tracked(process_lock_perm) = process_res.unwrap();
     proof { assert(krnl.prc_mp.spec_index(parent_process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); }; }
     let thread_res = krnl.wlock_thread_unless_killed(
         current_thread_ptr,
         Tracked(&mut *lctx),
     );
-    if let (false, _) = thread_res {
+    if thread_res.is_none() {
         krnl.wunlock_process(
             parent_process_ptr,
             Tracked(&mut *lctx),
@@ -182,7 +195,7 @@ pub fn syscall_new_container(
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorThreadKilled;
     }
-    let Tracked(thread_lock_perm) = thread_res.1.unwrap();
+    let Tracked(thread_lock_perm) = thread_res.unwrap();
     let thread = krnl.thr_mp.borrow_typed(
         current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
     let quota_4k = thread.quota_4k;
@@ -250,22 +263,10 @@ pub fn syscall_new_container(
         child_process_ptr,
         child_thread_ptr,
     ) = commit_new_container(
-        krnl,
-        Tracked(&mut *lctx),
-        Tracked(&mut *steps),
-        cpu_id,
-        parent_container_ptr,
-        parent_process_ptr,
-        current_thread_ptr,
-        source_pagetable_ptr,
-        funding_page_count,
-        process_quota_4k,
-        Tracked(cpu_lock_perm),
-        Tracked(container_lock_perm),
-        Tracked(process_lock_perm),
-        Tracked(thread_lock_perm),
-        Tracked(source_pagetable_lock_perm),
-        initial_regs,
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_container_ptr, parent_process_ptr,
+        current_thread_ptr, source_pagetable_ptr, funding_page_count, process_quota_4k,
+        Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(process_lock_perm),
+        Tracked(thread_lock_perm), Tracked(source_pagetable_lock_perm), initial_regs,
     );
     RetValueType::SuccessThreeUsize { value1: child_container_ptr, value2: child_process_ptr, value3: child_thread_ptr }
 }

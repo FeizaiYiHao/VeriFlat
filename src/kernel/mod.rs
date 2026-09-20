@@ -7,6 +7,7 @@ pub mod memory_management;
 pub mod cpu_tlb_management;
 pub mod iommu_tlb_management;
 pub mod lemma;
+pub mod init;
 
 pub mod spec_util;
 pub mod release_and_finish_syscall;
@@ -21,4 +22,5 @@ pub use memory_management::*;
 pub use cpu_tlb_management::*;
 pub use iommu_tlb_management::*;
 pub use lemma::*;
+pub use init::*;
 pub use release_and_finish_syscall::*;

@@ -1,31 +1,25 @@
 # VeriFlat
 
-A microkernel verified with Verus (everything under `src/` is Verus Rust).
-Build/verify with `./verify.sh` from the project root.
+@AGENTS.md
 
-## Steering docs (auto-loaded via the imports below)
+`AGENTS.md` is the repository-wide authority. Live code wins over every note.
+Do not maintain a separate proof, lock-model, or verification policy here.
 
-These three files are the working knowledge base. They are imported here so a
-fresh session loads them automatically:
+Before acting, read the matching canonical skill:
 
-- **veriflat-project-notes.md** — durable architecture, conventions, idioms,
-  gotchas, and the reference syscall example. Stable; rarely edited.
-- **verus-verification.md** — the transferable "how to verify" playbook
-  (cost tactics, proof patterns, TCB axiom design, failure strategies).
-- **verus-style.md** — the code-style signature: layout, naming, idiom, and
-  the concrete proof-structure patterns (nested inv() re-establishment, the
-  lock-wrapper-per-object pattern, fold-conjunct discipline). Write edits that
-  match it.
+- Verus proof work: `.codex/skills/veriflat-proof/SKILL.md`
+- Locks, `LocalContext`, and syscall semantics:
+  `.codex/skills/veriflat-kernel-model/SKILL.md`
+- Build, measurement, style audit, and handoff:
+  `.codex/skills/veriflat-build/SKILL.md`
 
-@.kiro/steering/veriflat-project-notes.md
-@.kiro/steering/verus-verification.md
-@.kiro/steering/verus-style.md
+Read only the references routed by the selected skill. Use `.ai-memory/MEMORY.md`
+for durable design orientation when its topic matches the task, and re-check it
+against live code.
 
-## After a major change
+During proof iteration use the focused split-workspace command described by the
+build skill. Reserve the full workspace and monolithic verification for the
+handoff stages required there.
 
-After any substantial edit to `src/` (a new/rewritten function, extracted
-helper, or moved lemma) that has verified clean, run the `/style-check` slash
-command before calling the work done. It reviews the working diff against
-`AGENTS.md`, `verus-style.md`, and the hand-edited canonical
-`src/kernel/implementation/syscall_alloc_quota/` directory so style
-conformance does not depend on remembering the rules mid-edit.
+After substantial `src/` edits verify the smallest relevant target, run the
+session-scoped `/style-check`, and follow the build skill's final checks.

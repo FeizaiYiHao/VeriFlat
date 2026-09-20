@@ -25,7 +25,6 @@ verus! {
             }
         &&&
         forall|c_ptr:RwLockContainerPtr, p_ptr:RwLockProcessPtr|
-            #![trigger container_perms.spec_index(c_ptr).view().owned_processes, process_perms.spec_index(p_ptr).view_rodata().view().owning_container]
             #![trigger container_perms.spec_index(c_ptr).view().owned_processes.view().contains(p_ptr)]
             container_perms.dom().contains(c_ptr) && container_perms.spec_index(c_ptr).view().owned_processes.view().contains(p_ptr)
             ==>
@@ -35,7 +34,10 @@ verus! {
             }
         &&&
         forall|p_ptr:RwLockProcessPtr|
-            #![trigger process_perms.spec_index(p_ptr).view_rodata().view().owning_container]
+            #![trigger
+                process_perms.dom().contains(p_ptr),
+                process_perms.spec_index(p_ptr).view_rodata().view().owning_container
+            ]
             process_perms.dom().contains(p_ptr)
             ==>
             {

@@ -60,6 +60,91 @@ pub type ThreadRwLock = RwLock<Thread, (), (), THREAD_HAS_KILL_STATE>;
 pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>;
 
 impl Thread{
+    pub fn new_boot_root(
+        thread_ptr: RwLockThreadPtr,
+        owning_container: RwLockContainerPtr,
+        owning_proc: RwLockProcessPtr,
+        proc_pagetable_ptr: RwLockPageTableRoot,
+        endpoint_ptr: RwLockEndpointPtr,
+        initial_regs: &Registers,
+    ) -> (ret: (
+        Self,
+        usize,
+        Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+        usize,
+        Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    ))
+        ensures
+            ret.0.inv(),
+            ret.0.state is SCHEDULED,
+            ret.0.trap_frame.is_some(),
+            *ret.0.trap_frame.get_some_0() == *initial_regs,
+            ret.0.owning_container == owning_container,
+            ret.0.container_depth == 0,
+            ret.0.owning_proc == owning_proc,
+            ret.0.process_depth == 0,
+            ret.0.proc_pagetable_ptr == proc_pagetable_ptr,
+            ret.0.upper_container_seq.view()
+                == Seq::<RwLockContainerPtr>::empty(),
+            ret.0.endpoint_descriptors.spec_index(0)
+                == Some(endpoint_ptr),
+            forall|endpoint_index: EndpointIdx|
+                #![trigger ret.0.endpoint_descriptors
+                    .spec_index(endpoint_index)]
+                edp_idx_valid(endpoint_index)
+                && endpoint_index != 0
+                ==> ret.0.endpoint_descriptors
+                    .spec_index(endpoint_index) is None,
+            ret.0.ipc_payload is Empty,
+            ret.0.error_code is None,
+            ret.0.caller is None,
+            ret.0.callee is None,
+            ret.0.blocking_endpoint_ptr is None,
+            ret.0.blocking_endpoint_index is None,
+            ret.0.free_quota_pending_clean(),
+            ret.0.temp_alloc_clean(),
+            ret.0.quota_4k == 0,
+            ret.0.quota_2m == 0,
+            ret.0.quota_1g == 0,
+            ret.0.endpoint_linkedlist_node.is_init(),
+            ret.1 == ret.0.scheduler_linkedlist_node.addr(),
+            ret.2.view().is_init(),
+            ret.2.view().addr() == ret.1,
+            ret.2.view().value().view() == thread_ptr,
+            ret.3 == ret.0.proc_linkedlist_node.addr(),
+            ret.4.view().is_init(),
+            ret.4.view().addr() == ret.3,
+            ret.4.view().value().view() == thread_ptr,
+    {
+        let (
+            mut thread,
+            scheduler_node_addr,
+            scheduler_node_perm,
+            process_node_addr,
+            process_node_perm,
+        ) = Self::new_scheduled(
+            thread_ptr,
+            owning_container,
+            0,
+            owning_proc,
+            0,
+            proc_pagetable_ptr,
+            Ghost(Seq::empty()),
+            initial_regs,
+        );
+        thread.endpoint_descriptors.set(0, Some(endpoint_ptr));
+        thread.ipc_payload = IPCPayLoad::Empty;
+        thread.error_code = None;
+        assert(thread.inv());
+        (
+            thread,
+            scheduler_node_addr,
+            scheduler_node_perm,
+            process_node_addr,
+            process_node_perm,
+        )
+    }
+
     pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
         &&& self.owning_container == other.owning_container
         &&& self.container_depth == other.container_depth
@@ -125,7 +210,6 @@ impl Thread{
     /// State is RUNNING{cpu_id: 0} (not waiting, not SCHEDULED).
     /// All endpoint fields are None/empty, all pending quotas are 0,
     /// caller/callee are None, linkedlist nodes are init, trap_frame is None.
-    #[verifier::external_body]
     pub fn new_fresh(
         owning_container: RwLockContainerPtr,
         container_depth: usize,
@@ -155,15 +239,62 @@ impl Thread{
             ret.scheduler_linkedlist_node.is_init(),
             ret.blocking_endpoint_ptr is None,
             ret.blocking_endpoint_index is None,
-            forall|edp_index: EndpointIdx| #![auto]
-                ret.endpoint_descriptors.view().spec_index(edp_index as int) is None,
+            forall|edp_index: EndpointIdx|
+                #![trigger ret.endpoint_descriptors.spec_index(edp_index)]
+                edp_idx_valid(edp_index)
+                ==> ret.endpoint_descriptors.spec_index(edp_index) is None,
             ret.free_quota_pending_clean(),
             ret.temp_alloc_clean(),
             ret.quota_4k == 0,
             ret.quota_2m == 0,
             ret.quota_1g == 0,
     {
-        unimplemented!()
+        let mut endpoint_descriptors:
+            Array<Option<RwLockEndpointPtr>, MAX_NUM_ENDPOINT_DESCRIPTORS>
+                = Array::new();
+        endpoint_descriptors.init2none();
+        let ret = Self {
+            state: ThreadState::RUNNING { cpu_id: 0 },
+            caller: None,
+            callee: None,
+            owning_container,
+            container_depth,
+            scheduler_linkedlist_node: ExternalNode::new(0),
+            owning_proc,
+            process_depth,
+            proc_pagetable_ptr,
+            proc_linkedlist_node: ExternalNode::new(0),
+            quota_4k: 0,
+            quota_2m: 0,
+            quota_1g: 0,
+            temp_alloc_cache_4k: Ghost(Set::empty()),
+            temp_alloc_cache_2m: Ghost(Set::empty()),
+            temp_alloc_cache_1g: Ghost(Set::empty()),
+            endpoint_descriptors,
+            blocking_endpoint_ptr: None,
+            blocking_endpoint_index: None,
+            endpoint_linkedlist_node: ExternalNode::new(0),
+            ipc_payload: IPCPayLoad::Empty,
+            error_code: None,
+            trap_frame: TrapFrameOption::zeroed_none(),
+            upper_container_seq,
+            direct_free_quota_pending_4k: Ghost(0),
+            direct_free_quota_pending_2m: Ghost(0),
+            direct_free_quota_pending_1g: Ghost(0),
+            indirect_free_quota_pending_4k: Ghost(Seq::new(
+                container_depth as nat,
+                |i: int| 0usize,
+            )),
+            indirect_free_quota_pending_2m: Ghost(Seq::new(
+                container_depth as nat,
+                |i: int| 0usize,
+            )),
+            indirect_free_quota_pending_1g: Ghost(Seq::new(
+                container_depth as nat,
+                |i: int| 0usize,
+            )),
+        };
+        ret
     }
 
     pub fn new_scheduled(
@@ -175,7 +306,13 @@ impl Thread{
         proc_pagetable_ptr: RwLockPageTableRoot,
         upper_container_seq: Ghost<Seq<RwLockContainerPtr>>,
         initial_regs: &Registers,
-    ) -> (ret: (Self, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    ) -> (ret: (
+        Self,
+        usize,
+        Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+        usize,
+        Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    ))
         requires
             upper_container_seq.view().len() == container_depth,
         ensures
@@ -192,15 +329,22 @@ impl Thread{
             ret.0.upper_container_seq.view() == upper_container_seq.view(),
             ret.0.caller is None,
             ret.0.callee is None,
-            ret.0.proc_linkedlist_node.is_init(),
+            !ret.0.proc_linkedlist_node.is_init(),
             !ret.0.scheduler_linkedlist_node.is_init(),
             ret.1 == ret.0.scheduler_linkedlist_node.addr(),
             ret.2.view().is_init(),
             ret.2.view().addr() == ret.1,
             ret.2.view().value().view() == thread_ptr,
+            ret.3 == ret.0.proc_linkedlist_node.addr(),
+            ret.4.view().is_init(),
+            ret.4.view().addr() == ret.3,
+            ret.4.view().value().view() == thread_ptr,
             ret.0.blocking_endpoint_ptr is None,
             ret.0.blocking_endpoint_index is None,
-            forall|edp_index: EndpointIdx| #![auto] ret.0.endpoint_descriptors.view().spec_index(edp_index as int) is None,
+            forall|edp_index: EndpointIdx|
+                #![trigger ret.0.endpoint_descriptors.spec_index(edp_index)]
+                edp_idx_valid(edp_index)
+                ==> ret.0.endpoint_descriptors.spec_index(edp_index) is None,
             ret.0.free_quota_pending_clean(),
             ret.0.temp_alloc_clean(),
             ret.0.quota_4k == 0,
@@ -210,13 +354,52 @@ impl Thread{
         let mut thread = Self::new_fresh(owning_container, container_depth, owning_proc, process_depth, proc_pagetable_ptr, upper_container_seq);
         let (node_addr, mut node_perm) = thread.scheduler_linkedlist_node.take();
         node_update_value(node_addr, &mut node_perm, thread_ptr);
+        let (process_node_addr, mut process_node_perm) =
+            thread.proc_linkedlist_node.take();
+        node_update_value(
+            process_node_addr,
+            &mut process_node_perm,
+            thread_ptr,
+        );
         thread.trap_frame.set_self(initial_regs);
         thread.state = ThreadState::SCHEDULED;
-        (thread, node_addr, node_perm)
+        assert(thread.inv());
+        (
+            thread,
+            node_addr,
+            node_perm,
+            process_node_addr,
+            process_node_perm,
+        )
     }
 }
 
 impl Thread {
+    pub fn consume_staged_4k(&mut self, page_ptr: PagePtr)
+        requires
+            old(self).temp_alloc_cache_4k.view().contains(page_ptr),
+            old(self).quota_4k >= 1,
+        ensures
+            old(self).inv() ==> final(self).inv(),
+            *final(self) == (Thread {
+                quota_4k: final(self).quota_4k,
+                temp_alloc_cache_4k: final(self).temp_alloc_cache_4k,
+                ..*old(self)
+            }),
+            final(self).temp_alloc_cache_4k.view()
+                == old(self).temp_alloc_cache_4k.view().remove(page_ptr),
+            final(self).temp_alloc_cache_4k.view().len()
+                == old(self).temp_alloc_cache_4k.view().len() - 1,
+            final(self).quota_4k == old(self).quota_4k - 1,
+    {
+        let ghost old_cache = self.temp_alloc_cache_4k.view();
+        self.temp_alloc_cache_4k = Ghost(old_cache.remove(page_ptr));
+        self.quota_4k = self.quota_4k - 1;
+        proof {
+            vstd::set::lemma_set_remove_len(old_cache, page_ptr);
+        }
+    }
+
     pub fn running_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
