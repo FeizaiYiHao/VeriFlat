@@ -1,3 +1,4 @@
+// Base implementation of the 2M allocator path.
 use super::super::allocator_cache_spec::*;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
@@ -209,6 +210,7 @@ verus! {
         ret
     }
 
+    #[verifier::spinoff_prover]
     fn alloc_2m_scan_all_caches_and_pool(
         krnl: &mut KernelK,
         thread_ptr: RwLockThreadPtr,
@@ -436,27 +438,7 @@ verus! {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
-            final(krnl).pt_mp     == old(krnl).pt_mp,
-            final(krnl).it_mp     == old(krnl).it_mp,
-            final(krnl).irt     == old(krnl).irt,
-            final(krnl).pg_arr        == old(krnl).pg_arr,
-            final(krnl).cpu_arr         == old(krnl).cpu_arr,
-            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
-            final(krnl).cpu_published == old(krnl).cpu_published,
-            final(krnl).cpu_tlb           == old(krnl).cpu_tlb,
-            final(krnl).iommu_tlb           == old(krnl).iommu_tlb,
-            final(krnl).rt_ctn    == old(krnl).rt_ctn,
-            final(krnl).ctn_mp     == old(krnl).ctn_mp,
-            final(krnl).sched_mp     == old(krnl).sched_mp,
-            final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
-            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
-            final(krnl).prc_mp       == old(krnl).prc_mp,
-            final(krnl).thr_mp        == old(krnl).thr_mp,
-            final(krnl).ep_mp      == old(krnl).ep_mp,
-            final(krnl).allc_4k_mp  == old(krnl).allc_4k_mp,
-            final(krnl).allc_1g_mp  == old(krnl).allc_1g_mp,
-            final(krnl).dflt_pt == old(krnl).dflt_pt,
-            final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
+            *final(krnl) == (KernelK { allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
             final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -526,7 +508,6 @@ verus! {
                 krnl.allc_4k_mp  == old(krnl).allc_4k_mp,
                 krnl.allc_1g_mp  == old(krnl).allc_1g_mp,
                 krnl.dflt_pt == old(krnl).dflt_pt,
-                krnl.allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
                 krnl.allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
                 lctx.thread_id() == old(lctx).thread_id(),
@@ -627,27 +608,7 @@ verus! {
             final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
-            final(krnl).pt_mp     == old(krnl).pt_mp,
-            final(krnl).it_mp     == old(krnl).it_mp,
-            final(krnl).irt     == old(krnl).irt,
-            final(krnl).pg_arr        == old(krnl).pg_arr,
-            final(krnl).cpu_arr         == old(krnl).cpu_arr,
-            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
-            final(krnl).cpu_published == old(krnl).cpu_published,
-            final(krnl).cpu_tlb           == old(krnl).cpu_tlb,
-            final(krnl).iommu_tlb           == old(krnl).iommu_tlb,
-            final(krnl).rt_ctn    == old(krnl).rt_ctn,
-            final(krnl).ctn_mp     == old(krnl).ctn_mp,
-            final(krnl).sched_mp     == old(krnl).sched_mp,
-            final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
-            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
-            final(krnl).prc_mp       == old(krnl).prc_mp,
-            final(krnl).thr_mp        == old(krnl).thr_mp,
-            final(krnl).ep_mp      == old(krnl).ep_mp,
-            final(krnl).allc_4k_mp  == old(krnl).allc_4k_mp,
-            final(krnl).allc_1g_mp  == old(krnl).allc_1g_mp,
-            final(krnl).dflt_pt == old(krnl).dflt_pt,
-            final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
+            *final(krnl) == (KernelK { allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
             final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool,
@@ -683,7 +644,6 @@ verus! {
                 krnl.allc_1g_mp  == old(krnl).allc_1g_mp,
                 krnl.dflt_pt == old(krnl).dflt_pt,
                 krnl.allc_2m_mp.dom().contains(alloc_ptr_2m),
-                krnl.allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
                 krnl.allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool,
@@ -828,25 +788,14 @@ verus! {
             cache_perms_match_lctx(old(krnl).allc_2m_mp, alloc_ptr_2m, old(lctx), cache_perms),
             old(lctx).held_lock_majors_lt(FREE_PAGE_LOCK_MAJOR),
         ensures
-            final(krnl).cpu_tlb == old(krnl).cpu_tlb,
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
-            final(lctx).thread_lock_map().dom().contains(thread_ptr),
-            final(krnl).prc_mp == old(krnl).prc_mp,
-            final(krnl).pt_mp == old(krnl).pt_mp,
-            final(krnl).ctn_mp == old(krnl).ctn_mp,
-            final(krnl).sched_mp == old(krnl).sched_mp,
-            final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
-            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
-            final(krnl).ep_mp == old(krnl).ep_mp,
-            final(krnl).irt == old(krnl).irt,
-            final(krnl).it_mp == old(krnl).it_mp,
-            final(krnl).iommu_tlb == old(krnl).iommu_tlb,
-            final(krnl).cpu_arr == old(krnl).cpu_arr,
-            final(krnl).pcid_needflush == old(krnl).pcid_needflush,
-            final(krnl).cpu_published == old(krnl).cpu_published,
-            final(krnl).allc_4k_mp == old(krnl).allc_4k_mp,
-            final(krnl).allc_1g_mp == old(krnl).allc_1g_mp,
+            *final(krnl) == (KernelK {
+                pg_arr: final(krnl).pg_arr,
+                thr_mp: final(krnl).thr_mp,
+                allc_2m_mp: final(krnl).allc_2m_mp,
+                ..*old(krnl)
+            }),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             held_threads_unchanged_except(
                 old(krnl).thr_mp, final(krnl).thr_mp, old(lctx),
@@ -854,7 +803,6 @@ verus! {
             ),
             final(lctx).allocator_2m_lock_maps()
                 == old(lctx).allocator_2m_lock_maps(),
-            final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom(),
             final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -869,7 +817,6 @@ verus! {
                 &&& !old(krnl).thr_mp.spec_index(thread_ptr).view()
                     .temp_alloc_cache_2m.view().contains(ret.unwrap().0)
                 &&& thread_effective_quota_2m(final(krnl).thr_mp.spec_index(thread_ptr)) == thread_effective_quota_2m(old(krnl).thr_mp.spec_index(thread_ptr)) - 1
-                &&& index_valid(NUM_PAGES, page_ptr2page_index(ret.unwrap().0))
                 &&& final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(ret.unwrap().0))
                 &&& final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool
                     == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool
@@ -890,7 +837,6 @@ verus! {
                     == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
                     == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq == old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr
@@ -939,7 +885,6 @@ verus! {
                 thread_lock_perm.thread_id() == lctx.thread_id(),
                 thread_lock_perm.lock_id() == krnl.thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
                 typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-                lctx.thread_lock_map().dom().contains(thread_ptr),
                 lctx.allocator_quota_2m_lock_map().dom().is_empty(),
                 lctx.allocator_cache_2m_lock_map().dom()
                     =~= allocator_cache_key_prefix(alloc_ptr_2m, NUM_CPUS),
@@ -957,6 +902,7 @@ verus! {
             decreases NUM_CPUS - cpu,
         {
             proof {
+                assert(index_valid(NUM_CPUS, cpu));
                 assert(
                     krnl.allc_2m_mp.perms_wf()
                     && krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)
@@ -975,6 +921,7 @@ verus! {
                     && krnl.allc_2m_mp.spec_index(alloc_ptr_2m)
                         .cpu_caches.spec_index(cpu).view().being_killed() == false
                 ) by { reveal(allocator_perms_wf); reveal(cache_perms_match_lctx); };
+                assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).inv()) by { reveal(PageAllocator::cpu_caches_wf); };
             }
             let cache_ref = krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perms.tracked_borrow(cpu)));
             assert(cache_ref.linked_list.wf()) by {

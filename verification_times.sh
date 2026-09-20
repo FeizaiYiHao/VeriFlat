@@ -2,8 +2,31 @@
 # Shared temporary capture for smt_times.sh and module_times.sh.
 set -euo pipefail
 CURRENT_DIR="$(cd "$(dirname "$0")" && pwd)"
-mode="$1"
-shift
+
+usage() {
+    printf 'Usage: %s {functions|modules} [-n threads] [module::path]\n' "${0##*/}"
+}
+
+case "${1:-}" in
+    functions|modules)
+        mode="$1"
+        shift
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    "")
+        usage >&2
+        exit 2
+        ;;
+    *)
+        printf 'unknown report mode: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
 threads=32
 module=""
 while (($#)); do
@@ -22,14 +45,20 @@ args=(--time --output-json --num-threads "$threads")
 timing_dir="$(mktemp -d "${TMPDIR:-/tmp}/veriflat-timings.XXXXXXXX")"
 trap 'rm -rf -- "$timing_dir"' EXIT
 verify_status=0
-/usr/bin/time -f '%e' -o "$timing_dir/wall.seconds" "$CURRENT_DIR/verify.sh" "${args[@]}" \
+start_ns="$(python3 -c 'import time; print(time.monotonic_ns())')"
+"$CURRENT_DIR/verify.sh" "${args[@]}" \
     > "$timing_dir/verus.json" 2> "$timing_dir/stderr.log" || verify_status=$?
+end_ns="$(python3 -c 'import time; print(time.monotonic_ns())')"
+wall_seconds="$(
+    python3 -c 'import sys; print(f"{(int(sys.argv[2]) - int(sys.argv[1])) / 1_000_000_000:.3f}")' \
+        "$start_ns" "$end_ns"
+)"
 cat "$timing_dir/stderr.log" >&2
 report_args=(--threshold-ms 100)
 [[ "$mode" != modules ]] || report_args=(--modules)
 report_status=0
 python3 "$CURRENT_DIR/smt_parse.py" "$timing_dir/verus.json" "${report_args[@]}" || report_status=$?
-printf 'External wall (seconds): %s\n' "$(tail -n 1 "$timing_dir/wall.seconds")" >&2
+printf 'External wall (seconds): %s\n' "$wall_seconds" >&2
 printf 'Scope: monolith %s; prebuilt vstd; Verus threads=%s; exit=%s\n' "${module:-all modules}" "$threads" "$verify_status" >&2
 ((verify_status == 0)) || exit "$verify_status"
 exit "$report_status"

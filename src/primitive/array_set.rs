@@ -252,7 +252,7 @@ impl <const N: usize> ArraySet<N> {
         ensures
             s.len() <= m,
     {
-        assert(s.len() <= m) by { lemma_len_subset(s, Set::<usize>::range(0, m)); };
+        lemma_len_subset(s, Set::<usize>::range(0, m));
     }
 
     proof fn lemma_set_missing_element_size(s: Set<usize>, v: usize, n: usize)
@@ -264,7 +264,7 @@ impl <const N: usize> ArraySet<N> {
         ensures
             s.len() < n,
     {
-        assert(s.insert(v).len() <= n) by { Self::lemma_finite_set_bounded_size(s.insert(v), n); };
+        Self::lemma_finite_set_bounded_size(s.insert(v), n);
     }
 }
 

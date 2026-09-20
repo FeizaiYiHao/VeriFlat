@@ -1,9 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(feature = "split-crates")]
-use veriflat_map_4k::share_mapping_4k_target_map_after;
+use veriflat_map_4k::share_mapping_4k_target_map_with_shared_prefix;
 #[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::map_4k::share_mapping_4k::share_mapping_4k_target_map_after;
+use crate::kernel::implementation::map_4k::share_mapping_4k::share_mapping_4k_target_map_with_shared_prefix;
 
 verus! {
 
@@ -26,7 +26,7 @@ pub open spec fn kernel_u_new_process_shared(
     &&& child.pagetable is Some
     &&& created_child.pagetable is Some
     &&& shared_u.process_map.spec_index(parent_ptr).pagetable is Some
-    &&& child.pagetable.unwrap().mapping_4k == share_mapping_4k_target_map_after(shared_u.process_map.spec_index(parent_ptr).pagetable.unwrap().mapping_4k, created_child.pagetable.unwrap().mapping_4k, range, range, range.len as nat)
+    &&& child.pagetable.unwrap().mapping_4k == share_mapping_4k_target_map_with_shared_prefix(shared_u.process_map.spec_index(parent_ptr).pagetable.unwrap().mapping_4k, created_child.pagetable.unwrap().mapping_4k, range, range, range.len as nat)
     &&& child.pagetable.unwrap().mapping_2m == created_child.pagetable.unwrap().mapping_2m
     &&& child.pagetable.unwrap().mapping_1g == created_child.pagetable.unwrap().mapping_1g
     &&& child.iommu_table == created_child.iommu_table

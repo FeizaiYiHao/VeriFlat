@@ -82,13 +82,10 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-            old(lctx).container_lock_map().dom().contains(container_ptr),
-            old(lctx).process_lock_map().dom().contains(process_ptr),
             range.wf(),
             range.len > 0,
             old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-            range.len <= usize::MAX / 4usize,
             old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k >= 4 * range.len,
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start),
@@ -218,8 +215,6 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 0 <= i <= range.len,
                 steps.steps.len() == old(steps).steps.len() + i,
                 typed_lock_maps_unchanged(old(lctx), lctx),
-                lctx.container_lock_map().dom().contains(container_ptr),
-                lctx.process_lock_map().dom().contains(process_ptr),
                 old(krnl).thr_mp.dom().contains(thread_ptr),
                 old(krnl).prc_mp.dom().contains(process_ptr),
                 old(krnl).ctn_mp.dom().contains(container_ptr),
@@ -257,20 +252,16 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     &&& range_start <= current_va
                     &&& va_4k_valid(current_va)
                 }) by { range.va_range_lemma(); };
-                assert(spec_v2l4index(range_start) <= spec_v2l4index(current_va)) by (bit_vector)
-                    requires
-                        spec_va_4k_valid(range_start),
-                        spec_va_4k_valid(current_va),
-                        range_start <= current_va,
-                ;
-                assert(krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(current_va)) by { range.va_range_lemma(); };
+                assert(krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(current_va)) by {
+                    spec_v2l4index_monotonic(range_start, current_va);
+                };
                 assert({
                     &&& pei_valid(spec_v2l4index(current_va))
                     &&& pei_valid(spec_v2l3index(current_va))
                     &&& pei_valid(spec_v2l2index(current_va))
                     &&& pei_valid(spec_v2l1index(current_va))
                 }) by { spec_va_4k_valid_imply_indices_valid(); };
-                assert(old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_4k_entry_useable(spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va))) by {
+                assert(old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_4k_entry_usable(spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va))) by {
                     range.va_range_lemma();
                     seq_index_lemma::<VAddr>();
                     assert(old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(range.view().spec_index(i as int)).0, spec_va2index(range.view().spec_index(i as int)).1, spec_va2index(range.view().spec_index(i as int)).2, spec_va2index(range.view().spec_index(i as int)).3) is None) by { seq_index_lemma::<VAddr>(); };
@@ -291,7 +282,13 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     range.va_range_lemma();
                     seq_index_lemma::<VAddr>();
                     reveal(PageTable::wf_mapping_4k);
-                    spec_va_4k_index_roundtrip();
+                    spec_va_4k_index_roundtrip_at(
+                        current_va,
+                        spec_v2l4index(current_va),
+                        spec_v2l3index(current_va),
+                        spec_v2l2index(current_va),
+                        spec_v2l1index(current_va),
+                    );
                 };
             }
             mmap_4k_build_one_structure(krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));

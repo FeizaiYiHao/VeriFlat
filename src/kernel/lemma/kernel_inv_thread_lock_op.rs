@@ -88,7 +88,7 @@ pub proof fn thread_lock_op_preserves_invariant_fields(
 
 /// Memory preservation needs the source container/thread ownership leaf, not
 /// the unrelated remainder of process-management state.
-pub proof fn thread_no_change_imply_memory_management_inv(pre: KernelK, post: KernelK)
+pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
         container_thread_wf(pre.ctn_mp, pre.thr_mp),
@@ -112,10 +112,10 @@ pub proof fn thread_no_change_imply_memory_management_inv(pre: KernelK, post: Ke
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { lemma_no_change_imply_thread_staged_pages_wf_forall(); };
+    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
 }
 
-pub proof fn thread_no_change_imply_process_management_inv(pre: KernelK, post: KernelK)
+pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
@@ -165,50 +165,44 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
             allocator_map,
         ),
 {
-    assert(container_process_allocator_quota_4k_wf(
-        container_map,
-        process_map,
-        post_thread_map,
-        allocator_map,
-    )) by {
-        reveal(container_process_allocator_quota_4k_wf);
-        assert forall|c_ptr: RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr)
-                .view_rodata().view().allocator_ptr_4k]
-            container_map.dom().contains(c_ptr)
-        implies
-        {
-            &&& thread_effective_quota_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    post_thread_map,
-                )
-                == thread_effective_quota_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    pre_thread_map,
-                )
-            &&& thread_direct_pending_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost()
-                        .owned_threads.view(),
-                    post_thread_map,
-                )
-                == thread_direct_pending_4k_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost()
-                        .owned_threads.view(),
-                    pre_thread_map,
-                )
-            &&& thread_indirect_pending_4k_fold_sum_at_depth(
-                    container_map.spec_index(c_ptr).view_ghost()
-                        .owned_indirect_threads.view(),
-                    post_thread_map,
-                    container_map.spec_index(c_ptr).view_rodata().view().depth as int,
-                )
-                == thread_indirect_pending_4k_fold_sum_at_depth(
-                    container_map.spec_index(c_ptr).view_ghost()
-                        .owned_indirect_threads.view(),
-                    pre_thread_map,
-                    container_map.spec_index(c_ptr).view_rodata().view().depth as int,
-                )
-        }
+    reveal(container_process_allocator_quota_4k_wf);
+    assert forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.spec_index(c_ptr)
+            .view_rodata().view().allocator_ptr_4k]
+        container_map.dom().contains(c_ptr)
+    implies
+    {
+        &&& thread_effective_quota_4k_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                post_thread_map,
+            )
+            == thread_effective_quota_4k_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                pre_thread_map,
+            )
+        &&& thread_direct_pending_4k_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost()
+                    .owned_threads.view(),
+                post_thread_map,
+            )
+            == thread_direct_pending_4k_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost()
+                    .owned_threads.view(),
+                pre_thread_map,
+            )
+        &&& thread_indirect_pending_4k_fold_sum_at_depth(
+                container_map.spec_index(c_ptr).view_ghost()
+                    .owned_indirect_threads.view(),
+                post_thread_map,
+                container_map.spec_index(c_ptr).view_rodata().view().depth as int,
+            )
+            == thread_indirect_pending_4k_fold_sum_at_depth(
+                container_map.spec_index(c_ptr).view_ghost()
+                    .owned_indirect_threads.view(),
+                pre_thread_map,
+                container_map.spec_index(c_ptr).view_rodata().view().depth as int,
+            )
+    }
     by {
         assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
@@ -229,7 +223,6 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
             post_thread_map,
             container_map.spec_index(c_ptr).view_rodata().view().depth as int,
         );
-        };
     };
 }
 
@@ -260,20 +253,13 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_fields
             allocator_map,
         ),
 {
-    assert(container_process_allocator_quota_4k_wf(
+    container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
         container_map,
         process_map,
+        pre_thread_map,
         post_thread_map,
         allocator_map,
-    )) by {
-        container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
-            container_map,
-            process_map,
-            pre_thread_map,
-            post_thread_map,
-            allocator_map,
-        );
-    };
+    );
 }
 
 pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
@@ -303,62 +289,56 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
             allocator_map,
         ),
 {
-    assert(container_process_allocator_quota_2m_wf(
-        container_map,
-        process_map,
-        post_thread_map,
-        allocator_map,
-    )) by {
-        reveal(container_process_allocator_quota_2m_wf);
-        assert forall|c_ptr: RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr)
-                .view_rodata().view().allocator_ptr_2m]
-            container_map.dom().contains(c_ptr)
-        implies
-        {
-            &&& thread_effective_quota_2m_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    post_thread_map,
-                )
-                == thread_effective_quota_2m_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    pre_thread_map,
-                )
-            &&& container_map.spec_index(c_ptr).view_ghost()
+    reveal(container_process_allocator_quota_2m_wf);
+    assert forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.spec_index(c_ptr)
+            .view_rodata().view().allocator_ptr_2m]
+        container_map.dom().contains(c_ptr)
+    implies
+    {
+        &&& thread_effective_quota_2m_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                post_thread_map,
+            )
+            == thread_effective_quota_2m_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                pre_thread_map,
+            )
+        &&& container_map.spec_index(c_ptr).view_ghost()
+            .owned_threads.view().fold(
+                0,
+                |sum: int, t_ptr: RwLockThreadPtr|
+                    sum + post_thread_map.spec_index(t_ptr).view()
+                        .direct_free_quota_pending_2m.view(),
+            )
+            == container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
-                        sum + post_thread_map.spec_index(t_ptr).view()
+                        sum + pre_thread_map.spec_index(t_ptr).view()
                             .direct_free_quota_pending_2m.view(),
                 )
-                == container_map.spec_index(c_ptr).view_ghost()
-                    .owned_threads.view().fold(
-                        0,
-                        |sum: int, t_ptr: RwLockThreadPtr|
-                            sum + pre_thread_map.spec_index(t_ptr).view()
-                                .direct_free_quota_pending_2m.view(),
-                    )
-            &&& container_map.spec_index(c_ptr).view_ghost()
+        &&& container_map.spec_index(c_ptr).view_ghost()
+            .owned_indirect_threads.view().fold(
+                0,
+                |sum: int, t_ptr: RwLockThreadPtr|
+                    sum + post_thread_map.spec_index(t_ptr).view()
+                        .indirect_free_quota_pending_2m.view().spec_index(
+                            container_map.spec_index(c_ptr)
+                                .view_rodata().view().depth as int,
+                        ),
+            )
+            == container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
-                        sum + post_thread_map.spec_index(t_ptr).view()
+                        sum + pre_thread_map.spec_index(t_ptr).view()
                             .indirect_free_quota_pending_2m.view().spec_index(
                                 container_map.spec_index(c_ptr)
                                     .view_rodata().view().depth as int,
                             ),
                 )
-                == container_map.spec_index(c_ptr).view_ghost()
-                    .owned_indirect_threads.view().fold(
-                        0,
-                        |sum: int, t_ptr: RwLockThreadPtr|
-                            sum + pre_thread_map.spec_index(t_ptr).view()
-                                .indirect_free_quota_pending_2m.view().spec_index(
-                                    container_map.spec_index(c_ptr)
-                                        .view_rodata().view().depth as int,
-                                ),
-                    )
-        }
+    }
     by {
         assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
@@ -382,7 +362,6 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
             container_map.spec_index(c_ptr)
                 .view_rodata().view().depth as int,
         );
-        };
     };
 }
 
@@ -410,20 +389,13 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_fields
             allocator_map,
         ),
 {
-    assert(container_process_allocator_quota_2m_wf(
+    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
         container_map,
         process_map,
+        pre_thread_map,
         post_thread_map,
         allocator_map,
-    )) by {
-        container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
-            container_map,
-            process_map,
-            pre_thread_map,
-            post_thread_map,
-            allocator_map,
-        );
-    };
+    );
 }
 
 pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
@@ -453,62 +425,56 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
             allocator_map,
         ),
 {
-    assert(container_process_allocator_quota_1g_wf(
-        container_map,
-        process_map,
-        post_thread_map,
-        allocator_map,
-    )) by {
-        reveal(container_process_allocator_quota_1g_wf);
-        assert forall|c_ptr: RwLockContainerPtr|
-            #![trigger container_map.spec_index(c_ptr)
-                .view_rodata().view().allocator_ptr_1g]
-            container_map.dom().contains(c_ptr)
-        implies
-        {
-            &&& thread_effective_quota_1g_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    post_thread_map,
-                )
-                == thread_effective_quota_1g_fold_sum(
-                    container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                    pre_thread_map,
-                )
-            &&& container_map.spec_index(c_ptr).view_ghost()
+    reveal(container_process_allocator_quota_1g_wf);
+    assert forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.spec_index(c_ptr)
+            .view_rodata().view().allocator_ptr_1g]
+        container_map.dom().contains(c_ptr)
+    implies
+    {
+        &&& thread_effective_quota_1g_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                post_thread_map,
+            )
+            == thread_effective_quota_1g_fold_sum(
+                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
+                pre_thread_map,
+            )
+        &&& container_map.spec_index(c_ptr).view_ghost()
+            .owned_threads.view().fold(
+                0,
+                |sum: int, t_ptr: RwLockThreadPtr|
+                    sum + post_thread_map.spec_index(t_ptr).view()
+                        .direct_free_quota_pending_1g.view(),
+            )
+            == container_map.spec_index(c_ptr).view_ghost()
                 .owned_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
-                        sum + post_thread_map.spec_index(t_ptr).view()
+                        sum + pre_thread_map.spec_index(t_ptr).view()
                             .direct_free_quota_pending_1g.view(),
                 )
-                == container_map.spec_index(c_ptr).view_ghost()
-                    .owned_threads.view().fold(
-                        0,
-                        |sum: int, t_ptr: RwLockThreadPtr|
-                            sum + pre_thread_map.spec_index(t_ptr).view()
-                                .direct_free_quota_pending_1g.view(),
-                    )
-            &&& container_map.spec_index(c_ptr).view_ghost()
+        &&& container_map.spec_index(c_ptr).view_ghost()
+            .owned_indirect_threads.view().fold(
+                0,
+                |sum: int, t_ptr: RwLockThreadPtr|
+                    sum + post_thread_map.spec_index(t_ptr).view()
+                        .indirect_free_quota_pending_1g.view().spec_index(
+                            container_map.spec_index(c_ptr)
+                                .view_rodata().view().depth as int,
+                        ),
+            )
+            == container_map.spec_index(c_ptr).view_ghost()
                 .owned_indirect_threads.view().fold(
                     0,
                     |sum: int, t_ptr: RwLockThreadPtr|
-                        sum + post_thread_map.spec_index(t_ptr).view()
+                        sum + pre_thread_map.spec_index(t_ptr).view()
                             .indirect_free_quota_pending_1g.view().spec_index(
                                 container_map.spec_index(c_ptr)
                                     .view_rodata().view().depth as int,
                             ),
                 )
-                == container_map.spec_index(c_ptr).view_ghost()
-                    .owned_indirect_threads.view().fold(
-                        0,
-                        |sum: int, t_ptr: RwLockThreadPtr|
-                            sum + pre_thread_map.spec_index(t_ptr).view()
-                                .indirect_free_quota_pending_1g.view().spec_index(
-                                    container_map.spec_index(c_ptr)
-                                        .view_rodata().view().depth as int,
-                                ),
-                    )
-        }
+    }
     by {
         assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
@@ -532,7 +498,6 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
             container_map.spec_index(c_ptr)
                 .view_rodata().view().depth as int,
         );
-        };
     };
 }
 
@@ -560,20 +525,13 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_fields
             allocator_map,
         ),
 {
-    assert(container_process_allocator_quota_1g_wf(
+    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
         container_map,
         process_map,
+        pre_thread_map,
         post_thread_map,
         allocator_map,
-    )) by {
-        container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
-            container_map,
-            process_map,
-            pre_thread_map,
-            post_thread_map,
-            allocator_map,
-        );
-    };
+    );
 }
 
 }

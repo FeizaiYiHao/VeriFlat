@@ -280,6 +280,7 @@ verus! {
             final(page).free_list == old(page).free_list,
             ret.1@.is_init(),
             ret.1@.addr() == ret.0,
+            final(page).free_list_node_storage.addr() == ret.0,
             final(page).addr == old(page).addr,
             final(page).is_io_page == old(page).is_io_page,
             final(page).ref_count == old(page).ref_count,
@@ -346,6 +347,34 @@ verus! {
         Tracked(ret)
     }
 
+    pub fn retype_owned_4k_to_kernel_object(
+        page: &mut Page,
+        new_state: PageState,
+    ) -> (ret: Tracked<PagePerm4k>)
+        requires
+            old(page).inv(),
+            old(page).state is Owned4k,
+            new_state is Allocated4k || new_state is IOMMUTable,
+        ensures
+            final(page).inv(),
+            *final(page) == (Page {
+                state: new_state,
+                perm_4k: final(page).perm_4k,
+                ..*old(page)
+            }),
+            final(page).state == new_state,
+            final(page).perm_4k.view().is_none(),
+            ret.view().is_init(),
+            ret.view().addr() == final(page).addr,
+    {
+        let Tracked(ret) = take_perm_4k(page);
+        page.state = new_state;
+        proof {
+            assert(page.inv());
+        }
+        Tracked(ret)
+    }
+
     pub fn take_perm_2m(page: &mut Page) -> (ret: Tracked<PagePerm2m>)
         requires
             old(page).perm_2m.view().is_some(),
@@ -398,17 +427,6 @@ verus! {
             final(page).perm_2m.view() == old(page).perm_2m.view(),
             final(page).perm_1g.view() == old(page).perm_1g.view(),
     {
-        proof {
-            assert(
-                page.mappings().insert((pagetable_ptr, va)).len()
-                    == page.mappings().len() + 1
-            ) by {
-                vstd::set::lemma_set_insert_len(
-                    page.mappings(),
-                    (pagetable_ptr, va),
-                );
-            };
-        }
         page.mappings = Ghost(page.mappings().insert((pagetable_ptr, va)));
         page.ref_count = page.ref_count + 1;
     }

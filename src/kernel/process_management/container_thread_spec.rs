@@ -35,4 +35,5 @@ verus! {
                 &&& container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().contains(t_ptr)
             }
     }
+
 }

@@ -20,7 +20,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -29,7 +28,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -58,7 +56,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -67,7 +64,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -117,7 +113,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -126,7 +121,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -155,7 +149,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -164,7 +157,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -216,7 +208,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -225,7 +216,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -255,7 +245,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -266,7 +255,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -297,7 +285,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -306,7 +293,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -341,7 +327,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -350,7 +335,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -385,7 +369,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -394,7 +377,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -426,7 +408,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -435,7 +416,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -469,7 +449,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(steps).steps.len() == 0,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-            old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
@@ -478,7 +457,6 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-            final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -489,7 +467,6 @@ verus! {
     {
         if range == 0
             || range > usize::MAX / 4096usize
-            || range > usize::MAX / 3usize
             || !va_4k_valid(va)
         {
             proof {

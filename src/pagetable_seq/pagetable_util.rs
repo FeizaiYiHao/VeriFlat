@@ -5,7 +5,7 @@ verus! {
 use crate::*;
 
 impl PageTable<PT_TYPE> {
-    pub open spec fn spec_4k_entry_useable(
+    pub open spec fn spec_4k_entry_usable(
         &self,
         l4i: L4Index,
         l3i: L3Index,
@@ -183,7 +183,7 @@ impl PageTable<PT_TYPE> {
             ret.1 != PageTableErrorCode::EntryTakenBy4k,
             ret.1 != PageTableErrorCode::EntryTakenBy1g && ret.1
                 != PageTableErrorCode::EntryTakenBy2m && ret.1 != PageTableErrorCode::NoError
-                ==> self.spec_4k_entry_useable(l4i, l3i, l2i, l1i),
+                ==> self.spec_4k_entry_usable(l4i, l3i, l2i, l1i),
     {
         match self.resolve_mapping_4k_l2(l4i, l3i, l2i) {
             (None, error_code) => { (None, error_code, None) },

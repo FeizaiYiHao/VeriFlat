@@ -11,7 +11,7 @@ verus! {
 // `owning_container` unchanged. Reusable by any syscall that retypes/moves pages
 // without changing which container owns them (e.g. a Free4k->Owned4k stage, which
 // preserves owning_container). Keeps the predicate opaque at the call site.
-pub proof fn container_page_owner_wf_preserved_for_owning_container_eq(
+pub proof fn container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(
     old_container_map: ContainerLockedMap,
     new_container_map: ContainerLockedMap,
     old_page_array: PageLockedArray,

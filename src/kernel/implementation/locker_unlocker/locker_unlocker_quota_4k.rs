@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 impl KernelK {
-        pub fn wlock_quota_4k(
+        pub fn wlock_allocator_quota_4k(
             &mut self,
             alloc_ptr_4k: RwLockPageAllocatorPtr,
             Tracked(lctx): Tracked<&mut LocalContext>,
@@ -23,27 +23,7 @@ impl KernelK {
                 final(self).inv(),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
-                final(self).pt_mp     == old(self).pt_mp,
-                final(self).it_mp     == old(self).it_mp,
-                final(self).irt     == old(self).irt,
-                final(self).pg_arr        == old(self).pg_arr,
-                final(self).cpu_arr         == old(self).cpu_arr,
-                final(self).pcid_needflush == old(self).pcid_needflush,
-                final(self).cpu_published == old(self).cpu_published,
-                final(self).cpu_tlb           == old(self).cpu_tlb,
-                final(self).iommu_tlb           == old(self).iommu_tlb,
-                final(self).rt_ctn    == old(self).rt_ctn,
-                final(self).ctn_mp     == old(self).ctn_mp,
-                final(self).sched_mp     == old(self).sched_mp,
-                final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-                final(self).cpu_set_mp == old(self).cpu_set_mp,
-                final(self).prc_mp       == old(self).prc_mp,
-                final(self).thr_mp        == old(self).thr_mp,
-                final(self).ep_mp      == old(self).ep_mp,
-                final(self).allc_2m_mp  == old(self).allc_2m_mp,
-                final(self).allc_1g_mp  == old(self).allc_1g_mp,
-                final(self).dflt_pt == old(self).dflt_pt,
-                final(self).allc_4k_mp.dom() == old(self).allc_4k_mp.dom(),
+                *final(self) == (KernelK { allc_4k_mp: final(self).allc_4k_mp, ..*old(self) }),
                 final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
                 final(self).allc_4k_mp.perms_wf(),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
@@ -58,7 +38,7 @@ impl KernelK {
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), mode: TypedLockMode::Write }),
         {
             proof {
-                assert(old(self).allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
+                allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k);
                 assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by { reveal(allocator_perms_wf); };
             }
             assert(wlock_requires(self.allc_4k_mp.spec_index(alloc_ptr_4k).quota, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
@@ -69,18 +49,19 @@ impl KernelK {
                 assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
-                    assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
-                    assert(container_process_allocator_quota_4k_wf(self.ctn_mp, self.prc_mp, self.thr_mp, self.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
-                    assert(container_allocator_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
-                    assert(allocator_free_page_ptrs_wf(self.allc_4k_mp)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
-                    assert(container_allocator_free_4k_page_wf(self.allc_4k_mp, self.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self); };
+                    lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                    reveal(container_process_allocator_quota_4k_wf);
+                    reveal(container_allocator_wf);
+                    lemma_container_allocator_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                    lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
+                    lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             }
             ret
         }
 
-        pub fn wunlock_quota_4k(
+        pub fn wunlock_allocator_quota_4k(
             &mut self,
             alloc_ptr_4k: RwLockPageAllocatorPtr,
             Tracked(lctx): Tracked<&mut LocalContext>,
@@ -102,27 +83,7 @@ impl KernelK {
                 final(self).inv(),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
-                final(self).pt_mp     == old(self).pt_mp,
-                final(self).it_mp     == old(self).it_mp,
-                final(self).irt     == old(self).irt,
-                final(self).pg_arr        == old(self).pg_arr,
-                final(self).cpu_arr         == old(self).cpu_arr,
-                final(self).pcid_needflush == old(self).pcid_needflush,
-                final(self).cpu_published == old(self).cpu_published,
-                final(self).cpu_tlb           == old(self).cpu_tlb,
-                final(self).iommu_tlb           == old(self).iommu_tlb,
-                final(self).rt_ctn    == old(self).rt_ctn,
-                final(self).ctn_mp     == old(self).ctn_mp,
-                final(self).sched_mp     == old(self).sched_mp,
-                final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-                final(self).cpu_set_mp == old(self).cpu_set_mp,
-                final(self).prc_mp       == old(self).prc_mp,
-                final(self).thr_mp        == old(self).thr_mp,
-                final(self).ep_mp      == old(self).ep_mp,
-                final(self).allc_2m_mp  == old(self).allc_2m_mp,
-                final(self).allc_1g_mp  == old(self).allc_1g_mp,
-                final(self).dflt_pt == old(self).dflt_pt,
-                final(self).allc_4k_mp.dom() == old(self).allc_4k_mp.dom(),
+                *final(self) == (KernelK { allc_4k_mp: final(self).allc_4k_mp, ..*old(self) }),
                 final(self).allc_4k_mp.unchanged_except(&old(self).allc_4k_mp, alloc_ptr_4k),
                 final(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf(),
                 !final(lctx).allocator_quota_4k_lock_map().dom().contains(alloc_ptr_4k),
@@ -151,11 +112,12 @@ impl KernelK {
                 assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by {
-                    assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
-                    assert(container_process_allocator_quota_4k_wf(self.ctn_mp, self.prc_mp, self.thr_mp, self.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
-                    assert(container_allocator_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
-                    assert(allocator_free_page_ptrs_wf(self.allc_4k_mp)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
-                    assert(container_allocator_free_4k_page_wf(self.allc_4k_mp, self.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self); };
+                    lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                    reveal(container_process_allocator_quota_4k_wf);
+                    reveal(container_allocator_wf);
+                    lemma_container_allocator_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                    lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
+                    lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             }

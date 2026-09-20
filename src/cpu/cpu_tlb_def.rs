@@ -37,6 +37,45 @@ pub struct CpuTLB{
 }
 
 impl CpuTLB{
+    pub fn new_empty() -> (ret: Self)
+        ensures
+            ret.inv(),
+            forall|cpu_id: CpuId, pcid: Pcid|
+                #![trigger ret.spec_index((cpu_id, pcid))]
+                index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid)
+                ==> ret.spec_index((cpu_id, pcid)).is_empty(),
+    {
+        let ghost cpu_ids = Set::range(0usize, NUM_CPUS);
+        let ghost pcids = Set::range(0usize, PCID_MAX);
+        let ghost pcids_for_cpu = |cpu_id: CpuId| {
+            pcids.map_by(
+                |pcid: Pcid| (cpu_id, pcid),
+                |key: (CpuId, Pcid)| key.1,
+            )
+        };
+        let ghost keys = cpu_ids.map_flatten_by(
+            pcids_for_cpu,
+            |key: (CpuId, Pcid)| key.0,
+        );
+        proof {
+            broadcast use vstd::set_lib::range_set_properties;
+            broadcast use Set::lemma_map_by_contains;
+            broadcast use Set::lemma_map_flatten_by_contains;
+        }
+        let ret = Self {
+            cpu_tlbs: Ghost(Map::new(
+                keys,
+                |_key: (CpuId, Pcid)| SingleTLB {
+                    tlb_4k: Map::empty(),
+                    tlb_2m: Map::empty(),
+                    tlb_1g: Map::empty(),
+                },
+            )),
+        };
+        assert(ret.inv());
+        ret
+    }
+
     /// PCIDE is enabled by boot. Non-default translations are non-global.
     /// The caller binds `cpu_id` to this executing CPU; kernel mappings stay
     /// accessible across the write. Bit 63 requests retention of translations.

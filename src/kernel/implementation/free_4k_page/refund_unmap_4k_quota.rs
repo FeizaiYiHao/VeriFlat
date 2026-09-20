@@ -28,14 +28,12 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        final(lctx).held_lock_majors_lt(QUOTA_MAJOR),
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         final(steps).steps == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
-        held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).thr_mp.dom().contains(thread_ptr),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
@@ -50,7 +48,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
     let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;
     let mut owner = thread.owning_container;
-    assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx) && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx) && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
+    assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx) && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(krnl.ctn_mp.dom().contains(owner)) by { reveal(container_thread_wf); };
     assert(krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == thread_depth) by { reveal(container_thread_wf); };
     assert(thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -87,7 +85,6 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
             held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx)),
-            held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx)),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             krnl.thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -103,21 +100,23 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         let mut counter = if depth == thread_depth { *direct } else { indirect[depth] };
         if counter != 0 {
             assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && lctx.allocator_quota_4k_lock_map().dom().is_empty()) by { reveal(container_allocator_wf); reveal(allocator_perms_wf); reveal(LocalContext::holds_no_allocator_locks); };
-            let Tracked(quota_perm) = krnl.wlock_quota_4k(allocator_ptr, Tracked(&mut *lctx));
+            let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
             return_free_quota_4k(krnl, thread_ptr, owner, depth, allocator_ptr, &mut counter, Tracked(&mut *lctx), thread_perm, Tracked(&quota_perm));
             assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by { reveal(allocator_perms_wf); };
-            krnl.wunlock_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
+            krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
             proof {
                 assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).allocator_quota_4k_lock_map(), allocator_ptr, TypedHeldLock { lock_id: krnl.allc_4k_mp.spec_index(allocator_ptr).quota.lock_id(), mode: TypedLockMode::Write }); };
                 assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
                 assert(lctx.held_lock_majors_lt(QUOTA_MAJOR)) by { broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged; };
+                assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_k_to_kernel_u); };
                 krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
+                assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
                 assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().parent == parent) by { reveal(thread_perms_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); broadcast use vstd::seq::Seq::lemma_index_contains; };
             }
         }
         if depth == thread_depth { *direct = 0; } else { indirect[depth] = 0; }
         if depth > 0 {
-            assert(parent is Some && krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1 && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == parent.unwrap()) by { reveal(container_thread_wf); reveal(container_root_wf); reveal(container_children_parent_wf); reveal(container_children_depth_wf); reveal(container_uppertree_seq_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+            assert(parent is Some && krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1 && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == parent.unwrap()) by { reveal(container_thread_wf); reveal(container_root_wf); reveal(container_children_depth_wf); reveal(container_uppertree_seq_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf); };
             owner = parent.unwrap();
         }
         remaining = depth;

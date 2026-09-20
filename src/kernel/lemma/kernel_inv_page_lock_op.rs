@@ -71,7 +71,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
-    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
@@ -94,7 +94,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     };
 }
 
-pub proof fn lemma_no_change_imply_memory_management_inv_for_page_fields_forall()
+pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_forall()
     ensures
         forall|pre: KernelK, post: KernelK|
             #![trigger pre.memory_management_inv(), post.memory_management_inv()]
@@ -137,7 +137,7 @@ pub proof fn lemma_no_change_imply_memory_management_inv_for_page_fields_forall(
     implies post.memory_management_inv() by { memory_management_inv_preserved_for_page_invariant_fields(pre, post); };
 }
 
-pub proof fn lemma_no_change_imply_page_array_wf_forall()
+pub proof fn lemma_page_array_wf_preserved_for_lock_op_forall()
     ensures
         forall|pre: PageLockedArray, post: PageLockedArray, changed: PageIndex|
             #![trigger page_array_wf(pre), page_array_wf(post), post.spec_index(changed)]

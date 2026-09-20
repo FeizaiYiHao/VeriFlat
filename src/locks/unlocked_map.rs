@@ -12,6 +12,16 @@ pub struct UnLockedMap<K, T>{
 }
 
 impl<T> UnLockedMap<usize, T>{
+    pub fn new_empty() -> (ret: Self)
+        ensures
+            ret.perms_wf(),
+            ret.dom() =~= Set::<usize>::empty(),
+    {
+        Self {
+            map: Tracked(Map::<usize, PointsTo<T>>::tracked_empty()),
+        }
+    }
+
     pub closed spec fn view(&self) -> Map<usize, PointsTo<T>>{
         self.map.view()
     }

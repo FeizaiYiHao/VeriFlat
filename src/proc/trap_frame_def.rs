@@ -1,4 +1,3 @@
-use core::mem::MaybeUninit;
 use vstd::prelude::*;
 verus! {
 
@@ -54,22 +53,13 @@ impl TrapFrameOption {
         &self.reg
     }
 
-    #[verifier(external_body)]
     pub fn set_self_fast(&mut self, src: &Registers)
         ensures
             final(self).is_some(),
             final(self).get_some_0() =~= src,
     {
         self.exist = true;
-        self.reg.rbx = src.rbx;
-        self.reg.rbp = src.rbp;
-        self.reg.r12 = src.r12;
-        self.reg.r13 = src.r13;
-        self.reg.r14 = src.r14;
-        self.reg.r15 = src.r15;
-        self.reg.rsp = src.rsp;
-        self.reg.rip = src.rip;
-        self.reg.flags = src.flags;
+        self.reg = *src;
     }
 
     pub fn set_self(&mut self, src: &Registers)
@@ -81,22 +71,13 @@ impl TrapFrameOption {
         self.reg = *src;
     }
 
-    #[verifier(external_body)]
     pub fn set_dst_fast(&self, dst: &mut Registers)
         requires
             self.is_some(),
         ensures
             *final(dst) =~= *self.get_some_0(),
     {
-        dst.rbx = self.reg.rbx;
-        dst.rbp = self.reg.rbp;
-        dst.r12 = self.reg.r12;
-        dst.r13 = self.reg.r13;
-        dst.r14 = self.reg.r14;
-        dst.r15 = self.reg.r15;
-        dst.rsp = self.reg.rsp;
-        dst.rip = self.reg.rip;
-        dst.flags = self.reg.flags;
+        *dst = self.reg;
     }
 
     pub fn set_dst(&self, dst: &mut Registers)
@@ -152,20 +133,8 @@ pub struct Registers {
 }
 
 impl Registers {
-    #[verifier(external_body)]
     pub const fn zeroed() -> Self {
-        unsafe { MaybeUninit::zeroed().assume_init() }
-    }
-
-    // #[verifier(external_body)]
-    // pub fn random() -> (ret: Self) {
-    //     unsafe {
-    //         return MaybeUninit::<Self>::uninit().assume_init();
-    //     }
-    // }
-
-    pub fn new_empty() -> (ret: Self) {
-        let ret = Self {
+        Self {
             r15: 0,
             r14: 0,
             r13: 0,
@@ -187,8 +156,18 @@ impl Registers {
             flags: 0,
             rsp: 0,
             ss: 0,
-        };
-        ret
+        }
+    }
+
+    // #[verifier(external_body)]
+    // pub fn random() -> (ret: Self) {
+    //     unsafe {
+    //         return MaybeUninit::<Self>::uninit().assume_init();
+    //     }
+    // }
+
+    pub fn new_empty() -> (ret: Self) {
+        Self::zeroed()
     }
 
     pub fn new(input: &Registers) -> (ret: Self)
@@ -221,20 +200,11 @@ impl Registers {
         ret
     }
 
-    #[verifier(external_body)]
     pub fn set_self_fast(&mut self, src: &Registers)
         ensures
             *final(self) == src,
     {
-        self.rbx = src.rbx;
-        self.rbp = src.rbp;
-        self.r12 = src.r12;
-        self.r13 = src.r13;
-        self.r14 = src.r14;
-        self.r15 = src.r15;
-        self.rsp = src.rsp;
-        self.rip = src.rip;
-        self.flags = src.flags;
+        *self = *src;
     }
 }
 

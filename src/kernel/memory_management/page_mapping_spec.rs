@@ -130,13 +130,17 @@ verus! {
             page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
             ==> 
             {
-                |||
-                process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view_rodata().view().owning_container
-                    ==
-                    page_array.spec_index(p_i).view().view().owning_container
-                |||
-                container_map.spec_index(page_array.spec_index(p_i).view().view().owning_container).view_ghost()
-                    .subtree_set.view().contains(process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view_rodata().view().owning_container)
+                let proc_ptr = pagetable_map.spec_index(pt_ptr).view().proc_ptr;
+                let page_owner = page_array.spec_index(p_i).view().view().owning_container;
+                &&& pagetable_map.dom().contains(pt_ptr)
+                &&& process_map.dom().contains(proc_ptr)
+                &&& container_map.dom().contains(page_owner)
+                &&& {
+                    ||| process_map.spec_index(proc_ptr).view_rodata().view().owning_container == page_owner
+                    ||| container_map.spec_index(page_owner).view_ghost().subtree_set.view().contains(
+                        process_map.spec_index(proc_ptr).view_rodata().view().owning_container,
+                    )
+                }
             }
     }
 

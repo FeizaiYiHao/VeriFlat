@@ -5,11 +5,12 @@ captured by the repository instructions or obvious from one implementation.
 
 ## Authority
 
-1. `AGENTS.md` is the source of truth for workflow, proof style, and the
-   current lock model.
-2. Live code and contracts override every note in this directory.
-3. These notes are orientation aids, not specifications. Re-check them against
-   the touched code before making a design decision.
+1. `AGENTS.md` is the repository-wide source of truth.
+2. Live code and contracts are the semantic authority.
+3. The matching skill under `.codex/skills/` owns detailed workflow and current
+   model rules.
+4. These notes are orientation aids, not specifications. Re-check them against
+   live code and the matching skill before making a design decision.
 
 ## Current notes
 
@@ -24,9 +25,10 @@ captured by the repository instructions or obvious from one implementation.
 
 Historical verification counters, timing snapshots, completed migration
 handoffs, old proof scaffolding, and superseded lock-map designs belong in Git
-history. In particular, do not recover typed per-object lock maps,
-`LocalContext::wf()`, or the former scalar/object-parallel ledgers from old
-commits; the pair-set model in `AGENTS.md` is authoritative.
+history. In particular, do not recover `LocalContext::wf()`, `lock_seq`,
+`user_view_locking_state`, or former scalar/object-parallel ledgers from old
+commits. The current `LocalContext` uses typed held-lock maps plus the exact
+`lock_id_set`; see the kernel-model skill and live code.
 
 When a durable design changes, update the relevant note in place instead of
 adding another dated milestone file.

@@ -72,6 +72,34 @@ impl LockUserVisibilityTrait for Endpoint {
 }
 
 impl Endpoint {
+    pub fn new_root(
+        endpoint_ptr: RwLockEndpointPtr,
+        owning_container: RwLockContainerPtr,
+        owning_thread: RwLockThreadPtr,
+    ) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.queue.view() == Seq::<RwLockThreadPtr>::empty(),
+            ret.queue.map() == Map::<usize, RwLockThreadPtr>::empty(),
+            ret.queue.container_depth == Some(0),
+            ret.queue.lock_minor() == endpoint_ptr,
+            ret.queue_state is RECEIVE,
+            ret.rf_counter == 1,
+            ret.owning_threads.view() =~= set![(owning_thread, 0usize)],
+            ret.owning_container == owning_container,
+    {
+        Self {
+            queue: LinkedList::new(Some(0), Some(endpoint_ptr)),
+            queue_state: EndpointState::RECEIVE,
+            rf_counter: 1,
+            owning_threads: Ghost(
+                Set::<(RwLockThreadPtr, EndpointIdx)>::empty()
+                    .insert((owning_thread, 0usize)),
+            ),
+            owning_container,
+        }
+    }
+
     pub fn dequeue_waiter(
         &mut self,
         thread_ptr: RwLockThreadPtr,

@@ -21,12 +21,10 @@ pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_chan
     ensures
         container_allocator_free_4k_page_wf(allocator_map, post),
 {
-    assert(container_allocator_free_4k_page_wf(allocator_map, post)) by {
-        reveal(container_allocator_free_4k_page_wf);
-        reveal(container_allocator_global_free_4k_page_wf);
-        reveal(container_allocator_cpu_cache_free_4k_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
-    };
+    reveal(container_allocator_free_4k_page_wf);
+    reveal(container_allocator_global_free_4k_page_wf);
+    reveal(container_allocator_cpu_cache_free_4k_page_wf);
+    reveal(allocator_free_page_ptrs_wf);
 }
 
 pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(
@@ -47,12 +45,10 @@ pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_chan
     ensures
         container_allocator_free_2m_page_wf(allocator_map, post),
 {
-    assert(container_allocator_free_2m_page_wf(allocator_map, post)) by {
-        reveal(container_allocator_free_2m_page_wf);
-        reveal(container_allocator_global_free_2m_page_wf);
-        reveal(container_allocator_cpu_cache_free_2m_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
-    };
+    reveal(container_allocator_free_2m_page_wf);
+    reveal(container_allocator_global_free_2m_page_wf);
+    reveal(container_allocator_cpu_cache_free_2m_page_wf);
+    reveal(allocator_free_page_ptrs_wf);
 }
 
 pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(
@@ -73,12 +69,10 @@ pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_chan
     ensures
         container_allocator_free_1g_page_wf(allocator_map, post),
 {
-    assert(container_allocator_free_1g_page_wf(allocator_map, post)) by {
-        reveal(container_allocator_free_1g_page_wf);
-        reveal(container_allocator_global_free_1g_page_wf);
-        reveal(container_allocator_cpu_cache_free_1g_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
-    };
+    reveal(container_allocator_free_1g_page_wf);
+    reveal(container_allocator_global_free_1g_page_wf);
+    reveal(container_allocator_cpu_cache_free_1g_page_wf);
+    reveal(allocator_free_page_ptrs_wf);
 }
 
 pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
@@ -103,13 +97,9 @@ pub proof fn lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(
     ensures
         container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
-    assert(container_allocator_free_4k_page_wf(
-        post.allc_4k_mp, post.pg_arr,
-    )) by {
-        reveal(container_allocator_free_4k_page_wf);
-        reveal(container_allocator_global_free_4k_page_wf);
-        reveal(container_allocator_cpu_cache_free_4k_page_wf);
-    };
+    reveal(container_allocator_free_4k_page_wf);
+    reveal(container_allocator_global_free_4k_page_wf);
+    reveal(container_allocator_cpu_cache_free_4k_page_wf);
 }
 
 pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
@@ -139,13 +129,9 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
     ensures
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
-    assert(container_allocator_free_2m_page_wf(
-        post.allc_2m_mp, post.pg_arr,
-    )) by {
-        reveal(container_allocator_free_2m_page_wf);
-        reveal(container_allocator_global_free_2m_page_wf);
-        reveal(container_allocator_cpu_cache_free_2m_page_wf);
-    };
+    reveal(container_allocator_free_2m_page_wf);
+    reveal(container_allocator_global_free_2m_page_wf);
+    reveal(container_allocator_cpu_cache_free_2m_page_wf);
 }
 
 }

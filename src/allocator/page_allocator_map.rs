@@ -22,7 +22,10 @@ fn retype_4k_page_perm_to_allocator(
         ret.view().addr() == page_ptr,
         ret.view().value() == allocator,
 {
-    unimplemented!()
+    unsafe {
+        (page_ptr as *mut PageAllocator).write(allocator);
+    }
+    Tracked::assume_new()
 }
 
 impl UnLockedMap<usize, PageAllocator> {
@@ -43,9 +46,15 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).dom() =~= old(self).dom().insert(page_ptr),
             final(self).dom().contains(page_ptr),
             final(self).spec_index(page_ptr) == allocator,
-            forall|ptr: RwLockPageAllocatorPtr| #![auto]
-                old(self).dom().contains(ptr)
-                ==> final(self).spec_index(ptr) == old(self).spec_index(ptr),
+            forall|ptr: RwLockPageAllocatorPtr|
+                #![trigger final(self).spec_index(ptr)]
+                #![trigger old(self).spec_index(ptr)]
+                #![trigger old(self).dom().contains(ptr)]
+                #![trigger final(self).dom().contains(ptr)]
+                old(self).dom().contains(ptr) ==> {
+                    &&& final(self).dom().contains(ptr)
+                    &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
+                },
     {
         let Tracked(allocator_perm) = retype_4k_page_perm_to_allocator(
             page_ptr,
@@ -204,7 +213,6 @@ impl UnLockedMap<usize, PageAllocator> {
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
         ensures
             old(self).perms_wf() ==> final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).quota.is_init(),
             final(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
@@ -238,7 +246,6 @@ impl UnLockedMap<usize, PageAllocator> {
     ) -> (ret: &'a mut AllocatorQuota)
         requires
             old(self).perms_wf(),
-            old(self).dom().contains(alloc_ptr),
             old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
             old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
             old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
@@ -249,7 +256,6 @@ impl UnLockedMap<usize, PageAllocator> {
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).quota.is_init(),
             final(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
@@ -337,7 +343,6 @@ impl UnLockedMap<usize, PageAllocator> {
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
         ensures
             old(self).perms_wf() ==> final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).global_pool.is_init(),
             final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
@@ -371,7 +376,6 @@ impl UnLockedMap<usize, PageAllocator> {
     ) -> (ret: &'a mut GlobalPool)
         requires
             old(self).perms_wf(),
-            old(self).dom().contains(alloc_ptr),
             old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
             old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
             old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
@@ -382,7 +386,6 @@ impl UnLockedMap<usize, PageAllocator> {
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).global_pool.is_init(),
             final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
@@ -420,6 +423,7 @@ impl UnLockedMap<usize, PageAllocator> {
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
             index_valid(NUM_CPUS, cpu_id),
+            self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
             lp.view().state() is WriteLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lp.view()),
             lp.view().state() is ReadLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().read_lock_perm_match(lp.view()),
             self.spec_index(alloc_ptr).cpu_caches.inv(),
@@ -441,6 +445,7 @@ impl UnLockedMap<usize, PageAllocator> {
             self.dom().contains(alloc_ptr),
             index_valid(NUM_CPUS, cpu_id),
             self.spec_index(alloc_ptr).cpu_caches.inv(),
+            self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
             self.typed_cache_lock_map_aligned(held_locks, lctx.thread_id()),
             lock_perm.view().thread_id() == lctx.thread_id(),
             lock_perm.view().state() is WriteLock ==> typed_lock_map_contains_mode(held_locks, (alloc_ptr, cpu_id), TypedLockMode::Write),
@@ -472,7 +477,6 @@ impl UnLockedMap<usize, PageAllocator> {
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         ensures
             old(self).perms_wf() ==> final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).cpu_caches.inv(),
             // Touched cache's lock state is preserved.
@@ -510,8 +514,6 @@ impl UnLockedMap<usize, PageAllocator> {
     ) -> (ret: &'a mut AllocatorCache)
         requires
             old(self).perms_wf(),
-            old(self).dom().contains(alloc_ptr),
-            index_valid(NUM_CPUS, cpu_id),
             old(self).spec_index(alloc_ptr).cpu_caches.inv(),
             old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
             old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
@@ -523,7 +525,6 @@ impl UnLockedMap<usize, PageAllocator> {
             lp.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).cpu_caches.inv(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
@@ -589,7 +590,6 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).total_free_pages.view() < usize::MAX,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, node_perm.view().value().view()),
@@ -610,18 +610,20 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
             final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
     {
-        proof {
-            assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
-        }
+        assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         {
             let alloc_mut = self.borrow_mut(alloc_ptr);
             alloc_mut.push_cache_page(cpu_id, node_addr, node_perm, Tracked(lctx), lock_perm)
         };
-        proof {
+        assert({
+            &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
+            &&& self.typed_cache_lock_map_aligned(cache_locks, lctx.thread_id())
+            &&& self.typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id())
+        }) by {
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        }
+        };
     }
 
     pub fn pop_cache_page_typed(
@@ -649,7 +651,6 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             ret.1.view().is_init(),
@@ -674,18 +675,20 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
             final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
     {
-        proof {
-            assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
-        }
+        assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         let ret = {
             let alloc_mut = self.borrow_mut(alloc_ptr);
             alloc_mut.pop_cache_page(cpu_id, Tracked(lctx), lock_perm)
         };
-        proof {
+        assert({
+            &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
+            &&& self.typed_cache_lock_map_aligned(cache_locks, lctx.thread_id())
+            &&& self.typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id())
+        }) by {
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        }
+        };
         ret
     }
 
@@ -717,7 +720,6 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).total_free_pages.view() < usize::MAX,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             final(self).spec_index(alloc_ptr).global_pool.view().view() == old(self).spec_index(alloc_ptr).global_pool.view().view().insert(0, node_perm.view().value().view()),
@@ -737,18 +739,20 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
             final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
     {
-        proof {
-            assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
-        }
+        assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         {
             let alloc_mut = self.borrow_mut(alloc_ptr);
             alloc_mut.push_global_pool_page(node_addr, node_perm, Tracked(lctx), lock_perm)
         };
-        proof {
+        assert({
+            &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
+            &&& self.typed_cache_lock_map_aligned(cache_locks, lctx.thread_id())
+            &&& self.typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id())
+        }) by {
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        }
+        };
     }
 
     pub fn pop_global_pool_page_typed(
@@ -774,7 +778,6 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).global_pool.view().len() > 0,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
             ret.1.view().is_init(),
@@ -798,18 +801,20 @@ impl UnLockedMap<usize, PageAllocator> {
             final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
             final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
     {
-        proof {
-            assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
-        }
+        assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         let ret = {
             let alloc_mut = self.borrow_mut(alloc_ptr);
             alloc_mut.pop_global_pool_page(Tracked(lctx), lock_perm)
         };
-        proof {
+        assert({
+            &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
+            &&& self.typed_cache_lock_map_aligned(cache_locks, lctx.thread_id())
+            &&& self.typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id())
+        }) by {
             reveal(UnLockedMap::typed_quota_lock_map_aligned);
             reveal(UnLockedMap::typed_cache_lock_map_aligned);
             reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        }
+        };
         ret
     }
 
@@ -1000,7 +1005,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
                 major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
                 minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }, KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr)),
+            }, KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr)),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
@@ -1022,7 +1027,7 @@ impl UnLockedMap<usize, PageAllocator> {
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
             old(lctx).lock_id_set().contains((
                 old(self).spec_index(alloc_ptr).global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr))),
+                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr))),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -1034,7 +1039,7 @@ impl UnLockedMap<usize, PageAllocator> {
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr),
+                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr),
                 old(self).spec_index(alloc_ptr).global_pool.lock_id(),
             ),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,

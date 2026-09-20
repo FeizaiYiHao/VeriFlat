@@ -107,17 +107,9 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         final(self).view().no_duplicates(),
     {
         let index = self.len;
-        let ret = self.data.set(index, value);
+        self.data.set(index, value);
 
         self.len = self.len + 1;
-
-        assert(self.view() =~= old(self).view().push(value));
-
-        assert(forall|t:T| #![auto] !( t =~= value) ==> self.view().contains(t) ==> old(self).view().contains(t));
-        assert(forall|t:T| #![auto] !( t =~= value) ==> old(self).view().contains(t) ==> self.view().spec_index(old(self).view().index_of(t)) =~= t);
-        assert(forall|t:T| #![auto] !( t =~= value) ==> old(self).view().contains(t) ==> self.view().contains(t));
-        assert(forall|i:int| #![auto] 0<=i<old(self).len() ==> ! (self.view().spec_index(i) =~= value));
-        assert(self.view().spec_index(self.len - 1) =~= value);
     }
 
     pub fn pop(&mut self) -> (ret: T)
@@ -169,19 +161,6 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         self.data.set(index, value);
     }
 
-}
-
-fn test<const N: usize>(ar: &mut ArrayVec<u64, N>)
-requires
-    old(ar).wf(),
-    old(ar).len() == 1,
-    old(ar).view().spec_index(0) == 0,
-    N == 2,
-
-{
-    let v_0 = ar.pop();
-    assert(ar.view() == Seq::<u64>::empty());
-    assert(v_0 == 0);
 }
 
 }

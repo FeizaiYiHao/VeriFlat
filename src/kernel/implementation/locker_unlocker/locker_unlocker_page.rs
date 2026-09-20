@@ -16,51 +16,22 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
-                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 !old(lctx).page_lock_map().dom().contains(page_index),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 // ---- Every held lock still matches lctx (page slot now locked) ----
                 typed_lock_maps_aligned(final(self), final(lctx)),
-                lock_id_set_aligned(final(lctx)),
                 // ---- Field framing: only page_array's slot lock state moves ----
-                final(self).pt_mp     == old(self).pt_mp,
-                final(self).it_mp     == old(self).it_mp,
-                final(self).irt     == old(self).irt,
-                final(self).cpu_arr         == old(self).cpu_arr,
-                final(self).pcid_needflush == old(self).pcid_needflush,
-                final(self).cpu_published == old(self).cpu_published,
-                final(self).cpu_tlb           == old(self).cpu_tlb,
-                final(self).iommu_tlb           == old(self).iommu_tlb,
-                final(self).rt_ctn    == old(self).rt_ctn,
-                final(self).ctn_mp     == old(self).ctn_mp,
-                final(self).sched_mp     == old(self).sched_mp,
-                final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-                final(self).cpu_set_mp == old(self).cpu_set_mp,
-                final(self).prc_mp       == old(self).prc_mp,
-                final(self).thr_mp        == old(self).thr_mp,
-                final(self).ep_mp      == old(self).ep_mp,
-                final(self).allc_4k_mp  == old(self).allc_4k_mp,
-                final(self).allc_2m_mp  == old(self).allc_2m_mp,
-                final(self).allc_1g_mp  == old(self).allc_1g_mp,
-                final(self).dflt_pt == old(self).dflt_pt,
+                *final(self) == (KernelK { pg_arr: final(self).pg_arr, ..*old(self) }),
                 // ---- page_array: only the targeted slot's lock state changed ----
                 final(self).pg_arr.unchanged_except(&old(self).pg_arr, page_index),
-                typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_index), TypedHeldLock {
-                    lock_id: final(self).pg_arr.lock_id_by_index(page_index),
-                    mode: TypedLockMode::Write,
-                }),
-                // ---- LocalContext: phases preserved ----
-                final(lctx).thread_id() == old(lctx).thread_id(),
-                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
                 // ---- The lock perm + lock ensures (forwarded from LockedArray::wlock) ----
                 wlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view(), old(self).pg_arr.lock_id_by_index(page_index), final(lctx), ret.view()),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))),
+                lock_ensures(old(lctx), final(lctx), old(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)),
         {
-            hide(kernel_k_to_kernel_u);
             proof {
-                assert(old(self).pg_arr.inv()) by { reveal(page_array_wf); };
+                page_array_wf_at(old(self).pg_arr, page_index);
                 assert(!lctx.page_lock_map().dom().contains(page_index)) by {
                     if lctx.page_lock_map().dom().contains(page_index) {
                         assert(lctx.typed_lock_entry(KernelObjId::Page(page_index)).unwrap().lock_id == self.pg_arr.lock_id_by_index(page_index)) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -71,10 +42,10 @@ impl KernelK {
             }
             let ret = self.pg_arr.wlock(page_index, Tracked(&mut *lctx), Ghost(KernelObjId::Page(page_index)));
             proof {
-                assert(page_array_wf(self.pg_arr)) by { lemma_no_change_imply_page_array_wf_forall(); };
+                assert(page_array_wf(self.pg_arr)) by { lemma_page_array_wf_preserved_for_lock_op_forall(); };
                 assert(page_invariant_fields_unchanged(old(self).pg_arr, self.pg_arr)) by { page_lock_op_preserves_invariant_fields(old(self).pg_arr, self.pg_arr, page_index); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-                assert(self.memory_management_inv()) by { lemma_no_change_imply_memory_management_inv_for_page_fields_forall(); };
+                assert(self.memory_management_inv()) by { lemma_memory_management_inv_preserved_for_page_invariant_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by {
                     reveal(LockedArray::typed_lock_map_aligned);
                 };
@@ -100,46 +71,17 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
                 lock_id_set_aligned(old(lctx)),
             ensures
-                final(lctx).cpu_id() == old(lctx).cpu_id(),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
                 kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
                 // ---- Every held lock still matches lctx (page slot now released) ----
                 typed_lock_maps_aligned(final(self), final(lctx)),
-                lock_id_set_aligned(final(lctx)),
-                final(self).pt_mp     == old(self).pt_mp,
-                final(self).it_mp     == old(self).it_mp,
-                final(self).irt     == old(self).irt,
-                final(self).cpu_arr         == old(self).cpu_arr,
-                final(self).pcid_needflush == old(self).pcid_needflush,
-                final(self).cpu_published == old(self).cpu_published,
-                final(self).cpu_tlb           == old(self).cpu_tlb,
-                final(self).iommu_tlb           == old(self).iommu_tlb,
-                final(self).rt_ctn    == old(self).rt_ctn,
-                final(self).ctn_mp     == old(self).ctn_mp,
-                final(self).sched_mp     == old(self).sched_mp,
-                final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-                final(self).cpu_set_mp == old(self).cpu_set_mp,
-                final(self).prc_mp       == old(self).prc_mp,
-                final(self).thr_mp        == old(self).thr_mp,
-                final(self).ep_mp      == old(self).ep_mp,
-                final(self).allc_4k_mp  == old(self).allc_4k_mp,
-                final(self).allc_2m_mp  == old(self).allc_2m_mp,
-                final(self).allc_1g_mp  == old(self).allc_1g_mp,
-                final(self).dflt_pt == old(self).dflt_pt,
+                *final(self) == (KernelK { pg_arr: final(self).pg_arr, ..*old(self) }),
                 // ---- page_array: only the targeted slot's lock state changed (now unlocked) ----
                 final(self).pg_arr.unchanged_except(&old(self).pg_arr, page_index),
                 final(self).pg_arr.lock_id_by_index(page_index) == old(self).pg_arr.lock_id_by_index(page_index),
-                typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Page(page_index)),
-                // ---- LocalContext: lock dropped; thread preserved ----
-                // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
-                // `unlock_ensures` flips it Acquire → Release (same trap as the
-                // `LockedArray::wunlock` NOTE).
-                final(lctx).thread_id() == old(lctx).thread_id(),
-                final(lctx).kernel_view_locking_state() is Release,
                 // ---- wunlock ensures (forwarded from LockedArray::wunlock) ----
                 wunlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view()),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))),
                 unlock_ensures(old(lctx), final(lctx), KernelObjId::Page(page_index), old(self).pg_arr.lock_id_by_index(page_index)),
         {
             assert(self.pg_arr.inv()) by { reveal(page_array_wf); };
@@ -153,12 +95,15 @@ impl KernelK {
             assert(self.pg_arr.spec_index(page_index).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             self.pg_arr.wunlock(page_index, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Page(page_index)));
             proof {
-                assert(page_array_wf(self.pg_arr)) by { lemma_no_change_imply_page_array_wf_forall(); };
+                assert(page_array_wf(self.pg_arr)) by { lemma_page_array_wf_preserved_for_lock_op_forall(); };
                 assert(page_invariant_fields_unchanged(old(self).pg_arr, self.pg_arr)) by { page_lock_op_preserves_invariant_fields(old(self).pg_arr, self.pg_arr, page_index); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-                assert(self.memory_management_inv()) by { lemma_no_change_imply_memory_management_inv_for_page_fields_forall(); };
+                assert(self.memory_management_inv()) by { lemma_memory_management_inv_preserved_for_page_invariant_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by {
                     reveal(LockedArray::typed_lock_map_aligned);
+                };
+                assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                    kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
             }
         }

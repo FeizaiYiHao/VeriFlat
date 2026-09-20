@@ -1,7 +1,24 @@
 mod staged_4k_page_chain;
 mod syscall_new_container;
-mod syscall_new_container_helpers;
+mod syscall_new_container_page_positions;
+mod syscall_new_container_allocate_pages;
+mod syscall_new_container_transfer_page;
+mod syscall_new_container_finish_publish;
+mod syscall_new_container_tail_locks;
+mod syscall_new_container_publish_base;
+mod syscall_new_container_root_thread;
+mod syscall_new_container_disjointness;
+mod syscall_new_container_commit;
 mod syscall_new_container_transfer_eof;
 mod syscall_new_container_transfer_spec;
 
+pub(super) use syscall_new_container_page_positions::*;
+pub(super) use syscall_new_container_allocate_pages::*;
+pub(super) use syscall_new_container_transfer_page::*;
+pub(super) use syscall_new_container_finish_publish::*;
+pub(super) use syscall_new_container_tail_locks::*;
+pub(super) use syscall_new_container_publish_base::*;
+pub(super) use syscall_new_container_root_thread::*;
+pub(super) use syscall_new_container_disjointness::*;
+pub(super) use syscall_new_container_commit::*;
 pub use syscall_new_container::syscall_new_container;

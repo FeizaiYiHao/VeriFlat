@@ -71,7 +71,7 @@ pub open spec fn allocator_quota_value_framed_fields_unchanged(
         }
 }
 
-pub proof fn lemma_no_change_imply_allocator_pages_wf_forall()
+pub proof fn lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall()
     ensures
         forall|page_array: PageLockedArray,
             pre: PageAllocatorUnLockedMap,
@@ -109,7 +109,7 @@ pub proof fn lemma_no_change_imply_allocator_pages_wf_forall()
     reveal(allocator_4k_pages_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_pages_wf_forall()
+pub proof fn lemma_process_pages_wf_preserved_for_process_domain_eq_forall()
     ensures
         forall|page_array: PageLockedArray, pre: ProcessLockedMap, post: ProcessLockedMap|
             #![trigger
@@ -122,7 +122,7 @@ pub proof fn lemma_no_change_imply_process_pages_wf_forall()
     reveal(process_pages_wf);
 }
 
-pub proof fn lemma_no_change_imply_container_process_page_pagetable_wf_forall()
+pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             pre: ProcessLockedMap,
@@ -166,7 +166,7 @@ pub proof fn lemma_no_change_imply_container_process_page_pagetable_wf_forall()
     reveal(mapped_1g_page_pagetable_wf);
 }
 
-pub proof fn lemma_no_change_imply_allocator_free_page_ptrs_wf_forall()
+pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall()
     ensures
         forall|pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap|
             #![trigger
@@ -189,7 +189,7 @@ pub proof fn lemma_no_change_imply_allocator_free_page_ptrs_wf_forall()
     reveal(allocator_free_page_ptrs_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_pagetable_match_forall()
+pub proof fn lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall()
     ensures
         forall|pre: ProcessLockedMap,
             post: ProcessLockedMap,
@@ -213,7 +213,7 @@ pub proof fn lemma_no_change_imply_process_pagetable_match_forall()
     reveal(process_pagetable_match);
 }
 
-pub proof fn lemma_no_change_imply_process_iommu_table_match_forall()
+pub proof fn lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall()
     ensures
         forall|pre: ProcessLockedMap,
             post: ProcessLockedMap,
@@ -235,7 +235,7 @@ pub proof fn lemma_no_change_imply_process_iommu_table_match_forall()
     reveal(process_iommu_table_match);
 }
 
-pub proof fn lemma_no_change_imply_iommu_root_table_process_wf_forall()
+pub proof fn lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|root_table: IommuRootTable,
             pre: ProcessLockedMap,
@@ -252,7 +252,7 @@ pub proof fn lemma_no_change_imply_iommu_root_table_process_wf_forall()
     reveal(iommu_root_table_process_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_pci_function_ownership_wf_forall()
+pub proof fn lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|root_table: IommuRootTable,
             pre: ProcessLockedMap,
@@ -268,7 +268,7 @@ pub proof fn lemma_no_change_imply_process_pci_function_ownership_wf_forall()
     reveal(process_pci_function_ownership_wf);
 }
 
-pub proof fn lemma_no_change_imply_iommu_tlb_wf_spec_forall()
+pub proof fn lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|iommu_tlb: IommuTLB,
             root_table: IommuRootTable,
@@ -286,7 +286,7 @@ pub proof fn lemma_no_change_imply_iommu_tlb_wf_spec_forall()
     reveal(iommu_tlb_wf_spec);
 }
 
-pub proof fn lemma_no_change_imply_container_process_wf_forall()
+pub proof fn lemma_container_process_wf_preserved_for_process_rodata_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             pre: ProcessLockedMap,
@@ -307,7 +307,7 @@ pub proof fn lemma_no_change_imply_container_process_wf_forall()
     reveal(container_process_wf);
 }
 
-pub proof fn lemma_no_change_imply_container_allocator_wf_forall()
+pub proof fn lemma_container_allocator_wf_preserved_for_allocator_quota_value_framed_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             pre: PageAllocatorUnLockedMap,
@@ -345,7 +345,7 @@ pub proof fn lemma_no_change_imply_container_allocator_wf_forall()
     reveal(container_allocator_wf);
 }
 
-pub proof fn lemma_no_change_imply_thread_staged_pages_wf_forall()
+pub proof fn lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall()
     ensures
         forall|pre: ThreadLockedMap,
             post: ThreadLockedMap,
@@ -363,7 +363,7 @@ pub proof fn lemma_no_change_imply_thread_staged_pages_wf_forall()
     reveal(thread_staged_pages_1g_wf);
 }
 
-pub proof fn lemma_no_change_imply_per_container_process_tree_wf_forall()
+pub proof fn lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             pre: ProcessLockedMap,
@@ -382,7 +382,7 @@ pub proof fn lemma_no_change_imply_per_container_process_tree_wf_forall()
     process_no_change_to_tree_fields_imply_wf_forall();
 }
 
-pub proof fn lemma_no_change_imply_process_cpu_wf_forall()
+pub proof fn lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall()
     ensures
         forall|pre: ProcessLockedMap,
             post: ProcessLockedMap,
@@ -406,7 +406,7 @@ pub proof fn lemma_no_change_imply_process_cpu_wf_forall()
     reveal(process_cpu_wf);
 }
 
-pub proof fn lemma_no_change_imply_process_thread_wf_forall()
+pub proof fn lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall()
     ensures
         forall|pre: ProcessLockedMap,
             post: ProcessLockedMap,
@@ -431,7 +431,7 @@ pub proof fn lemma_no_change_imply_process_thread_wf_forall()
     reveal(process_thread_wf);
 }
 
-pub proof fn lemma_no_change_imply_cpu_dirty_map_wf_forall()
+pub proof fn lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall()
     ensures
         forall|container_map: ContainerLockedMap,
             cpu_set_map: CpuSetLockedMap,

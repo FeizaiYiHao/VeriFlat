@@ -3,7 +3,9 @@ use crate::*;
 
 verus! {
 #[verifier::opaque]
-pub open spec fn remove_last_4k_mapping_to_allocator_transition_framing(
+/// Removes a page's final 4K mapping, returns the page to the allocator CPU
+/// cache, and increments the owning thread's pending free-quota counter.
+pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
     va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, depth: usize,

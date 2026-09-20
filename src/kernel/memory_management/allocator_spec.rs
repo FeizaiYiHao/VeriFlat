@@ -13,6 +13,20 @@ verus! {
             alloc_map.spec_index(a_ptr).inv()
     }
 
+    pub proof fn allocator_perms_wf_at(
+        alloc_map: PageAllocatorUnLockedMap,
+        alloc_ptr: RwLockPageAllocatorPtr,
+    )
+        requires
+            allocator_perms_wf(alloc_map),
+            alloc_map.dom().contains(alloc_ptr),
+        ensures
+            alloc_map.perms_wf(),
+            alloc_map.spec_index(alloc_ptr).inv(),
+    {
+        reveal(allocator_perms_wf);
+    }
+
     #[verifier::opaque]
     pub open spec fn allocator_free_page_ptrs_wf(allocator_map: PageAllocatorUnLockedMap) -> bool{
         &&&

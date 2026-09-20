@@ -22,9 +22,9 @@ verus! {
         ||| s is Merged1g
     }
 
-    #[verifier::opaque]
-    pub open spec fn hugepage_2m_wf(page_array: PageLockedArray) -> bool {
-        &&&
+    pub open spec fn hugepage_2m_head_valid_wf(
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free2m]
             #![trigger page_array.spec_index(p_i).view().view().state is Owned2m]
@@ -44,7 +44,12 @@ verus! {
             }
             ==>
             page_index_2m_valid(p_i)
-        &&&
+    }
+
+    // Proof dependencies (confirmed): hugepage_2m_head_valid_wf.
+    pub open spec fn hugepage_2m_tail_forward_wf(
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_2m_valid(p_i, p_j)]
             #![trigger page_array.spec_index(p_i).view().view().state is Free2m, page_array.spec_index(p_j).view().view().state is Merged2m]
@@ -72,7 +77,11 @@ verus! {
                 &&&
                 page_array.spec_index(p_j).view().view().owning_container == page_array.spec_index(p_i).view().view().owning_container
             }
-        &&&
+    }
+
+    pub open spec fn hugepage_2m_tail_backward_wf(
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Merged2m]
             #![trigger spec_page_index_truncate_2m(p_i)]
@@ -91,8 +100,15 @@ verus! {
     }
 
     #[verifier::opaque]
-    pub open spec fn hugepage_1g_wf(page_array: PageLockedArray) -> bool {
-        &&&
+    pub open spec fn hugepage_2m_wf(page_array: PageLockedArray) -> bool {
+        &&& hugepage_2m_head_valid_wf(page_array)
+        &&& hugepage_2m_tail_forward_wf(page_array)
+        &&& hugepage_2m_tail_backward_wf(page_array)
+    }
+
+    pub open spec fn hugepage_1g_head_valid_wf(
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free1g]
             #![trigger page_array.spec_index(p_i).view().view().state is Mapped1g]
@@ -104,8 +120,12 @@ verus! {
                 page_array.spec_index(p_i).view().view().state is Mapped1g 
             }
             ==>
-            page_index_1g_valid(p_i) 
-        &&&
+            page_index_1g_valid(p_i)
+    }
+
+    pub open spec fn hugepage_1g_tail_forward_wf(
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i:PageIndex, p_j:PageIndex|
             #![trigger spec_page_index_merge_1g_valid(p_i, p_j)]
             #![trigger page_array.spec_index(p_i).view().view().state is Free1g, page_array.spec_index(p_j).view().view().state is Merged1g]
@@ -127,7 +147,11 @@ verus! {
                 &&&
                 page_array.spec_index(p_j).view().view().owning_container == page_array.spec_index(p_i).view().view().owning_container
             }
-        &&&
+    }
+
+    pub open spec fn hugepage_1g_tail_backward_wf(
+        page_array: PageLockedArray,
+    ) -> bool {
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Merged1g]
             #![trigger spec_page_index_truncate_1g(p_i)]
@@ -139,5 +163,12 @@ verus! {
                 ||| 
                 page_array.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Mapped1g 
             }
+    }
+
+    #[verifier::opaque]
+    pub open spec fn hugepage_1g_wf(page_array: PageLockedArray) -> bool {
+        &&& hugepage_1g_head_valid_wf(page_array)
+        &&& hugepage_1g_tail_forward_wf(page_array)
+        &&& hugepage_1g_tail_backward_wf(page_array)
     }
 }

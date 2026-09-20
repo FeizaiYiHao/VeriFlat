@@ -63,5 +63,5 @@ done < "$ledger"
 
 [ -z "$need_check" ] && exit 0
 
-printf '%s' '{"decision":"block","reason":"This session changed src/**/*.rs that has not passed the style check since its last edit. Run the /style-check slash command — it reviews ONLY the files this session touched (.claude/.session-edits) against verus-style.md and the canonical files (syscall_alloc_quota_4k, the locker_unlocker.rs wrappers), and on a clean pass records their certified content hashes to .claude/.style-checked to clear this gate — then stop again. If you are mid-task and still editing, keep working; this only gates stopping."}'
+printf '%s' '{"decision":"block","reason":"This session changed src/**/*.rs that has not passed the style check since its last edit. Run /style-check; it reviews only the files this session touched against AGENTS.md, the canonical veriflat-proof and build rules, and the live syscall_alloc_quota style reference. A clean pass records their certified content hashes in .claude/.style-checked. If you are still editing, keep working; this only gates stopping."}'
 exit 0

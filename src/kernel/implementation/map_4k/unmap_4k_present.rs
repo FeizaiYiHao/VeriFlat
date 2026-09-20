@@ -28,7 +28,6 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, ..*old(krnl) }),
-        final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
         final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
@@ -43,7 +42,12 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         final(krnl).pt_mp.spec_index(pagetable).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr,
 {
     let indices = va2index(va);
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { reveal(pagetable_perms_wf); spec_va_4k_index_roundtrip(); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by {
+        reveal(pagetable_perms_wf);
+        spec_va_4k_index_roundtrip_at(
+            va, indices.0, indices.1, indices.2, indices.3,
+        );
+    };
     let l1_ptr;
     {
         let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
@@ -66,7 +70,10 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
         assert(kernel_k_to_kernel_u(*old(krnl)).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
-            && !kernel_k_to_kernel_u(*krnl).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)) by { reveal(process_pagetable_match); };
+            && !kernel_k_to_kernel_u(*krnl).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)) by {
+                reveal(kernel_k_to_kernel_u);
+                reveal(process_pagetable_match);
+            };
         assert(typed_lock_maps_aligned(krnl, lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }

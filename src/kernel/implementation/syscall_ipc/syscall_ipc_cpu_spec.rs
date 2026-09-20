@@ -3,7 +3,9 @@ use crate::*;
 
 verus! {
 #[verifier::opaque]
-pub open spec fn ipc_cpu_and_waiter_transition_framing(
+/// Dequeues and schedules the endpoint waiter and, on success, moves the Off
+/// CPU between the source and target CPU sets. PCID state is framed separately.
+pub open spec fn ipc_cpu_rendezvous_transition(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
     source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,

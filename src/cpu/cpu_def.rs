@@ -61,6 +61,180 @@ impl LockUserVisibilityTrait for Cpu{
 }
 
 impl Cpu{
+    fn new_quiescent(
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+        state: CpuState,
+        default_cr3: PageTableRoot,
+    ) -> (ret: Self)
+        requires
+            state is Idle || state is Off,
+            page_ptr_valid(default_cr3),
+        ensures
+            ret.inv(),
+            ret.view().owning_container == owning_container,
+            ret.view().container_depth == container_depth,
+            ret.view().state == state,
+            ret.view().current_process is None,
+            ret.view().current_thread is None,
+            ret.view().current_pagetable is None,
+            ret.view().current_cr3 == default_cr3,
+            ret.view().current_pcid == KERNEL_DEFAULT_PCID,
+            forall|pcid: Pcid|
+                #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
+                pcid_valid(pcid)
+                ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
+    {
+        Self {
+            owning_container,
+            state,
+            current_process: None,
+            current_thread: None,
+            current_pagetable: None,
+            cr3_pcid: CpuCr3Pcid::new(default_cr3, KERNEL_DEFAULT_PCID),
+            tlb_dirty_bitmap: BitMap::new_with_init_value(None),
+            container_depth,
+            process_depth: 0,
+        }
+    }
+
+    pub fn new_idle(
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+        default_cr3: PageTableRoot,
+    ) -> (ret: Self)
+        requires
+            page_ptr_valid(default_cr3),
+        ensures
+            ret.inv(),
+            ret.view().owning_container == owning_container,
+            ret.view().container_depth == container_depth,
+            ret.view().state is Idle,
+            ret.view().current_process is None,
+            ret.view().current_thread is None,
+            ret.view().current_pagetable is None,
+            ret.view().current_cr3 == default_cr3,
+            ret.view().current_pcid == KERNEL_DEFAULT_PCID,
+            forall|pcid: Pcid|
+                #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
+                pcid_valid(pcid)
+                ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
+    {
+        Self::new_quiescent(
+            owning_container,
+            container_depth,
+            CpuState::Idle,
+            default_cr3,
+        )
+    }
+
+    pub fn new_off(
+        owning_container: RwLockContainerPtr,
+        container_depth: usize,
+        default_cr3: PageTableRoot,
+    ) -> (ret: Self)
+        requires
+            page_ptr_valid(default_cr3),
+        ensures
+            ret.inv(),
+            ret.view().owning_container == owning_container,
+            ret.view().container_depth == container_depth,
+            ret.view().state is Off,
+            ret.view().current_process is None,
+            ret.view().current_thread is None,
+            ret.view().current_pagetable is None,
+            ret.view().current_cr3 == default_cr3,
+            ret.view().current_pcid == KERNEL_DEFAULT_PCID,
+            forall|pcid: Pcid|
+                #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
+                pcid_valid(pcid)
+                ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
+    {
+        Self::new_quiescent(
+            owning_container,
+            container_depth,
+            CpuState::Off,
+            default_cr3,
+        )
+    }
+
+    pub fn new_boot_array(
+        owning_container: RwLockContainerPtr,
+        default_cr3: PageTableRoot,
+    ) -> (ret: CpuLockedArray)
+        requires
+            0 < NUM_CPUS,
+            page_ptr_valid(default_cr3),
+        ensures
+            ret.inv(),
+            forall|cpu_id: CpuId|
+                #![trigger ret.spec_index(cpu_id)]
+                index_valid(NUM_CPUS, cpu_id)
+                ==> {
+                    &&& ret.spec_index(cpu_id).view().inv()
+                    &&& !ret.spec_index(cpu_id).view().locked()
+                    &&& ret.spec_index(cpu_id).view().view()
+                        .view().owning_container == owning_container
+                    &&& ret.spec_index(cpu_id).view().view()
+                        .view().container_depth == 0
+                    &&& ret.spec_index(cpu_id).view().view()
+                        .view().state == if cpu_id == 0 {
+                            CpuState::Idle
+                        } else {
+                            CpuState::Off
+                        }
+                    &&& ret.spec_index(cpu_id).view().view()
+                        .view().current_cr3 == default_cr3
+                    &&& ret.spec_index(cpu_id).view().view()
+                        .view().current_pcid == KERNEL_DEFAULT_PCID
+                },
+    {
+        let mut cpus:
+            Array<RwLock<Cpu, (), (), CPU_HAS_KILL_STATE>, NUM_CPUS>
+                = Array::new();
+        let mut cpu_id = 0;
+        while cpu_id < NUM_CPUS
+            invariant
+                0 <= cpu_id <= NUM_CPUS,
+                cpus.wf(),
+                page_ptr_valid(default_cr3),
+                forall|old_cpu: CpuId|
+                    #![trigger cpus.spec_index(old_cpu)]
+                    old_cpu < cpu_id
+                    ==> {
+                        &&& cpus.spec_index(old_cpu).inv()
+                        &&& !cpus.spec_index(old_cpu).locked()
+                        &&& cpus.spec_index(old_cpu).view()
+                            .view().owning_container == owning_container
+                        &&& cpus.spec_index(old_cpu).view()
+                            .view().container_depth == 0
+                        &&& cpus.spec_index(old_cpu).view()
+                            .view().state == if old_cpu == 0 {
+                                CpuState::Idle
+                            } else {
+                                CpuState::Off
+                            }
+                        &&& cpus.spec_index(old_cpu).view()
+                            .view().current_cr3 == default_cr3
+                        &&& cpus.spec_index(old_cpu).view()
+                            .view().current_pcid == KERNEL_DEFAULT_PCID
+                    },
+            decreases NUM_CPUS - cpu_id,
+        {
+            let cpu = if cpu_id == 0 {
+                Self::new_idle(owning_container, 0, default_cr3)
+            } else {
+                Self::new_off(owning_container, 0, default_cr3)
+            };
+            cpus.set(
+                cpu_id,
+                RwLock::new_unlocked(cpu, (), Ghost(())),
+            );
+            cpu_id = cpu_id + 1;
+        }
+        LockedArray::from_array(cpus)
+    }
+
     pub closed spec fn view(&self) -> CpuView {
         CpuView {
             owning_container: self.owning_container,

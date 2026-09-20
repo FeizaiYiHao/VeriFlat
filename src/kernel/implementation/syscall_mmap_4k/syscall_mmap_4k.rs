@@ -39,7 +39,6 @@ verus! {
     {
         if range == 0
             || range > usize::MAX / 4096usize
-            || range > usize::MAX / 4usize
             || !va_4k_valid(va)
         {
             proof {
@@ -80,17 +79,17 @@ verus! {
         let container_ptr = cpu.owning_container();
 
         let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
-        if let (false, _) = container_res {
+        if container_res.is_none() {
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 steps.end_kernel_step(&*krnl, &*lctx);
             }
             return RetValueType::ErrorContainerKilled;
         }
-        let Tracked(container_lock_perm) = container_res.1.unwrap();
+        let Tracked(container_lock_perm) = container_res.unwrap();
 
         let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-        if let (false, _) = process_res {
+        if process_res.is_none() {
             krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
@@ -98,10 +97,10 @@ verus! {
             }
             return RetValueType::ErrorProcessKilled;
         }
-        let Tracked(process_lock_perm) = process_res.1.unwrap();
+        let Tracked(process_lock_perm) = process_res.unwrap();
 
         let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
-        if let (false, _) = thread_res {
+        if thread_res.is_none() {
             proof {
                 assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
             }
@@ -113,53 +112,41 @@ verus! {
             }
             return RetValueType::ErrorThreadKilled;
         }
-        let Tracked(thread_lock_perm) = thread_res.1.unwrap();
+        let Tracked(thread_lock_perm) = thread_res.unwrap();
 
         let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
         let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
         let pagetable_ptr = thread.proc_pagetable_ptr;
+        let quota_4k = thread.quota_4k;
 
         assert({
             &&& krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)
             &&& krnl.pt_mp.dom().contains(pagetable_ptr)
-            &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr
-            &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
-            &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr
-            &&& !lctx.pagetable_lock_map().dom().contains(pagetable_ptr)
         }) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
 
-        let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
-
-        proof {
-            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
-        }
-
-        let precheck = mmap_4k_precheck(krnl, &va_range, thread_ptr, pagetable_ptr, Tracked(&*lctx), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
-        let result;
-        match precheck {
-            Mmap4kPrecheck::Ready => {
-                assert(krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(va_range.start)) by { assert(spec_va2index(va_range.start).0 == spec_v2l4index(va_range.start)) by (bit_vector); };
-                mmap_4k_map_leaf_range(krnl, &va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
-                proof {
-                    assert(mmap_4k_syscall_range_mapped(krnl.pt_mp.spec_index(pagetable_ptr).view(), va, range)) by { va_range.va_range_lemma(); };
-                }
-                result = RetValueType::Success;
-            },
-            Mmap4kPrecheck::NoQuota => {
-                result = RetValueType::ErrorNoQuota;
-            },
-            Mmap4kPrecheck::Invalid => {
-                result = RetValueType::Error;
-            },
-            Mmap4kPrecheck::InUse => {
-                result = RetValueType::ErrorVaInUse;
-            },
-        }
-
-        krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+        let result = if quota_4k < 4 * range {
+            RetValueType::ErrorNoQuota
+        } else {
+            let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
+            let precheck = mmap_4k_precheck(krnl, &va_range, pagetable_ptr, Tracked(&*lctx), Tracked(&pagetable_lock_perm));
+            let result = match precheck {
+                Mmap4kPrecheck::Ready => {
+                    proof { assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); }; }
+                    mmap_4k_map_leaf_range(krnl, &va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
+                    proof {
+                        assert(mmap_4k_syscall_range_mapped(krnl.pt_mp.spec_index(pagetable_ptr).view(), va, range)) by { va_range.va_range_lemma(); };
+                    }
+                    RetValueType::Success
+                },
+                Mmap4kPrecheck::Invalid => RetValueType::Error,
+                Mmap4kPrecheck::InUse => RetValueType::ErrorVaInUse,
+            };
+            krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+            result
+        };
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         proof {
             assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };

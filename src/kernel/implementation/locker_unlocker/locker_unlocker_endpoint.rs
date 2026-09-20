@@ -117,27 +117,7 @@ impl KernelK {
                 final(self).inv(),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
-                final(self).pt_mp == old(self).pt_mp,
-                final(self).it_mp == old(self).it_mp,
-                final(self).irt == old(self).irt,
-                final(self).pg_arr == old(self).pg_arr,
-                final(self).cpu_arr == old(self).cpu_arr,
-                final(self).pcid_needflush == old(self).pcid_needflush,
-                final(self).cpu_published == old(self).cpu_published,
-                final(self).cpu_tlb == old(self).cpu_tlb,
-                final(self).iommu_tlb == old(self).iommu_tlb,
-                final(self).rt_ctn == old(self).rt_ctn,
-                final(self).ctn_mp == old(self).ctn_mp,
-                final(self).sched_mp == old(self).sched_mp,
-                final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-                final(self).cpu_set_mp == old(self).cpu_set_mp,
-                final(self).prc_mp == old(self).prc_mp,
-                final(self).thr_mp == old(self).thr_mp,
-                final(self).allc_4k_mp == old(self).allc_4k_mp,
-                final(self).allc_2m_mp == old(self).allc_2m_mp,
-                final(self).allc_1g_mp == old(self).allc_1g_mp,
-                final(self).dflt_pt == old(self).dflt_pt,
-                final(self).ep_mp.dom() == old(self).ep_mp.dom(),
+                *final(self) == (KernelK { ep_mp: final(self).ep_mp, ..*old(self) }),
                 final(self).ep_mp.unchanged_except(&old(self).ep_mp, endpoint_ptr),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -148,9 +128,29 @@ impl KernelK {
                 final(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
         {
             proof {
-                assert(old(self).ep_mp.perms_wf()) by { reveal(endpoint_perms_wf); };
+                endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr);
                 assert(old(lctx).held_lock_majors_lt(ENDPOINT_LOCK_MAJOR)) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(thread_cpu_wf); };
                 assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(endpoint_perms_wf); };
+                assert(!old(self).ep_mp.spec_index(endpoint_ptr)
+                    .wlocked_by_thread(old(lctx).thread_id())) by {
+                    if old(self).ep_mp.spec_index(endpoint_ptr)
+                        .wlocked_by_thread(old(lctx).thread_id())
+                    {
+                        assert(typed_lock_map_contains_mode(
+                            old(lctx).endpoint_lock_map(),
+                            endpoint_ptr,
+                            TypedLockMode::Write,
+                        )) by {
+                            reveal(typed_lock_maps_aligned);
+                            reveal(LockedMap::typed_lock_map_aligned);
+                        };
+                    }
+                };
+                assert(!old(self).ep_mp.spec_index(endpoint_ptr)
+                    .wlocked_by(&*old(lctx))) by {
+                    reveal(RwLock::wlocked_by);
+                    reveal(RwLock::wlocked_by_thread);
+                };
             }
             assert(wlock_requires(self.ep_mp.spec_index(endpoint_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.ep_mp.wlock(endpoint_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(endpoint_ptr)));
@@ -158,16 +158,14 @@ impl KernelK {
                 assert(endpoint_invariant_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { endpoint_lock_op_preserves_invariant_fields(old(self).ep_mp, self.ep_mp, endpoint_ptr); };
                 assert(self.subsystems_inv()) by {
                     reveal(KernelK::default_pagetable_wf);
-                    assert(endpoint_perms_wf(self.ep_mp)) by { lemma_no_change_imply_endpoint_perms_wf_forall(); };
+                    lemma_endpoint_perms_wf_preserved_for_lock_op_forall();
                 };
-                assert(self.memory_management_inv()) by {
-                    assert(endpoint_pages_wf(self.ep_mp, self.pg_arr)) by { lemma_no_change_imply_endpoint_pages_wf_forall(); };
-                };
+                assert(self.memory_management_inv()) by { lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall(); };
                 assert(self.process_management_inv()) by {
-                    assert(container_endpoint_wf(self.ctn_mp, self.ep_mp)) by { lemma_no_change_imply_container_endpoint_wf_forall(); };
-                    assert(thread_endpoint_ref_counter_wf(self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_thread_endpoint_ref_counter_wf_forall(); };
-                    assert(thread_endpoint_queue_wf(self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_thread_endpoint_queue_wf_forall(); };
-                    assert(container_thread_endpoint_wf(self.ctn_mp, self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_container_thread_endpoint_wf_forall(); };
+                    lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
+                    lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall();
+                    lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall();
+                    lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < PAGE_TABLE_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
@@ -197,29 +195,8 @@ impl KernelK {
                 final(self).inv(),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 lock_id_set_aligned(final(lctx)),
-                final(self).pt_mp == old(self).pt_mp,
-                final(self).it_mp == old(self).it_mp,
-                final(self).irt == old(self).irt,
-                final(self).pg_arr == old(self).pg_arr,
-                final(self).cpu_arr == old(self).cpu_arr,
-                final(self).pcid_needflush == old(self).pcid_needflush,
-                final(self).cpu_published == old(self).cpu_published,
-                final(self).cpu_tlb == old(self).cpu_tlb,
-                final(self).iommu_tlb == old(self).iommu_tlb,
-                final(self).rt_ctn == old(self).rt_ctn,
-                final(self).ctn_mp == old(self).ctn_mp,
-                final(self).sched_mp == old(self).sched_mp,
-                final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-                final(self).cpu_set_mp == old(self).cpu_set_mp,
-                final(self).prc_mp == old(self).prc_mp,
-                final(self).thr_mp == old(self).thr_mp,
-                final(self).allc_4k_mp == old(self).allc_4k_mp,
-                final(self).allc_2m_mp == old(self).allc_2m_mp,
-                final(self).allc_1g_mp == old(self).allc_1g_mp,
-                final(self).dflt_pt == old(self).dflt_pt,
-                final(self).ep_mp.dom() == old(self).ep_mp.dom(),
+                *final(self) == (KernelK { ep_mp: final(self).ep_mp, ..*old(self) }),
                 final(self).ep_mp.unchanged_except(&old(self).ep_mp, endpoint_ptr),
-                final(self).ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
                 final(self).ep_mp.lock_id_by_key(endpoint_ptr) == old(self).ep_mp.lock_id_by_key(endpoint_ptr),
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 final(lctx).kernel_view_locking_state() is Release,
@@ -241,16 +218,14 @@ impl KernelK {
                 assert(endpoint_invariant_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { endpoint_lock_op_preserves_invariant_fields(old(self).ep_mp, self.ep_mp, endpoint_ptr); };
                 assert(self.subsystems_inv()) by {
                     reveal(KernelK::default_pagetable_wf);
-                    assert(endpoint_perms_wf(self.ep_mp)) by { lemma_no_change_imply_endpoint_perms_wf_forall(); };
+                    lemma_endpoint_perms_wf_preserved_for_lock_op_forall();
                 };
-                assert(self.memory_management_inv()) by {
-                    assert(endpoint_pages_wf(self.ep_mp, self.pg_arr)) by { lemma_no_change_imply_endpoint_pages_wf_forall(); };
-                };
+                assert(self.memory_management_inv()) by { lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall(); };
                 assert(self.process_management_inv()) by {
-                    assert(container_endpoint_wf(self.ctn_mp, self.ep_mp)) by { lemma_no_change_imply_container_endpoint_wf_forall(); };
-                    assert(thread_endpoint_ref_counter_wf(self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_thread_endpoint_ref_counter_wf_forall(); };
-                    assert(thread_endpoint_queue_wf(self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_thread_endpoint_queue_wf_forall(); };
-                    assert(container_thread_endpoint_wf(self.ctn_mp, self.thr_mp, self.ep_mp)) by { lemma_no_change_imply_container_thread_endpoint_wf_forall(); };
+                    lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
+                    lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall();
+                    lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall();
+                    lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             }

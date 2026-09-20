@@ -17,44 +17,40 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
-            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init() == old(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init(),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             lock_id_set_aligned(final(lctx)),
-            final(self).pt_mp == old(self).pt_mp,
-            final(self).it_mp == old(self).it_mp,
-            final(self).irt == old(self).irt,
-            final(self).pg_arr == old(self).pg_arr,
-            final(self).cpu_arr == old(self).cpu_arr,
-            final(self).pcid_needflush == old(self).pcid_needflush,
-            final(self).cpu_published == old(self).cpu_published,
-            final(self).cpu_tlb == old(self).cpu_tlb,
-            final(self).iommu_tlb == old(self).iommu_tlb,
-            final(self).rt_ctn == old(self).rt_ctn,
-            final(self).ctn_mp == old(self).ctn_mp,
-            final(self).sched_mp == old(self).sched_mp,
-            final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-            final(self).prc_mp == old(self).prc_mp,
-            final(self).thr_mp == old(self).thr_mp,
-            final(self).ep_mp == old(self).ep_mp,
-            final(self).allc_4k_mp == old(self).allc_4k_mp,
-            final(self).allc_2m_mp == old(self).allc_2m_mp,
-            final(self).allc_1g_mp == old(self).allc_1g_mp,
-            final(self).dflt_pt == old(self).dflt_pt,
+            *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
             final(self).cpu_set_mp.perms_wf(),
-            final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             wlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr)),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr))),
-            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), TypedHeldLock { lock_id: final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), mode: TypedLockMode::Write }),
             final(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
     {
-        proof {
-            assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init()) by { reveal(cpu_set_perms_wf); };
-        }
+        assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(cpu_set_perms_wf); };
+        assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr)
+            .wlocked_by_thread(old(lctx).thread_id())) by {
+            if old(self).cpu_set_mp.spec_index(cpu_set_ptr)
+                .wlocked_by_thread(old(lctx).thread_id())
+            {
+                assert(typed_lock_map_contains_mode(
+                    old(lctx).cpu_set_lock_map(),
+                    cpu_set_ptr,
+                    TypedLockMode::Write,
+                )) by {
+                    reveal(typed_lock_maps_aligned);
+                    reveal(LockedMap::typed_lock_map_aligned);
+                };
+            }
+        };
+        assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr)
+            .wlocked_by(&*old(lctx))) by {
+            reveal(RwLock::wlocked_by);
+            reveal(RwLock::wlocked_by_thread);
+        };
         assert(wlock_requires(self.cpu_set_mp.spec_index(cpu_set_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.cpu_set_mp.wlock(cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
         proof {
@@ -64,6 +60,9 @@ impl KernelK {
             assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+            };
         }
         ret
     }
@@ -84,41 +83,16 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
             lock_id_set_aligned(old(lctx)),
         ensures
-            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_k_to_kernel_u(*final(self)) == kernel_k_to_kernel_u(*old(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
-            lock_id_set_aligned(final(lctx)),
-            final(self).pt_mp == old(self).pt_mp,
-            final(self).it_mp == old(self).it_mp,
-            final(self).irt == old(self).irt,
-            final(self).pg_arr == old(self).pg_arr,
-            final(self).cpu_arr == old(self).cpu_arr,
-            final(self).pcid_needflush == old(self).pcid_needflush,
-            final(self).cpu_published == old(self).cpu_published,
-            final(self).cpu_tlb == old(self).cpu_tlb,
-            final(self).iommu_tlb == old(self).iommu_tlb,
-            final(self).rt_ctn == old(self).rt_ctn,
-            final(self).ctn_mp == old(self).ctn_mp,
-            final(self).sched_mp == old(self).sched_mp,
-            final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-            final(self).prc_mp == old(self).prc_mp,
-            final(self).thr_mp == old(self).thr_mp,
-            final(self).ep_mp == old(self).ep_mp,
-            final(self).allc_4k_mp == old(self).allc_4k_mp,
-            final(self).allc_2m_mp == old(self).allc_2m_mp,
-            final(self).allc_1g_mp == old(self).allc_1g_mp,
-            final(self).dflt_pt == old(self).dflt_pt,
+            *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
             final(self).cpu_set_mp.perms_wf(),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
             !final(self).cpu_set_mp.spec_index(cpu_set_ptr).locked(),
             final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr) == old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr),
             wunlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr)),
-            final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr))),
-            typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr)),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr)),
     {
         proof {
@@ -135,6 +109,9 @@ impl KernelK {
             assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
+                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
+            };
         }
     }
 }

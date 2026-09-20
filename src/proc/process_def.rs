@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::simple_pptr::*;
 verus! {
 
 use crate::*;
@@ -73,6 +74,62 @@ impl LockInvTrait for Process {
 }
  
 impl Process{
+    pub fn new_boot_root(
+        process_ptr: RwLockProcessPtr,
+        pagetable: RwLockPageTableRoot,
+        iommu_table: RwLockPageTableRoot,
+        root_thread: RwLockThreadPtr,
+        thread_node_addr: usize,
+        thread_node_perm:
+            Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+        owned_pci_functions: Ghost<Set<PciBdf>>,
+    ) -> (ret: Self)
+        requires
+            pagetable != iommu_table,
+            thread_node_perm.view().is_init(),
+            thread_node_perm.view().addr() == thread_node_addr,
+            thread_node_perm.view().value().view() == root_thread,
+            owned_pci_functions.view().len() == VTD_DOMAIN_COUNT,
+            forall|bdf: PciBdf|
+                #![trigger owned_pci_functions.view().contains(bdf)]
+                owned_pci_functions.view().contains(bdf)
+                <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        ensures
+            ret.inv(),
+            !ret.zombie,
+            ret.pcid == 1,
+            ret.pagetable == pagetable,
+            ret.iommu_table == Some(iommu_table),
+            ret.pci_function_ref_counter == VTD_DOMAIN_COUNT,
+            ret.owned_pci_functions == owned_pci_functions,
+            ret.quota_4k == 0,
+            ret.quota_2m == 0,
+            ret.quota_1g == 0,
+            ret.parent_linkedlist_node.is_init(),
+            ret.children.view() == Seq::<RwLockProcessPtr>::empty(),
+            ret.owned_threads.view() =~= seq![root_thread],
+            ret.owned_threads.map()
+                =~= Map::<usize, RwLockThreadPtr>::empty()
+                    .insert(thread_node_addr, root_thread),
+    {
+        let mut ret = Self::new_fresh(
+            process_ptr,
+            1,
+            pagetable,
+            0,
+            0,
+        );
+        ret.iommu_table = Some(iommu_table);
+        ret.pci_function_ref_counter = VTD_DOMAIN_COUNT;
+        ret.owned_pci_functions = owned_pci_functions;
+        ret.owned_threads.push_tail(
+            thread_node_addr,
+            thread_node_perm,
+        );
+        assert(ret.inv());
+        ret
+    }
+
     pub fn new_fresh(
         process_ptr: RwLockProcessPtr,
         pcid: Pcid,
@@ -96,6 +153,9 @@ impl Process{
             ret.parent_linkedlist_node.is_init(),
             ret.children.view() == Seq::<RwLockProcessPtr>::empty(),
             ret.owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
+            ret.owned_threads.map()
+                == Map::<usize, RwLockThreadPtr>::empty(),
+            ret.owned_threads.length == 0,
     {
         let parent_linkedlist_node = ExternalNode::new(process_ptr);
         let children = LinkedList::new(Some(container_depth), Some(depth));
@@ -147,6 +207,81 @@ impl Process{
             #![trigger self.owned_pci_functions.view().contains(bdf)]
             self.owned_pci_functions.view().contains(bdf)
             ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2)
+    }
+
+    pub fn add_owned_thread(
+        &mut self,
+        thread_ptr: RwLockThreadPtr,
+        node_addr: usize,
+        node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    )
+        requires
+            old(self).inv(),
+            !old(self).zombie,
+            node_perm.is_init(),
+            node_perm.addr() == node_addr,
+            !old(self).owned_threads.view().contains(thread_ptr),
+            old(self).owned_threads.view().len() < usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(self) == (Process {
+                owned_threads: final(self).owned_threads,
+                ..*old(self)
+            }),
+            final(self).owned_threads.view()
+                == old(self).owned_threads.view().push(thread_ptr),
+            final(self).owned_threads.dom()
+                == old(self).owned_threads.dom().insert(node_addr),
+            final(self).owned_threads.map()
+                == old(self).owned_threads.map().insert(node_addr, thread_ptr),
+            final(self).owned_threads.length
+                == old(self).owned_threads.length + 1,
+            !old(self).owned_threads.dom().contains(node_addr),
+            !old(self).owned_threads.map().dom().contains(node_addr),
+    {
+        let mut node_perm = node_perm;
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        proof {
+            assert(self.owned_threads.length != usize::MAX) by {
+                reveal(LinkedList::wf_value_list);
+            };
+        }
+        self.owned_threads.push_tail(node_addr, node_perm);
+    }
+
+    pub fn add_child(
+        &mut self,
+        child_ptr: RwLockProcessPtr,
+        node_addr: usize,
+        node_perm: Tracked<PointsTo<Node<RwLockProcessPtr>>>,
+    )
+        requires
+            old(self).inv(),
+            node_perm.is_init(),
+            node_perm.addr() == node_addr,
+            !old(self).children.view().contains(child_ptr),
+            old(self).children.view().len() < usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(self) == (Process {
+                children: final(self).children,
+                ..*old(self)
+            }),
+            final(self).children.view() == old(self).children.view().push(child_ptr),
+            final(self).children.dom() == old(self).children.dom().insert(node_addr),
+            final(self).children.map() == old(self).children.map().insert(node_addr, child_ptr),
+            final(self).children.length == old(self).children.length + 1,
+            !old(self).children.dom().contains(node_addr),
+            !old(self).children.map().dom().contains(node_addr),
+    {
+        let mut node_perm = node_perm;
+        node_update_value(node_addr, &mut node_perm, child_ptr);
+        proof {
+            assert(self.children.length != usize::MAX) by {
+                reveal(LinkedList::wf_value_list);
+            };
+        }
+        self.children.push_tail(node_addr, node_perm);
     }
 }
 

@@ -7,7 +7,7 @@ verus! {
     #[verifier::opaque]
     pub open spec fn process_empty_lists_wlocked(process_map: ProcessLockedMap) -> bool {
         forall|p_ptr:RwLockProcessPtr|
-            #![trigger process_map.spec_index(p_ptr)]
+            #![trigger process_map.dom().contains(p_ptr)]
             process_map.dom().contains(p_ptr)
             && (if process_map.spec_index(p_ptr).view().zombie {
                 process_map.spec_index(p_ptr).view().children.view().len() == 0
@@ -17,6 +17,7 @@ verus! {
             ==> process_map.spec_index(p_ptr).wlocked()
     }
 
+    // Proof dependencies (confirmed): process_empty_lists_wlocked.
     #[verifier::opaque]
     pub open spec fn process_thread_wf(process_map: ProcessLockedMap, 
             thread_map: ThreadLockedMap) -> bool {
@@ -47,7 +48,10 @@ verus! {
                 == t_ptr
         &&&
         forall|t_ptr:RwLockThreadPtr|
-            #![trigger thread_map.spec_index(t_ptr)]
+            #![trigger
+                thread_map.dom().contains(t_ptr),
+                thread_map.spec_index(t_ptr).view().owning_proc
+            ]
             thread_map.dom().contains(t_ptr)
             ==>
             process_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc)

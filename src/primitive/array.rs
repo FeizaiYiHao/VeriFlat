@@ -85,11 +85,7 @@ impl<const N: usize> Array<u8, N> {
                 self.wf(),
                 forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0,
         {
-            let tmp:Ghost<Seq<u8>> = Ghost(self.view());
-            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
             self.set(i,0);
-            assert(self.view() =~= tmp.view().update(i as int,0));
-            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
         }
     }
 }
@@ -112,11 +108,7 @@ impl<const N: usize> Array<usize, N> {
                 self.wf(),
                 forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0,
         {
-            let tmp:Ghost<Seq<usize>> = Ghost(self.view());
-            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
             self.set(i,0);
-            assert(self.view() =~= tmp.view().update(i as int,0));
-            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0);
         }
     }
 }
@@ -139,17 +131,12 @@ impl<T: Copy, const N: usize> Array<Option<T>, N> {
                 self.wf(),
                 forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None,
         {
-            let tmp:Ghost<Seq<Option<T>>> = Ghost(self.view());
-            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None);
             self.set(i,None);
-            assert(self.view() =~= tmp.view().update(i as int,None));
-            assert(forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None);
         }
     }
 }
 
 impl<A:Copy, const N: usize> Array<A, N> {
-  #[verifier(external_body)]
     pub fn new_with_init_value(v:A) -> (ret: Self)
         ensures
             ret.wf(),
@@ -157,25 +144,10 @@ impl<A:Copy, const N: usize> Array<A, N> {
     {
         let ret = Self {
             ar: [v;N],
-            seq: Ghost(Seq::empty()),
+            seq: Ghost(Seq::new(N as nat, |i: int| v)),
         };
         ret
     }
 }
-fn test<const N: usize>(ar: &mut Array<u64, N>)
-    requires
-        old(ar).wf(),
-        old(ar).spec_index(1) == 0,
-        N == 2,
-
-    {
-    let v_1 = ar.get(1);
-    assert(v_1 == 0);
-    ar.set(0,1);
-    let v_0 = ar.get(0);
-    assert(v_0 == 1);
-    let v_1_new = ar.get(1);
-    // assert(v_1_new != 0); // this should fail
-    }
 
 }

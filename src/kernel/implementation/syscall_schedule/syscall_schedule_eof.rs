@@ -1,20 +1,21 @@
 use vstd::prelude::*;
 use crate::*;
-use super::syscall_schedule_spec::schedule_switch_unchanged_objects_and_entries_transition_framing;
+use super::syscall_schedule_spec::scheduler_context_switch_transition;
 
 verus! {
-proof fn schedule_switch_eof_process(
+#[verifier::spinoff_prover]
+proof fn scheduler_context_switch_eof_process_management_inv(
     pre: KernelK, post: KernelK, cpu_id: CpuId,
     scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
     entry_regs: Registers,
 )
     requires
         pre.inv(),
-        schedule_switch_unchanged_objects_and_entries_transition_framing(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
+        scheduler_context_switch_transition(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(schedule_switch_unchanged_objects_and_entries_transition_framing);
+    reveal(scheduler_context_switch_transition);
     assert(post.process_management_inv()) by {
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
@@ -36,14 +37,14 @@ proof fn schedule_switch_eof_process(
     };
 }
 
-pub(super) proof fn schedule_switch_eof(
+pub(super) proof fn scheduler_context_switch_eof(
     pre: KernelK, post: KernelK, cpu_id: CpuId,
     scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
     entry_regs: Registers,
 )
     requires
         pre.inv(),
-        schedule_switch_unchanged_objects_and_entries_transition_framing(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
+        scheduler_context_switch_transition(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_published[cpu_id as int].inv(),
@@ -51,7 +52,7 @@ pub(super) proof fn schedule_switch_eof(
         post.sched_mp.spec_index(scheduler_ptr).view().queue.wf(),
     ensures post.inv(),
 {
-    reveal(schedule_switch_unchanged_objects_and_entries_transition_framing);
+    reveal(scheduler_context_switch_transition);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
@@ -63,14 +64,14 @@ pub(super) proof fn schedule_switch_eof(
     assert(post.memory_management_inv()) by {
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-        thread_staged_pages_4k_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_2m_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_1g_wf_preserved_for_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+        thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
         container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
         container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
         container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
     };
-    schedule_switch_eof_process(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
+    scheduler_context_switch_eof_process_management_inv(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(process_pagetable_match); reveal(container_process_wf); reveal(process_thread_wf); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }

@@ -42,9 +42,21 @@ impl KernelK {
             final(self).rt_ctn == old(self).rt_ctn,
             final(self).dflt_pt == old(self).dflt_pt,
             final(self).pt_mp.perms_wf(),
+            pagetable_perms_wf(old(self).pt_mp)
+                ==> pagetable_perms_wf(final(self).pt_mp),
+            page_pagetable_wf(old(self).pt_mp, old(self).pg_arr)
+                && pagetable_value.is_empty()
+                ==> page_pagetable_wf(final(self).pt_mp, final(self).pg_arr),
             final(self).pt_mp.dom() =~= old(self).pt_mp.dom().insert(page_ptr),
-            forall|ptr: RwLockPageTableRoot| #![auto]
-                old(self).pt_mp.dom().contains(ptr) ==> final(self).pt_mp.spec_index(ptr) == old(self).pt_mp.spec_index(ptr),
+            forall|ptr: RwLockPageTableRoot|
+                #![trigger final(self).pt_mp.spec_index(ptr)]
+                #![trigger old(self).pt_mp.spec_index(ptr)]
+                #![trigger old(self).pt_mp.dom().contains(ptr)]
+                #![trigger final(self).pt_mp.dom().contains(ptr)]
+                old(self).pt_mp.dom().contains(ptr) ==> {
+                    &&& final(self).pt_mp.dom().contains(ptr)
+                    &&& final(self).pt_mp.spec_index(ptr) == old(self).pt_mp.spec_index(ptr)
+                },
             forall|ptr: RwLockPageTableRoot|
                 #![trigger old(self).pt_mp.lock_id_by_key(ptr)]
                 #![trigger final(self).pt_mp.lock_id_by_key(ptr)]
@@ -57,14 +69,14 @@ impl KernelK {
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).pt_mp.lock_id_by_key(page_ptr),
             final(self).pt_mp.lock_id_by_key(page_ptr) == (LockId {
-                container: LockOwnerId::NotApp,
-                process: LockOwnerId::NotApp,
+                container: pagetable_value.container_depth(),
+                process: pagetable_value.process_depth(),
                 major: pagetable_value.current_lock_major(),
                 minor: page_ptr,
             }),
             final(self).pt_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() is Acquire,
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).pt_mp.lock_id_by_key(page_ptr), KernelObjId::PageTable(page_ptr))),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(page_ptr), TypedHeldLock {
                 lock_id: final(self).pt_mp.lock_id_by_key(page_ptr),
@@ -73,12 +85,36 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             lock_id_set_aligned(final(lctx)),
     {
-        proof { assert(!old(lctx).pagetable_lock_map().dom().contains(page_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>(
             page_ptr, pagetable_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(page_ptr)),
         );
         self.pt_mp.insert_with_perm(page_ptr, Tracked(pagetable_rwlock_perm));
-        proof { assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        proof {
+            assert(
+                pagetable_perms_wf(old(self).pt_mp)
+                    ==> pagetable_perms_wf(self.pt_mp)
+            ) by {
+                reveal(pagetable_perms_wf);
+                reveal(pagetables_inv);
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
+            assert(
+                page_pagetable_wf(old(self).pt_mp, old(self).pg_arr)
+                    && pagetable_value.is_empty()
+                    ==> page_pagetable_wf(self.pt_mp, self.pg_arr)
+            ) by {
+                reveal(mapped_4k_page_pagetable_wf);
+                reveal(mapped_2m_page_pagetable_wf);
+                reveal(mapped_1g_page_pagetable_wf);
+                reveal(PageTable::is_empty);
+                broadcast use vstd::set::lemma_set_insert_same;
+                broadcast use vstd::set::lemma_set_insert_different;
+            };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(LockedMap::typed_lock_map_aligned);
+            };
+        }
         Tracked(pagetable_perm)
     }
 
@@ -135,14 +171,14 @@ impl KernelK {
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).it_mp.lock_id_by_key(page_ptr),
             final(self).it_mp.lock_id_by_key(page_ptr) == (LockId {
-                container: LockOwnerId::NotApp,
-                process: LockOwnerId::NotApp,
+                container: iommu_table_value.container_depth(),
+                process: iommu_table_value.process_depth(),
                 major: iommu_table_value.current_lock_major(),
                 minor: page_ptr,
             }),
             final(self).it_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() is Acquire,
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).it_mp.lock_id_by_key(page_ptr), KernelObjId::IommuTable(page_ptr))),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuTable(page_ptr), TypedHeldLock {
                 lock_id: final(self).it_mp.lock_id_by_key(page_ptr),
@@ -151,12 +187,15 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             lock_id_set_aligned(final(lctx)),
     {
-        proof { assert(!old(lctx).iommu_table_lock_map().dom().contains(page_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>(
             page_ptr, iommu_table_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(page_ptr)),
         );
         self.it_mp.insert_with_perm(page_ptr, Tracked(iommu_table_rwlock_perm));
-        proof { assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        proof {
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(LockedMap::typed_lock_map_aligned);
+            };
+        }
         Tracked(iommu_table_perm)
     }
 }

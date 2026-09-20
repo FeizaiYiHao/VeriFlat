@@ -75,13 +75,6 @@ impl PageMap {
             let u = page_entry2usize(&value);
             self.ar.set(index, u);
 
-            assert(usize2present(u) == value.perm.present);
-            assert(usize2kernel_present(u) == true);
-            assert(u != 0) by (bit_vector)
-                requires
-                    (u & 0x1usize << 52u64 as usize) != 0 == true,
-            ;
-
             proof {
                 self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value));
             }
@@ -106,10 +99,6 @@ impl PageMap {
         let u = page_entry2usize(&value);
         self.ar.set(index, u);
         proof {
-            // page_entry2usize ensures bits round-trip. Hence usize2page_entry(u) =~= value.
-            assert(usize2page_entry_perm(u) =~= value.perm);
-            assert(usize2pa(u) == value.addr);
-            assert(usize2page_entry(u) =~= value);
             self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value));
         }
     }

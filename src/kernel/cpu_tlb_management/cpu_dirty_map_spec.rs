@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
+    // Proof dependency: closure across container ownership updates needs
+    // `container_cpu_wf` to relate each CPU to its owning container.
     pub open spec fn cpu_dirty_map_wf(container_map: ContainerLockedMap, cpu_set_map: CpuSetLockedMap, process_map: ProcessLockedMap,
         cpu_array:CpuLockedArray, tlb: CpuTLB, pagetable_map: PageTableLockedMap, needflush: PcidNeedFlushArray) -> bool
     {

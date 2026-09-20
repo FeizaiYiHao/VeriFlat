@@ -31,6 +31,8 @@ verus! {
             thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) == Some(e_ptr)
     }
 
+    // Proof dependencies (confirmed): thread_perms_wf,
+    // thread_endpoint_ref_counter_wf.
     #[verifier::opaque]
     pub open spec fn thread_endpoint_queue_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool 
         recommends
@@ -77,6 +79,8 @@ verus! {
 
     }
 
+    // Proof dependencies (confirmed): thread_perms_wf,
+    // thread_endpoint_ref_counter_wf, container_endpoint_wf.
     #[verifier::opaque]
     pub open spec fn container_thread_endpoint_wf(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool 
     {

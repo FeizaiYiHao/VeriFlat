@@ -148,44 +148,32 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             spec_va_4k_valid_imply_indices_valid();
         };
         assert(spec_index2va(spec_va2index(va)) == va) by {
-            spec_va_4k_index_roundtrip();
+            spec_va_4k_index_roundtrip_at(
+                va, va_l4i, va_l3i, va_l2i, va_l1i,
+            );
         };
         assert(
             start_l4i < va_l4i
                 || (start_l4i == va_l4i
                     && (start_l3i < va_l3i
                         || (start_l3i == va_l3i && start_l2i <= va_l2i)))
-        ) by (bit_vector)
-            requires
-                pei_valid(start_l4i),
-                pei_valid(start_l3i),
-                pei_valid(start_l2i),
-                pei_valid(start_l1i),
-                pei_valid(va_l4i),
-                pei_valid(va_l3i),
-                pei_valid(va_l2i),
-                pei_valid(va_l1i),
-                spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i))
-                    <= spec_index2va((va_l4i, va_l3i, va_l2i, va_l1i)),
-        ;
+        ) by {
+            spec_index2va_le_implies_4k_indices_lex_le(
+                (start_l4i, start_l3i, start_l2i, start_l1i),
+                (va_l4i, va_l3i, va_l2i, va_l1i),
+            );
+        };
         assert(
             va_l4i < end_l4i
                 || (va_l4i == end_l4i
                     && (va_l3i < end_l3i
                         || (va_l3i == end_l3i && va_l2i <= end_l2i)))
-        ) by (bit_vector)
-            requires
-                pei_valid(va_l4i),
-                pei_valid(va_l3i),
-                pei_valid(va_l2i),
-                pei_valid(va_l1i),
-                pei_valid(end_l4i),
-                pei_valid(end_l3i),
-                pei_valid(end_l2i),
-                pei_valid(end_l1i),
-                spec_index2va((va_l4i, va_l3i, va_l2i, va_l1i))
-                    <= spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i)),
-        ;
+        ) by {
+            spec_index2va_le_implies_4k_indices_lex_le(
+                (va_l4i, va_l3i, va_l2i, va_l1i),
+                (end_l4i, end_l3i, end_l2i, end_l1i),
+            );
+        };
     }
 
     pub fn va_range_structure_present(
@@ -218,24 +206,17 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         let end = va2index(end_va);
         proof {
             assert(spec_index2va(start) == start_va) by {
-                spec_va_4k_index_roundtrip();
+                spec_va_4k_index_roundtrip_at(
+                    start_va, start.0, start.1, start.2, start.3,
+                );
             };
             assert(spec_index2va(end) == end_va) by {
-                spec_va_4k_index_roundtrip();
+                spec_va_4k_index_roundtrip_at(
+                    end_va, end.0, end.1, end.2, end.3,
+                );
             };
+            spec_index2va_le_implies_4k_indices_lex_le(start, end);
         }
-        assert(
-            spec_v2l4index(start_va) < spec_v2l4index(end_va)
-                || (spec_v2l4index(start_va) == spec_v2l4index(end_va)
-                    && (spec_v2l3index(start_va) < spec_v2l3index(end_va)
-                        || (spec_v2l3index(start_va) == spec_v2l3index(end_va)
-                            && spec_v2l2index(start_va) <= spec_v2l2index(end_va))))
-        ) by (bit_vector)
-            requires
-                spec_va_4k_valid(start_va),
-                spec_va_4k_valid(end_va),
-                start_va <= end_va,
-        ;
         let ret = self.structure_range_present(
             (start.0, start.1, start.2),
             (end.0, end.1, end.2),

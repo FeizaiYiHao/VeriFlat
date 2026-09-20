@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
-use super::unmap_4k_reclaim_eof::remove_last_4k_mapping_to_allocator_eof;
-use super::unmap_4k_reclaim_spec::remove_last_4k_mapping_to_allocator_transition_framing;
+use super::unmap_4k_reclaim_eof::reclaim_last_4k_mapping_to_cpu_cache_eof;
+use super::unmap_4k_reclaim_spec::reclaim_last_4k_mapping_to_cpu_cache_transition;
 
 verus! {
 pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, counter: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, cache_perm: Tracked<&LockPerm>)
@@ -57,7 +57,6 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
-        final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
         final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
@@ -78,13 +77,11 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_4k_at_depth(depth) == *final(counter),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
-        final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
         final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() + if depth == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { 1int } else { 0int },
         final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() == if depth < old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().update(depth as int, *final(counter)) } else { old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() },
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-        final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
         final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator_ptr),
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota == old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota,
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + 1,
@@ -93,14 +90,17 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
 {
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() < usize::MAX) by {
-        reveal(allocator_perms_wf); reveal(allocator_free_page_ptrs_wf);
+        allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
+        reveal(allocator_free_page_ptrs_wf);
         let allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
-        assert(allocator.wf() && allocator.cpu_caches_wf()) by { reveal(allocator_perms_wf); };
+        assert(allocator.wf() && allocator.cpu_caches_wf());
         assert(allocator.global_pool.view().len() <= NUM_PAGES * 4096) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); allocator.global_pool.view().lemma_len_view(); seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize); };
         assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
             if !(forall|i: int| #![trigger allocator.cpu_caches.view().spec_index(i)] 0 <= i < NUM_CPUS ==> allocator.cpu_caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK) {
                 let i = choose|i: int| #![trigger allocator.cpu_caches.view().spec_index(i)] 0 <= i < NUM_CPUS && allocator.cpu_caches.view().spec_index(i).view().linked_list.len() > ALLOCATOR_MAX_WATERMARK;
-                assert(index_valid(NUM_CPUS, i as usize)) by(nonlinear_arith) requires 0 <= i, i < NUM_CPUS;
+                assert(index_valid(NUM_CPUS, i as usize)) by {
+                    reveal(index_valid);
+                };
                 assert(allocator.cpu_caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK) by { allocator.cpu_caches.lemma_view_index(i as usize); allocator.cpu_caches.spec_index(i as usize).view().view().linked_list.lemma_len_view(); };
             }
             seq_fold_upper_bound(allocator.cpu_caches.view(), |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
@@ -112,20 +112,25 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         let indirect = krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view();
         lemma_process_effective_quota_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view().owned_processes.view(), krnl.prc_mp);
         let effective = |t: RwLockThreadPtr| thread_effective_quota_4k(krnl.thr_mp.spec_index(t));
-        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t))) && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_int_set_fold_nonneg(direct, effective); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t))) && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(direct, effective); };
         lemma_thread_direct_pending_4k_fold_nonneg(direct, krnl.thr_mp);
         lemma_thread_indirect_pending_4k_fold_nonneg(indirect, krnl.thr_mp, depth as int);
         if depth == krnl.thr_mp.spec_index(thread_ptr).view().container_depth {
             let value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
-            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view()) && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_int_set_fold_ge_member(direct, value, thread_ptr); };
+            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view()) && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(direct, value, thread_ptr); };
         } else {
             let value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth as int) as int;
-            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth as int)) && indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_int_set_fold_ge_member(indirect, value, thread_ptr); };
+            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth as int)) && indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(indirect, value, thread_ptr); };
         }
     };
     let page_index = page_ptr2page_index(page_ptr);
     let indices = va2index(va);
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { reveal(pagetable_perms_wf); spec_va_4k_index_roundtrip(); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by {
+        pagetable_perms_wf_at(krnl.pt_mp, pagetable);
+        spec_va_4k_index_roundtrip_at(
+            va, indices.0, indices.1, indices.2, indices.3,
+        );
+    };
     let l1_ptr;
     {
         let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
@@ -135,9 +140,19 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         let l2 = pt.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
         l1_ptr = l2.addr;
     }
-    assert(krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))) by { reveal(page_array_wf); reveal(mapped_4k_page_pagetable_wf); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+    assert(krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))) by {
+        page_ptr_valid_imply_page_index_valid();
+        page_array_wf_at(krnl.pg_arr, page_index);
+        reveal(mapped_4k_page_pagetable_wf);
+        page_ptr_roundtrip();
+    };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
-    assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && !krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)) by { reveal(thread_perms_wf); reveal(allocator_perms_wf); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
+    assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && !krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)) by {
+        thread_perms_wf_at(krnl.thr_mp, thread_ptr);
+        allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
+        reveal(container_allocator_free_4k_page_wf);
+        reveal(container_allocator_cpu_cache_free_4k_page_wf);
+    };
     let node_addr;
     let tracked node_perm;
     {
@@ -161,10 +176,10 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
             reveal(typed_lock_maps_aligned);
             reveal(LockedMap::typed_lock_map_aligned);
         };
-        assert(remove_last_4k_mapping_to_allocator_transition_framing(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
-            reveal(remove_last_4k_mapping_to_allocator_transition_framing);
+        assert(reclaim_last_4k_mapping_to_cpu_cache_transition(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
+            reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
         };
-        remove_last_4k_mapping_to_allocator_eof(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr);
+        reclaim_last_4k_mapping_to_cpu_cache_eof(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr);
         assert(typed_lock_maps_aligned(krnl, lctx)) by { reveal(LockedMap::typed_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         assert(krnl.pt_mp.spec_index(pagetable).view().user_view().mapping_4k =~= old(krnl).pt_mp.spec_index(pagetable).view().user_view().mapping_4k) by { vstd::map::axiom_map_ext_equal(krnl.pt_mp.spec_index(pagetable).view().user_view().mapping_4k, old(krnl).pt_mp.spec_index(pagetable).view().user_view().mapping_4k); };
         assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };

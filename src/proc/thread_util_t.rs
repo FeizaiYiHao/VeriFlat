@@ -8,10 +8,9 @@ use vstd::simple_pptr::*;
     /// `RwLock<T>` and mint the corresponding `LockPerm`.
     ///
     /// This is a MINT, not an acquire: the page is exclusively ours (staged,
-    /// slot write-locked), so no other thread can contend on the new thread
-    /// lock and no wait cycle is possible. The retype reinterprets the page's
-    /// physical memory as a `ThreadRwLock`, initializes it with `thread_value`,
-    /// sets the lock state to Write, and registers `Thread(page_ptr)` in `lctx`.
+    /// slot write-locked), so no other thread can contend on the new object
+    /// lock and no wait cycle is possible. The retype preserves the current
+    /// kernel-view locking phase while registering the fresh object in `lctx`.
     ///
     /// The `thread_map` domain growth is done separately by
     /// `LockedMap::insert_with_perm`; the page-state flip and process unstage
@@ -51,12 +50,14 @@ use vstd::simple_pptr::*;
                 major: value.current_lock_major(),
                 minor: page_ptr,
             }),
-            lock_ensures(old(lctx), final(lctx), LockId{
-                container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
-                process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
-                major: value.current_lock_major(),
-                minor: page_ptr,
-            }, obj_id.view()),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((ret.1.view().ordering_lock_id(), obj_id.view())),
+            typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
+                lock_id: ret.1.view().ordering_lock_id(),
+                mode: TypedLockMode::Write,
+            }),
+            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
     {
         unimplemented!()
     }
@@ -97,12 +98,14 @@ use vstd::simple_pptr::*;
                 major: value.current_lock_major(),
                 minor: page_ptr,
             }),
-            lock_ensures(old(lctx), final(lctx), LockId{
-                container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
-                process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
-                major: value.current_lock_major(),
-                minor: page_ptr,
-            }, obj_id.view()),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((ret.1.view().ordering_lock_id(), obj_id.view())),
+            typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
+                lock_id: ret.1.view().ordering_lock_id(),
+                mode: TypedLockMode::Write,
+            }),
+            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
     {
         unimplemented!()
     }
@@ -132,19 +135,44 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(page_ptr),
             final(self).dom().contains(page_ptr),
-            forall|ptr: usize| #![auto]
-                old(self).dom().contains(ptr)
-                ==> final(self).spec_index(ptr) == old(self).spec_index(ptr),
+            forall|ptr: usize|
+                #![trigger old(self).dom().contains(ptr)]
+                old(self).dom().contains(ptr) ==> {
+                    &&& final(self).dom().contains(ptr)
+                    &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
+                },
             final(self).spec_index(page_ptr).view() == value,
             final(self).spec_index(page_ptr).view_rodata() == rodata,
             final(self).spec_index(page_ptr).view_ghost() == ghost,
+            final(self).spec_index(page_ptr).is_init(),
+            final(self).spec_index(page_ptr).inv(),
             !final(self).spec_index(page_ptr).being_killed(),
+            final(self).lock_id_by_key(page_ptr) == (LockId {
+                container: if rodata.container_depth() != LockOwnerId::NotApp {
+                    rodata.container_depth()
+                } else {
+                    value.container_depth()
+                },
+                process: if rodata.process_depth() != LockOwnerId::NotApp {
+                    rodata.process_depth()
+                } else {
+                    value.process_depth()
+                },
+                major: value.current_lock_major(),
+                minor: page_ptr,
+            }),
             final(self).spec_index(page_ptr).wlocked_by(final(lctx)),
             final(self).spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
-            lock_ensures(old(lctx), final(lctx), final(self).lock_id_by_key(page_ptr), obj_id.view()),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).lock_id_by_key(page_ptr), obj_id.view())),
+            typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
+                lock_id: final(self).lock_id_by_key(page_ptr),
+                mode: TypedLockMode::Write,
+            }),
             lock_id_set_aligned(final(lctx)),
     {
         let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
@@ -177,19 +205,44 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(page_ptr),
             final(self).dom().contains(page_ptr),
-            forall|ptr: usize| #![auto]
-                old(self).dom().contains(ptr)
-                ==> final(self).spec_index(ptr) == old(self).spec_index(ptr),
+            forall|ptr: usize|
+                #![trigger old(self).dom().contains(ptr)]
+                old(self).dom().contains(ptr) ==> {
+                    &&& final(self).dom().contains(ptr)
+                    &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
+                },
             final(self).spec_index(page_ptr).view() == value,
             final(self).spec_index(page_ptr).view_rodata() == rodata,
             final(self).spec_index(page_ptr).view_ghost() == ghost,
+            final(self).spec_index(page_ptr).is_init(),
+            final(self).spec_index(page_ptr).inv(),
             !final(self).spec_index(page_ptr).being_killed(),
+            final(self).lock_id_by_key(page_ptr) == (LockId {
+                container: if rodata.container_depth() != LockOwnerId::NotApp {
+                    rodata.container_depth()
+                } else {
+                    value.container_depth()
+                },
+                process: if rodata.process_depth() != LockOwnerId::NotApp {
+                    rodata.process_depth()
+                } else {
+                    value.process_depth()
+                },
+                major: value.current_lock_major(),
+                minor: page_ptr,
+            }),
             final(self).spec_index(page_ptr).wlocked_by(final(lctx)),
             final(self).spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
-            lock_ensures(old(lctx), final(lctx), final(self).lock_id_by_key(page_ptr), obj_id.view()),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).lock_id_by_key(page_ptr), obj_id.view())),
+            typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
+                lock_id: final(self).lock_id_by_key(page_ptr),
+                mode: TypedLockMode::Write,
+            }),
             lock_id_set_aligned(final(lctx)),
     {
         let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
@@ -197,6 +250,208 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         );
         self.insert_with_perm(page_ptr, Tracked(rwlock_perm));
         Tracked(lock_perm)
+    }
+}
+
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>
+    LockedMap<usize, T, ROT, GhostT, NO_KILL_STATE> {
+    #[verifier::spinoff_prover]
+    pub fn retype_4k_as_unlocked_singleton(
+        &mut self,
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm4k>,
+        cpu_id: CpuId,
+        lock_thread_id: LockThreadId,
+        Ghost(obj_id): Ghost<KernelObjId>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().is_empty(),
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= set![page_ptr],
+            final(self).spec_index(page_ptr).view() == value,
+            final(self).spec_index(page_ptr).view_rodata() == rodata,
+            final(self).spec_index(page_ptr).view_ghost() == ghost,
+            final(self).spec_index(page_ptr).is_init(),
+            final(self).spec_index(page_ptr).inv(),
+            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).locking_thread() is None,
+    {
+        let tracked mut lctx =
+            LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let Tracked(lock_perm) = self.retype_4k_and_insert(
+            page_ptr,
+            value,
+            rodata,
+            Ghost(ghost),
+            Tracked(page_perm),
+            Tracked(&mut lctx),
+            Ghost(obj_id),
+        );
+        self.wunlock(
+            page_ptr,
+            Tracked(&mut lctx),
+            Tracked(lock_perm),
+            Ghost(obj_id),
+        );
+    }
+
+    #[verifier::spinoff_prover]
+    pub fn retype_2m_as_unlocked_singleton(
+        &mut self,
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm2m>,
+        cpu_id: CpuId,
+        lock_thread_id: LockThreadId,
+        Ghost(obj_id): Ghost<KernelObjId>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().is_empty(),
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= set![page_ptr],
+            final(self).spec_index(page_ptr).view() == value,
+            final(self).spec_index(page_ptr).view_rodata() == rodata,
+            final(self).spec_index(page_ptr).view_ghost() == ghost,
+            final(self).spec_index(page_ptr).is_init(),
+            final(self).spec_index(page_ptr).inv(),
+            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).locking_thread() is None,
+    {
+        let tracked mut lctx =
+            LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let Tracked(lock_perm) = self.retype_2m_and_insert(
+            page_ptr,
+            value,
+            rodata,
+            Ghost(ghost),
+            Tracked(page_perm),
+            Tracked(&mut lctx),
+            Ghost(obj_id),
+        );
+        self.wunlock(
+            page_ptr,
+            Tracked(&mut lctx),
+            Tracked(lock_perm),
+            Ghost(obj_id),
+        );
+    }
+}
+
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>
+    LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {
+    #[verifier::spinoff_prover]
+    pub fn retype_4k_as_unlocked_singleton(
+        &mut self,
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm4k>,
+        cpu_id: CpuId,
+        lock_thread_id: LockThreadId,
+        Ghost(obj_id): Ghost<KernelObjId>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().is_empty(),
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= set![page_ptr],
+            final(self).spec_index(page_ptr).view() == value,
+            final(self).spec_index(page_ptr).view_rodata() == rodata,
+            final(self).spec_index(page_ptr).view_ghost() == ghost,
+            final(self).spec_index(page_ptr).is_init(),
+            final(self).spec_index(page_ptr).inv(),
+            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).locking_thread() is None,
+    {
+        let tracked mut lctx =
+            LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let Tracked(lock_perm) = self.retype_4k_and_insert(
+            page_ptr,
+            value,
+            rodata,
+            Ghost(ghost),
+            Tracked(page_perm),
+            Tracked(&mut lctx),
+            Ghost(obj_id),
+        );
+        self.wunlock(
+            page_ptr,
+            Tracked(&mut lctx),
+            Tracked(lock_perm),
+            Ghost(obj_id),
+        );
+    }
+
+    #[verifier::spinoff_prover]
+    pub fn retype_2m_as_unlocked_singleton(
+        &mut self,
+        page_ptr: PagePtr,
+        value: T,
+        rodata: ROT,
+        Ghost(ghost): Ghost<GhostT>,
+        Tracked(page_perm): Tracked<PagePerm2m>,
+        cpu_id: CpuId,
+        lock_thread_id: LockThreadId,
+        Ghost(obj_id): Ghost<KernelObjId>,
+    )
+        requires
+            old(self).perms_wf(),
+            old(self).dom().is_empty(),
+            page_perm.is_init(),
+            page_perm.addr() == page_ptr,
+            value.inv(),
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            final(self).perms_wf(),
+            final(self).dom() =~= set![page_ptr],
+            final(self).spec_index(page_ptr).view() == value,
+            final(self).spec_index(page_ptr).view_rodata() == rodata,
+            final(self).spec_index(page_ptr).view_ghost() == ghost,
+            final(self).spec_index(page_ptr).is_init(),
+            final(self).spec_index(page_ptr).inv(),
+            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).locking_thread() is None,
+    {
+        let tracked mut lctx =
+            LocalContext::new_bootstrap(cpu_id, lock_thread_id);
+        let Tracked(lock_perm) = self.retype_2m_and_insert(
+            page_ptr,
+            value,
+            rodata,
+            Ghost(ghost),
+            Tracked(page_perm),
+            Tracked(&mut lctx),
+            Ghost(obj_id),
+        );
+        self.wunlock(
+            page_ptr,
+            Tracked(&mut lctx),
+            Tracked(lock_perm),
+            Ghost(obj_id),
+        );
     }
 }
 
@@ -218,35 +473,20 @@ impl KernelK {
             lock_id_set_aligned(old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).pt_mp == old(self).pt_mp,
-            final(self).it_mp == old(self).it_mp,
-            final(self).irt == old(self).irt,
-            final(self).pg_arr == old(self).pg_arr,
-            final(self).cpu_arr == old(self).cpu_arr,
-            final(self).pcid_needflush == old(self).pcid_needflush,
-            final(self).cpu_published == old(self).cpu_published,
-            final(self).ctn_mp == old(self).ctn_mp,
-            final(self).sched_mp == old(self).sched_mp,
-            final(self).pcid_allc_mp == old(self).pcid_allc_mp,
-            final(self).cpu_set_mp == old(self).cpu_set_mp,
-            final(self).prc_mp == old(self).prc_mp,
-            final(self).ep_mp == old(self).ep_mp,
-            final(self).allc_4k_mp == old(self).allc_4k_mp,
-            final(self).allc_2m_mp == old(self).allc_2m_mp,
-            final(self).allc_1g_mp == old(self).allc_1g_mp,
-            final(self).cpu_tlb == old(self).cpu_tlb,
-            final(self).iommu_tlb == old(self).iommu_tlb,
-            final(self).rt_ctn == old(self).rt_ctn,
-            final(self).dflt_pt == old(self).dflt_pt,
+            *final(self) == (KernelK {
+                thr_mp: final(self).thr_mp,
+                ..*old(self)
+            }),
             final(self).thr_mp.perms_wf(),
             final(self).thr_mp.dom() =~= old(self).thr_mp.dom().insert(page_ptr),
             final(self).thr_mp.dom().contains(page_ptr),
-            forall|ptr: RwLockThreadPtr| #![auto]
-                old(self).thr_mp.dom().contains(ptr) ==> final(self).thr_mp.spec_index(ptr) == old(self).thr_mp.spec_index(ptr),
             forall|ptr: RwLockThreadPtr|
-                #![trigger old(self).thr_mp.lock_id_by_key(ptr)]
-                #![trigger final(self).thr_mp.lock_id_by_key(ptr)]
-                old(self).thr_mp.dom().contains(ptr) ==> final(self).thr_mp.lock_id_by_key(ptr) == old(self).thr_mp.lock_id_by_key(ptr),
+                #![trigger old(self).thr_mp.dom().contains(ptr)]
+                old(self).thr_mp.dom().contains(ptr) ==> {
+                    &&& final(self).thr_mp.dom().contains(ptr)
+                    &&& final(self).thr_mp.spec_index(ptr)
+                        == old(self).thr_mp.spec_index(ptr)
+                },
             final(self).thr_mp.spec_index(page_ptr).is_init(),
             final(self).thr_mp.spec_index(page_ptr).view() == thread_value,
             final(self).thr_mp.spec_index(page_ptr).being_killed() == false,
@@ -255,14 +495,14 @@ impl KernelK {
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).thr_mp.lock_id_by_key(page_ptr),
             final(self).thr_mp.lock_id_by_key(page_ptr) == (LockId {
-                container: LockOwnerId::NotApp,
-                process: LockOwnerId::NotApp,
+                container: thread_value.container_depth(),
+                process: thread_value.process_depth(),
                 major: thread_value.current_lock_major(),
                 minor: page_ptr,
             }),
             final(self).thr_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() is Acquire,
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).thr_mp.lock_id_by_key(page_ptr), KernelObjId::Thread(page_ptr))),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(page_ptr), TypedHeldLock {
                 lock_id: final(self).thr_mp.lock_id_by_key(page_ptr),
@@ -272,15 +512,32 @@ impl KernelK {
             lock_id_set_aligned(final(lctx)),
     {
         proof {
-            assert(!old(lctx).thread_lock_map().dom().contains(page_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(
+                !old(lctx).thread_lock_map().dom().contains(page_ptr)
+            ) by {
+                reveal(typed_lock_maps_aligned);
+                reveal(LockedMap::typed_lock_map_aligned);
+            };
+            assert(
+                old(lctx).typed_lock_entry(
+                    KernelObjId::Thread(page_ptr),
+                ) is None
+            );
         }
-        let (Tracked(thread_rwlock_perm), Tracked(thread_perm)) = retype_page_perm_to_rwlock::<Thread, (), (), THREAD_HAS_KILL_STATE>(
-            page_ptr, thread_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx),
+        let Tracked(thread_perm) = self.thr_mp.retype_4k_and_insert(
+            page_ptr,
+            thread_value,
+            (),
+            Ghost(()),
+            Tracked(page_perm),
+            Tracked(&mut *lctx),
             Ghost(KernelObjId::Thread(page_ptr)),
         );
-        self.thr_mp.insert_with_perm(page_ptr, Tracked(thread_rwlock_perm));
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(typed_lock_maps_aligned);
+                reveal(LockedMap::typed_lock_map_aligned);
+            };
         }
         Tracked(thread_perm)
     }

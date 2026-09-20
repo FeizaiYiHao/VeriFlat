@@ -3,7 +3,9 @@ use crate::*;
 
 verus! {
 #[verifier::opaque]
-pub open spec fn transfer_staged_page_preserved_objects_transition_framing(
+/// Transfers one staged 4K page from the parent container's ownership set to
+/// the child container's. Only that page entry and the two containers change.
+pub open spec fn staged_4k_page_container_transfer_transition(
     pre: KernelK, post: KernelK, page_ptr: PagePtr,
     staging_thread_ptr: RwLockThreadPtr,
     parent: RwLockContainerPtr, child: RwLockContainerPtr,

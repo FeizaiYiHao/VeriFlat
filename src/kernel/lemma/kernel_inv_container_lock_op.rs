@@ -43,7 +43,7 @@ pub proof fn container_lock_op_preserves_invariant_fields(
 {
 }
 
-pub proof fn container_no_change_imply_memory_management_inv(pre: KernelK, post: KernelK)
+pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
         container_process_wf(pre.ctn_mp, pre.prc_mp),
@@ -79,7 +79,7 @@ pub proof fn container_no_change_imply_memory_management_inv(pre: KernelK, post:
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
 }
 
-pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post: KernelK)
+pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
         container_process_wf(post.ctn_mp, post.prc_mp),
@@ -95,8 +95,8 @@ pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post
     ensures
         post.process_management_inv(),
 {
-    assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { lemma_no_change_imply_container_pcid_allocator_wf_forall(); };
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_no_change_imply_process_pcid_allocator_wf_for_container_fields_forall(); };
+    assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { lemma_container_pcid_allocator_wf_preserved_for_container_invariant_fields_forall(); };
+    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_container_invariant_fields_forall(); };
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert({
         &&& pre.ctn_mp.dom().contains(pre.rt_ctn)
@@ -123,7 +123,7 @@ pub proof fn container_no_change_imply_process_management_inv(pre: KernelK, post
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
 }
 
-pub proof fn container_no_change_imply_cpu_dirty_map_wf(pre: KernelK, post: KernelK)
+pub proof fn cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre: KernelK, post: KernelK)
     requires
         cpu_dirty_map_wf(pre.ctn_mp, pre.cpu_set_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp, pre.pcid_needflush),
         container_cpu_wf(pre.ctn_mp, pre.cpu_set_mp, pre.cpu_arr),

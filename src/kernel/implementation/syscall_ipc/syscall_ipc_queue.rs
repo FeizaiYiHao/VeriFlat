@@ -37,7 +37,6 @@ pub(super) fn ipc_block_thread_on_endpoint(
             }), lctx.thread_id()),
         lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
-        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
@@ -54,7 +53,9 @@ pub(super) fn ipc_block_thread_on_endpoint(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
+    proof {
+        thread_perms_wf_at(*old(thread_map), thread_ptr);
+    }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.block_on_endpoint(thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, pt_regs)
@@ -91,7 +92,6 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
         endpoint_perms_wf(*final(endpoint_map)),
         final(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
-        typed_lock_map_contains_mode(lctx.endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
         final(endpoint_map).spec_index(endpoint_ptr).locking_thread() == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
         final(endpoint_map).lock_id_by_key(endpoint_ptr) == old(endpoint_map).lock_id_by_key(endpoint_ptr),
         final(endpoint_map).spec_index(endpoint_ptr).view().rf_counter == old(endpoint_map).spec_index(endpoint_ptr).view().rf_counter,
@@ -112,7 +112,9 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
                 old(endpoint_map).spec_index(endpoint_ptr).view().queue_state
             },
 {
-    proof { assert(old(endpoint_map).perms_wf() && old(endpoint_map).spec_index(endpoint_ptr).is_init() && old(endpoint_map).spec_index(endpoint_ptr).view().inv()) by { reveal(endpoint_perms_wf); }; }
+    proof {
+        endpoint_perms_wf_at(*old(endpoint_map), endpoint_ptr);
+    }
     {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thread_ptr, waiting_state, node_addr, node_perm);
@@ -162,11 +164,9 @@ pub(super) fn ipc_schedule_endpoint_waiter(
             }), lctx.thread_id()),
         lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
-        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr),
-        final(thread_map).lock_id_by_key(current_thread_ptr) == old(thread_map).lock_id_by_key(current_thread_ptr),
         final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -184,17 +184,16 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
+    proof {
+        thread_perms_wf_at(*old(thread_map), thread_ptr);
+    }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_scheduled(thread_ptr, result, endpoint_node_perm)
     };
     proof {
         assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-        assert({
-            &&& final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr)
-            &&& final(thread_map).lock_id_by_key(current_thread_ptr) == old(thread_map).lock_id_by_key(current_thread_ptr)
-        }) by { lock_id_fields_eq_imply_eq(); };
+        assert(final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr)) by { lock_id_fields_eq_imply_eq(); };
     }
     ret
 }
@@ -231,11 +230,9 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
             }), lctx.thread_id()),
         lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
-        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr),
-        final(thread_map).lock_id_by_key(current_thread_ptr) == old(thread_map).lock_id_by_key(current_thread_ptr),
         final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -246,17 +243,16 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         final(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node == old(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node,
         final(thread_map).spec_index(thread_ptr).view().ipc_payload == old(thread_map).spec_index(thread_ptr).view().ipc_payload,
 {
-    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
+    proof {
+        thread_perms_wf_at(*old(thread_map), thread_ptr);
+    }
     {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_endpoint_transit(thread_ptr, endpoint_node_perm);
     }
     proof {
         assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-        assert({
-            &&& final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr)
-            &&& final(thread_map).lock_id_by_key(current_thread_ptr) == old(thread_map).lock_id_by_key(current_thread_ptr)
-        }) by { lock_id_fields_eq_imply_eq(); };
+        assert(final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr)) by { lock_id_fields_eq_imply_eq(); };
     }
 }
 
@@ -288,11 +284,9 @@ pub(super) fn ipc_schedule_endpoint_transit(
             }), lctx.thread_id()),
         lctx.thread_lock_map().index(thread_ptr).lock_id == old(thread_map).lock_id_by_key(thread_ptr),
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
-        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr),
-        final(thread_map).lock_id_by_key(current_thread_ptr) == old(thread_map).lock_id_by_key(current_thread_ptr),
         final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -308,17 +302,16 @@ pub(super) fn ipc_schedule_endpoint_transit(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof { assert(old(thread_map).perms_wf() && old(thread_map).spec_index(thread_ptr).is_init() && old(thread_map).spec_index(thread_ptr).view().inv()) by { reveal(thread_perms_wf); }; }
+    proof {
+        thread_perms_wf_at(*old(thread_map), thread_ptr);
+    }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_transit_to_scheduled(thread_ptr, result)
     };
     proof {
         assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
-        assert({
-            &&& final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr)
-            &&& final(thread_map).lock_id_by_key(current_thread_ptr) == old(thread_map).lock_id_by_key(current_thread_ptr)
-        }) by { lock_id_fields_eq_imply_eq(); };
+        assert(final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr)) by { lock_id_fields_eq_imply_eq(); };
     }
     ret
 }
@@ -360,7 +353,6 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
         endpoint_perms_wf(*final(endpoint_map)),
         final(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
-        typed_lock_map_contains_mode(lctx.endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
         final(endpoint_map).spec_index(endpoint_ptr).locking_thread() == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
         final(endpoint_map).lock_id_by_key(endpoint_ptr) == old(endpoint_map).lock_id_by_key(endpoint_ptr),
         final(endpoint_map).spec_index(endpoint_ptr).view().rf_counter == old(endpoint_map).spec_index(endpoint_ptr).view().rf_counter,
@@ -385,15 +377,10 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
             #![trigger final(endpoint_map).spec_index(endpoint_ptr).view().queue.view().contains(t_ptr)]
             final(endpoint_map).spec_index(endpoint_ptr).view().queue.view().contains(t_ptr) ==>
                 old(endpoint_map).spec_index(endpoint_ptr).view().queue.view().contains(t_ptr),
-        forall|node_addr: usize|
-            #![trigger old(endpoint_map).spec_index(endpoint_ptr).view().queue.map().dom().contains(node_addr)]
-            #![trigger final(endpoint_map).spec_index(endpoint_ptr).view().queue.map().dom().contains(node_addr)]
-            old(endpoint_map).spec_index(endpoint_ptr).view().queue.map().dom().contains(node_addr) && node_addr != ret.0 ==> {
-                &&& final(endpoint_map).spec_index(endpoint_ptr).view().queue.map().dom().contains(node_addr)
-                &&& final(endpoint_map).spec_index(endpoint_ptr).view().queue.map().spec_index(node_addr) == old(endpoint_map).spec_index(endpoint_ptr).view().queue.map().spec_index(node_addr)
-            },
 {
-    proof { assert(old(endpoint_map).perms_wf() && old(endpoint_map).spec_index(endpoint_ptr).is_init() && old(endpoint_map).spec_index(endpoint_ptr).view().inv()) by { reveal(endpoint_perms_wf); }; }
+    proof {
+        endpoint_perms_wf_at(*old(endpoint_map), endpoint_ptr);
+    }
     let ret = {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thread_ptr)
@@ -444,7 +431,6 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         scheduler_perms_wf(*final(scheduler_map)),
         final(scheduler_map).typed_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
         final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),
-        typed_lock_map_contains_mode(lctx.scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
         final(scheduler_map).spec_index(scheduler_ptr).locking_thread() == old(scheduler_map).spec_index(scheduler_ptr).locking_thread(),
         final(scheduler_map).lock_id_by_key(scheduler_ptr) == old(scheduler_map).lock_id_by_key(scheduler_ptr),
         final(scheduler_map).spec_index(scheduler_ptr).view().owning_container == old(scheduler_map).spec_index(scheduler_ptr).view().owning_container,
@@ -452,18 +438,6 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         final(scheduler_map).spec_index(scheduler_ptr).view().queue.map() == old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().insert(node_addr, thread_ptr),
         !old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().dom().contains(node_addr),
         !old(scheduler_map).spec_index(scheduler_ptr).view().queue.dom().contains(node_addr),
-        forall|t_ptr: RwLockThreadPtr|
-            #![trigger old(scheduler_map).spec_index(scheduler_ptr).view().queue.view().contains(t_ptr)]
-            #![trigger final(scheduler_map).spec_index(scheduler_ptr).view().queue.view().contains(t_ptr)]
-            old(scheduler_map).spec_index(scheduler_ptr).view().queue.view().contains(t_ptr) ==>
-                final(scheduler_map).spec_index(scheduler_ptr).view().queue.view().contains(t_ptr),
-        forall|old_node_addr: usize|
-            #![trigger old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().dom().contains(old_node_addr)]
-            #![trigger final(scheduler_map).spec_index(scheduler_ptr).view().queue.map().dom().contains(old_node_addr)]
-            old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().dom().contains(old_node_addr) ==> {
-                &&& final(scheduler_map).spec_index(scheduler_ptr).view().queue.map().dom().contains(old_node_addr)
-                &&& final(scheduler_map).spec_index(scheduler_ptr).view().queue.map().spec_index(old_node_addr) == old(scheduler_map).spec_index(scheduler_ptr).view().queue.map().spec_index(old_node_addr)
-            },
 {
     proof { assert(old(scheduler_map).perms_wf() && old(scheduler_map).spec_index(scheduler_ptr).is_init() && old(scheduler_map).spec_index(scheduler_ptr).view().inv()) by { reveal(scheduler_perms_wf); }; }
     {

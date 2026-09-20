@@ -4,9 +4,11 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    #[verifier::opaque]
-    pub open spec fn container_pages_wf(page_array: PageLockedArray, container_map: ContainerLockedMap) -> bool{
-        &&&
+
+    pub open spec fn container_pages_forward_wf(
+        page_array: PageLockedArray,
+        container_map: ContainerLockedMap,
+    ) -> bool {
         forall|page_index:PageIndex|
         #![trigger page_array.spec_index(page_index).view().view().state]
         #![trigger container_map.dom().contains(page_index2page_ptr(page_index))]
@@ -17,8 +19,12 @@ verus! {
             ==>
             container_map.dom().contains(page_index2page_ptr(page_index))
         }
+    }
 
-        &&&
+    pub open spec fn container_pages_backward_wf(
+        page_array: PageLockedArray,
+        container_map: ContainerLockedMap,
+    ) -> bool {
         forall|c_ptr:RwLockContainerPtr|
         #![trigger page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state]
         #![trigger container_map.dom().contains(c_ptr)]
@@ -29,7 +35,15 @@ verus! {
         {
             page_array.spec_index(page_ptr2page_index(c_ptr)).view().view().state matches PageState::Allocated2m{state: Allocated2MPageState::AsContainer}
         }
+    }
 
+    #[verifier::opaque]
+    pub open spec fn container_pages_wf(
+        page_array: PageLockedArray,
+        container_map: ContainerLockedMap,
+    ) -> bool {
+        &&& container_pages_forward_wf(page_array, container_map)
+        &&& container_pages_backward_wf(page_array, container_map)
     }
     
 }

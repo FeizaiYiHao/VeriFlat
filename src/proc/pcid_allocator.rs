@@ -14,6 +14,39 @@ pub struct PcidAllocator {
 }
 
 impl PcidAllocator {
+    pub fn new_boot_root(
+        owning_container: RwLockContainerPtr,
+        root_process: RwLockProcessPtr,
+    ) -> (ret: Self)
+        ensures
+            ret.inv(),
+            ret.owning_container.view() == owning_container,
+            ret.container_depth.view() == 0,
+            ret.ref_counters.spec_index(1) == 1,
+            ret.id_to_proc.view().spec_index(1)
+                =~= set![root_process],
+            forall|id: Pcid|
+                #![trigger ret.ref_counters.spec_index(id)]
+                pcid_valid(id)
+                && id != 1
+                ==> ret.ref_counters.spec_index(id) == 0,
+            forall|id: Pcid|
+                #![trigger ret.id_to_proc.view()
+                    .spec_index(id as int)]
+                pcid_valid(id)
+                && id != 1
+                ==> ret.id_to_proc.view()
+                    .spec_index(id as int).is_empty(),
+    {
+        let mut ret = Self::new_empty(owning_container, 0);
+        assert(ret.process_is_unallocated(root_process)) by {
+            reveal(PcidAllocator::process_is_unallocated);
+            broadcast use vstd::seq::lemma_seq_new_index;
+        }
+        ret.alloc(1, root_process);
+        ret
+    }
+
     pub fn new_empty(owning_container: RwLockContainerPtr, container_depth: usize) -> (ret: Self)
         ensures
             ret.inv(),
@@ -127,12 +160,6 @@ impl PcidAllocator {
                 self.id_to_proc.view().spec_index(id as int).insert(process_ptr),
             ),
         );
-        proof {
-            vstd::set::lemma_set_insert_len(
-                old(self).id_to_proc.view().spec_index(id as int),
-                process_ptr,
-            );
-        }
     }
 }
 

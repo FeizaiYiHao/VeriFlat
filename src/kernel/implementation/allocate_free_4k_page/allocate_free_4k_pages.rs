@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use vstd::assert_sets_equal;
 use crate::*;
-use super::allocate_free_4k_impl_basd::allocate_free_4k_page;
+use super::allocate_free_4k_impl_base::allocate_free_4k_page;
 
 verus! {
 
@@ -22,7 +22,6 @@ pub open spec fn allocated_4k_page_lock_perms_wf(
             &&& page_ptr_valid(page_ptr)
             &&& perms.spec_index(page_ptr).state() is WriteLock
             &&& perms.spec_index(page_ptr).thread_id() == lctx.thread_id()
-            &&& lctx.page_lock_map().dom().contains(page_ptr2page_index(page_ptr))
             &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k { thread_ptr }
             &&& krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr
             &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
@@ -230,9 +229,6 @@ pub fn allocate_free_4k_pages<const N: usize>(
             page_lock_perms.tracked_insert(page_ptr, page_lock_perm);
         }
         pages.push_unique(page_ptr);
-        proof {
-            assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())) by { seq_push_lemma::<PagePtr>(); pages.view().to_set_ensures(); vstd::set::axiom_set_ext_equal(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())); };
-        }
         i = i + 1;
     }
     (pages, Tracked(page_lock_perms))

@@ -68,22 +68,22 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     let thread_ptr = cpu.current_thread().unwrap();
     let container_ptr = cpu.owning_container();
     let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
-    if let (false, _) = container_res {
+    if container_res.is_none() {
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorContainerKilled;
     }
-    let Tracked(container_perm) = container_res.1.unwrap();
+    let Tracked(container_perm) = container_res.unwrap();
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-    if let (false, _) = process_res {
+    if process_res.is_none() {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorProcessKilled;
     }
-    let Tracked(process_perm) = process_res.1.unwrap();
+    let Tracked(process_perm) = process_res.unwrap();
     let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
-    if let (false, _) = thread_res {
+    if thread_res.is_none() {
         assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
@@ -91,7 +91,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorThreadKilled;
     }
-    let Tracked(thread_perm) = thread_res.1.unwrap();
+    let Tracked(thread_perm) = thread_res.unwrap();
     let process = krnl.prc_mp.borrow_rodata(process_ptr).borrow();
     let pagetable = process.pagetable;
     let cr3 = process.cr3;
@@ -112,13 +112,14 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
-    let mut result = RetValueType::Error;
-    if pt.kernel_l4_end <= indices.0 && share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+    let result = if pt.kernel_l4_end <= indices.0 && share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
         assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
         unmap_4k_range(krnl, &va_range, pagetable, thread_ptr, cpu_id, cr3, pcid, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&thread_perm), Tracked(&pagetable_perm));
         assert(va_range.view() =~= Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) by { va_range.va_range_lemma(); };
-        result = RetValueType::Success;
-    }
+        RetValueType::Success
+    } else {
+        RetValueType::Error
+    };
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); };

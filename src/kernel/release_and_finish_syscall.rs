@@ -20,9 +20,14 @@ verus! {
             post.thr_mp.lock_id_by_key(thread_ptr)
                 == pre.thr_mp.lock_id_by_key(thread_ptr),
     {
-        reveal(thread_perms_wf);
-        reveal(LockedMap::typed_lock_map_aligned);
-        lock_id_fields_eq_imply_eq();
+        assert(post.thr_mp.lock_id_by_key(thread_ptr)
+                == post_lctx.thread_lock_map().index(thread_ptr).lock_id
+            && pre.thr_mp.lock_id_by_key(thread_ptr)
+                == pre_lctx.thread_lock_map().index(thread_ptr).lock_id) by {
+            reveal(thread_perms_wf);
+            reveal(LockedMap::typed_lock_map_aligned);
+            lock_id_fields_eq_imply_eq();
+        };
     }
 
     pub proof fn cpu_lock_id_preserved_for_typed_maps_unchanged(
@@ -62,9 +67,14 @@ verus! {
             post.prc_mp.lock_id_by_key(process_ptr)
                 == pre.prc_mp.lock_id_by_key(process_ptr),
     {
-        reveal(process_perms_wf);
-        reveal(LockedMap::typed_lock_map_aligned);
-        lock_id_fields_eq_imply_eq();
+        assert(post.prc_mp.lock_id_by_key(process_ptr)
+                == post_lctx.process_lock_map().index(process_ptr).lock_id
+            && pre.prc_mp.lock_id_by_key(process_ptr)
+                == pre_lctx.process_lock_map().index(process_ptr).lock_id) by {
+            reveal(process_perms_wf);
+            reveal(LockedMap::typed_lock_map_aligned);
+            lock_id_fields_eq_imply_eq();
+        };
     }
 
     pub proof fn endpoint_lock_id_preserved_for_typed_maps_unchanged(
@@ -122,7 +132,6 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
-            lctx.kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == lctx.thread_id(),
@@ -174,7 +183,6 @@ verus! {
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
         proof {
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
             steps.end_kernel_step(&*krnl, &*lctx);
         }
     }
@@ -192,7 +200,6 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).inv(),
-            lctx.kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == lctx.thread_id(),
@@ -252,7 +259,6 @@ verus! {
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
         proof {
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
             steps.end_kernel_step(&*krnl, &*lctx);
         }
     }
@@ -274,7 +280,6 @@ verus! {
             old(krnl).thr_mp.dom().contains(thread_ptr),
             !(old(krnl).thr_mp.spec_index(thread_ptr).view().state
                 is IPC_ENDPOINT_TRANSIT),
-            old(lctx).kernel_view_locking_state() is Acquire,
             old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
             cpu_lock_perm.view().state() is WriteLock,
             cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -334,6 +339,7 @@ verus! {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
+            final(krnl).ep_mp == old(krnl).ep_mp,
             final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
             final(steps).steps == old(steps).steps,
@@ -348,7 +354,6 @@ verus! {
         );
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
             steps.end_kernel_step(&*krnl, &*lctx);
         }
     }

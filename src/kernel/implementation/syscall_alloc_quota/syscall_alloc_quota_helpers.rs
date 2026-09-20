@@ -107,28 +107,6 @@ verus! {
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             lock_id_set_aligned(final(lctx)),
-            final(krnl).pt_mp     == old(krnl).pt_mp,
-            final(krnl).it_mp     == old(krnl).it_mp,
-            final(krnl).pg_arr        == old(krnl).pg_arr,
-            final(krnl).sched_mp     == old(krnl).sched_mp,
-            final(krnl).pcid_allc_mp == old(krnl).pcid_allc_mp,
-            final(krnl).cpu_set_mp == old(krnl).cpu_set_mp,
-            final(krnl).thr_mp        == old(krnl).thr_mp,
-            final(krnl).ep_mp      == old(krnl).ep_mp,
-            final(krnl).allc_2m_mp  == old(krnl).allc_2m_mp,
-            final(krnl).allc_1g_mp  == old(krnl).allc_1g_mp,
-            final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
-            final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() is None,
-            final(krnl).ctn_mp.unchanged_except(&old(krnl).ctn_mp, container_ptr),
-            final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() is None,
-            final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, process_ptr),
-            final(krnl).prc_mp.spec_index(process_ptr).locking_thread() is None,
-            final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
-            final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp,alloc_ptr_4k),
-            final(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).quota.locking_thread() is None,
-            final(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches,
-            final(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool,
-            final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).no_locks_held(),
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
             final(steps).steps == record_user_view_change(old(steps).steps,kernel_k_to_kernel_u(*old(krnl)),kernel_k_to_kernel_u(*final(krnl))),
@@ -138,15 +116,10 @@ verus! {
     {
 
         proof {
-            assert(krnl.prc_mp.perms_wf()) by { reveal(process_perms_wf); };
-            assert(krnl.allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
             assert(
-                krnl.prc_mp.view().spec_index(process_ptr).is_init()
-                && krnl.prc_mp.view().spec_index(process_ptr).addr() == process_ptr
+                krnl.prc_mp.perms_wf()
+                && krnl.allc_4k_mp.perms_wf()
                 && krnl.prc_mp.spec_index(process_ptr).is_init()
-                && krnl.allc_4k_mp.view().spec_index(alloc_ptr_4k).is_init()
-                && krnl.allc_4k_mp.view().spec_index(alloc_ptr_4k).addr()
-                    == alloc_ptr_4k
             ) by { reveal(process_perms_wf); reveal(allocator_perms_wf); };
         }
         {
@@ -158,16 +131,12 @@ verus! {
         }
 
         proof {
-            assert(
-                allocator_perms_wf(krnl.allc_4k_mp)
-                && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()
-                && process_perms_wf(krnl.prc_mp)
-            ) by { reveal(allocator_perms_wf); reveal(process_perms_wf); };
-            assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+            assert(allocator_perms_wf(krnl.allc_4k_mp) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); };
+            assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
             assert(krnl.memory_management_inv()) by {
-                assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { lemma_no_change_imply_allocator_pages_wf_forall(); };
-                assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { lemma_no_change_imply_container_process_page_pagetable_wf_forall(); };
-                assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { lemma_no_change_imply_process_pages_wf_forall(); };
+                assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall(); };
+                assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
                 assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by {
                     reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf);
                     lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, alloc_amount as int);
@@ -181,31 +150,34 @@ verus! {
                     container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(
                         krnl.ctn_mp, krnl.thr_mp, krnl.allc_1g_mp,old(krnl).prc_mp, krnl.prc_mp,);
                 };
-                assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { lemma_no_change_imply_container_allocator_wf_forall(); };
-                assert(allocator_free_page_ptrs_wf(krnl.allc_4k_mp)) by { lemma_no_change_imply_allocator_free_page_ptrs_wf_forall(); };
-                assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { lemma_no_change_imply_process_pagetable_match_forall(); };
-                assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { lemma_no_change_imply_process_iommu_table_match_forall(); };
+                assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { lemma_container_allocator_wf_preserved_for_allocator_quota_value_framed_fields_forall(); };
+                assert(allocator_free_page_ptrs_wf(krnl.allc_4k_mp)) by { lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall(); };
+                assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
+                assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
                 assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(krnl),*krnl,); };
             };
             assert(krnl.process_management_inv()) by {
-                assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { lemma_no_change_imply_process_pcid_allocator_wf_forall(); };
-                assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_no_change_imply_container_process_wf_forall(); };
-                assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_no_change_imply_per_container_process_tree_wf_forall(); };
-                assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { lemma_no_change_imply_process_cpu_wf_forall(); };
-                assert(process_empty_lists_wlocked(krnl.prc_mp)) by { reveal(process_empty_lists_wlocked); reveal(process_thread_wf); };
-                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { lemma_no_change_imply_process_thread_wf_forall(); };
+                assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
+                assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
+                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_empty_lists_wlocked); reveal(process_thread_wf); lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall(); };
             };
-            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { lemma_no_change_imply_cpu_dirty_map_wf_forall(); };
-            assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { lemma_no_change_imply_iommu_root_table_process_wf_forall(); };
-            assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { lemma_no_change_imply_process_pci_function_ownership_wf_forall(); };
-            assert(iommu_tlb_wf_spec(krnl.iommu_tlb, &krnl.irt, krnl.prc_mp, krnl.it_mp)) by { lemma_no_change_imply_iommu_tlb_wf_spec_forall(); };
+            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_tlb_wf_spec(krnl.iommu_tlb, &krnl.irt, krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
         }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
-        krnl.wunlock_quota_4k(alloc_ptr_4k, Tracked(&mut *lctx), quota_lock_perm);
+        krnl.wunlock_allocator_quota_4k(alloc_ptr_4k, Tracked(&mut *lctx), quota_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
         proof {
-            assert(lctx.no_locks_held()) by {    broadcast use vstd::map::lemma_map_remove_domain; };
+            if alloc_amount > 0 {
+                assert(kernel_u_only_process_quota_4k_changed(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), process_ptr, alloc_amount as int)) by {
+                    reveal(kernel_k_to_kernel_u);
+                };
+            }
             if alloc_amount == 0 {
                 assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl),krnl); };
             }

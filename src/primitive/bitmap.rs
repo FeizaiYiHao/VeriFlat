@@ -39,17 +39,23 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
             ret.inv(),
             ret.view() == Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}),
     {
-        proof {
-            let s = Seq::new(N as nat, |i: int| i as usize);
-            assert forall|i: usize| #![auto] usize_in_range::<N>(i) implies s.to_set().contains(i) by {
-                assert(s.spec_index(i as int) == i);
-            }
-        }
-        let ghost_map = Ghost(Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}));
-        Self{
+        let ret = Self{
             bit_map: Array::new_with_init_value(value),
-            map:ghost_map
-        }
+            map: Ghost(Map::new(
+                Seq::new(N as nat, |i: int| i as usize).to_set(),
+                |k: usize| value,
+            )),
+        };
+        assert forall|i: usize| #![auto] usize_in_range::<N>(i)
+            implies ret.view().dom().contains(i)
+        by {
+            vstd::seq::lemma_seq_new_index(
+                N as nat,
+                |i: int| i as usize,
+                i as int,
+            );
+        };
+        ret
     }
 
     pub open spec fn spec_index(&self, index: usize) -> T {
@@ -83,15 +89,6 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
         proof {
             self.map = Ghost(self.map.view().insert(index, value));
         }
-
-
-        // assert(        
-        //     forall|i:usize|
-        //         #![trigger self@.dom().contains(i)]
-        //         i != index 
-        //         ==> 
-        //         (self@.dom().contains(i) == old(self)@.dom().contains(i))
-        // );
     }
 
 }

@@ -16,8 +16,8 @@ pub struct PageAllocator{
 
 impl LockInvTrait for PageAllocator{
     open spec fn inv(&self) -> bool {
-        &&&
-        self.wf()
+        &&& self.wf()
+        &&& self.quota.inv()
     }
 }
 
@@ -54,9 +54,9 @@ impl PageAllocator{
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        proof {
+        assert(linked_list.view().len() == linked_list.length) by {
             reveal(LinkedList::wf_value_list);
-        }
+        };
         let mut cache_array:
             Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS>
                 = Array::new();
@@ -345,18 +345,16 @@ impl PageAllocator{
     {
         let ghost old_caches = self.cpu_caches;
         let ret = self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
-        proof {
-            assert(self.total_free_pages_wf()) by {
-                assert forall|i: usize| index_valid(NUM_CPUS, i)
-                    implies #[trigger] old_caches.view().spec_index(i as int).view().linked_list.len()
-                        == self.cpu_caches.view().spec_index(i as int).view().linked_list.len()
-                by {
-                    old_caches.lemma_view_index(i);
-                    self.cpu_caches.lemma_view_index(i);
-                };
-                lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
+        assert(self.total_free_pages_wf()) by {
+            assert forall|i: int| 0 <= i < old_caches.view().len()
+                implies #[trigger] old_caches.view().spec_index(i).view().linked_list.len()
+                    == self.cpu_caches.view().spec_index(i).view().linked_list.len()
+            by {
+                old_caches.lemma_view_index(i as usize);
+                self.cpu_caches.lemma_view_index(i as usize);
             };
-        }
+            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
+        };
         ret
     }
 
@@ -392,18 +390,16 @@ impl PageAllocator{
     {
         let ghost old_caches = self.cpu_caches;
         self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
-        proof {
-            assert(self.total_free_pages_wf()) by {
-                assert forall|i: usize| index_valid(NUM_CPUS, i)
-                    implies #[trigger] old_caches.view().spec_index(i as int).view().linked_list.len()
-                        == self.cpu_caches.view().spec_index(i as int).view().linked_list.len()
-                by {
-                    old_caches.lemma_view_index(i);
-                    self.cpu_caches.lemma_view_index(i);
-                };
-                lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
+        assert(self.total_free_pages_wf()) by {
+            assert forall|i: int| 0 <= i < old_caches.view().len()
+                implies #[trigger] old_caches.view().spec_index(i).view().linked_list.len()
+                    == self.cpu_caches.view().spec_index(i).view().linked_list.len()
+            by {
+                old_caches.lemma_view_index(i as usize);
+                self.cpu_caches.lemma_view_index(i as usize);
             };
-        }
+            lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view());
+        };
     }
 
     pub fn wlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
@@ -430,7 +426,7 @@ impl PageAllocator{
                 process: old(self).global_pool.view().process_depth(),
                 major: old(self).global_pool.view().current_lock_major(),
                 minor: old(self).global_pool.view().lock_minor(),
-            }, KernelObjId::AllocatorGlobalPoll(
+            }, KernelObjId::AllocatorGlobalPool(
                 page_size.view(), alloc_ptr.view())),
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
@@ -443,7 +439,7 @@ impl PageAllocator{
             major: self.global_pool.view().current_lock_major(),
             minor: self.global_pool.view().lock_minor(),
         });
-        self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view())))
+        self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
     }
 
     pub fn wunlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
@@ -456,7 +452,7 @@ impl PageAllocator{
             lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
             old(lctx).lock_id_set().contains((
                 old(self).global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view()))),
+                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()))),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
@@ -465,7 +461,7 @@ impl PageAllocator{
             unlock_ensures(
                 old(lctx),
                 final(lctx),
-                KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view()),
+                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()),
                 old(self).global_pool.lock_id(),
             ),
             final(self).cpu_caches == old(self).cpu_caches,
@@ -473,7 +469,7 @@ impl PageAllocator{
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        self.global_pool.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPoll(page_size.view(), alloc_ptr.view())))
+        self.global_pool.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
     }
 }
 

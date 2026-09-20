@@ -43,7 +43,7 @@ verus! {
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k >= 3,
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(va),
-            old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_4k_entry_useable(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)),
+            old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_4k_entry_usable(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va)),
         ensures
             forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
                 old(lctx).pagetable_lock_map().dom().contains(pt)

@@ -17,7 +17,7 @@ pub open spec fn thread_staged_pages_4k_wf(
 ) -> bool {
     &&&
     forall|page_index:PageIndex|
-        #![trigger page_array.spec_index(page_index)]
+        #![trigger index_valid(NUM_PAGES, page_index)]
         index_valid(NUM_PAGES, page_index)
         && page_array.spec_index(page_index).view().view().state is Owned4k
         ==>
@@ -30,7 +30,8 @@ pub open spec fn thread_staged_pages_4k_wf(
         }
     &&&
     forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
-        #![trigger thread_map.dom().contains(p_ptr), page_ptr2page_index(page_ptr)]
+        #![trigger thread_map.spec_index(p_ptr).view()
+            .temp_alloc_cache_4k.view().contains(page_ptr)]
         thread_map.dom().contains(p_ptr)
         && thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
         ==>
@@ -42,14 +43,12 @@ pub open spec fn thread_staged_pages_4k_wf(
 
 // ---------- 2m ----------
 
-#[verifier::opaque]
-pub open spec fn thread_staged_pages_2m_wf(
+pub open spec fn thread_staged_pages_2m_forward_wf(
     thread_map: ThreadLockedMap,
     page_array: PageLockedArray,
 ) -> bool {
-    &&&
     forall|page_index:PageIndex|
-        #![trigger index_valid(NUM_PAGES, page_index)]
+        #![trigger page_array.spec_index(page_index).view().view().state]
         index_valid(NUM_PAGES, page_index)
         && page_array.spec_index(page_index).view().view().state is Owned2m
         ==>
@@ -60,7 +59,12 @@ pub open spec fn thread_staged_pages_2m_wf(
             &&&
             thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_index2page_ptr(page_index))
         }
-    &&&
+}
+
+pub open spec fn thread_staged_pages_2m_backward_wf(
+    thread_map: ThreadLockedMap,
+    page_array: PageLockedArray,
+) -> bool {
     forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
         #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
         thread_map.dom().contains(p_ptr)
@@ -70,6 +74,15 @@ pub open spec fn thread_staged_pages_2m_wf(
         &&
         page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state ==
             PageState::Owned2m{thread_ptr: p_ptr}
+}
+
+#[verifier::opaque]
+pub open spec fn thread_staged_pages_2m_wf(
+    thread_map: ThreadLockedMap,
+    page_array: PageLockedArray,
+) -> bool {
+    &&& thread_staged_pages_2m_forward_wf(thread_map, page_array)
+    &&& thread_staged_pages_2m_backward_wf(thread_map, page_array)
 }
 
 // ---------- 1g ----------
@@ -94,7 +107,8 @@ pub open spec fn thread_staged_pages_1g_wf(
         }
     &&&
     forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
-        #![trigger thread_map.dom().contains(p_ptr), page_ptr_valid(page_ptr)]
+        #![trigger thread_map.spec_index(p_ptr).view()
+            .temp_alloc_cache_1g.view().contains(page_ptr)]
         thread_map.dom().contains(p_ptr)
         && thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)
         ==>
