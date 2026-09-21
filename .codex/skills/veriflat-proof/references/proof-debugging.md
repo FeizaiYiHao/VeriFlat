@@ -103,7 +103,9 @@
   expanded diagnostic.
 - Delete suspected asserts, reveals, and ghosts one at a time. A failure after
   deleting a block may mean a nested reveal was lost, not that the block's
-  quantified conclusion was necessary.
+  quantified conclusion was necessary. This includes reveals of non-opaque
+  functions such as `reveal(KernelK::inv)`: they assert `fuel_bool` as a ground
+  fact and can be the only thing keeping a fragile E-matching chain alive.
 - After changing result or constructor contracts, revisit the callers' old tail
   assertions, state rechecks, lemma calls, and history snapshots. Test deletion
   before adding more scaffolding. A more direct contract changes solver search;
