@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 use crate::*;
 use vstd::simple_pptr::*;
 
@@ -288,20 +287,9 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         let tracked mut lctx =
             LocalContext::new_bootstrap(cpu_id, lock_thread_id);
         let Tracked(lock_perm) = self.retype_4k_and_insert(
-            page_ptr,
-            value,
-            rodata,
-            Ghost(ghost),
-            Tracked(page_perm),
-            Tracked(&mut lctx),
-            Ghost(obj_id),
+            page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id),
         );
-        self.wunlock(
-            page_ptr,
-            Tracked(&mut lctx),
-            Tracked(lock_perm),
-            Ghost(obj_id),
-        );
+        self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 
     #[verifier::spinoff_prover]
@@ -337,20 +325,9 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         let tracked mut lctx =
             LocalContext::new_bootstrap(cpu_id, lock_thread_id);
         let Tracked(lock_perm) = self.retype_2m_and_insert(
-            page_ptr,
-            value,
-            rodata,
-            Ghost(ghost),
-            Tracked(page_perm),
-            Tracked(&mut lctx),
-            Ghost(obj_id),
+            page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id),
         );
-        self.wunlock(
-            page_ptr,
-            Tracked(&mut lctx),
-            Tracked(lock_perm),
-            Ghost(obj_id),
-        );
+        self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 }
 
@@ -389,20 +366,9 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         let tracked mut lctx =
             LocalContext::new_bootstrap(cpu_id, lock_thread_id);
         let Tracked(lock_perm) = self.retype_4k_and_insert(
-            page_ptr,
-            value,
-            rodata,
-            Ghost(ghost),
-            Tracked(page_perm),
-            Tracked(&mut lctx),
-            Ghost(obj_id),
+            page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id),
         );
-        self.wunlock(
-            page_ptr,
-            Tracked(&mut lctx),
-            Tracked(lock_perm),
-            Ghost(obj_id),
-        );
+        self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 
     #[verifier::spinoff_prover]
@@ -438,20 +404,9 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         let tracked mut lctx =
             LocalContext::new_bootstrap(cpu_id, lock_thread_id);
         let Tracked(lock_perm) = self.retype_2m_and_insert(
-            page_ptr,
-            value,
-            rodata,
-            Ghost(ghost),
-            Tracked(page_perm),
-            Tracked(&mut lctx),
-            Ghost(obj_id),
+            page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id),
         );
-        self.wunlock(
-            page_ptr,
-            Tracked(&mut lctx),
-            Tracked(lock_perm),
-            Ghost(obj_id),
-        );
+        self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 }
 
@@ -515,7 +470,6 @@ impl KernelK {
             assert(
                 !old(lctx).thread_lock_map().dom().contains(page_ptr)
             ) by {
-                reveal(typed_lock_maps_aligned);
                 reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(
@@ -525,19 +479,10 @@ impl KernelK {
             );
         }
         let Tracked(thread_perm) = self.thr_mp.retype_4k_and_insert(
-            page_ptr,
-            thread_value,
-            (),
-            Ghost(()),
-            Tracked(page_perm),
-            Tracked(&mut *lctx),
-            Ghost(KernelObjId::Thread(page_ptr)),
+            page_ptr, thread_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)),
         );
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                reveal(typed_lock_maps_aligned);
-                reveal(LockedMap::typed_lock_map_aligned);
-            };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         Tracked(thread_perm)
     }

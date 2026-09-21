@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use crate::*;
 
 /// TODO just use va
@@ -70,9 +69,6 @@ impl IommuTLB {
                 vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
     {
         let ghost domain_ids = Set::range(0usize, VTD_DOMAIN_COUNT);
-        proof {
-            broadcast use vstd::set_lib::range_set_properties;
-        }
         let ret = Self {
             domain_tlbs: Ghost(Map::new(
                 domain_ids,
@@ -117,24 +113,6 @@ impl IommuTLB {
             ==> self.spec_index(did).submap_of(&old.spec_index(did))
     }
 
-    pub open spec fn invalidate_global_ensures(&self, old: &Self) -> bool {
-        &&& self.invalidation_only_removes(old)
-        &&& forall|did: VtdDomainId|
-            #![trigger self.spec_index(did)]
-            vtd_domain_id_valid(did)
-            ==> self.spec_index(did).is_empty()
-    }
-
-    pub open spec fn invalidate_domain_ensures(
-        &self,
-        old: &Self,
-        did: VtdDomainId,
-    ) -> bool {
-        &&& vtd_domain_id_valid(did)
-        &&& self.invalidation_only_removes(old)
-        &&& self.spec_index(did).is_empty()
-    }
-
     pub open spec fn page_invalidation_target_absent(
         &self,
         did: VtdDomainId,
@@ -161,17 +139,5 @@ impl IommuTLB {
         }
     }
 
-    pub open spec fn invalidate_page_ensures(
-        &self,
-        old: &Self,
-        did: VtdDomainId,
-        iova: Iova,
-        page_size: PageSize,
-    ) -> bool {
-        &&& vtd_domain_id_valid(did)
-        &&& self.invalidation_only_removes(old)
-        &&& self.page_invalidation_target_absent(did, iova, page_size)
-    }
 }
-
 }

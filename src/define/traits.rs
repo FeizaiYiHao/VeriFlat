@@ -3,7 +3,6 @@ use vstd::prelude::*;
 use super::*;
 
 verus! {
-
     // pub trait ToUsize: Sized{
     //     spec fn spec_to_usize(&self) -> usize;
 
@@ -25,7 +24,7 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //         ensures
     //             ret.to_usize() == v,
@@ -33,7 +32,7 @@ verus! {
     //         RwLockPageTableRoot{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 
     // impl ToUsize for RwLockContainerPtr{
@@ -43,7 +42,7 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //         ensures
     //             ret.to_usize() == v,
@@ -51,7 +50,7 @@ verus! {
     //         RwLockContainerPtr{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 
     // impl ToUsize for RwLockProcessPtr{
@@ -61,13 +60,13 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //     {
     //         RwLockProcessPtr{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 
     // impl ToUsize for RwLockThreadPtr{
@@ -77,13 +76,13 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //     {
     //         RwLockThreadPtr{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 
     // impl ToUsize for RwLockEndpointPtr{
@@ -93,13 +92,13 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //     {
     //         RwLockEndpointPtr{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 
     // impl ToUsize for RwLockPageAllocatorPtr{
@@ -109,13 +108,13 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //     {
     //         RwLockPageAllocatorPtr{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 
     // impl ToUsize for RwLockSchedulerPtr{
@@ -125,12 +124,12 @@ verus! {
     //     fn to_usize(&self) -> (ret:usize)
     //     {
     //         self.v
-    //     } 
+    //     }
     //     fn from_usize(v:usize) -> (ret:Self)
     //     {
     //         RwLockSchedulerPtr{
     //             v: v,
     //         }
-    //     } 
+    //     }
     // }
 }

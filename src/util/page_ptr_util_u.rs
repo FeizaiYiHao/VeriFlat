@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use vstd::assert_sets_equal;
 verus! {
-
 use crate::*;
 
 /// Page Entry Index valid
@@ -54,9 +53,7 @@ pub fn page_index2page_ptr(i: usize) -> (ret: usize)
     ensures
         ret == spec_page_index2page_ptr(i),
 {
-    proof {
-        lemma_u64_to_usize_roundtrip(MAX_USIZE);
-    }
+    proof { lemma_u64_to_usize_roundtrip(MAX_USIZE); }
     i * 4096usize
 }
 
@@ -325,9 +322,7 @@ pub fn v2l1index(va: usize) -> (ret: L1Index)
         ret == spec_v2l1index(va),
         ret <= 0x1ff,
 {
-    proof {
-        mask_9_bits_le(va as u64 >> 12u64);
-    }
+    proof { mask_9_bits_le(va as u64 >> 12u64); }
     (va as u64 >> 12u64 & 0x1ffu64) as usize
 }
 
@@ -339,9 +334,7 @@ pub fn v2l2index(va: usize) -> (ret: L2Index)
         ret == spec_v2l2index(va),
         ret <= 0x1ff,
 {
-    proof {
-        mask_9_bits_le(va as u64 >> 21u64);
-    }
+    proof { mask_9_bits_le(va as u64 >> 21u64); }
     (va as u64 >> 21u64 & 0x1ffu64) as usize
 }
 
@@ -353,9 +346,7 @@ pub fn v2l3index(va: usize) -> (ret: L3Index)
         ret == spec_v2l3index(va),
         ret <= 0x1ff,
 {
-    proof {
-        mask_9_bits_le(va as u64 >> 30u64);
-    }
+    proof { mask_9_bits_le(va as u64 >> 30u64); }
     (va as u64 >> 30u64 & 0x1ffu64) as usize
 }
 
@@ -367,9 +358,7 @@ pub fn v2l4index(va: usize) -> (ret: L4Index)
         ret == spec_v2l4index(va),
         KERNEL_MEM_END_L4INDEX <= ret <= 0x1ff,
 {
-    proof {
-        mask_9_bits_le(va as u64 >> 39u64);
-    }
+    proof { mask_9_bits_le(va as u64 >> 39u64); }
     (va as u64 >> 39u64 & 0x1ffu64) as usize
 }
 
@@ -433,7 +422,6 @@ pub proof fn va_range_lemma(va: VAddr, len: usize, i: usize, j: usize)
     ensures
         (i == j) == (spec_va_add_range(va, i) == spec_va_add_range(va, j)),
 {
-    reveal(spec_va_add_range);
     assert(spec_va_add_range(va, i) as int == va as int + i as int * 4096) by (bit_vector)
         requires
             i < len,
@@ -445,16 +433,9 @@ pub proof fn va_range_lemma(va: VAddr, len: usize, i: usize, j: usize)
             len <= usize::MAX / 4096,
             va < usize::MAX - len * 4096;
     if spec_va_add_range(va, i) == spec_va_add_range(va, j) {
-        assert(spec_va_add_range(va, i) as int == spec_va_add_range(va, j) as int);
-        assert(i as int * 4096 == j as int * 4096);
         vstd::arithmetic::mul::lemma_mul_is_commutative(i as int, 4096);
         vstd::arithmetic::mul::lemma_mul_is_commutative(j as int, 4096);
-        vstd::arithmetic::mul::lemma_mul_equality_converse(
-            4096,
-            i as int,
-            j as int,
-        );
-        assert(i == j);
+        vstd::arithmetic::mul::lemma_mul_equality_converse(4096, i as int, j as int);
     }
 }
 
@@ -532,13 +513,8 @@ pub proof fn page_ptr_seq_indices_no_duplicates(pages: Seq<PagePtr>)
         0 <= i < j < indices.len()
         implies indices.spec_index(i) != indices.spec_index(j)
     by {
-        assert(pages.spec_index(i) != pages.spec_index(j)) by {
-            reveal(Seq::no_duplicates);
-        };
         page_ptr2page_index_neq(pages.spec_index(i), pages.spec_index(j));
-        reveal(Seq::map_values);
     };
-    reveal(Seq::no_duplicates);
 }
 
 pub proof fn page_ptr_seq_indices_excludes_page(
@@ -558,34 +534,26 @@ pub proof fn page_ptr_seq_indices_excludes_page(
         ).to_set().contains(page_ptr2page_index(excluded_page)),
 {
     pages.to_set_ensures();
-    reveal(Seq::contains);
     let page_ptr_set = pages.to_set();
     let mapped = pages.map_values(
         |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
     ).to_set();
     let mapped_by = page_ptr_set.map_by(
-        |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
-        |index: PageIndex| spec_page_index2page_ptr(index),
+        |page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index),
     );
     assert(mapped =~= mapped_by) by {
         broadcast use Seq::lemma_to_set_map_commutes;
         page_ptr_roundtrip();
         assert_sets_equal!(mapped == mapped_by, index => {
-            page_ptr_set.lemma_map_contains(
-                |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
-                index,
-            );
+            page_ptr_set.lemma_map_contains(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), index);
             page_ptr_set.lemma_map_by_contains(
-                |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
-                |index: PageIndex| spec_page_index2page_ptr(index),
-                index,
+                |page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index), index,
             );
         });
     };
     if mapped.contains(page_ptr2page_index(excluded_page)) {
         page_ptr_set.lemma_map_by_contains(
-            |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
-            |index: PageIndex| spec_page_index2page_ptr(index),
+            |page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index),
             page_ptr2page_index(excluded_page),
         );
         page_ptr_roundtrip();
@@ -733,5 +701,4 @@ pub broadcast proof fn spec_va_4k_index_roundtrip_at(
             && spec_index2va((l4i, l3i, l2i, l1i)) == va
     ) by (bit_vector);
 }
-
 } // verus!

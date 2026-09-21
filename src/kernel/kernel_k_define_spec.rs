@@ -4,7 +4,6 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-
     pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
     pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
     pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>;
@@ -542,5 +541,4 @@ pub proof fn enter_kernel_view_release_preserving_lock_alignments(
     lctx.enter_kernel_view_release();
     assert(krnl.all_objects_unlocked(lctx) == krnl.all_objects_unlocked(old(lctx))) by { reveal(KernelK::all_objects_unlocked); };
 }
-
 }

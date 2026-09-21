@@ -139,7 +139,6 @@ pub proof fn lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant
 {
     reveal(container_thread_endpoint_wf);
     reveal(thread_endpoint_ref_counter_wf);
-    reveal(container_endpoint_wf);
 }
 
 pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
@@ -178,5 +177,4 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
 {
     reveal(thread_endpoint_queue_wf);
 }
-
 }

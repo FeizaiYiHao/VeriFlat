@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 pub open spec fn held_containers_unchanged(
     pre: ContainerLockedMap,
     post: ContainerLockedMap,
@@ -244,7 +243,6 @@ pub proof fn held_pages_unchanged_except_for_changed_set(
         held_pages_unchanged_except(pre, post, lctx, changed),
 {
     reveal(LockedArray::typed_lock_map_aligned);
-    reveal(held_pages_unchanged_except);
 }
 
 pub open spec fn held_cpus_unchanged(
@@ -618,5 +616,4 @@ pub proof fn held_pagetables_unchanged_except_for_unchanged_except(
 {
     reveal(LockedMap::typed_lock_map_aligned);
 }
-
 }

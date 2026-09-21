@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use super::entry::*;
 use super::pagetable_spec::*;
 use crate::*;
@@ -110,10 +109,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pei_valid(end_l3i),
             pei_valid(end_l2i),
             pei_valid(end_l1i),
-            self.spec_structure_range_present(
-                (start_l4i, start_l3i, start_l2i),
-                (end_l4i, end_l3i, end_l2i),
-            ),
+            self.spec_structure_range_present((start_l4i, start_l3i, start_l2i), (end_l4i, end_l3i, end_l2i)),
             spec_va_4k_valid(va),
             spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i)) <= va,
             va <= spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i)),
@@ -158,10 +154,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                     && (start_l3i < va_l3i
                         || (start_l3i == va_l3i && start_l2i <= va_l2i)))
         ) by {
-            spec_index2va_le_implies_4k_indices_lex_le(
-                (start_l4i, start_l3i, start_l2i, start_l1i),
-                (va_l4i, va_l3i, va_l2i, va_l1i),
-            );
+            spec_index2va_le_implies_4k_indices_lex_le((start_l4i, start_l3i, start_l2i, start_l1i), (va_l4i, va_l3i, va_l2i, va_l1i));
         };
         assert(
             va_l4i < end_l4i
@@ -169,10 +162,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                     && (va_l3i < end_l3i
                         || (va_l3i == end_l3i && va_l2i <= end_l2i)))
         ) by {
-            spec_index2va_le_implies_4k_indices_lex_le(
-                (va_l4i, va_l3i, va_l2i, va_l1i),
-                (end_l4i, end_l3i, end_l2i, end_l1i),
-            );
+            spec_index2va_le_implies_4k_indices_lex_le((va_l4i, va_l3i, va_l2i, va_l1i), (end_l4i, end_l3i, end_l2i, end_l1i));
         };
     }
 
@@ -217,10 +207,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             };
             spec_index2va_le_implies_4k_indices_lex_le(start, end);
         }
-        let ret = self.structure_range_present(
-            (start.0, start.1, start.2),
-            (end.0, end.1, end.2),
-        );
+        let ret = self.structure_range_present((start.0, start.1, start.2), (end.0, end.1, end.2));
         if ret {
             assert(self.spec_va_range_structure_present(start_va, end_va)) by {
                 reveal(PageTable::spec_va_range_structure_present);
@@ -332,18 +319,13 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                         assert(self.spec_resolve_mapping_l2(
                             l4i, l3i, probe_l2i,
                         ) is None) by {
-                            reveal(PageTable::wf_l3);
                         };
                     };
                     return false;
                 },
             };
             if !self.l2_structure_range_present(
-                l4i,
-                l3i,
-                &l3_entry,
-                if l3i == start.0 { start.1 } else { 0 },
-                if l3i == end.0 { end.1 } else { 511 },
+                l4i, l3i, &l3_entry, if l3i == start.0 { start.1 } else { 0 }, if l3i == end.0 { end.1 } else { 511 },
             ) {
                 return false;
             }
@@ -415,16 +397,13 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                         assert(self.spec_resolve_mapping_l2(
                             l4i, probe.0, probe.1,
                         ) is None) by {
-                            reveal(PageTable::wf_l4);
                         };
                     };
                     return false;
                 },
             };
             if !self.l3_structure_range_present(
-                l4i,
-                &l4_entry,
-                if l4i == start.0 { (start.1, start.2) } else { (0, 0) },
+                l4i, &l4_entry, if l4i == start.0 { (start.1, start.2) } else { (0, 0) },
                 if l4i == end.0 { (end.1, end.2) } else { (511, 511) },
             ) {
                 return false;
@@ -434,5 +413,4 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         true
     }
 }
-
 } // verus!

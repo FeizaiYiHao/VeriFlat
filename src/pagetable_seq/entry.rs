@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 // use vstd::ptr::PointsTo;
 use crate::*;
 
@@ -17,7 +16,7 @@ pub struct PageEntryPerm {
 }
 
 impl Clone for PageEntryPerm {
-    fn clone(&self) -> (ret:Self) 
+    fn clone(&self) -> (ret:Self)
         ensures
             self == ret,
     {
@@ -30,7 +29,6 @@ impl Clone for PageEntryPerm {
             kernel_present: self.kernel_present,
         }
     }
-
 }
 
 #[derive(Debug)]
@@ -40,7 +38,7 @@ pub struct PageEntry {
     // pub ps: bool,
 }
 impl Clone for PageEntry {
-    fn clone(&self) -> (ret:Self) 
+    fn clone(&self) -> (ret:Self)
         ensures
             self == ret,
     {
@@ -49,7 +47,6 @@ impl Clone for PageEntry {
             perm: self.perm.clone(),
         }
     }
-
 }
 impl PageEntry {
     pub open spec fn is_empty(&self) -> bool {
@@ -252,9 +249,7 @@ pub fn usize2pa(v: usize) -> (ret: PAddr)
         mem_valid(ret),
 {
     let ret = v & MEM_MASK as usize;
-    proof {
-        spec_usize2pa_mem_valid(v);
-    }
+    proof { spec_usize2pa_mem_valid(v); }
     return ret;
 }
 
@@ -300,5 +295,4 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     ;
     ret
 }
-
 } // verus!

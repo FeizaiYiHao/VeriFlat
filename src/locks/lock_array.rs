@@ -10,7 +10,6 @@ verus! {
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArray<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool>{
         array: Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>,
-        
         user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
     }
     impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT,
@@ -279,9 +278,7 @@ verus! {
                 final(self).spec_index(index).lock_id() == old(self).spec_index(index).lock_id()
                     ==> final(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
         {
-            proof {
-                reveal(LockedArray::typed_lock_map_aligned);
-            }
+            proof { reveal(LockedArray::typed_lock_map_aligned); }
             self.borrow_mut(index, Tracked(lctx), lp)
         }
     }
@@ -352,16 +349,9 @@ verus! {
                 // transition (matches `LockedMap::wunlock`). user_view is
                 // separately preserved by unlock_ensures.
                 wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
-                unlock_ensures(
-                    old(lctx),
-                    final(lctx),
-                    obj_id.view(),
-                    old(self).lock_id_by_index(index),
-                ),
+                unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
         {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
         }
-
     }
-
 }

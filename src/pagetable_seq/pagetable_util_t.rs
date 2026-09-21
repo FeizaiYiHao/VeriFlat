@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 use crate::*;
 
 impl KernelK {
@@ -95,9 +94,6 @@ impl KernelK {
                     ==> pagetable_perms_wf(self.pt_mp)
             ) by {
                 reveal(pagetable_perms_wf);
-                reveal(pagetables_inv);
-                broadcast use vstd::set::lemma_set_insert_same;
-                broadcast use vstd::set::lemma_set_insert_different;
             };
             assert(
                 page_pagetable_wf(old(self).pt_mp, old(self).pg_arr)
@@ -107,13 +103,8 @@ impl KernelK {
                 reveal(mapped_4k_page_pagetable_wf);
                 reveal(mapped_2m_page_pagetable_wf);
                 reveal(mapped_1g_page_pagetable_wf);
-                reveal(PageTable::is_empty);
-                broadcast use vstd::set::lemma_set_insert_same;
-                broadcast use vstd::set::lemma_set_insert_different;
             };
-            assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                reveal(LockedMap::typed_lock_map_aligned);
-            };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         Tracked(pagetable_perm)
     }
@@ -192,9 +183,7 @@ impl KernelK {
         );
         self.it_mp.insert_with_perm(page_ptr, Tracked(iommu_table_rwlock_perm));
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                reveal(LockedMap::typed_lock_map_aligned);
-            };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         Tracked(iommu_table_perm)
     }

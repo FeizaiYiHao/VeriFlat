@@ -3,7 +3,6 @@ use vstd::simple_pptr::*;
 use crate::*;
 
 verus! {
-
 /// Approved TCB boundary: consume one owned 4K page permission and initialize
 /// that physical page as a `PageAllocator`. Keep the raw retype private; callers
 /// use `retype_page_to_allocator_and_insert`.
@@ -56,11 +55,7 @@ impl UnLockedMap<usize, PageAllocator> {
                     &&& final(self).spec_index(ptr) == old(self).spec_index(ptr)
                 },
     {
-        let Tracked(allocator_perm) = retype_4k_page_perm_to_allocator(
-            page_ptr,
-            allocator,
-            Tracked(page_perm),
-        );
+        let Tracked(allocator_perm) = retype_4k_page_perm_to_allocator(page_ptr, allocator, Tracked(page_perm));
         self.insert_with_perm(page_ptr, Tracked(allocator_perm));
     }
 
@@ -817,7 +812,6 @@ impl UnLockedMap<usize, PageAllocator> {
         };
         ret
     }
-
 }
 
 impl UnLockedMap<usize, PageAllocator> {
@@ -883,9 +877,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 == old(self).spec_index(alloc_ptr).quota.lock_id(),
             wunlock_ensures(old(self).spec_index(alloc_ptr).quota, final(self).spec_index(alloc_ptr).quota),
             unlock_ensures(
-                old(lctx),
-                final(lctx),
-                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
+                old(lctx), final(lctx), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr),
                 old(self).spec_index(alloc_ptr).quota.lock_id(),
             ),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
@@ -962,9 +954,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
             wunlock_ensures(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view()),
             unlock_ensures(
-                old(lctx),
-                final(lctx),
-                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
+                old(lctx), final(lctx), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id),
                 old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
             ),
             final(self).spec_index(alloc_ptr).cpu_caches.unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
@@ -1037,9 +1027,7 @@ impl UnLockedMap<usize, PageAllocator> {
                 == old(self).spec_index(alloc_ptr).global_pool.lock_id(),
             wunlock_ensures(old(self).spec_index(alloc_ptr).global_pool, final(self).spec_index(alloc_ptr).global_pool),
             unlock_ensures(
-                old(lctx),
-                final(lctx),
-                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr),
+                old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr),
                 old(self).spec_index(alloc_ptr).global_pool.lock_id(),
             ),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
@@ -1050,6 +1038,5 @@ impl UnLockedMap<usize, PageAllocator> {
         let alloc = self.borrow_mut(alloc_ptr);
         alloc.wunlock_global_pool(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
-
 }
 } // verus!

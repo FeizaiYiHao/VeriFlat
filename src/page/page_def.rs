@@ -369,9 +369,6 @@ verus! {
     {
         let Tracked(ret) = take_perm_4k(page);
         page.state = new_state;
-        proof {
-            assert(page.inv());
-        }
         Tracked(ret)
     }
 

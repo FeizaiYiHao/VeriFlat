@@ -86,8 +86,12 @@
   `lemma_process_effective_quota_{2m,1g}_fold_sum_eq_forall`,
   `lemma_thread_effective_quota_2m_fold_{sum_eq,change_by}_forall`,
   `lemma_thread_pending_{4k,2m}_folds_eq_forall`,
-  and `lemma_container_thread_quota_folds_insert_zero_forall`. Keep them
-  inside the consuming scoped assertion.
+  `lemma_container_thread_quota_folds_insert_zero_forall`, and the closure
+  bridges `lemma_process_effective_quota_folds_singleton`,
+  `lemma_thread_quota_folds_empty`, and
+  `lemma_process_effective_quota_folds_insert_zero` (they absorb the
+  `value_fold =~= direct_fold` extensionality step once). Keep them inside the
+  consuming scoped assertion.
 - Do not leave bare lemma calls that seed later solver context. Do not add
   operation-specific wrappers, unapproved framing specs or framing lemmas, or
   proof-only snapshots. A snapshot

@@ -6,13 +6,8 @@ use veriflat_map_4k::share_mapping_4k_target_map_with_shared_prefix;
 use crate::kernel::implementation::map_4k::share_mapping_4k::share_mapping_4k_target_map_with_shared_prefix;
 
 verus! {
-
 pub open spec fn kernel_u_new_process_shared(
-    created_u: KernelU,
-    shared_u: KernelU,
-    parent_ptr: RwLockProcessPtr,
-    child_ptr: RwLockProcessPtr,
-    range: &VaRange4K,
+    created_u: KernelU, shared_u: KernelU, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, range: &VaRange4K,
 ) -> bool {
     let created_child = created_u.process_map.spec_index(child_ptr);
     let child = shared_u.process_map.spec_index(child_ptr);
@@ -41,5 +36,4 @@ pub open spec fn kernel_u_new_process_shared(
     &&& child.owned_threads == created_child.owned_threads
     &&& child.killed == created_child.killed
 }
-
 }

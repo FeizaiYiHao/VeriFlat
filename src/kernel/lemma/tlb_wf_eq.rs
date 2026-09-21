@@ -21,8 +21,7 @@ pub proof fn tlb_wf_spec_preserved_for_4k_mapping_insert(
         post.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va),
         post.spec_index(pagetable_ptr).view().mapping_4k()
             == pre.spec_index(pagetable_ptr).view().mapping_4k().insert(
-                va,
-                post.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va),
+                va, post.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va),
             ),
         post.spec_index(pagetable_ptr).view().mapping_2m()
             == pre.spec_index(pagetable_ptr).view().mapping_2m(),
@@ -33,5 +32,4 @@ pub proof fn tlb_wf_spec_preserved_for_4k_mapping_insert(
 {
     reveal(tlb_wf_spec);
 }
-
 }

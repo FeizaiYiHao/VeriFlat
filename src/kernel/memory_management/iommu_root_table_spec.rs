@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use crate::*;
 
 /// Connects the root table's two logical interfaces to the process map and to
@@ -36,5 +35,4 @@ pub open spec fn iommu_root_table_process_wf(
             }
         }
 }
-
 }

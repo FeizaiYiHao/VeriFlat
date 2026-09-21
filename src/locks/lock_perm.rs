@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::{define::*};
 
 verus! {
-
 pub tracked enum LockState {
     Mutex,
     ReadLock,

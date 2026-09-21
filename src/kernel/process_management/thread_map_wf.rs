@@ -40,7 +40,6 @@ verus! {
             thread_map.spec_index(thread_ptr).view().inv(),
     {
         reveal(thread_perms_wf);
-        reveal(threads_inv);
     }
 
     pub open spec fn thread_endpoint_transit_only_when_wlocked(

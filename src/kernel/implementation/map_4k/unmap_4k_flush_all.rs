@@ -120,7 +120,6 @@ pub fn flush_pagetable_tlbs(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, 
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(&iteration_start, krnl);
             };
             krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
-            assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
         }
         cpu_id = cpu_id + 1;
     }

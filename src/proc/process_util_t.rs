@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 use crate::*;
 
 impl KernelK {
@@ -94,10 +93,7 @@ impl KernelK {
         );
         self.prc_mp.insert_with_perm(page_ptr, Tracked(process_rwlock_perm));
         proof {
-            assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by {
-                reveal(process_perms_wf);
-                reveal(process_tree_fields_wf);
-            };
+            assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         Tracked(process_perm)

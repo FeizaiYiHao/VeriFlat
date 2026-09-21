@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
     /// Container owned Cpu only runs processes and threads of the container
     /// Container cpu bidirectionally points to each other
     #[verifier::opaque]

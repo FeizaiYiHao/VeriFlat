@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 impl KernelK {
     #[verifier::opaque]
     pub open spec fn all_objects_unlocked(&self, lctx: &LocalContext) -> bool {
@@ -71,5 +70,4 @@ impl KernelK {
             self.allc_1g_mp.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.allc_1g_mp.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
     }
 }
-
 }

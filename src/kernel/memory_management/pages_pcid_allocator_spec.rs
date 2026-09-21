@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn pcid_allocator_pages_wf(
     page_array: PageLockedArray,
@@ -29,5 +28,4 @@ pub open spec fn pcid_allocator_pages_wf(
                 state: Allocated2MPageState::AsPcidAllocator,
             })
 }
-
 }

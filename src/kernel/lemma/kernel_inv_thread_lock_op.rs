@@ -149,21 +149,11 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
     allocator_map: PageAllocatorUnLockedMap,
 )
     requires
-        container_process_allocator_quota_4k_wf(
-            container_map,
-            process_map,
-            pre_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_4k_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
         thread_quota_4k_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
-        container_process_allocator_quota_4k_wf(
-            container_map,
-            process_map,
-            post_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_4k_wf(container_map, process_map, post_thread_map, allocator_map),
 {
     reveal(container_process_allocator_quota_4k_wf);
     assert forall|c_ptr: RwLockContainerPtr|
@@ -172,14 +162,8 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
         container_map.dom().contains(c_ptr)
     implies
     {
-        &&& thread_effective_quota_4k_fold_sum(
-                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                post_thread_map,
-            )
-            == thread_effective_quota_4k_fold_sum(
-                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                pre_thread_map,
-            )
+        &&& thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), post_thread_map)
+            == thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), pre_thread_map)
         &&& thread_direct_pending_4k_fold_sum(
                 container_map.spec_index(c_ptr).view_ghost()
                     .owned_threads.view(),
@@ -207,14 +191,10 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
         assert(container_map.spec_index(c_ptr).view_ghost().owned_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         assert(container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().subset_of(pre_thread_map.dom())) by { reveal(container_thread_wf); };
         lemma_thread_direct_pending_4k_fold_eq(
-            container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-            pre_thread_map,
-            post_thread_map,
+            container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), pre_thread_map, post_thread_map,
         );
         lemma_thread_effective_quota_4k_fold_eq(
-            container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-            pre_thread_map,
-            post_thread_map,
+            container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), pre_thread_map, post_thread_map,
         );
         lemma_thread_indirect_pending_4k_fold_eq_at_depth(
             container_map.spec_index(c_ptr).view_ghost()
@@ -234,31 +214,14 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_fields
     allocator_map: PageAllocatorUnLockedMap,
 )
     requires
-        container_process_allocator_quota_4k_wf(
-            container_map,
-            process_map,
-            pre_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_4k_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
-        thread_invariant_fields_unchanged(
-            pre_thread_map,
-            post_thread_map,
-        ),
+        thread_invariant_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
-        container_process_allocator_quota_4k_wf(
-            container_map,
-            process_map,
-            post_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_4k_wf(container_map, process_map, post_thread_map, allocator_map),
 {
     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
-        container_map,
-        process_map,
-        pre_thread_map,
-        post_thread_map,
-        allocator_map,
+        container_map, process_map, pre_thread_map, post_thread_map, allocator_map,
     );
 }
 
@@ -270,24 +233,11 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
     allocator_map: PageAllocatorUnLockedMap,
 )
     requires
-        container_process_allocator_quota_2m_wf(
-            container_map,
-            process_map,
-            pre_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_2m_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
-        thread_quota_2m_fields_unchanged(
-            pre_thread_map,
-            post_thread_map,
-        ),
+        thread_quota_2m_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
-        container_process_allocator_quota_2m_wf(
-            container_map,
-            process_map,
-            post_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_2m_wf(container_map, process_map, post_thread_map, allocator_map),
 {
     reveal(container_process_allocator_quota_2m_wf);
     assert forall|c_ptr: RwLockContainerPtr|
@@ -296,14 +246,8 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
         container_map.dom().contains(c_ptr)
     implies
     {
-        &&& thread_effective_quota_2m_fold_sum(
-                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                post_thread_map,
-            )
-            == thread_effective_quota_2m_fold_sum(
-                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                pre_thread_map,
-            )
+        &&& thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), post_thread_map)
+            == thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), pre_thread_map)
         &&& container_map.spec_index(c_ptr).view_ghost()
             .owned_threads.view().fold(
                 0,
@@ -373,28 +317,14 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_fields
     allocator_map: PageAllocatorUnLockedMap,
 )
     requires
-        container_process_allocator_quota_2m_wf(
-            container_map,
-            process_map,
-            pre_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_2m_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
         thread_invariant_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
-        container_process_allocator_quota_2m_wf(
-            container_map,
-            process_map,
-            post_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_2m_wf(container_map, process_map, post_thread_map, allocator_map),
 {
     container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
-        container_map,
-        process_map,
-        pre_thread_map,
-        post_thread_map,
-        allocator_map,
+        container_map, process_map, pre_thread_map, post_thread_map, allocator_map,
     );
 }
 
@@ -406,24 +336,11 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
     allocator_map: PageAllocatorUnLockedMap,
 )
     requires
-        container_process_allocator_quota_1g_wf(
-            container_map,
-            process_map,
-            pre_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_1g_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
-        thread_quota_1g_fields_unchanged(
-            pre_thread_map,
-            post_thread_map,
-        ),
+        thread_quota_1g_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
-        container_process_allocator_quota_1g_wf(
-            container_map,
-            process_map,
-            post_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_1g_wf(container_map, process_map, post_thread_map, allocator_map),
 {
     reveal(container_process_allocator_quota_1g_wf);
     assert forall|c_ptr: RwLockContainerPtr|
@@ -432,14 +349,8 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fie
         container_map.dom().contains(c_ptr)
     implies
     {
-        &&& thread_effective_quota_1g_fold_sum(
-                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                post_thread_map,
-            )
-            == thread_effective_quota_1g_fold_sum(
-                container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                pre_thread_map,
-            )
+        &&& thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), post_thread_map)
+            == thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), pre_thread_map)
         &&& container_map.spec_index(c_ptr).view_ghost()
             .owned_threads.view().fold(
                 0,
@@ -509,29 +420,14 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_fields
     allocator_map: PageAllocatorUnLockedMap,
 )
     requires
-        container_process_allocator_quota_1g_wf(
-            container_map,
-            process_map,
-            pre_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_1g_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
         thread_invariant_fields_unchanged(pre_thread_map, post_thread_map),
     ensures
-        container_process_allocator_quota_1g_wf(
-            container_map,
-            process_map,
-            post_thread_map,
-            allocator_map,
-        ),
+        container_process_allocator_quota_1g_wf(container_map, process_map, post_thread_map, allocator_map),
 {
     container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
-        container_map,
-        process_map,
-        pre_thread_map,
-        post_thread_map,
-        allocator_map,
+        container_map, process_map, pre_thread_map, post_thread_map, allocator_map,
     );
 }
-
 }

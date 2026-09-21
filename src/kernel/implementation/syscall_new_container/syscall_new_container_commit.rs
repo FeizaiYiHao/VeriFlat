@@ -10,7 +10,7 @@ use super::staged_4k_page_chain::{
 use super::*;
 
 verus! {
-#[verifier::rlimit(40)]
+#[verifier::rlimit(20)]
 #[verifier::spinoff_prover]
 pub(super) fn commit_new_container(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
@@ -122,10 +122,7 @@ pub(super) fn commit_new_container(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
         final(steps).steps.len() <= old(steps).steps.len() + 1,
-        final(steps).steps.subrange(
-            0,
-            old(steps).steps.len() as int,
-        ) == old(steps).steps,
+        final(steps).steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps,
         final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
         final(krnl).ctn_mp.dom().contains(ret.0),
         final(krnl).ctn_mp.spec_index(ret.0)
@@ -187,10 +184,7 @@ pub(super) fn commit_new_container(
             thread_effective_quota_4k(
                 krnl.thr_mp.spec_index(current_thread_ptr),
             ) >= funding_page_count
-        ) by {
-            reveal(thread_effective_quota_4k);
-            reveal(Thread::temp_alloc_clean);
-        };
+        );
     }
     let ghost lctx_before_funding_pages = *lctx;
     let (
@@ -209,27 +203,16 @@ pub(super) fn commit_new_container(
             lctx,
             current_thread_ptr,
             parent_container_ptr,
-        )) by {
-            reveal(allocated_4k_page_lock_perms_wf);
-            reveal(held_pages_unchanged);
-            reveal(Set::contains);
-        };
+        ));
         assert(
             page_ptrs_to_indices(pages_4k.view()).subset_of(
                 lctx_before_funding_pages.page_lock_map().dom(),
             )
-        ) by {
-            reveal(Set::subset_of);
-        };
+        );
         set_disjoint_from_right_subset(
-            page_ptrs_to_indices(funding_pages),
-            lctx_before_funding_pages.page_lock_map().dom(),
-            page_ptrs_to_indices(pages_4k.view()),
+            page_ptrs_to_indices(funding_pages), lctx_before_funding_pages.page_lock_map().dom(), page_ptrs_to_indices(pages_4k.view()),
         );
-        page_ptr_sets_disjoint_from_index_disjoint(
-            funding_pages,
-            pages_4k.view(),
-        );
+        page_ptr_sets_disjoint_from_index_disjoint(funding_pages, pages_4k.view());
     }
     let allocator_quota_4k = funding_page_count - process_quota_4k;
     let allocator_4k_page = *pages_4k.get(0);
@@ -245,20 +228,9 @@ pub(super) fn commit_new_container(
         page_ptr_2m_valid_imply_page_index_2m_valid(
             pcid_allocator_page,
         );
-        distinct_2m_heads_have_disjoint_all_ptrs(
-            page_ptr2page_index(container_page),
-            page_ptr2page_index(pcid_allocator_page),
-        );
-        owned_2m_all_ptrs_belong_to_container(
-            krnl,
-            page_ptr2page_index(container_page),
-            parent_container_ptr,
-        );
-        owned_2m_all_ptrs_belong_to_container(
-            krnl,
-            page_ptr2page_index(pcid_allocator_page),
-            parent_container_ptr,
-        );
+        distinct_2m_heads_have_disjoint_all_ptrs(page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page));
+        owned_2m_all_ptrs_belong_to_container(krnl, page_ptr2page_index(container_page), parent_container_ptr);
+        owned_2m_all_ptrs_belong_to_container(krnl, page_ptr2page_index(pcid_allocator_page), parent_container_ptr);
         set_union_subset_of(
             pages_4k.view().to_set(),
             funding_pages.to_set(),
@@ -284,7 +256,6 @@ pub(super) fn commit_new_container(
         assert(bootstrap_pages.subset_of(
             pages_4k.view().to_set(),
         )) by {
-            reveal(Set::subset_of);
             reveal(new_container_bootstrap_4k_pages);
             pages_4k.view().to_set_ensures();
         };
@@ -299,7 +270,6 @@ pub(super) fn commit_new_container(
             page_ptr2page_index(l4_page),
             page_ptr2page_index(thread_page_ptr),
         ]) by {
-            reveal(page_ptrs_to_indices);
             let mapped = pages_4k.view().map_values(
                 |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
             );
@@ -333,16 +303,8 @@ pub(super) fn commit_new_container(
                 }
             );
         };
-        set_union_subset_of(
-            container_all_ptrs,
-            pcid_allocator_all_ptrs,
-            parent_owned_pages,
-        );
-        set_union_subset_of(
-            container_all_ptrs.union(pcid_allocator_all_ptrs),
-            bootstrap_pages,
-            parent_owned_pages,
-        );
+        set_union_subset_of(container_all_ptrs, pcid_allocator_all_ptrs, parent_owned_pages);
+        set_union_subset_of(container_all_ptrs.union(pcid_allocator_all_ptrs), bootstrap_pages, parent_owned_pages);
         assert(
             new_container_moved_pages(
                 container_page,
@@ -385,9 +347,7 @@ pub(super) fn commit_new_container(
                 krnl.ctn_mp.spec_index(parent_container_ptr)
                     .view().owned_pages.view(),
             )
-        ) by {
-            reveal(Set::subset_of);
-        };
+        );
         assert(!krnl.ctn_mp.dom().contains(container_page)) by {
             page_ptr_roundtrip();
             reveal(container_pages_wf);
@@ -447,7 +407,6 @@ pub(super) fn commit_new_container(
             }) by {
                 pages_4k.view().to_set_ensures();
             };
-            reveal(allocated_4k_page_lock_perms_wf);
         };
         assert(!krnl.allc_4k_mp.dom().contains(allocator_4k_page)) by {
             page_ptr_roundtrip();
@@ -486,41 +445,10 @@ pub(super) fn commit_new_container(
                 page_ptr2page_index(container_page),
                 page_ptr2page_index(pcid_allocator_page),
             ].to_set_ensures();
-            reveal(Seq::contains);
-            broadcast use vstd::set::lemma_set_union;
         };
-        prove_new_container_bootstrap_pages_disjoint_from_2m_regions(
-            krnl,
-            lctx,
-            &pages_4k,
-            page_4k_lock_perms,
-            current_thread_ptr,
-            parent_container_ptr,
-            container_page,
-            pcid_allocator_page,
-        );
-        prove_new_container_funding_pages_disjoint_from_moved_pages(
-            krnl,
-            lctx,
-            &pages_4k,
-            funding_pages,
-            funding_page_lock_perms,
-            current_thread_ptr,
-            parent_container_ptr,
-            container_page,
-            pcid_allocator_page,
-        );
-        prove_new_container_locked_4k_pages_disjoint_from_2m_tails(
-            krnl,
-            lctx,
-            &pages_4k,
-            funding_pages,
-            page_4k_lock_perms,
-            funding_page_lock_perms,
-            current_thread_ptr,
-            parent_container_ptr,
-            container_page,
-            pcid_allocator_page,
+        new_container_staged_pages_disjoint(
+            krnl, lctx, &pages_4k, funding_pages, page_4k_lock_perms, funding_page_lock_perms, current_thread_ptr, parent_container_ptr,
+            container_page, pcid_allocator_page,
         );
         assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by { reveal(LocalContext::holds_no_allocator_locks); };
     }
@@ -563,6 +491,4 @@ pub(super) fn commit_new_container(
     );
     (container_page, child_process_ptr, new_thread_ptr)
 }
-
-
 }

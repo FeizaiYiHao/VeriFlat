@@ -10,7 +10,6 @@ use super::super::syscall_new_thread::syscall_new_thread_helpers::{
 };
 
 verus! {
-
         pub(super) fn add_new_thread_with_endpoint(
             krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr,
@@ -139,13 +138,12 @@ verus! {
             proof {
                 assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
                 assert(kernel_u_new_thread_changed(steps.snap_shot, kernel_k_to_kernel_u(*krnl), process_ptr)) by { reveal(kernel_k_to_kernel_u); };
-                assert(steps.snap_shot != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_u_new_thread_changed); };
+                assert(steps.snap_shot != kernel_k_to_kernel_u(*krnl));
                 let ghost step_old_u = steps.snap_shot;
                 steps.end_kernel_step(&*krnl, &*lctx);
                 assert(steps.steps == old(steps).steps.push(KernelStep {
                     old_u: step_old_u, new_u: kernel_k_to_kernel_u(*krnl),
-                })) by { reveal(record_user_view_change); };
+                }));
             }
         }
-
 }

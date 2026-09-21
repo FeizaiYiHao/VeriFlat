@@ -163,9 +163,7 @@ pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_
             pei_valid(i) && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
 {
-    proof {
-        lctx.enter_kernel_view_release();
-    }
+    proof { lctx.enter_kernel_view_release(); }
     page_map_set_raw(page_map_ptr, Tracked(page_map_perm), index, value);
 }
 
@@ -199,9 +197,7 @@ pub(super) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(pa
 {
     let tracked mut page_map_perm = page_map_perms.tracked_remove(page_map_ptr);
     page_map_set_published(page_map_ptr, Tracked(&mut page_map_perm), index, value, Tracked(&mut *lctx));
-    proof {
-        page_map_perms.tracked_insert(page_map_ptr, page_map_perm);
-    }
+    proof { page_map_perms.tracked_insert(page_map_ptr, page_map_perm); }
 }
 
 #[verifier(external_body)]
@@ -269,10 +265,6 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
             let tlbmap = old_at_i.remove(va.view());
             // tlbmap is a submap of old_at_i, which (by loop invariant) is a submap of tlbmap_4k[cpu_id]
             assert(tlbmap.submap_of(tlbmap_4k.view().spec_index(cpu_id as int))) by {
-                assert(tlbmap.submap_of(old_at_i)) by {
-                    broadcast use vstd::map::axiom_map_remove_different;
-                };
-                broadcast use submap_by_transitivity;
             }
             let tlbseq = ret_map.view().update(cpu_id as int, tlbmap);
             *ret_map.borrow_mut() = tlbseq;
@@ -280,5 +272,4 @@ pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<
     }
     ret_map
 }
-
 } // verus!

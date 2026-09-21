@@ -1,12 +1,11 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
-
 use crate::*;
 
 pub struct Scheduler{
     pub queue: LinkedList<RwLockThreadPtr, 233>,
-    pub owning_container: RwLockContainerPtr, 
+    pub owning_container: RwLockContainerPtr,
 }
 
 impl LockInvTrait for Scheduler {
@@ -89,16 +88,8 @@ impl Scheduler {
             ret.queue.container_depth == Some(0),
             ret.queue.lock_minor() == scheduler_ptr,
     {
-        let mut ret = Self::new_empty(
-            scheduler_ptr,
-            owning_container,
-            0,
-        );
-        ret.enqueue_scheduled_thread(
-            root_thread,
-            thread_node_addr,
-            thread_node_perm,
-        );
+        let mut ret = Self::new_empty(scheduler_ptr, owning_container, 0);
+        ret.enqueue_scheduled_thread(root_thread, thread_node_addr, thread_node_perm);
         ret
     }
 
@@ -153,5 +144,4 @@ impl Scheduler {
         self.queue.push_tail(node_addr, node_perm);
     }
 }
-
 }

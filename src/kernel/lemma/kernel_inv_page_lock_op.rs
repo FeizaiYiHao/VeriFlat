@@ -150,5 +150,4 @@ pub proof fn lemma_page_array_wf_preserved_for_lock_op_forall()
 {
     reveal(page_array_wf);
 }
-
 }

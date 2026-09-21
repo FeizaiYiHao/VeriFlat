@@ -3,7 +3,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 /// Result of the PageTable checks that precede construction for mmap(4K).
 pub(super) enum Mmap4kPrecheck {
     Ready,
@@ -14,11 +13,8 @@ pub(super) enum Mmap4kPrecheck {
     /// Check the entire inclusive VA interval for existing abstract 4K
     /// mappings. No krnl or LocalContext state changes.
     pub(super) fn mmap_4k_precheck(
-        krnl: &KernelK,
-        range: &VaRange4K,
-        pagetable_ptr: RwLockPageTableRoot,
-        Tracked(lctx): Tracked<&LocalContext>,
-        Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    krnl: &KernelK, range: &VaRange4K, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&LocalContext>,
+    Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: Mmap4kPrecheck)
         requires
             krnl.inv(),
@@ -60,5 +56,4 @@ pub(super) enum Mmap4kPrecheck {
         }
         Mmap4kPrecheck::Ready
     }
-
 }

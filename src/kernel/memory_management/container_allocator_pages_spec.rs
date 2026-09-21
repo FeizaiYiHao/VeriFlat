@@ -7,9 +7,9 @@ verus! {
         // Proof dependencies (confirmed): allocator_4k_pages_wf,
         // allocator_2m_pages_wf, allocator_1g_pages_wf.
         pub open spec fn allocator_pages_wf(
-            page_array: PageLockedArray, 
-                    allocator_4k_map: PageAllocatorUnLockedMap, 
-                    allocator_2m_map: PageAllocatorUnLockedMap, 
+            page_array: PageLockedArray,
+                    allocator_4k_map: PageAllocatorUnLockedMap,
+                    allocator_2m_map: PageAllocatorUnLockedMap,
                     allocator_1g_map: PageAllocatorUnLockedMap) -> bool {
             &&&
             allocator_4k_pages_wf(page_array, allocator_4k_map)
@@ -20,7 +20,7 @@ verus! {
         }
 
         pub open spec fn allocator_4k_pages_forward_wf(
-            page_array: PageLockedArray, 
+            page_array: PageLockedArray,
             allocator_4k_map: PageAllocatorUnLockedMap
         ) -> bool{
             forall|page_index:PageIndex|
@@ -57,7 +57,7 @@ verus! {
         }
 
     pub open spec fn allocator_2m_pages_forward_wf(
-        page_array: PageLockedArray, 
+        page_array: PageLockedArray,
         allocator_2m_map: PageAllocatorUnLockedMap
     ) -> bool{
         forall|page_index:PageIndex|
@@ -82,7 +82,6 @@ verus! {
         page_ptr_valid(a_ptr)
         &&
         page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator}
-
     }
 
     #[verifier::opaque]
@@ -120,7 +119,6 @@ verus! {
         page_ptr_valid(a_ptr)
         &&
         page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator}
-
     }
 
     #[verifier::opaque]

@@ -36,6 +36,5 @@ verus! {
             endpoint_map.spec_index(endpoint_ptr).view().inv(),
     {
         reveal(endpoint_perms_wf);
-        reveal(endpoints_inv);
     }
 }

@@ -50,7 +50,6 @@ verus! {
                     .view_rodata().view().depth,
     {
         reveal(container_perms_wf);
-        reveal(containers_inv);
         reveal(container_tree_fields_wf);
     }
 
@@ -265,93 +264,6 @@ verus! {
             }
     }
 
-    pub proof fn container_add_child_preserves_tree_wf(
-        root_container: RwLockContainerPtr,
-        old_container_perms: ContainerLockedMap,
-        new_container_perms: ContainerLockedMap,
-        parent_ptr: RwLockContainerPtr,
-        child_ptr: RwLockContainerPtr,
-    )
-        requires
-            container_add_child_ensures(root_container, old_container_perms, new_container_perms, parent_ptr, child_ptr),
-        ensures
-            container_tree_wf(root_container, new_container_perms),
-    {
-        assert(container_root_wf(root_container, new_container_perms)) by { reveal(container_root_wf); };
-        assert(container_children_parent_wf(root_container, new_container_perms)) by {
-            reveal(container_children_parent_wf);
-            seq_push_lemma::<RwLockContainerPtr>();
-        };
-        assert(containers_linkedlist_wf(root_container, new_container_perms)) by {
-            reveal(container_root_wf); reveal(container_children_parent_wf); reveal(containers_linkedlist_wf);
-            broadcast use vstd::set::lemma_set_insert_same;
-            broadcast use vstd::set::lemma_set_insert_different;
-            seq_push_lemma::<RwLockContainerPtr>();
-        };
-        assert(
-            old_container_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view().len()
-                == old_container_perms.spec_index(parent_ptr).view_rodata().view().depth
-            && new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().len()
-                == new_container_perms.spec_index(child_ptr).view_rodata().view().depth
-            && new_container_perms.spec_index(child_ptr).view_rodata().view().depth > 0
-        ) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-        assert(
-            new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(
-                new_container_perms.spec_index(child_ptr).view_rodata().view().depth - 1,
-            ) == parent_ptr
-        ) by { seq_push_lemma::<RwLockContainerPtr>(); };
-        assert(container_children_depth_wf(root_container, new_container_perms)) by {
-            reveal(container_children_depth_wf);
-            assert(container_tree_fields_wf(old_container_perms)) by { reveal(container_perms_wf); };
-            assert(container_tree_fields_wf(new_container_perms)) by { reveal(container_perms_wf); };
-            broadcast use vstd::set::lemma_set_insert_same;
-            broadcast use vstd::set::lemma_set_insert_different;
-            seq_push_lemma::<RwLockContainerPtr>();
-            seq_push_unique_lemma::<RwLockContainerPtr>();
-        };
-        let parent_uppers = old_container_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-        let child_uppers = new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
-        let parent_depth = old_container_perms.spec_index(parent_ptr).view_rodata().view().depth;
-        assert(
-            parent_uppers.len() == parent_depth
-            && child_uppers == parent_uppers.push(parent_ptr)
-            && child_uppers.no_duplicates()
-        ) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-        assert(!parent_uppers.contains(parent_ptr)) by { reveal(container_uppertree_seq_wf); };
-        assert(
-            child_uppers.contains(parent_ptr)
-            && child_uppers.spec_index(parent_depth as int) == parent_ptr
-            && child_uppers.index_of(parent_ptr) == parent_depth
-            && child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
-        ) by {
-            seq_push_lemma::<RwLockContainerPtr>();
-            seq_push_unique_lemma::<RwLockContainerPtr>();
-        };
-        assert(container_uppertree_seq_wf(root_container, new_container_perms)) by {
-            seq_push_lemma::<RwLockContainerPtr>();
-            seq_push_unique_lemma::<RwLockContainerPtr>();
-            reveal(container_uppertree_seq_wf);
-            assert(container_tree_fields_wf(old_container_perms)) by { reveal(container_perms_wf); };
-            assert(container_tree_fields_wf(new_container_perms)) by { reveal(container_perms_wf); };
-            broadcast use vstd::set::lemma_set_insert_same;
-            broadcast use vstd::set::lemma_set_insert_different;
-        };
-        assert(container_subtree_set_wf(root_container, new_container_perms)) by {
-            reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf);
-            assert(container_tree_fields_wf(old_container_perms)) by { reveal(container_perms_wf); };
-            assert(container_tree_fields_wf(new_container_perms)) by { reveal(container_perms_wf); };
-            seq_push_lemma::<RwLockContainerPtr>();
-            seq_push_unique_lemma::<RwLockContainerPtr>();
-        };
-        assert(container_subtree_set_exclusive(root_container, new_container_perms)) by {
-            reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
-            assert(container_tree_fields_wf(old_container_perms)) by { reveal(container_perms_wf); };
-            assert(container_tree_fields_wf(new_container_perms)) by { reveal(container_perms_wf); };
-            seq_push_lemma::<RwLockContainerPtr>();
-            seq_push_unique_lemma::<RwLockContainerPtr>();
-        };
-    }
-
     pub proof fn container_insert_child_into_ancestor_subtree_sets(
         tracked container_map: &mut ContainerLockedMap,
         ancestors: Seq<RwLockContainerPtr>,
@@ -430,20 +342,11 @@ verus! {
                 owned_threads: container_map.spec_index(c0).view_ghost().owned_threads,
                 owned_indirect_threads: container_map.spec_index(c0).view_ghost().owned_indirect_threads,
             });
-            assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by {
-                reveal(LockedMap::typed_lock_map_aligned);
-            };
+            assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(ancestors.drop_first().to_set().subset_of(container_map.dom())) by {
                 ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures();
-                broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
             };
-            container_insert_child_into_ancestor_subtree_sets(
-                container_map,
-                ancestors.drop_first(),
-                child_ptr,
-                held_locks,
-                thread_id,
-            );
+            container_insert_child_into_ancestor_subtree_sets(container_map, ancestors.drop_first(), child_ptr, held_locks, thread_id);
             assert({
                 &&& !ancestors.drop_first().to_set().contains(c0)
                 &&& ancestors.to_set() =~= ancestors.drop_first().to_set().insert(c0)
@@ -485,9 +388,7 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         reveal(container_tree_fields_wf);
         reveal(container_perms_wf);
     };
-    assert((depth == 0) == (child_ptr == root_container)) by {
-        reveal(container_root_wf);
-    };
+    assert((depth == 0) == (child_ptr == root_container)) by { reveal(container_root_wf); };
     if depth == 0 {
         return false;
     }
@@ -526,7 +427,6 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         } else {
             assert(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view()
                 .contains(current_c_ptr)) by {
-                reveal(container_tree_fields_wf);
             };
             assert(container_perms.spec_index(current_c_ptr).view_ghost().uppertree_seq.view()
                 == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view()
@@ -543,7 +443,6 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         }
         assert(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view()
             .contains(next_parent_ptr)) by {
-            reveal(container_tree_fields_wf);
         };
         assert({
             &&& container_perms.dom().contains(next_parent_ptr)
@@ -557,7 +456,6 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
     assert(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view()
         .contains(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view()
             .spec_index(0))) by {
-        reveal(container_tree_fields_wf);
     };
     assert({
         &&& container_perms.dom().contains(container_perms.spec_index(child_ptr)
@@ -576,5 +474,4 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
     }
     return false;
 }
-
 }

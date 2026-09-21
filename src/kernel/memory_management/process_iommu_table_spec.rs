@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn process_iommu_table_match(
     process_map: ProcessLockedMap,
@@ -34,5 +33,4 @@ pub open spec fn process_iommu_table_match(
                 == Some(iommu_root)
         }
 }
-
 }

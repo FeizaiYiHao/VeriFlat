@@ -79,32 +79,12 @@ pub proof fn lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed
             allocator_2m_map: PageAllocatorUnLockedMap,
             allocator_1g_map: PageAllocatorUnLockedMap|
             #![trigger
-                allocator_pages_wf(
-                    page_array,
-                    pre,
-                    allocator_2m_map,
-                    allocator_1g_map,
-                ),
-                allocator_pages_wf(
-                    page_array,
-                    post,
-                    allocator_2m_map,
-                    allocator_1g_map,
-                )
+                allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map),
+                allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map)
             ]
-            allocator_pages_wf(
-                page_array,
-                pre,
-                allocator_2m_map,
-                allocator_1g_map,
-            )
+            allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map)
             && allocator_quota_value_framed_fields_unchanged(pre, post)
-            ==> allocator_pages_wf(
-                page_array,
-                post,
-                allocator_2m_map,
-                allocator_1g_map,
-            ),
+            ==> allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map),
 {
     reveal(allocator_4k_pages_wf);
 }
@@ -130,40 +110,16 @@ pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_process_quo
             pagetable_map: PageTableLockedMap,
             page_array: PageLockedArray|
             #![trigger
-                container_process_page_pagetable_wf(
-                    container_map,
-                    pre,
-                    pagetable_map,
-                    page_array,
-                ),
-                container_process_page_pagetable_wf(
-                    container_map,
-                    post,
-                    pagetable_map,
-                    page_array,
-                )
+                container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array),
+                container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array)
             ]
-            container_process_page_pagetable_wf(
-                container_map,
-                pre,
-                pagetable_map,
-                page_array,
-            )
+            container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array)
             && process_pagetable_match(pre, pagetable_map)
             && page_pagetable_wf(pagetable_map, page_array)
             && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> container_process_page_pagetable_wf(
-                container_map,
-                post,
-                pagetable_map,
-                page_array,
-            ),
+            ==> container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array),
 {
     reveal(container_process_page_pagetable_wf);
-    reveal(process_pagetable_match);
-    reveal(mapped_4k_page_pagetable_wf);
-    reveal(mapped_2m_page_pagetable_wf);
-    reveal(mapped_1g_page_pagetable_wf);
 }
 
 pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall()
@@ -315,32 +271,12 @@ pub proof fn lemma_container_allocator_wf_preserved_for_allocator_quota_value_fr
             allocator_2m_map: PageAllocatorUnLockedMap,
             allocator_1g_map: PageAllocatorUnLockedMap|
             #![trigger
-                container_allocator_wf(
-                    container_map,
-                    pre,
-                    allocator_2m_map,
-                    allocator_1g_map,
-                ),
-                container_allocator_wf(
-                    container_map,
-                    post,
-                    allocator_2m_map,
-                    allocator_1g_map,
-                )
+                container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map),
+                container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map)
             ]
-            container_allocator_wf(
-                container_map,
-                pre,
-                allocator_2m_map,
-                allocator_1g_map,
-            )
+            container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map)
             && allocator_quota_value_framed_fields_unchanged(pre, post)
-            ==> container_allocator_wf(
-                container_map,
-                post,
-                allocator_2m_map,
-                allocator_1g_map,
-            ),
+            ==> container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map),
 {
     reveal(container_allocator_wf);
 }
@@ -442,45 +378,15 @@ pub proof fn lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields
             cpu_tlb: CpuTLB,
             pagetable_map: PageTableLockedMap|
             #![trigger
-                cpu_dirty_map_wf(
-                    container_map, cpu_set_map,
-                    pre,
-                    cpu_array,
-                    cpu_tlb,
-                    pagetable_map, needflush,
-                ),
-                cpu_dirty_map_wf(
-                    container_map, cpu_set_map,
-                    post,
-                    cpu_array,
-                    cpu_tlb,
-                    pagetable_map, needflush,
-                )
+                cpu_dirty_map_wf(container_map, cpu_set_map, pre, cpu_array, cpu_tlb, pagetable_map, needflush),
+                cpu_dirty_map_wf(container_map, cpu_set_map, post, cpu_array, cpu_tlb, pagetable_map, needflush)
             ]
-            cpu_dirty_map_wf(
-                container_map, cpu_set_map,
-                pre,
-                cpu_array,
-                cpu_tlb,
-                pagetable_map, needflush,
-            )
+            cpu_dirty_map_wf(container_map, cpu_set_map, pre, cpu_array, cpu_tlb, pagetable_map, needflush)
             && process_cpu_wf(pre, cpu_array)
             && container_cpu_wf(container_map, cpu_set_map, cpu_array)
             && process_quota_4k_framed_fields_unchanged(pre, post)
-            ==> cpu_dirty_map_wf(
-                container_map, cpu_set_map,
-                post,
-                cpu_array,
-                cpu_tlb,
-                pagetable_map, needflush,
-            ),
+            ==> cpu_dirty_map_wf(container_map, cpu_set_map, post, cpu_array, cpu_tlb, pagetable_map, needflush),
 {
-    reveal(cpu_dirty_map_contains_container_processes);
-    reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
     reveal(cpu_dirty_map_proc_pcid_match);
-    reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-    reveal(process_cpu_wf);
-    reveal(container_cpu_wf);
 }
-
 }

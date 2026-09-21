@@ -148,5 +148,4 @@ verus! {
             install_one_mmap_4k_directory_page(krnl, MissingPageTableLevel::L2, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm));
         }
     }
-
 } // verus!

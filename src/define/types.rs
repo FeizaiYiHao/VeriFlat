@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use vstd::simple_pptr::*;
 
 use crate::*;
@@ -168,7 +167,6 @@ impl EndpointState {
     // pub open spec fn is_receive_spec(&self) -> bool {
     //     self matches EndpointState { foo } &&  foo == EndpointState::SEND
     // }
-
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -364,7 +362,6 @@ proof fn spec_va_4k_valid_implies_aligned(va: VAddr)
     ensures
         va % 4096 == 0,
 {
-    assert(va & (!MEM_4K_MASK) as usize == 0);
     assert(va % 4096 == 0) by (bit_vector)
         requires va & (!MEM_4K_MASK) as usize == 0;
 }
@@ -378,20 +375,10 @@ proof fn aligned_difference_mod_4k(x: int, y: int)
 {
     vstd::arithmetic::div_mod::lemma_fundamental_div_mod(x, 4096);
     vstd::arithmetic::div_mod::lemma_fundamental_div_mod(y, 4096);
-    assert(x == 4096 * (x / 4096));
-    assert(y == 4096 * (y / 4096));
     vstd::arithmetic::mul::lemma_mul_is_commutative(4096, x / 4096);
     vstd::arithmetic::mul::lemma_mul_is_commutative(4096, y / 4096);
-    vstd::arithmetic::mul::lemma_mul_is_distributive_sub_other_way(
-        4096,
-        y / 4096,
-        x / 4096,
-    );
-    assert(y - x == (y / 4096 - x / 4096) * 4096);
-    vstd::arithmetic::div_mod::lemma_mod_multiples_basic(
-        y / 4096 - x / 4096,
-        4096,
-    );
+    vstd::arithmetic::mul::lemma_mul_is_distributive_sub_other_way(4096, y / 4096, x / 4096);
+    vstd::arithmetic::div_mod::lemma_mod_multiples_basic(y / 4096 - x / 4096, 4096);
 }
 
 proof fn spec_va_add_range_bounds(va: VAddr, index: usize, len: usize)
@@ -405,7 +392,6 @@ proof fn spec_va_add_range_bounds(va: VAddr, index: usize, len: usize)
         spec_va_add_range(va, index) as int
             == va as int + index as int * 4096,
 {
-    reveal(spec_va_add_range);
     assert(index * 4096 < len * 4096) by (bit_vector)
         requires
             index < len,
@@ -433,8 +419,6 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
         va_range_2.start + va_range_2.len * 4096 <= va_range_1.start
     };
     proof {
-        reveal(spec_va_range_disjoint);
-        reveal(spec_va_add_range);
         va_range_1.va_range_lemma();
         va_range_2.va_range_lemma();
         spec_va_4k_valid_implies_aligned(va_range_1.start);
@@ -445,20 +429,8 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
                     implies va_range_1.view().spec_index(i)
                         != va_range_2.view().spec_index(j)
             by {
-                assert((i as usize) < va_range_1.len);
-                assert((j as usize) < va_range_2.len);
-                assert(i as usize as int == i);
-                assert(j as usize as int == j);
-                spec_va_add_range_bounds(
-                    va_range_1.start,
-                    i as usize,
-                    va_range_1.len,
-                );
-                spec_va_add_range_bounds(
-                    va_range_2.start,
-                    j as usize,
-                    va_range_2.len,
-                );
+                spec_va_add_range_bounds(va_range_1.start, i as usize, va_range_1.len);
+                spec_va_add_range_bounds(va_range_2.start, j as usize, va_range_2.len);
                 assert(va_range_1.view().spec_index(i)
                     == spec_va_add_range(va_range_1.start, i as usize));
                 assert(va_range_2.view().spec_index(j)
@@ -482,27 +454,11 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
         } else if va_range_1.start < va_range_2.start {
             let delta = va_range_2.start as int - va_range_1.start as int;
             let page_offset = delta / 4096;
-            aligned_difference_mod_4k(
-                va_range_1.start as int,
-                va_range_2.start as int,
-            );
+            aligned_difference_mod_4k(va_range_1.start as int, va_range_2.start as int);
             vstd::arithmetic::div_mod::lemma_fundamental_div_mod(delta, 4096);
-            vstd::arithmetic::div_mod::lemma_multiply_divide_lt(
-                delta,
-                4096,
-                va_range_1.len as int,
-            );
-            assert(0 <= page_offset < va_range_1.len);
-            assert(page_offset as usize as int == page_offset);
-            spec_va_add_range_bounds(
-                va_range_1.start,
-                page_offset as usize,
-                va_range_1.len,
-            );
-            assert(delta == va_range_2.start as int - va_range_1.start as int);
-            assert(delta == 4096 * page_offset);
+            vstd::arithmetic::div_mod::lemma_multiply_divide_lt(delta, 4096, va_range_1.len as int);
+            spec_va_add_range_bounds(va_range_1.start, page_offset as usize, va_range_1.len);
             vstd::arithmetic::mul::lemma_mul_is_commutative(page_offset, 4096);
-            assert(page_offset * 4096 == delta);
             assert(va_range_1.start as int + delta
                 == va_range_2.start as int);
             assert(va_range_1.start as int + page_offset * 4096
@@ -521,27 +477,11 @@ pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret
         } else {
             let delta = va_range_1.start as int - va_range_2.start as int;
             let page_offset = delta / 4096;
-            aligned_difference_mod_4k(
-                va_range_2.start as int,
-                va_range_1.start as int,
-            );
+            aligned_difference_mod_4k(va_range_2.start as int, va_range_1.start as int);
             vstd::arithmetic::div_mod::lemma_fundamental_div_mod(delta, 4096);
-            vstd::arithmetic::div_mod::lemma_multiply_divide_lt(
-                delta,
-                4096,
-                va_range_2.len as int,
-            );
-            assert(0 <= page_offset < va_range_2.len);
-            assert(page_offset as usize as int == page_offset);
-            spec_va_add_range_bounds(
-                va_range_2.start,
-                page_offset as usize,
-                va_range_2.len,
-            );
-            assert(delta == va_range_1.start as int - va_range_2.start as int);
-            assert(delta == 4096 * page_offset);
+            vstd::arithmetic::div_mod::lemma_multiply_divide_lt(delta, 4096, va_range_2.len as int);
+            spec_va_add_range_bounds(va_range_2.start, page_offset as usize, va_range_2.len);
             vstd::arithmetic::mul::lemma_mul_is_commutative(page_offset, 4096);
-            assert(page_offset * 4096 == delta);
             assert(va_range_2.start as int + delta
                 == va_range_1.start as int);
             assert(va_range_2.start as int + page_offset * 4096
@@ -570,7 +510,6 @@ impl VaRange4K {
             forall|i: usize|
                 0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range(self.start, i),
     {
-        reveal(VaRange4K::view_match_spec);
     }
 
     pub closed spec fn view(&self) -> Seq<VAddr> {

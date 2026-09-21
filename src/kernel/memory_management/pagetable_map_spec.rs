@@ -35,7 +35,5 @@ verus! {
             pagetable_perms.spec_index(pagetable_ptr).view().inv(),
     {
         reveal(pagetable_perms_wf);
-        reveal(pagetables_inv);
     }
-
 }

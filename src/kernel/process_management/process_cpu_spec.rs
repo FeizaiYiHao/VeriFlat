@@ -11,7 +11,7 @@ verus! {
             index_valid(NUM_CPUS, cpu_i)
             &&
             cpu_array.spec_index(cpu_i).view().view().view().current_process is Some
-            ==> 
+            ==>
             {
                 &&&
                 process_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap())
@@ -31,9 +31,6 @@ verus! {
                 cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_pcid).unwrap().process_ptr == cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap()
                 &&&
                 Some(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_pcid).unwrap().pagetable_ptr) == cpu_array.spec_index(cpu_i).view().view().view().current_pagetable
-                
             }
-
     }
-
 }

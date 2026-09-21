@@ -155,7 +155,6 @@ impl KernelK {
                 },
         {
             proof {
-                assert(old(self).subsystems_inv());
                 thread_perms_wf_at(old(self).thr_mp, thread_ptr);
                 let target_thread =
                     old(self).thr_mp.spec_index(thread_ptr).view();
@@ -171,13 +170,7 @@ impl KernelK {
                             reveal(process_cpu_wf);
                             reveal(container_process_wf);
                             reveal(container_pcid_allocator_wf);
-                            reveal(thread_cpu_wf);
                             reveal(process_thread_wf);
-                            reveal(container_perms_wf);
-                            reveal(thread_perms_wf);
-                            reveal(container_scheduler_wf);
-                            reveal(scheduler_perms_wf);
-                            reveal(cpu_array_wf);
                         };
                     },
                     ThreadState::SCHEDULED => {
@@ -191,17 +184,7 @@ impl KernelK {
                             reveal(lock_id_set_aligned);
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
-                            reveal(container_cpu_wf);
-                            reveal(process_cpu_wf);
-                            reveal(container_process_wf);
-                            reveal(container_scheduler_wf);
-                            reveal(container_pcid_allocator_wf);
                             reveal(thread_cpu_wf);
-                            reveal(process_thread_wf);
-                            reveal(container_perms_wf);
-                            reveal(process_perms_wf);
-                            reveal(thread_perms_wf);
-                            reveal(scheduler_perms_wf);
                             reveal(cpu_array_wf);
                         };
                         assert(old(lctx).lock_id_acyclic(
@@ -211,14 +194,9 @@ impl KernelK {
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                             reveal(container_cpu_wf);
-                            reveal(process_cpu_wf);
                             reveal(container_process_wf);
-                            reveal(container_pcid_allocator_wf);
                             reveal(thread_cpu_wf);
                             reveal(process_thread_wf);
-                            reveal(container_perms_wf);
-                            reveal(process_perms_wf);
-                            reveal(thread_perms_wf);
                             reveal(cpu_array_wf);
                         };
                     },
@@ -229,15 +207,6 @@ impl KernelK {
                             reveal(lock_id_set_aligned);
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
-                            reveal(container_cpu_wf);
-                            reveal(process_cpu_wf);
-                            reveal(container_process_wf);
-                            reveal(container_pcid_allocator_wf);
-                            reveal(thread_cpu_wf);
-                            reveal(process_thread_wf);
-                            reveal(container_perms_wf);
-                            reveal(thread_perms_wf);
-                            reveal(cpu_array_wf);
                         };
                     },
                 }
@@ -253,16 +222,12 @@ impl KernelK {
                             thread_ptr,
                             TypedLockMode::Write,
                         )) by {
-                            reveal(typed_lock_maps_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                         };
                     }
                 };
                 assert(!old(self).thr_mp.spec_index(thread_ptr)
-                    .wlocked_by(&*old(lctx))) by {
-                    reveal(RwLock::wlocked_by);
-                    reveal(RwLock::wlocked_by_thread);
-                };
+                    .wlocked_by(&*old(lctx)));
             }
             assert(wlock_requires(self.thr_mp.spec_index(thread_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let res = self.thr_mp.wlock_unless_killed(thread_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Thread(thread_ptr)));
@@ -273,12 +238,8 @@ impl KernelK {
                 assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
                 assert(self.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) && old(self).thr_mp.lock_id_by_key(thread_ptr).major < PAGE_TABLE_LOCK_MAJOR ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) && old(self).thr_mp.lock_id_by_key(thread_ptr).major < PAGE_TABLE_LOCK_MAJOR ==> lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)) by { assert(PAGE_TABLE_LOCK_MAJOR < SCHEDULER_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) && old(self).thr_mp.lock_id_by_key(thread_ptr).major < PAGE_TABLE_LOCK_MAJOR ==> lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)) by { assert(PAGE_TABLE_LOCK_MAJOR < SCHEDULER_LOCK_MAJOR) by (compute); };
                 if res.is_some() {
-                    broadcast use vstd::map::lemma_map_insert_domain;
-                    broadcast use vstd::set::lemma_set_insert_same;
-                    broadcast use vstd::set::lemma_set_insert_different;
                     assert(
                         self.thr_mp.spec_index(thread_ptr).view()
                             .free_quota_pending_clean()

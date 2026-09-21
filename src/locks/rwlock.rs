@@ -4,7 +4,6 @@ use core::sync::atomic::*;
 use crate::locks::*;
 
 verus! {
-
 #[derive(Clone,Copy)]
 pub struct KillerInfo{
     pub container: RwLockContainerPtr,
@@ -80,7 +79,6 @@ impl RwLockInner{
         }
     }
 
-    
     #[verifier::external_body]
     pub fn wunlock(&mut self) {
         loop {
@@ -102,7 +100,7 @@ impl RwLockInner{
                     self.lock.store(false, Ordering::Release);
                     break;
                     }
-                self.lock.store(false, Ordering::Release);  
+                self.lock.store(false, Ordering::Release);
             }
         }
     }
@@ -134,7 +132,6 @@ impl RwLockInner{
                 break;
             }
         }
-
     }
 }
 
@@ -207,13 +204,13 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
     pub open spec fn rlocked(&self) -> bool{
         &&&
         self.locking_thread() is Read
-    } 
+    }
     pub open spec fn rlocked_by(&self, lctx:&LocalContext) -> bool{
         &&&
         self.locking_thread() is Read
         &&&
         self.locking_thread()->Read_reader_map.dom().contains(lctx.thread_id())
-    } 
+    }
     pub open spec fn read_lock_perm_match(&self, lock_perm:&LockPerm) -> bool {
         &&&
         self.locking_thread() is Read
@@ -234,13 +231,13 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
     pub open spec fn wlocked(&self) -> bool{
         &&&
         self.locking_thread() is Write
-    } 
+    }
     pub open spec fn wlocked_by(&self, lctx:&LocalContext) -> bool{
         &&&
         self.locking_thread() is Write
         &&&
         self.locking_thread()->Write_thread_id == lctx.thread_id()
-    } 
+    }
     pub open spec fn wlocked_by_thread(&self, thread_id: LockThreadId) -> bool {
         &&&
         self.locking_thread() is Write
@@ -300,7 +297,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
     {
         self.ghost_value.view()
     }
-
 }
 
 impl<T:LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
@@ -330,7 +326,6 @@ impl<T, ROT, GhostT>
     {
         self.lock.wunlock();
     }
-
 }
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{
     #[verifier::external_body]
@@ -496,7 +491,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
     {
         self.lock.wunlock();
     }
-
 }
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
@@ -522,21 +516,20 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
                 *final(lctx) == *old(lctx)
             },
             ret is Some ==>{
-                &&&                
+                &&&
                 old(self).being_killed() == false
                 &&&
                 wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.unwrap().view())
                 &&&
                 lock_ensures(old(lctx), final(lctx),
                     lock_id.view(), obj_id.view())
-            } 
+            }
     {
         if self.lock.wlock_unless_killed().is_err(){
             None
         }else{
             Some(Tracked::assume_new())
         }
-
     }
 
     #[verifier::external_body]
@@ -554,12 +547,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
-            unlock_ensures(
-                old(lctx),
-                final(lctx),
-                obj_id.view(),
-                lock_id.view(),
-            ),
+            unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
     {
         self.lock.wunlock();
     }
@@ -653,7 +641,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             (true, Some(Tracked::assume_new()))
         }
     }
-
 }
 
 pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old:RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool{
@@ -772,7 +759,7 @@ impl<T:LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bo
             self.view().process_depth()
         }
     }
-}  
+}
 
 impl<T:LockIdTrait, const HAS_KILL_STATE: bool>
     LockIdTrait for RwLock<T, (), (), HAS_KILL_STATE>{
@@ -780,5 +767,4 @@ impl<T:LockIdTrait, const HAS_KILL_STATE: bool>
         self.view().lock_id()
     }
 }
-
 }

@@ -66,9 +66,6 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by {
         reveal(container_process_page_pagetable_wf);
-        reveal(container_process_wf);
-        reveal(process_pagetable_match);
-        reveal(container_page_owner_wf);
     };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
@@ -110,12 +107,10 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
         reveal(container_endpoint_wf);
         reveal(thread_endpoint_ref_counter_wf);
-        reveal(thread_endpoint_queue_wf);
         reveal(container_thread_endpoint_wf);
     };
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
         reveal(container_thread_wf);
-        reveal(container_scheduler_wf);
         reveal(container_thread_scheduler_wf);
     };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
@@ -138,10 +133,6 @@ pub proof fn cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre: Kern
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
 {
     reveal(cpu_dirty_map_contains_container_processes);
-    reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-    reveal(cpu_dirty_map_proc_pcid_match);
-    reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     reveal(container_cpu_wf);
 }
-
 }

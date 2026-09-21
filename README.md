@@ -105,6 +105,7 @@ Both recording operations are trusted `external_body` functions.
 
 The trusted code also includes low-level lock and memory primitives, permission
 construction using `Tracked::assume_new()` inside `external_body` functions, and
-the explicit [fold](src/kernel/lemma/kernel_fold_axioms.rs) and
-[cardinality](src/kernel/lemma/kernel_cardinality_axioms.rs) axioms. Verification
+the explicit
+[cardinality](src/kernel/lemma/kernel_cardinality_axioms.rs) axioms (the fold lemmas in
+`src/kernel/lemma/kernel_fold_lemmas.rs` are proven). Verification
 results depend on these contracts and axioms.

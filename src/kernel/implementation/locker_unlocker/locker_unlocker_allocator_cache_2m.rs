@@ -52,7 +52,6 @@ impl KernelK {
                 reveal(allocator_2m_pages_wf);
                 reveal(container_process_allocator_quota_2m_wf);
                 reveal(container_allocator_wf);
-                reveal(allocator_invariant_fields_unchanged);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(*old(self), *self);
             };
@@ -113,7 +112,6 @@ impl KernelK {
                 reveal(allocator_2m_pages_wf);
                 reveal(container_process_allocator_quota_2m_wf);
                 reveal(container_allocator_wf);
-                reveal(allocator_invariant_fields_unchanged);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(*old(self), *self);
             };

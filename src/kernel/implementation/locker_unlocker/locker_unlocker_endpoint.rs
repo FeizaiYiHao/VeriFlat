@@ -141,16 +141,12 @@ impl KernelK {
                             endpoint_ptr,
                             TypedLockMode::Write,
                         )) by {
-                            reveal(typed_lock_maps_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                         };
                     }
                 };
                 assert(!old(self).ep_mp.spec_index(endpoint_ptr)
-                    .wlocked_by(&*old(lctx))) by {
-                    reveal(RwLock::wlocked_by);
-                    reveal(RwLock::wlocked_by_thread);
-                };
+                    .wlocked_by(&*old(lctx)));
             }
             assert(wlock_requires(self.ep_mp.spec_index(endpoint_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.ep_mp.wlock(endpoint_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(endpoint_ptr)));
@@ -168,9 +164,8 @@ impl KernelK {
                     lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
                 };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < PAGE_TABLE_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                assert(lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < SCHEDULER_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
-                broadcast use vstd::map::lemma_map_insert_domain;
+                assert(lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < PAGE_TABLE_LOCK_MAJOR) by (compute); };
+                assert(lctx.held_lock_majors_lt(SCHEDULER_LOCK_MAJOR)) by { reveal(endpoint_perms_wf); assert(ENDPOINT_LOCK_MAJOR < SCHEDULER_LOCK_MAJOR) by (compute); };
             }
             ret
         }
@@ -208,7 +203,7 @@ impl KernelK {
                 assert({
                     &&& old(self).ep_mp.perms_wf()
                     &&& old(self).ep_mp.spec_index(endpoint_ptr).inv()
-                }) by { reveal(endpoint_perms_wf);  };
+                }) by { reveal(endpoint_perms_wf); };
                 assert(old(lctx).lock_entry_contains(old(self).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
                 assert(old(lctx).lock_id_set().contains((old(self).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr)))) by { reveal(lock_id_set_aligned); };
             }
@@ -230,6 +225,5 @@ impl KernelK {
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             }
         }
-
 }
 } // verus!

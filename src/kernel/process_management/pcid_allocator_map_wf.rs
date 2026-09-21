@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn pcid_allocator_perms_wf(
     allocator_map: PcidAllocatorLockedMap,
@@ -27,5 +26,4 @@ pub proof fn pcid_allocator_perms_wf_at(
 {
     reveal(pcid_allocator_perms_wf);
 }
-
 }

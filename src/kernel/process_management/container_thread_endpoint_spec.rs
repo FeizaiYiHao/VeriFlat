@@ -5,15 +5,15 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn thread_endpoint_ref_counter_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool 
+    pub open spec fn thread_endpoint_ref_counter_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool
     {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
-            thread_map.dom().contains(t_ptr) 
+            thread_map.dom().contains(t_ptr)
             &&
             edp_idx_valid(edp_index)
-            && 
+            &&
             thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
             ==>
             endpoint_map.dom().contains(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap())
@@ -24,17 +24,17 @@ verus! {
             #![trigger endpoint_map.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index))]
             endpoint_map.dom().contains(e_ptr) && endpoint_map.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index))
             ==>
-            thread_map.dom().contains(t_ptr) 
+            thread_map.dom().contains(t_ptr)
             &&
             edp_idx_valid(edp_index)
-            && 
+            &&
             thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) == Some(e_ptr)
     }
 
     // Proof dependencies (confirmed): thread_perms_wf,
     // thread_endpoint_ref_counter_wf.
     #[verifier::opaque]
-    pub open spec fn thread_endpoint_queue_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool 
+    pub open spec fn thread_endpoint_queue_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool
         recommends
             thread_perms_wf(thread_map),
             thread_endpoint_ref_counter_wf(thread_map, endpoint_map)
@@ -76,22 +76,21 @@ verus! {
                 EndpointState::RECEIVE => thread_map.spec_index(t_ptr).view()
                     .state.is_endpoint_receive_waiting(),
             }
-
     }
 
     // Proof dependencies (confirmed): thread_perms_wf,
     // thread_endpoint_ref_counter_wf, container_endpoint_wf.
     #[verifier::opaque]
-    pub open spec fn container_thread_endpoint_wf(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool 
+    pub open spec fn container_thread_endpoint_wf(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool
     {
         &&&
         forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors, edp_idx_valid(edp_index)]
-            thread_map.dom().contains(t_ptr) 
+            thread_map.dom().contains(t_ptr)
             &&
             edp_idx_valid(edp_index)
-            && 
+            &&
             thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
             ==>
             {
@@ -103,7 +102,5 @@ verus! {
                 container_map.spec_index(endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap()).view().owning_container)
                     .view_ghost().subtree_set.view().contains(thread_map.spec_index(t_ptr).view().owning_container)
             }
-            
     }
-
 }

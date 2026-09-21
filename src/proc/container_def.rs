@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 use crate::*;
 use core::mem::offset_of;
 
@@ -43,7 +42,7 @@ pub ghost struct ContainerU {
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
-    pub parent: Option<RwLockContainerPtr>,    
+    pub parent: Option<RwLockContainerPtr>,
     pub depth: usize,
     pub scheduler: RwLockSchedulerPtr,
     pub pcid_allocator: RwLockPcidAllocatorPtr,
@@ -83,11 +82,7 @@ impl Container{
                 =~= set![root_endpoint],
             ret.owned_pages == owned_pages,
     {
-        let mut ret = Self::new_staged(
-            container_ptr,
-            root_process,
-            0,
-        );
+        let mut ret = Self::new_staged(container_ptr, root_process, 0);
         ret.owned_processes = Ghost(
             Set::empty().insert(root_process),
         );
@@ -95,7 +90,6 @@ impl Container{
             Set::empty().insert(root_endpoint),
         );
         ret.owned_pages = owned_pages;
-        assert(ret.inv());
         ret
     }
 

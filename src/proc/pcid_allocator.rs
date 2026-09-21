@@ -40,8 +40,6 @@ impl PcidAllocator {
     {
         let mut ret = Self::new_empty(owning_container, 0);
         assert(ret.process_is_unallocated(root_process)) by {
-            reveal(PcidAllocator::process_is_unallocated);
-            broadcast use vstd::seq::lemma_seq_new_index;
         }
         ret.alloc(1, root_process);
         ret
@@ -130,15 +128,9 @@ impl PcidAllocator {
         &&& self.owning_container.view() == old.owning_container.view()
         &&& self.container_depth.view() == old.container_depth.view()
         &&& self.ref_counters.view()
-            =~= old.ref_counters.view().update(
-                id as int,
-                (old.ref_counters.spec_index(id) + 1) as usize,
-            )
+            =~= old.ref_counters.view().update(id as int, (old.ref_counters.spec_index(id) + 1) as usize)
         &&& self.id_to_proc.view()
-            =~= old.id_to_proc.view().update(
-                id as int,
-                old.id_to_proc.view().spec_index(id as int).insert(process_ptr),
-            )
+            =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).insert(process_ptr))
     }
 
     pub fn alloc(&mut self, id: usize, process_ptr: RwLockProcessPtr)
@@ -155,10 +147,7 @@ impl PcidAllocator {
         let old_counter = *self.ref_counters.get(id);
         self.ref_counters.set(id, old_counter + 1);
         self.id_to_proc = Ghost(
-            self.id_to_proc.view().update(
-                id as int,
-                self.id_to_proc.view().spec_index(id as int).insert(process_ptr),
-            ),
+            self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).insert(process_ptr)),
         );
     }
 }
@@ -218,7 +207,6 @@ impl LockUserVisibilityTrait for PcidAllocator {
         false
     }
 }
-
 } // verus!
 
 const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<usize>()] = [(); core::mem::size_of::<PcidAllocator>()];

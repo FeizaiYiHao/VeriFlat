@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-
 // Framing lemma for `container_page_owner_wf` (the container_map <-> page_array
 // owning_container bridge). Distinct from the page-state-class families: this
 // invariant reads NO page-state variant, only every slot's `owning_container`
@@ -33,5 +32,4 @@ pub proof fn container_page_owner_wf_preserved_for_owned_pages_and_owning_contai
 {
     reveal(container_page_owner_wf);
 }
-
 }

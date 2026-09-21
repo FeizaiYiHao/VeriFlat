@@ -124,19 +124,10 @@ pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_pt
 
 #[verifier::spinoff_prover]
 pub(super) fn ipc_begin_endpoint_transfer(
-    krnl: &mut KernelK,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId,
-    process_ptr: RwLockProcessPtr,
-    current_thread_ptr: RwLockThreadPtr,
-    channel_endpoint_ptr: RwLockEndpointPtr,
-    peer_thread_ptr: RwLockThreadPtr,
-    source_thread_ptr: RwLockThreadPtr,
-    source_endpoint_index: EndpointIdx,
-    payload_endpoint_ptr: RwLockEndpointPtr,
-    channel_endpoint_lock_perm: Tracked<LockPerm>,
-    peer_thread_lock_perm: Tracked<&LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, source_thread_ptr: RwLockThreadPtr, source_endpoint_index: EndpointIdx,
+    payload_endpoint_ptr: RwLockEndpointPtr, channel_endpoint_lock_perm: Tracked<LockPerm>, peer_thread_lock_perm: Tracked<&LockPerm>,
 )
     requires
         old(krnl).inv(),
@@ -324,7 +315,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
             kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
         };
         krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
-        assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
         assert({
             &&& krnl.thr_mp.spec_index(current_thread_ptr).is_init()
             &&& krnl.thr_mp.spec_index(peer_thread_ptr).is_init()
@@ -337,22 +327,11 @@ pub(super) fn ipc_begin_endpoint_transfer(
 
 #[verifier::spinoff_prover]
 pub(super) fn ipc_finish_endpoint_transit(
-    krnl: &mut KernelK,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId,
-    process_ptr: RwLockProcessPtr,
-    current_thread_ptr: RwLockThreadPtr,
-    payload_endpoint_ptr: RwLockEndpointPtr,
-    peer_thread_ptr: RwLockThreadPtr,
-    peer_scheduler_ptr: RwLockSchedulerPtr,
-    result: RetValueType,
-    cpu_lock_perm: Tracked<LockPerm>,
-    process_lock_perm: Tracked<LockPerm>,
-    current_thread_lock_perm: Tracked<LockPerm>,
-    payload_endpoint_lock_perm: Tracked<LockPerm>,
-    peer_thread_lock_perm: Tracked<LockPerm>,
-    peer_scheduler_lock_perm: Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, payload_endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, peer_scheduler_ptr: RwLockSchedulerPtr, result: RetValueType, cpu_lock_perm: Tracked<LockPerm>,
+    process_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, payload_endpoint_lock_perm: Tracked<LockPerm>,
+    peer_thread_lock_perm: Tracked<LockPerm>, peer_scheduler_lock_perm: Tracked<LockPerm>,
 ) -> (ret: RetValueType)
     requires
         old(krnl).inv(),
@@ -508,29 +487,17 @@ pub(super) fn ipc_finish_endpoint_transit(
             kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
         };
         steps.end_kernel_step(&*krnl, &*lctx);
-        assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
     }
     result
 }
 
 #[verifier::spinoff_prover]
 pub(super) fn ipc_rendezvous_endpoint(
-    krnl: &mut KernelK,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId,
-    process_ptr: RwLockProcessPtr,
-    current_thread_ptr: RwLockThreadPtr,
-    channel_endpoint_ptr: RwLockEndpointPtr,
-    peer_thread_ptr: RwLockThreadPtr,
-    source_thread_ptr: RwLockThreadPtr,
-    receiver_thread_ptr: RwLockThreadPtr,
-    source_endpoint_index: EndpointIdx,
-    target_endpoint_index: EndpointIdx,
-    cpu_lock_perm: Tracked<LockPerm>,
-    process_lock_perm: Tracked<LockPerm>,
-    current_thread_lock_perm: Tracked<LockPerm>,
-    channel_endpoint_lock_perm: Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, source_thread_ptr: RwLockThreadPtr, receiver_thread_ptr: RwLockThreadPtr,
+    source_endpoint_index: EndpointIdx, target_endpoint_index: EndpointIdx, cpu_lock_perm: Tracked<LockPerm>,
+    process_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, channel_endpoint_lock_perm: Tracked<LockPerm>,
     peer_thread_lock_perm: Tracked<LockPerm>,
 ) -> (ret: RetValueType)
     requires
@@ -665,9 +632,6 @@ pub(super) fn ipc_rendezvous_endpoint(
         assert({
             &&& !lctx.endpoint_lock_map().dom().contains(payload_endpoint_ptr)
         }) by {
-            reveal(process_perms_wf);
-            reveal(thread_perms_wf);
-            reveal(endpoint_perms_wf);
         };
     }
     let ghost before_payload_endpoint_lock = *krnl;
@@ -735,12 +699,7 @@ pub(super) fn ipc_rendezvous_endpoint(
             &&& krnl.sched_mp.dom().contains(peer_scheduler_ptr)
             &&& !lctx.scheduler_lock_map().dom().contains(peer_scheduler_ptr)
         }) by {
-            reveal(container_thread_wf);
             reveal(container_scheduler_wf);
-            reveal(scheduler_perms_wf);
-            reveal(process_perms_wf);
-            reveal(thread_perms_wf);
-            reveal(endpoint_perms_wf);
         };
     }
     let ghost before_peer_scheduler_lock = *krnl;
@@ -762,5 +721,4 @@ pub(super) fn ipc_rendezvous_endpoint(
     }
     ipc_finish_endpoint_transit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, payload_endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, result, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(payload_endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm))
 }
-
 }

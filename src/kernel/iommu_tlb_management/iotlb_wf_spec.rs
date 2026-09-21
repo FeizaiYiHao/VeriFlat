@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use crate::*;
 
 pub open spec fn spec_iotlb_entry_equal_to_map_entry(
@@ -96,5 +95,4 @@ pub open spec fn iommu_tlb_wf_spec(
             }
         }
 }
-
 }

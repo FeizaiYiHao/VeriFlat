@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 impl KernelK {
     pub fn wunlock_iommu_table(
         &mut self,
@@ -37,15 +36,12 @@ impl KernelK {
         assert(self.it_mp.spec_index(iommu_table_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         self.it_mp.wunlock(iommu_table_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::IommuTable(iommu_table_ptr)));
         proof {
-            assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf);  };
+            assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { reveal(iommu_table_pages_wf); reveal(process_iommu_table_match);   };
-            assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf);   };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec);   };
+            assert(self.memory_management_inv()) by { reveal(iommu_table_pages_wf); reveal(process_iommu_table_match); };
+            assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf); };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            broadcast use vstd::map::lemma_map_remove_domain;
-            broadcast use vstd::set::lemma_set_remove_same;
-            broadcast use vstd::set::lemma_set_remove_different;
             assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
         }
     }

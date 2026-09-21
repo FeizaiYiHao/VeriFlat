@@ -140,7 +140,6 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr)
                 &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr)
             }) by {
-                reveal(thread_perms_wf);
                 lock_id_fields_eq_imply_eq();
             };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {

@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 /// One non-stuttering transition of the kernel's user projection.
 ///
 /// Kernel atomic sections whose `KernelU` projection is unchanged are internal
@@ -65,5 +64,4 @@ impl KernelSteps {
         unimplemented!()
     }
 }
-
 }

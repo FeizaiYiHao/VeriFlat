@@ -35,7 +35,5 @@ verus! {
             scheduler_map.spec_index(scheduler_ptr).view().inv(),
     {
         reveal(scheduler_perms_wf);
-        reveal(schedulers_inv);
     }
-
 }

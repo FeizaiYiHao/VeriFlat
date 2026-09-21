@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_endpoint_wf(container_map: ContainerLockedMap, 
+    pub open spec fn container_endpoint_wf(container_map: ContainerLockedMap,
             endpoint_map: EndpointLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr, e_ptr:RwLockEndpointPtr|
@@ -22,5 +22,4 @@ verus! {
             &&
             container_map.spec_index(endpoint_map.spec_index(e_ptr).view().owning_container).view().owned_endpoints.view().contains(e_ptr)
     }
-
 }

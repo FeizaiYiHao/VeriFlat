@@ -3,12 +3,8 @@ use crate::*;
 use super::syscall_ipc_dispatch::syscall_ipc_ordinary;
 verus! {
     pub fn syscall_send_empty(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -39,12 +35,8 @@ verus! {
     }
 
     pub fn syscall_send_empty_no_block(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -96,12 +88,8 @@ verus! {
     }
 
     pub fn syscall_receive_empty(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -132,12 +120,8 @@ verus! {
     }
 
     pub fn syscall_receive_empty_no_block(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -189,13 +173,8 @@ verus! {
     }
 
     pub fn syscall_send_cpu(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        transfer_cpu_id: CpuId,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, transfer_cpu_id: CpuId, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -228,12 +207,8 @@ verus! {
     }
 
     pub fn syscall_receive_cpu(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -266,13 +241,8 @@ verus! {
     }
 
     pub fn syscall_send_endpoint(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        source_endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, source_endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -301,20 +271,14 @@ verus! {
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch,
     {
         syscall_ipc_ordinary(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
-            endpoint_index, ThreadState::SENDING,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING,
             IPCPayLoad::Endpoint { endpoint_index: source_endpoint_index }, true, pt_regs,
         )
     }
 
     pub fn syscall_receive_endpoint(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        target_endpoint_index: EndpointIdx,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, target_endpoint_index: EndpointIdx, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -343,21 +307,14 @@ verus! {
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch,
     {
         syscall_ipc_ordinary(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
-            endpoint_index, ThreadState::RECEIVING,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING,
             IPCPayLoad::Endpoint { endpoint_index: target_endpoint_index }, true, pt_regs,
         )
     }
 
     pub fn syscall_send_pages(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        va: VAddr,
-        range: usize,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, va: VAddr, range: usize, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -389,14 +346,8 @@ verus! {
     }
 
     pub fn syscall_receive_pages(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        va: VAddr,
-        range: usize,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, va: VAddr, range: usize, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -428,15 +379,8 @@ verus! {
     }
 
     fn syscall_pages(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        endpoint_index: EndpointIdx,
-        waiting_state: ThreadState,
-        va: VAddr,
-        range: usize,
-        pt_regs: &mut Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    endpoint_index: EndpointIdx, waiting_state: ThreadState, va: VAddr, range: usize, pt_regs: &mut Registers,
     ) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -485,8 +429,7 @@ verus! {
         }
         let va_range = VaRange4K::new(va, range);
         syscall_ipc_ordinary(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id,
-            endpoint_index, waiting_state,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, waiting_state,
             IPCPayLoad::Pages { va_range }, true, pt_regs,
         )
     }

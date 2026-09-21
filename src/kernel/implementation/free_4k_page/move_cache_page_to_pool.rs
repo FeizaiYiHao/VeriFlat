@@ -96,8 +96,6 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
             assert(container_allocator_cpu_cache_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr) && container_allocator_global_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by {
                 reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); reveal(page_array_wf);
                 page_ptr_valid_imply_page_index_valid(); seq_skip_lemma::<PagePtr>();
-                broadcast use vstd::seq_lib::lemma_seq_concat_contains_all_elements;
-                broadcast use vstd::seq_lib::lemma_seq_contains_after_push;
                 old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().insert_ensures(0, page_ptr);
             };
             assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); };

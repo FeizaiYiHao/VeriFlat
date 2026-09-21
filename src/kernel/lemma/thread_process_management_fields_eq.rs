@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 pub open spec fn thread_process_management_fields_unchanged(
     pre: ThreadLockedMap,
     post: ThreadLockedMap,
@@ -167,5 +166,4 @@ pub proof fn thread_cpu_wf_preserved_for_thread_process_management_fields(
 {
     reveal(thread_cpu_wf);
 }
-
 }

@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 verus! {
-
 pub struct TrapFrameOption {
     pub reg: Registers,
     pub exist: bool,
@@ -207,5 +206,4 @@ impl Registers {
         *self = *src;
     }
 }
-
 } // verus!

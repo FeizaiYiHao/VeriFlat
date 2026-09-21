@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use super::entry::*;
 use super::pagetable_spec::*;
 use crate::*;
@@ -27,10 +26,7 @@ pub open spec fn spec_l4_index_path_le(
 ) -> bool {
     lhs.0 < rhs.0
         || (lhs.0 == rhs.0
-            && spec_l3_index_path_le(
-                (lhs.1, lhs.2, lhs.3),
-                (rhs.1, rhs.2, rhs.3),
-            ))
+            && spec_l3_index_path_le((lhs.1, lhs.2, lhs.3), (rhs.1, rhs.2, rhs.3)))
 }
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
@@ -191,10 +187,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pei_valid(end_l3i),
             pei_valid(end_l2i),
             pei_valid(end_l1i),
-            self.spec_mapping_4k_range_empty(
-                (start_l4i, start_l3i, start_l2i, start_l1i),
-                (end_l4i, end_l3i, end_l2i, end_l1i),
-            ),
+            self.spec_mapping_4k_range_empty((start_l4i, start_l3i, start_l2i, start_l1i), (end_l4i, end_l3i, end_l2i, end_l1i)),
             spec_va_4k_valid(va),
             spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i)) <= va,
             va <= spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i)),
@@ -223,14 +216,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 va, va_l4i, va_l3i, va_l2i, va_l1i,
             );
         };
-        spec_index2va_le_implies_4k_indices_lex_le(
-            (start_l4i, start_l3i, start_l2i, start_l1i),
-            (va_l4i, va_l3i, va_l2i, va_l1i),
-        );
-        spec_index2va_le_implies_4k_indices_lex_le(
-            (va_l4i, va_l3i, va_l2i, va_l1i),
-            (end_l4i, end_l3i, end_l2i, end_l1i),
-        );
+        spec_index2va_le_implies_4k_indices_lex_le((start_l4i, start_l3i, start_l2i, start_l1i), (va_l4i, va_l3i, va_l2i, va_l1i));
+        spec_index2va_le_implies_4k_indices_lex_le((va_l4i, va_l3i, va_l2i, va_l1i), (end_l4i, end_l3i, end_l2i, end_l1i));
     }
 
     pub fn mapping_4k_va_range_empty(
@@ -245,10 +232,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             start_va <= end_va,
             self.kernel_l4_end <= spec_va2index(start_va).0,
         ensures
-            ret == self.spec_mapping_4k_range_empty(
-                spec_va2index(start_va),
-                spec_va2index(end_va),
-            ),
+            ret == self.spec_mapping_4k_range_empty(spec_va2index(start_va), spec_va2index(end_va)),
             ret ==> self.spec_mapping_4k_va_range_empty(start_va, end_va),
     {
         let start = va2index(start_va);
@@ -381,12 +365,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             let l2_entry = self.get_entry_l2(l4i, l3i, l2i, l3_entry);
             if let Some(l2_entry) = l2_entry {
                 if !self.mapping_4k_l1_range_empty(
-                    l4i,
-                    l3i,
-                    l2i,
-                    &l2_entry,
-                    if l2i == start.0 { start.1 } else { 0 },
-                    if l2i == end.0 { end.1 } else { 511 },
+                    l4i, l3i, l2i, &l2_entry, if l2i == start.0 { start.1 } else { 0 }, if l2i == end.0 { end.1 } else { 511 },
                 ) {
                     return false;
                 }
@@ -517,14 +496,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                         && pei_valid(done_l3i)
                         && pei_valid(done_l2i)
                         && pei_valid(done_l1i)
-                        && spec_l4_index_path_le(
-                            start,
-                            (done_l4i, done_l3i, done_l2i, done_l1i),
-                        )
-                        && spec_l4_index_path_le(
-                            (done_l4i, done_l3i, done_l2i, done_l1i),
-                            end,
-                        )
+                        && spec_l4_index_path_le(start, (done_l4i, done_l3i, done_l2i, done_l1i))
+                        && spec_l4_index_path_le((done_l4i, done_l3i, done_l2i, done_l1i), end)
                         && done_l4i < l4i
                         ==> !self.mapping_4k().dom().contains(
                             spec_index2va((done_l4i, done_l3i, done_l2i, done_l1i)),
@@ -619,9 +592,7 @@ impl PageTable<PT_TYPE> {
         {
             let va = va_add_range(range_start, i);
             proof {
-                assert(va_4k_valid(va)) by {
-                    range.va_range_lemma();
-                };
+                assert(va_4k_valid(va)) by { range.va_range_lemma(); };
             }
             let (l4i, l3i, l2i, l1i) = va2index(va);
             proof {
@@ -641,9 +612,7 @@ impl PageTable<PT_TYPE> {
             );
             if resolved.2.is_none() {
                 proof {
-                    assert(!self.spec_mapping_4k_va_range_present(range)) by {
-                        range.va_range_lemma();
-                    };
+                    assert(!self.spec_mapping_4k_va_range_present(range)) by { range.va_range_lemma(); };
                 }
                 return false;
             }
@@ -677,10 +646,7 @@ impl PageTable<PT_TYPE> {
                     )
                     &&& {
                         let spec_resolved = self.spec_resolve_mapping_4k_l1(
-                            checked_indices.0,
-                            checked_indices.1,
-                            checked_indices.2,
-                            checked_indices.3,
+                            checked_indices.0, checked_indices.1, checked_indices.2, checked_indices.3,
                         );
                         &&& spec_resolved is Some
                         &&& spec_resolved->0.perm.kernel_present
@@ -718,10 +684,8 @@ impl PageTable<PT_TYPE> {
             )]
             0 <= i < range.len
                 ==> self.spec_4k_entry_usable(
-                    spec_va2index(range.view().spec_index(i)).0,
-                    spec_va2index(range.view().spec_index(i)).1,
-                    spec_va2index(range.view().spec_index(i)).2,
-                    spec_va2index(range.view().spec_index(i)).3,
+                    spec_va2index(range.view().spec_index(i)).0, spec_va2index(range.view().spec_index(i)).1,
+                    spec_va2index(range.view().spec_index(i)).2, spec_va2index(range.view().spec_index(i)).3,
                 )
     }
 
@@ -776,9 +740,7 @@ impl PageTable<PT_TYPE> {
         {
             let va = va_add_range(range_start, i);
             proof {
-                assert(va_4k_valid(va)) by {
-                    range.va_range_lemma();
-                };
+                assert(va_4k_valid(va)) by { range.va_range_lemma(); };
             }
             let (l4i, l3i, l2i, l1i) = va2index(va);
             proof {
@@ -810,9 +772,7 @@ impl PageTable<PT_TYPE> {
                         )) by {
                             spec_va_4k_valid_imply_indices_valid();
                         };
-                        assert(!self.spec_mapping_4k_va_range_buildable(range)) by {
-                            range.va_range_lemma();
-                        };
+                        assert(!self.spec_mapping_4k_va_range_buildable(range)) by { range.va_range_lemma(); };
                     }
                     return false;
                 },
@@ -836,12 +796,7 @@ impl PageTable<PT_TYPE> {
                     &&& pei_valid(checked_indices.1)
                     &&& pei_valid(checked_indices.2)
                     &&& pei_valid(checked_indices.3)
-                    &&& self.spec_4k_entry_usable(
-                        checked_indices.0,
-                        checked_indices.1,
-                        checked_indices.2,
-                        checked_indices.3,
-                    )
+                    &&& self.spec_4k_entry_usable(checked_indices.0, checked_indices.1, checked_indices.2, checked_indices.3)
                 }) by {
                     range.va_range_lemma();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {

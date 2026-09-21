@@ -19,7 +19,7 @@ verus! {
 
     // Proof dependencies (confirmed): process_empty_lists_wlocked.
     #[verifier::opaque]
-    pub open spec fn process_thread_wf(process_map: ProcessLockedMap, 
+    pub open spec fn process_thread_wf(process_map: ProcessLockedMap,
             thread_map: ThreadLockedMap) -> bool {
         &&&
         process_empty_lists_wlocked(process_map)
@@ -59,5 +59,4 @@ verus! {
             &&
             process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc).view().owned_threads.view().contains(t_ptr)
     }
-
 }

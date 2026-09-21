@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 // ---------- 4k ----------
 
 /// Bi-directional invariant for `Thread.temp_alloc_cache_4k` against
@@ -128,5 +127,4 @@ pub open spec fn thread_staged_pages_wf(
     &&& thread_staged_pages_2m_wf(thread_map, page_array)
     &&& thread_staged_pages_1g_wf(thread_map, page_array)
 }
-
 }

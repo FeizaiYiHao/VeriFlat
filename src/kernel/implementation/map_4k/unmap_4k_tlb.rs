@@ -146,5 +146,4 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         assert(typed_lock_maps_aligned(krnl, lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); };
     }
 }
-
 }

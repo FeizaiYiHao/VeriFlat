@@ -3,7 +3,6 @@ use vstd::simple_pptr::*;
 
 use crate::*;
 verus! {
-
 pub struct GlobalPool {
     pub linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
 }
@@ -86,5 +85,4 @@ impl GlobalPool {
         ensures self.linked_list.view().len() == self.linked_list.len(),
     { self.linked_list.lemma_len_view(); }
 }
-
 } // verus!

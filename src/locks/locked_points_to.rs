@@ -4,7 +4,6 @@ use crate::define::*;
 use super::*;
 use core::mem::MaybeUninit;
 verus! {
-
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockMinorTrait for PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>{
     open spec fn lock_minor(&self) -> LockMinorId{
         self.addr()
@@ -25,10 +24,10 @@ impl<T:LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockMajorTrait f
     }
     open spec fn lock_major_2(&self) -> LockMajorId {
         self.value().view().lock_major_2()
-    }    
+    }
     open spec fn lock_major_3(&self) -> LockMajorId {
         self.value().view().lock_major_3()
-    }    
+    }
     open spec fn lock_major_default(&self) -> LockMajorId {
         self.value().view().lock_major_default()
     }
@@ -45,7 +44,7 @@ impl<T:LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockMajorTrait f
     open spec fn lock_major_default_predicate(&self) -> bool{
         self.value().view().lock_major_default_predicate()
     }
-}  
+}
 
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     GhostT, const KILL_STATE: bool>
@@ -136,12 +135,7 @@ NO_KILL_STATE>>>,
         final(perm).value().locking_thread() is None,
 
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(
-            old(lctx),
-            final(lctx),
-            obj_id.view(),
-            old(perm).lock_id(),
-        ),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(perm).lock_id()),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, NO_KILL_STATE>>;
@@ -182,7 +176,7 @@ HAS_KILL_STATE>>>,
             *final(lctx) == *old(lctx)
         },
         ret is Some ==>{
-            &&&                
+            &&&
             old(perm).value().being_killed() == false
             &&&
             wlock_ensures(old(perm).value(), final(perm).value(), LockId{
@@ -244,12 +238,7 @@ HAS_KILL_STATE>>>,
 
         old(perm).value().being_killed() == final(perm).value().being_killed(),
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(
-            old(lctx),
-            final(lctx),
-            obj_id.view(),
-            old(perm).lock_id(),
-        ),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(perm).lock_id()),
 {
      unsafe {
         let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>;
@@ -394,5 +383,4 @@ pub proof fn update_ghost<T, ROT, GhostT, const HAS_KILL_STATE: bool>(tracked pe
 {
     unimplemented!()
 }
-
 }

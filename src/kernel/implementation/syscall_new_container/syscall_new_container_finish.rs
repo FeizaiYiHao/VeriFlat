@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-#[verifier::rlimit(80)]
 #[verifier::spinoff_prover]
 pub(super) fn finish_staged_container_publish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pages_4k: &ArrayVec<PagePtr, 9>,
@@ -100,18 +99,8 @@ pub(super) fn finish_staged_container_publish(
                     ].to_set()),
             )
             =~= set![page_ptr2page_index(pages_4k.view().spec_index(7))],
-        owned_2m_tail_lock_perms_wf(
-            container_tail_lock_perms,
-            old(krnl).pg_arr,
-            old(lctx),
-            page_ptr2page_index(container_page),
-        ),
-        owned_2m_tail_lock_perms_wf(
-            pcid_allocator_tail_lock_perms,
-            old(krnl).pg_arr,
-            old(lctx),
-            page_ptr2page_index(pcid_allocator_page),
-        ),
+        owned_2m_tail_lock_perms_wf(container_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(container_page)),
+        owned_2m_tail_lock_perms_wf(pcid_allocator_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(pcid_allocator_page)),
         old(krnl).ctn_mp.dom().contains(container_page),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_page, TypedLockMode::Write),
         child_container_lock_perm.state() is WriteLock,
@@ -321,10 +310,7 @@ pub(super) fn finish_staged_container_publish(
         assert({
             &&& page_ptr_valid(container_page)
             &&& page_ptr_valid(pcid_allocator_page)
-        }) by {
-            reveal(page_ptr_2m_valid);
-            reveal(page_ptr_valid);
-        };
+        });
         assert({
             &&& index_valid(NUM_PAGES, page_ptr2page_index(allocator_4k_page))
             &&& index_valid(NUM_PAGES, page_ptr2page_index(allocator_2m_page))
@@ -339,31 +325,18 @@ pub(super) fn finish_staged_container_publish(
             page_ptr_valid_imply_page_index_valid();
         };
     }
-    wunlock_owned_2m_page_tails(
-        krnl,
-        container_head,
-        Tracked(&mut *lctx),
-        Tracked(container_tail_lock_perms),
-    );
+    wunlock_owned_2m_page_tails(krnl, container_head, Tracked(&mut *lctx), Tracked(container_tail_lock_perms));
     proof {
         assert(owned_2m_tail_lock_perms_wf(
             pcid_allocator_tail_lock_perms,
             krnl.pg_arr,
             lctx,
             pcid_allocator_head,
-        )) by {
-            reveal(owned_2m_tail_lock_perms_wf);
-            reveal(page_2m_tail_indices);
-        };
+        ));
     }
-    wunlock_owned_2m_page_tails(
-        krnl,
-        pcid_allocator_head,
-        Tracked(&mut *lctx),
-        Tracked(pcid_allocator_tail_lock_perms),
-    );
+    wunlock_owned_2m_page_tails(krnl, pcid_allocator_head, Tracked(&mut *lctx), Tracked(pcid_allocator_tail_lock_perms));
     proof {
-        new_container_nine_page_positions_distinct(pages_4k.view());
+        new_container_page_positions(pages_4k.view());
         assert({
             &&& container_head
                 != page_ptr2page_index(allocator_4k_page)
@@ -444,86 +417,35 @@ pub(super) fn finish_staged_container_publish(
             &&& thread_page_lock_perm.lock_id()
                 == krnl.pg_arr.spec_index(page_ptr2page_index(thread_page))
                     .view().locking_thread()->Write_lock_id
-        }) by {
-            reveal(page_2m_tail_indices);
-            reveal(Set::disjoint);
-        };
+        });
     }
-    krnl.wunlock_page(
-        page_ptr2page_index(allocator_4k_page),
-        Tracked(&mut *lctx),
-        Tracked(allocator_4k_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(allocator_2m_page),
-        Tracked(&mut *lctx),
-        Tracked(allocator_2m_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(allocator_1g_page),
-        Tracked(&mut *lctx),
-        Tracked(allocator_1g_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(scheduler_page),
-        Tracked(&mut *lctx),
-        Tracked(scheduler_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(cpu_set_page),
-        Tracked(&mut *lctx),
-        Tracked(cpu_set_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(process_page),
-        Tracked(&mut *lctx),
-        Tracked(process_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(pagetable_page),
-        Tracked(&mut *lctx),
-        Tracked(pagetable_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(l4_page),
-        Tracked(&mut *lctx),
-        Tracked(l4_page_lock_perm),
-    );
+    krnl.wunlock_page(page_ptr2page_index(allocator_4k_page), Tracked(&mut *lctx), Tracked(allocator_4k_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(allocator_2m_page), Tracked(&mut *lctx), Tracked(allocator_2m_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(allocator_1g_page), Tracked(&mut *lctx), Tracked(allocator_1g_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(scheduler_page), Tracked(&mut *lctx), Tracked(scheduler_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(cpu_set_page), Tracked(&mut *lctx), Tracked(cpu_set_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(process_page), Tracked(&mut *lctx), Tracked(process_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(pagetable_page), Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(l4_page), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));
     proof {
         assert(
             typed_lock_map_contains_mode(lctx.page_lock_map(), container_head, TypedLockMode::Write)
                 && container_page_lock_perm.lock_id()
                     == krnl.pg_arr.spec_index(container_head)
                         .view().locking_thread()->Write_lock_id
-        ) by {
-            reveal(typed_lock_maps_removed);
-        };
+        );
     }
-    krnl.wunlock_page(
-        container_head,
-        Tracked(&mut *lctx),
-        Tracked(container_page_lock_perm),
-    );
+    krnl.wunlock_page(container_head, Tracked(&mut *lctx), Tracked(container_page_lock_perm));
     proof {
         assert(
             typed_lock_map_contains_mode(lctx.page_lock_map(), pcid_allocator_head, TypedLockMode::Write)
                 && pcid_allocator_page_lock_perm.lock_id()
                     == krnl.pg_arr.spec_index(pcid_allocator_head)
                         .view().locking_thread()->Write_lock_id
-        ) by {
-            reveal(typed_lock_maps_removed);
-        };
+        );
     }
-    krnl.wunlock_page(
-        pcid_allocator_head,
-        Tracked(&mut *lctx),
-        Tracked(pcid_allocator_page_lock_perm),
-    );
-    krnl.wunlock_pcid_allocator(
-        pcid_allocator_page,
-        Tracked(&mut *lctx),
-        Tracked(child_pcid_allocator_lock_perm),
-    );
+    krnl.wunlock_page(pcid_allocator_head, Tracked(&mut *lctx), Tracked(pcid_allocator_page_lock_perm));
+    krnl.wunlock_pcid_allocator(pcid_allocator_page, Tracked(&mut *lctx), Tracked(child_pcid_allocator_lock_perm));
 
     (
         Tracked(child_container_lock_perm),
@@ -533,6 +455,4 @@ pub(super) fn finish_staged_container_publish(
         Tracked(thread_page_lock_perm),
     )
 }
-
-
 }

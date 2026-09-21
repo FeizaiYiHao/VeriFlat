@@ -4,7 +4,6 @@ use super::super::syscall_new_thread::syscall_new_thread_helpers::kernel_u_new_t
 use super::syscall_new_thread_with_endpoint_helpers::add_new_thread_with_endpoint;
 
 verus! {
-
         /// Create a thread sharing the running thread's `endpoint_index`.
         pub fn syscall_new_thread_with_endpoint(
             krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
@@ -129,5 +128,4 @@ verus! {
             );
             RetValueType::Success
         }
-
 }

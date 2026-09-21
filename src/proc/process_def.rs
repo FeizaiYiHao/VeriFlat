@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
-
 use crate::*;
 
 pub struct Process {
@@ -34,7 +33,6 @@ pub ghost struct ProcessU {
     pub zombie: bool,
     pub pagetable: Option<PageTableU>,
     pub iommu_table: Option<PageTableU>,
-    
     pub quota_4k: usize,
     pub quota_2m: usize,
     pub quota_1g: usize,
@@ -53,7 +51,7 @@ pub ghost struct ProcessU {
 pub struct ProcessRO {
     pub owning_container: RwLockContainerPtr,
     pub container_depth: usize,
-    pub parent: Option<RwLockProcessPtr>,    
+    pub parent: Option<RwLockProcessPtr>,
     pub depth: usize,
     pub pagetable: RwLockPageTableRoot,
     pub cr3: PageTableRoot,
@@ -72,7 +70,6 @@ impl LockInvTrait for Process {
         self.wf()
     }
 }
- 
 impl Process{
     pub fn new_boot_root(
         process_ptr: RwLockProcessPtr,
@@ -112,21 +109,11 @@ impl Process{
                 =~= Map::<usize, RwLockThreadPtr>::empty()
                     .insert(thread_node_addr, root_thread),
     {
-        let mut ret = Self::new_fresh(
-            process_ptr,
-            1,
-            pagetable,
-            0,
-            0,
-        );
+        let mut ret = Self::new_fresh(process_ptr, 1, pagetable, 0, 0);
         ret.iommu_table = Some(iommu_table);
         ret.pci_function_ref_counter = VTD_DOMAIN_COUNT;
         ret.owned_pci_functions = owned_pci_functions;
-        ret.owned_threads.push_tail(
-            thread_node_addr,
-            thread_node_perm,
-        );
-        assert(ret.inv());
+        ret.owned_threads.push_tail(thread_node_addr, thread_node_perm);
         ret
     }
 
@@ -242,9 +229,7 @@ impl Process{
         let mut node_perm = node_perm;
         node_update_value(node_addr, &mut node_perm, thread_ptr);
         proof {
-            assert(self.owned_threads.length != usize::MAX) by {
-                reveal(LinkedList::wf_value_list);
-            };
+            assert(self.owned_threads.length != usize::MAX) by { reveal(LinkedList::wf_value_list); };
         }
         self.owned_threads.push_tail(node_addr, node_perm);
     }
@@ -277,9 +262,7 @@ impl Process{
         let mut node_perm = node_perm;
         node_update_value(node_addr, &mut node_perm, child_ptr);
         proof {
-            assert(self.children.length != usize::MAX) by {
-                reveal(LinkedList::wf_value_list);
-            };
+            assert(self.children.length != usize::MAX) by { reveal(LinkedList::wf_value_list); };
         }
         self.children.push_tail(node_addr, node_perm);
     }
@@ -358,5 +341,4 @@ pub open spec fn process_effective_quota_2m(proc_lock: ProcessRwLock) -> int {
 pub open spec fn process_effective_quota_1g(proc_lock: ProcessRwLock) -> int {
     proc_lock.view().quota_1g as int
 }
-
 } // verus!

@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 impl KernelK {
         fn wlock_pagetable_with_acyclic(
             &mut self,
@@ -58,16 +57,12 @@ impl KernelK {
                             pagetable_ptr,
                             TypedLockMode::Write,
                         )) by {
-                            reveal(typed_lock_maps_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                         };
                     }
                 };
                 assert(!old(self).pt_mp.spec_index(pagetable_ptr)
-                    .wlocked_by(&*old(lctx))) by {
-                    reveal(RwLock::wlocked_by);
-                    reveal(RwLock::wlocked_by_thread);
-                };
+                    .wlocked_by(&*old(lctx)));
             }
             assert(wlock_requires(self.pt_mp.spec_index(pagetable_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
@@ -87,11 +82,8 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)) by { reveal(pagetable_perms_wf); };
                 assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { assert(MAPPED_PAGE_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
-                broadcast use vstd::map::lemma_map_insert_domain;
-                broadcast use vstd::set::lemma_set_insert_same;
-                broadcast use vstd::set::lemma_set_insert_different;
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             ret
@@ -227,14 +219,14 @@ impl KernelK {
             if source_pagetable < target_pagetable {
                 let Tracked(source_perm) = self.wlock_pagetable(source_pagetable, Tracked(&mut *lctx));
                 proof {
-                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(target_pagetable))) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(target_pagetable))) by { reveal(pagetable_perms_wf); };
                 }
                 let Tracked(target_perm) = self.wlock_pagetable_with_acyclic(target_pagetable, Tracked(&mut *lctx));
 (Tracked(source_perm), Tracked(target_perm))
             } else {
                 let Tracked(target_perm) = self.wlock_pagetable(target_pagetable, Tracked(&mut *lctx));
                 proof {
-                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(source_pagetable))) by { reveal(pagetable_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                    assert(lctx.lock_id_acyclic(self.pt_mp.lock_id_by_key(source_pagetable))) by { reveal(pagetable_perms_wf); };
                 }
                 let Tracked(source_perm) = self.wlock_pagetable_with_acyclic(source_pagetable, Tracked(&mut *lctx));
 (Tracked(source_perm), Tracked(target_perm))
@@ -302,11 +294,6 @@ impl KernelK {
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                broadcast use vstd::map::lemma_map_remove_domain;
-                broadcast use vstd::set::lemma_set_insert_same;
-                broadcast use vstd::set::lemma_set_insert_different;
-                broadcast use vstd::set::lemma_set_remove_same;
-                broadcast use vstd::set::lemma_set_remove_different;
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
         }

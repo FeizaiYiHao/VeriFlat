@@ -4,7 +4,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
     pub open spec fn container_pages_forward_wf(
         page_array: PageLockedArray,
         container_map: ContainerLockedMap,
@@ -45,5 +44,4 @@ verus! {
         &&& container_pages_forward_wf(page_array, container_map)
         &&& container_pages_backward_wf(page_array, container_map)
     }
-    
 }

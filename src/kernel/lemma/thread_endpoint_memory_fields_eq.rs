@@ -46,5 +46,4 @@ pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(p
         container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
     };
 }
-
 }

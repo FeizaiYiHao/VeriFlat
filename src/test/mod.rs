@@ -1,5 +1,4 @@
 use vstd::prelude::*;
 
 verus! {
-
 }

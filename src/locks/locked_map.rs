@@ -3,7 +3,6 @@ use vstd::simple_pptr::*;
 use crate::define::*;
 use super::*;
 verus! {
-
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
 pub struct LockedMap<K, T, ROT, GhostT, const HAS_KILL_STATE: bool>{
@@ -32,11 +31,11 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
     }
     pub open spec fn perms_wf(&self) -> bool {
         &&&
-        forall|k:usize| 
+        forall|k:usize|
             #![trigger self.view().spec_index(k).is_init()]
             self.view().dom().contains(k)
             ==>
-            { 
+            {
                 &&&
                 self.view().spec_index(k).is_init()
                 &&&
@@ -105,11 +104,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             #![trigger self.spec_index(key).rlocked_by_thread(thread_id)]
             self.dom().contains(key)
             && self.spec_index(key).rlocked_by_thread(thread_id)
-            ==> typed_lock_map_contains_mode(
-                held_locks,
-                key,
-                TypedLockMode::Read,
-            ))
+            ==> typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read))
         &&& (forall|key: usize|
             #![trigger typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write)]
             typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write)
@@ -121,18 +116,13 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             #![trigger self.spec_index(key).wlocked_by_thread(thread_id)]
             self.dom().contains(key)
             && self.spec_index(key).wlocked_by_thread(thread_id)
-            ==> typed_lock_map_contains_mode(
-                held_locks,
-                key,
-                TypedLockMode::Write,
-            ))
+            ==> typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write))
     }
 
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
-            
             old(self).spec_index(key).wlocked_by(lctx),
             old(self).spec_index(key).is_init(),
 
@@ -160,7 +150,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
-            
             old(self).spec_index(key).wlocked_by(lctx),
             old(self).spec_index(key).is_init() == false,
 
@@ -185,7 +174,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         requires
             self.perms_wf(),
             self.dom().contains(key),
-            
             self.spec_index(key).is_init(),
 
             lock_perm.view().state() is WriteLock ==> self.spec_index(key).write_lock_perm_match(lock_perm.view()),
@@ -309,9 +297,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key)
                 ==> final(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
     {
-        proof {
-            reveal(LockedMap::typed_lock_map_aligned);
-        }
+        proof { reveal(LockedMap::typed_lock_map_aligned); }
         self.borrow_mut(key, Tracked(lctx), lock_perm)
     }
 
@@ -355,9 +341,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         update_ghost(&mut perm, new_ghost);
         self.map.borrow_mut().tracked_insert(key, perm);
-        reveal(RwLock::locked_by_thread);
-        reveal(RwLock::rlocked_by_thread);
-        reveal(RwLock::wlocked_by_thread);
     }
 }
 
@@ -412,9 +395,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 minor: key,
             }),
     {
-        proof {
-            self.map.borrow_mut().tracked_insert(key, perm);
-        }
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
 }
 
@@ -464,9 +445,7 @@ NO_KILL_STATE>{
         let ret = wlock(&PPtr::<RwLock<T, ROT, GhostT,
 NO_KILL_STATE>>::from_usize(key),
             Tracked(&mut perm), Tracked(lctx), obj_id);
-        proof {
-            self.map.borrow_mut().tracked_insert(key, perm);
-        }
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;
     }
 
@@ -474,7 +453,6 @@ NO_KILL_STATE>>::from_usize(key),
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
-            
             old(self).spec_index(key).wlocked_by(old(lctx)),
             old(self).spec_index(key).inv(),
 
@@ -492,23 +470,14 @@ NO_KILL_STATE>>::from_usize(key),
             final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key),
 
             wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
-            unlock_ensures(
-                old(lctx),
-                final(lctx),
-                obj_id.view(),
-                old(self).lock_id_by_key(key),
-            ),
+            unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_key(key)),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        assert(perm.addr() == key) by {
-            reveal(LockedMap::perms_wf);
-        };
+        assert(perm.addr() == key);
         let ret = wunlock(&PPtr::<RwLock<T, ROT, GhostT,
 NO_KILL_STATE>>::from_usize(key),
             Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
-        proof {
-            self.map.borrow_mut().tracked_insert(key, perm);
-        }
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;
     }
 }
@@ -544,7 +513,7 @@ HAS_KILL_STATE>{
                 *final(lctx) == *old(lctx)
             },
             ret is Some ==>{
-                &&&                
+                &&&
                 old(self).spec_index(key).being_killed() == false
                 &&&
                 wlock_ensures(old(self).spec_index(key), final(self).spec_index(key), old(self).lock_id_by_key(key), final(lctx), ret.unwrap().view())
@@ -565,13 +534,9 @@ HAS_KILL_STATE>{
         }) by {
             lock_id_fields_eq_imply_eq();
         };
-        proof {
-            lctx.lemma_lock_id_eq_imply_acyclic_eq();
-        }
+        proof { lctx.lemma_lock_id_eq_imply_acyclic_eq(); }
         let ret = wlock_unless_killed(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);
-        proof {
-            self.map.borrow_mut().tracked_insert(key, perm);
-        }
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;
     }
 
@@ -579,7 +544,6 @@ HAS_KILL_STATE>{
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
-            
             old(self).spec_index(key).wlocked_by(old(lctx)),
             old(self).spec_index(key).inv(),
 
@@ -598,23 +562,13 @@ HAS_KILL_STATE>{
             final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key),
 
             wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
-            unlock_ensures(
-                old(lctx),
-                final(lctx),
-                obj_id.view(),
-                old(self).lock_id_by_key(key),
-            ),
+            unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_key(key)),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        assert(perm.addr() == key) by {
-            reveal(LockedMap::perms_wf);
-        };
+        assert(perm.addr() == key);
         let ret = has_kill_state_wunlock(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
-        proof {
-            self.map.borrow_mut().tracked_insert(key, perm);
-        }
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;
     }
 }
-
 }

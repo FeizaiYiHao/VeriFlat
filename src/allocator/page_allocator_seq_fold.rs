@@ -3,7 +3,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 pub proof fn lemma_cache_len_fold_congruence(
     s1: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
     s2: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
@@ -129,5 +128,4 @@ pub proof fn lemma_cache_len_fold_all_zero(
         lemma_cache_len_fold_all_zero(s.drop_last());
     }
 }
-
 }

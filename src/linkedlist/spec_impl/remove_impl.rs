@@ -4,9 +4,7 @@ use vstd::simple_pptr::*;
 use crate::*;
 
 verus! {
-
 impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
-
     pub fn remove_helper(&mut self, addr: usize) -> (ret: (usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).wf(),
@@ -42,12 +40,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         ) by {
             reveal(LinkedList::wf_addr_list);
         };
-        assert(0 < ghost_index.view()) by {
-            reveal(LinkedList::wf_head);
-        };
-        assert(ghost_index.view() + 1 < self.length) by {
-            reveal(LinkedList::wf_tail);
-        };
+        assert(0 < ghost_index.view()) by { reveal(LinkedList::wf_head); };
+        assert(ghost_index.view() + 1 < self.length) by { reveal(LinkedList::wf_tail); };
         assert(
             self.map().dom() == self.perms.view().dom()
             && self.map().spec_index(addr)
@@ -220,7 +214,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 reveal(LinkedList::wf_perms);
                 reveal(LinkedList::wf_value_list);
                 reveal(LinkedList::wf_head);
-                reveal(LinkedList::wf_map);
             };
             let ret = self.pop_head();
             assert(
@@ -235,7 +228,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.view().spec_index(0) == self.map().spec_index(addr)) by {
                 reveal(LinkedList::wf_value_list);
                 reveal(LinkedList::wf_head);
-                reveal(LinkedList::wf_map);
             };
             let ret = self.pop_head();
             assert(
@@ -269,7 +261,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                 reveal(LinkedList::wf_value_list);
                 reveal(LinkedList::wf_tail);
                 reveal(LinkedList::wf_prev);
-                reveal(LinkedList::wf_map);
             };
 
             let old_tail_addr = addr;
@@ -279,9 +270,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.tail = Some(new_tail_addr);
             let mut new_tail_perm = Tracked(self.perms.borrow_mut().tracked_remove(new_tail_addr));
             node_update_next::<T>(new_tail_addr, &mut new_tail_perm, None);
-            proof {
-                self.perms.borrow_mut().tracked_insert(new_tail_addr, new_tail_perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(new_tail_addr, new_tail_perm.get()); }
             self.addr_list = Ghost(self.addr_list.view().subrange(0, self.length as int - 1).add(self.addr_list.view().subrange(self.length as int, self.length as int)));
             self.value_list = Ghost(self.value_list.view().subrange(0, self.length as int - 1).add(self.value_list.view().subrange(self.length as int, self.length as int)));
             self.map = Ghost(self.map.view().remove(old_tail_addr));

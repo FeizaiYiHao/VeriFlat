@@ -163,12 +163,7 @@ pub(super) enum MissingPageTableLevel {
             if krnl.pt_mp.spec_index(pagetable_ptr).view()
                 .page_closure().contains(page_ptr)
             {
-                pagetable_pages_wf_closure_entry_at(
-                    krnl.pt_mp,
-                    krnl.pg_arr,
-                    pagetable_ptr,
-                    page_ptr,
-                );
+                pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable_ptr, page_ptr);
             }
         };
 
@@ -237,11 +232,6 @@ pub(super) enum MissingPageTableLevel {
                 assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by {
                     reveal(container_process_page_pagetable_wf);
-                    reveal(mapped_4k_page_pagetable_wf);
-                    reveal(mapped_2m_page_pagetable_wf);
-                    reveal(mapped_1g_page_pagetable_wf);
-                    reveal(process_pagetable_match);
-                    reveal(container_page_owner_wf);
                 };
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
@@ -285,5 +275,4 @@ pub(super) enum MissingPageTableLevel {
             held_pagetables_unchanged_except_for_unchanged_except(old(krnl).pt_mp, krnl.pt_mp, old(lctx), pagetable_ptr);
         }
     }
-
 }

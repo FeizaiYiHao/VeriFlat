@@ -3,15 +3,9 @@ use crate::*;
 use super::syscall_new_container_commit::commit_new_container;
 
 verus! {
-
 pub fn syscall_new_container(
-    krnl: &mut KernelK,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId,
-    funding_page_count: usize,
-    process_quota_4k: usize,
-    initial_regs: &Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    funding_page_count: usize, process_quota_4k: usize, initial_regs: &Registers,
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -73,10 +67,7 @@ pub fn syscall_new_container(
         || funding_page_count > usize::MAX - 9
     {
         proof {
-            enter_kernel_view_release_preserving_lock_alignments(
-                &*krnl,
-                &mut *lctx,
-            );
+            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
             steps.end_kernel_step(&*krnl, &*lctx);
         }
         return RetValueType::Error;
@@ -99,9 +90,7 @@ pub fn syscall_new_container(
     let parent_process_ptr = cpu.current_process().unwrap();
     let current_thread_ptr = cpu.current_thread().unwrap();
     proof {
-        assert(krnl.ctn_mp.dom().contains(parent_container_ptr)) by {
-            reveal(container_cpu_wf);
-        };
+        assert(krnl.ctn_mp.dom().contains(parent_container_ptr)) by { reveal(container_cpu_wf); };
         assert({
             &&& krnl.prc_mp.dom().contains(parent_process_ptr)
             &&& krnl.prc_mp.spec_index(parent_process_ptr)
@@ -123,16 +112,9 @@ pub fn syscall_new_container(
             reveal(process_thread_wf);
         };
     }
-    let container_res = krnl.wlock_container_unless_killed(
-        parent_container_ptr,
-        Tracked(&mut *lctx),
-    );
+    let container_res = krnl.wlock_container_unless_killed(parent_container_ptr, Tracked(&mut *lctx));
     if container_res.is_none() {
-        krnl.wunlock_cpu(
-            cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(cpu_lock_perm),
-        );
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorContainerKilled;
     }
@@ -141,57 +123,26 @@ pub fn syscall_new_container(
     let parent_depth = krnl.ctn_mp
         .borrow_rodata(parent_container_ptr).borrow().depth;
     if parent_depth >= MAX_CONTAINER_TREE_DEPTH {
-        krnl.wunlock_container(
-            parent_container_ptr,
-            Tracked(&mut *lctx),
-            Tracked(container_lock_perm),
-        );
-        krnl.wunlock_cpu(
-            cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(cpu_lock_perm),
-        );
+        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::Error;
     }
 
     let process_res = krnl.wlock_process_unless_killed(parent_process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
-        krnl.wunlock_container(
-            parent_container_ptr,
-            Tracked(&mut *lctx),
-            Tracked(container_lock_perm),
-        );
-        krnl.wunlock_cpu(
-            cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(cpu_lock_perm),
-        );
+        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorProcessKilled;
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
     proof { assert(krnl.prc_mp.spec_index(parent_process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); }; }
-    let thread_res = krnl.wlock_thread_unless_killed(
-        current_thread_ptr,
-        Tracked(&mut *lctx),
-    );
+    let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
-        krnl.wunlock_process(
-            parent_process_ptr,
-            Tracked(&mut *lctx),
-            Tracked(process_lock_perm),
-        );
-        krnl.wunlock_container(
-            parent_container_ptr,
-            Tracked(&mut *lctx),
-            Tracked(container_lock_perm),
-        );
-        krnl.wunlock_cpu(
-            cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(cpu_lock_perm),
-        );
+        krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorThreadKilled;
     }
@@ -205,26 +156,10 @@ pub fn syscall_new_container(
     let quota_available =
         quota_4k >= required_4k && quota_2m >= 2;
     if !quota_available {
-        krnl.wunlock_thread(
-            current_thread_ptr,
-            Tracked(&mut *lctx),
-            Tracked(thread_lock_perm),
-        );
-        krnl.wunlock_process(
-            parent_process_ptr,
-            Tracked(&mut *lctx),
-            Tracked(process_lock_perm),
-        );
-        krnl.wunlock_container(
-            parent_container_ptr,
-            Tracked(&mut *lctx),
-            Tracked(container_lock_perm),
-        );
-        krnl.wunlock_cpu(
-            cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(cpu_lock_perm),
-        );
+        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof { steps.end_kernel_step(&*krnl, &*lctx); }
         return RetValueType::ErrorNoQuota;
     }
@@ -238,10 +173,7 @@ pub fn syscall_new_container(
             reveal(process_pagetable_match);
         };
     }
-    let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(
-        source_pagetable_ptr,
-        Tracked(&mut *lctx),
-    );
+    let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
     proof {
         assert({
             &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
@@ -255,7 +187,6 @@ pub fn syscall_new_container(
             krnl.ctn_mp.spec_index(parent_container_ptr)
                 .view_rodata().view().depth < usize::MAX
         ) by {
-            assert(MAX_CONTAINER_TREE_DEPTH < usize::MAX) by (compute);
         };
     }
     let (
@@ -270,5 +201,4 @@ pub fn syscall_new_container(
     );
     RetValueType::SuccessThreeUsize { value1: child_container_ptr, value2: child_process_ptr, value3: child_thread_ptr }
 }
-
 }

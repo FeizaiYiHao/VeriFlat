@@ -160,7 +160,5 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     {
         self.data.set(index, value);
     }
-
 }
-
 }
