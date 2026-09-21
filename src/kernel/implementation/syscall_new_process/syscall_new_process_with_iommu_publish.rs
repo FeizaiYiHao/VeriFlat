@@ -225,7 +225,6 @@ pub(super) fn publish_staged_process_with_iommu(
                 reveal(process_uppertree_seq_wf);
                 lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
             };
-            assert(NUM_PAGES < usize::MAX) by (compute);
         };
         assert(page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(l4_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(iommu_table_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(iommu_l4_page_ptr)
             && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(l4_page_ptr) && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(iommu_table_page_ptr) && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(iommu_l4_page_ptr)
@@ -259,8 +258,7 @@ pub(super) fn publish_staged_process_with_iommu(
         pcid_allocator_ptr, source_pagetable_ptr, target_pagetable_ptr, iommu_table_ptr,
         process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr,
         Tracked(process_page_lock_perm), Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm),
-        Tracked(iommu_table_page_lock_perm), Tracked(iommu_l4_page_lock_perm),
-        Tracked(parent_lock_perm), Tracked(pcid_allocator_lock_perm),
+        Tracked(iommu_table_page_lock_perm), Tracked(iommu_l4_page_lock_perm), Tracked(parent_lock_perm), Tracked(pcid_allocator_lock_perm),
     );
     proof {
         krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
@@ -270,7 +268,6 @@ pub(super) fn publish_staged_process_with_iommu(
             &&& steps.steps.last().new_u.process_map.spec_index(child_ptr) == kernel_k_to_kernel_u(*krnl).process_map.spec_index(child_ptr)
         }) by {
             reveal(kernel_k_to_kernel_u);
-            reveal(process_iommu_table_match);
         };
     }
     proof {
@@ -282,5 +279,4 @@ pub(super) fn publish_staged_process_with_iommu(
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, target_pagetable_ptr, krnl.pt_mp.spec_index(target_pagetable_ptr).view())) by { reveal(tlb_wf_spec); }; }
     (child_ptr, target_pagetable_ptr, iommu_table_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm))
 }
-
 }

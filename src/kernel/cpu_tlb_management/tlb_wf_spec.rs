@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-
     pub open spec fn spec_tlb_entry_equal_to_map_entry(tlb_entry:TLBEntry, map_entry: MapEntry) -> bool{
         &&&
         tlb_entry.addr == map_entry.addr

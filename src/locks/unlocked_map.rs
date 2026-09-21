@@ -3,8 +3,6 @@ use vstd::simple_pptr::*;
 use crate::define::*;
 use super::*;
 verus! {
-
-
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
 pub struct UnLockedMap<K, T>{
@@ -31,13 +29,13 @@ impl<T> UnLockedMap<usize, T>{
     }
     pub open spec fn perms_wf(&self) -> bool {
         &&&
-        forall|k:usize| 
+        forall|k:usize|
             // #![trigger self.view().spec_index(k).is_init()]
             // #![trigger self.view().spec_index(k).addr()]
             #![trigger self.view().dom().contains(k)]
             self.view().dom().contains(k)
             ==>
-            { 
+            {
                 &&&
                 self.view().spec_index(k).is_init()
                 &&&
@@ -83,9 +81,7 @@ impl<T> UnLockedMap<usize, T>{
                 ==> final(self).spec_index(old_key)
                     == old(self).spec_index(old_key),
     {
-        proof {
-            self.map.borrow_mut().tracked_insert(key, perm);
-        }
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
 
     pub fn borrow<'a>(&'a self, key: usize) -> (ret: &'a T)
@@ -119,7 +115,6 @@ impl<T> UnLockedMap<usize, T>{
     //     requires
     //         // old(self).perms_wf(),
     //         old(self).dom().contains(key),
-            
     //         old(self)[key].is_init(),
     //     ensures
     //         self.perms_wf(),
@@ -140,7 +135,6 @@ impl<T> UnLockedMap<usize, T>{
     //     requires
     //         old(self).perms_wf(),
     //         old(self).dom().contains(key),
-            
     //         old(self)[key].is_init() == false,
     //     ensures
     //         self.perms_wf(),
@@ -156,5 +150,4 @@ impl<T> UnLockedMap<usize, T>{
     //     }
     // }
 }
-
 }

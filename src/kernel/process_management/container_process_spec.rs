@@ -46,7 +46,7 @@ verus! {
                 &&&
                 container_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().owning_container).view().owned_processes.view().contains(p_ptr)
                 &&&
-                container_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().owning_container).view_rodata().view().depth == 
+                container_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().owning_container).view_rodata().view().depth ==
                     process_perms.spec_index(p_ptr).view_rodata().view().container_depth
             }
     }
@@ -65,5 +65,4 @@ verus! {
             container_perms.spec_index(c_ptr).view().owned_processes.view().is_empty()
             || process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view().owned_processes.view(), process_perms)
     }
-    
 }

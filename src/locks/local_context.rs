@@ -648,7 +648,6 @@ pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
             }
         );
     };
-    reveal(LocalContext::held_lock_majors_lt);
 }
 
 pub broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
@@ -814,5 +813,4 @@ pub open spec fn unlock_ensures(
     &&& typed_lock_maps_removed(old, new, obj_id)
     &&& lock_id_set_aligned(old) ==> lock_id_set_aligned(new)
 }
-
 }

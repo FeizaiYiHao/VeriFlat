@@ -170,12 +170,8 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
             &&& lctx.thread_lock_map().dom() == set![current_thread_ptr]
             &&& lctx.pagetable_lock_map().dom() == set![source_pagetable_ptr, target_pagetable_ptr]
             &&& lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR)
-        }) by {
-            broadcast use vstd::set::lemma_set_insert_same;
-        };
-        assert(lctx.thread_lock_map().dom() == set![current_thread_ptr, current_thread_ptr]) by {
-            broadcast use vstd::set::lemma_set_insert_same;
-        };
+        });
+        assert(lctx.thread_lock_map().dom() == set![current_thread_ptr, current_thread_ptr]);
 
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, container_ptr, source_range)) by { source_range.va_range_lemma(); reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_page_owner_wf); reveal(process_thread_wf); reveal(container_subtree_set_exclusive); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
@@ -199,9 +195,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by {
             kernel_no_change_to_user_view_fields_imply_kernel_u_eq(&before_scheduler_lock, krnl);
         };
-        assert(!krnl.prc_mp.spec_index(child_ptr).view().zombie) by {
-            reveal(process_pagetable_match);
-        };
+        assert(!krnl.prc_mp.spec_index(child_ptr).view().zombie) by { reveal(process_pagetable_match); };
         assert(lctx.holds_no_allocator_locks(PageSize::SZ4k) && lctx.holds_no_allocator_locks(PageSize::SZ2m) && lctx.holds_no_allocator_locks(PageSize::SZ1g)) by { reveal(LocalContext::holds_no_allocator_locks); };
     }
     proof {
@@ -236,6 +230,4 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
     );
     (child_ptr, iommu_table_ptr, new_thread_ptr)
 }
-
-
 }

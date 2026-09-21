@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 verus! {
-
 #[derive(Clone, Copy)]
 pub enum CpuState{
     Running,
@@ -120,12 +119,7 @@ impl Cpu{
                 pcid_valid(pcid)
                 ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
     {
-        Self::new_quiescent(
-            owning_container,
-            container_depth,
-            CpuState::Idle,
-            default_cr3,
-        )
+        Self::new_quiescent(owning_container, container_depth, CpuState::Idle, default_cr3)
     }
 
     pub fn new_off(
@@ -150,12 +144,7 @@ impl Cpu{
                 pcid_valid(pcid)
                 ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
     {
-        Self::new_quiescent(
-            owning_container,
-            container_depth,
-            CpuState::Off,
-            default_cr3,
-        )
+        Self::new_quiescent(owning_container, container_depth, CpuState::Off, default_cr3)
     }
 
     pub fn new_boot_array(
@@ -226,10 +215,7 @@ impl Cpu{
             } else {
                 Self::new_off(owning_container, 0, default_cr3)
             };
-            cpus.set(
-                cpu_id,
-                RwLock::new_unlocked(cpu, (), Ghost(())),
-            );
+            cpus.set(cpu_id, RwLock::new_unlocked(cpu, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         LockedArray::from_array(cpus)
@@ -341,7 +327,6 @@ impl Cpu{
         self.owning_container = container;
         self.container_depth = depth;
     }
-
 }
 
 impl CpuLockedArray {
@@ -551,35 +536,27 @@ impl LockMajorTrait for Cpu {
     open spec fn lock_major_1(&self) -> LockMajorId {
         CPU_LOCK_MAJOR_RUNNING
     }
-    
     open spec fn lock_major_2(&self) -> LockMajorId {
         CPU_LOCK_MAJOR_IDLE
     }
-    
     open spec fn lock_major_3(&self) -> LockMajorId {
         CPU_LOCK_MAJOR_OFF
     }
-    
     open spec fn lock_major_default(&self) -> LockMajorId {
         PAGE_TABLE_LOCK_MAJOR
     }
-    
     open spec fn lock_major_1_predicate(&self) -> bool {
         self.view().state is Running
     }
-    
     open spec fn lock_major_2_predicate(&self) -> bool {
         self.view().state is Idle
     }
-    
     open spec fn lock_major_3_predicate(&self) -> bool {
         self.view().state is Off
     }
-    
     open spec fn lock_major_default_predicate(&self) -> bool {
         true
     }
-    
 }
 
 impl LockOwnerIdTrait for Cpu {
@@ -591,5 +568,4 @@ impl LockOwnerIdTrait for Cpu {
         if self.view().current_process is Some { LockOwnerId::Some(self.view().process_depth) } else { LockOwnerId::NotApp }
     }
 }
-
 }

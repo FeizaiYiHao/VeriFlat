@@ -81,9 +81,7 @@ verus! {
         let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
         if container_res.is_none() {
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-            proof {
-                steps.end_kernel_step(&*krnl, &*lctx);
-            }
+            proof { steps.end_kernel_step(&*krnl, &*lctx); }
             return RetValueType::ErrorContainerKilled;
         }
         let Tracked(container_lock_perm) = container_res.unwrap();
@@ -92,9 +90,7 @@ verus! {
         if process_res.is_none() {
             krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-            proof {
-                steps.end_kernel_step(&*krnl, &*lctx);
-            }
+            proof { steps.end_kernel_step(&*krnl, &*lctx); }
             return RetValueType::ErrorProcessKilled;
         }
         let Tracked(process_lock_perm) = process_res.unwrap();
@@ -107,9 +103,7 @@ verus! {
             krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
             krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-            proof {
-                steps.end_kernel_step(&*krnl, &*lctx);
-            }
+            proof { steps.end_kernel_step(&*krnl, &*lctx); }
             return RetValueType::ErrorThreadKilled;
         }
         let Tracked(thread_lock_perm) = thread_res.unwrap();
@@ -160,5 +154,4 @@ verus! {
         }
         result
     }
-
 } // verus!

@@ -6,9 +6,8 @@ use vstd::simple_pptr::PointsTo;
 use crate::*;
 
 verus! {
-
 pub struct ReadOnlyNode<V>{
-    value: V, 
+    value: V,
     owner_ptr: Ghost<usize>
 }
 
@@ -26,7 +25,7 @@ impl<V> ReadOnlyNode<V>{
         self.owner_ptr.view()
     }
     pub fn new(v: V, owner_addr: Ghost<usize>) -> (ret :Self)
-        ensures 
+        ensures
             ret.view() == v,
             ret.owner_addr() == owner_addr.view()
     {
@@ -84,7 +83,6 @@ impl<T> ExternalReadOnlyNode<T>{
             final(self).addr() == old(self).addr(),
     {
     }
-
 }
 
 impl<V: LockOwnerIdTrait> LockOwnerIdTrait for ReadOnlyNode<V>{
@@ -96,5 +94,4 @@ impl<V: LockOwnerIdTrait> LockOwnerIdTrait for ReadOnlyNode<V>{
         self.view().process_depth()
     }
 }
-
 }

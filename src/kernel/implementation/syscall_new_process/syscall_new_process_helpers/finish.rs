@@ -116,9 +116,7 @@ pub(super) fn create_initial_thread_and_finish_new_process(
     let tracked source_pagetable_lock_perm = source_pagetable_lock_perm.get();
     let tracked target_pagetable_lock_perm = target_pagetable_lock_perm.get();
     let (thread_page_ptr, Tracked(thread_page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
-    proof {
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-    }
+    proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
         krnl, thread_page_ptr, child_ptr, current_thread_ptr, container_ptr, scheduler_ptr, Tracked(&mut *lctx),
         Tracked(&thread_page_lock_perm), Tracked(&child_lock_perm), Tracked(&current_thread_lock_perm),
@@ -132,9 +130,7 @@ pub(super) fn create_initial_thread_and_finish_new_process(
     krnl.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     proof {
-        assert(!krnl.ctn_mp.spec_index(container_ptr).view().owned_processes.view().is_empty()) by {
-            reveal(container_process_wf);
-        };
+        assert(!krnl.ctn_mp.spec_index(container_ptr).view().owned_processes.view().is_empty()) by { reveal(container_process_wf); };
     }
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -281,9 +277,7 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(
     let tracked source_pagetable_lock_perm = source_pagetable_lock_perm.get();
     let tracked target_pagetable_lock_perm = target_pagetable_lock_perm.get();
     let (thread_page_ptr, Tracked(thread_page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
-    proof {
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-    }
+    proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
         krnl, thread_page_ptr, child_ptr, current_thread_ptr, container_ptr, scheduler_ptr, Tracked(&mut *lctx),
         Tracked(&thread_page_lock_perm), Tracked(&child_lock_perm), Tracked(&current_thread_lock_perm),
@@ -304,9 +298,7 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(
     krnl.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     proof {
-        assert(!krnl.ctn_mp.spec_index(container_ptr).view().owned_processes.view().is_empty()) by {
-            reveal(container_process_wf);
-        };
+        assert(!krnl.ctn_mp.spec_index(container_ptr).view().owned_processes.view().is_empty()) by { reveal(container_process_wf); };
     }
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -330,6 +322,4 @@ pub(super) fn create_initial_thread_with_endpoint_and_finish_new_process(
     }
     new_thread_ptr
 }
-
-
 }

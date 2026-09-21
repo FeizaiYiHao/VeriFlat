@@ -3,7 +3,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 /// The reverse mappings of one mapped 4K page occupy distinct entries in the
 /// finite page-table address space.
 #[verifier::external_body]
@@ -87,5 +86,4 @@ pub proof fn scheduler_queue_len_bounded(
             <= NUM_PAGES,
 {
 }
-
 } // verus!

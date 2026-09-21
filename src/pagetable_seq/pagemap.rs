@@ -32,7 +32,6 @@ impl PageMap {
             #![trigger self.spec_seq.view().spec_index(i as int).perm.kernel_present]
             pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present
             ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)
-
     }
 
     pub open spec fn view(&self) -> Seq<PageEntry> {
@@ -75,9 +74,7 @@ impl PageMap {
             let u = page_entry2usize(&value);
             self.ar.set(index, u);
 
-            proof {
-                self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value));
-            }
+            proof { self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value)); }
 
             return ;
         }
@@ -98,9 +95,7 @@ impl PageMap {
     {
         let u = page_entry2usize(&value);
         self.ar.set(index, u);
-        proof {
-            self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value));
-        }
+        proof { self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value)); }
     }
 
     pub fn index(&self, index: usize) -> (ret: PageEntry)
@@ -123,5 +118,4 @@ impl PageMap {
         return self.index(index);
     }
 }
-
 } // verus!

@@ -110,7 +110,6 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                 assert(lctx.held_lock_majors_lt(QUOTA_MAJOR)) by { broadcast use held_lock_major_lt_preserved_for_typed_maps_unchanged; };
                 assert(steps.snap_shot == kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_k_to_kernel_u); };
                 krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
-                assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
                 assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().parent == parent) by { reveal(thread_perms_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); broadcast use vstd::seq::Seq::lemma_index_contains; };
             }
         }

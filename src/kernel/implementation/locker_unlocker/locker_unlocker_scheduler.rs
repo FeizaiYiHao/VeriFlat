@@ -53,16 +53,12 @@ impl KernelK {
                             scheduler_ptr,
                             TypedLockMode::Write,
                         )) by {
-                            reveal(typed_lock_maps_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                         };
                     }
                 };
                 assert(!old(self).sched_mp.spec_index(scheduler_ptr)
-                    .wlocked_by(&*old(lctx))) by {
-                    reveal(RwLock::wlocked_by);
-                    reveal(RwLock::wlocked_by_thread);
-                };
+                    .wlocked_by(&*old(lctx)));
             }
             assert(wlock_requires(self.sched_mp.spec_index(scheduler_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let ret = self.sched_mp.wlock(scheduler_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Scheduler(scheduler_ptr)));
@@ -73,7 +69,7 @@ impl KernelK {
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)) by { reveal(scheduler_perms_wf); assert(SCHEDULER_LOCK_MAJOR < ALLOCATOR_CACHE_MAJOR) by (compute); };
                 assert(lctx.pcid_needflush_lock_map().dom().is_empty()) by {
                     let held = lctx.pcid_needflush_lock_map().dom();
                     assert_sets_equal!(
@@ -86,7 +82,6 @@ impl KernelK {
                         }
                     );
                 };
-                broadcast use vstd::map::lemma_map_insert_domain;
             }
             ret
         }
@@ -150,13 +145,7 @@ impl KernelK {
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                broadcast use vstd::map::lemma_map_remove_domain;
-                broadcast use vstd::set::lemma_set_insert_same;
-                broadcast use vstd::set::lemma_set_insert_different;
-                broadcast use vstd::set::lemma_set_remove_same;
-                broadcast use vstd::set::lemma_set_remove_different;
             }
         }
-
 }
 } // verus!

@@ -4,7 +4,6 @@ use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 
 verus! {
-
 pub ghost struct SingleTLB{
     pub tlb_4k: Map<VAddr, TLBEntry>,
     pub tlb_2m: Map<VAddr, TLBEntry>,
@@ -31,7 +30,6 @@ impl SingleTLB{
         self.tlb_1g().dom() == Set::<VAddr>::empty()
     }
 }
- 
 pub struct CpuTLB{
     pub cpu_tlbs: Ghost<Map<(CpuId, Pcid), SingleTLB>>,
 }
@@ -48,20 +46,9 @@ impl CpuTLB{
         let ghost cpu_ids = Set::range(0usize, NUM_CPUS);
         let ghost pcids = Set::range(0usize, PCID_MAX);
         let ghost pcids_for_cpu = |cpu_id: CpuId| {
-            pcids.map_by(
-                |pcid: Pcid| (cpu_id, pcid),
-                |key: (CpuId, Pcid)| key.1,
-            )
+            pcids.map_by(|pcid: Pcid| (cpu_id, pcid), |key: (CpuId, Pcid)| key.1)
         };
-        let ghost keys = cpu_ids.map_flatten_by(
-            pcids_for_cpu,
-            |key: (CpuId, Pcid)| key.0,
-        );
-        proof {
-            broadcast use vstd::set_lib::range_set_properties;
-            broadcast use Set::lemma_map_by_contains;
-            broadcast use Set::lemma_map_flatten_by_contains;
-        }
+        let ghost keys = cpu_ids.map_flatten_by(pcids_for_cpu, |key: (CpuId, Pcid)| key.0);
         let ret = Self {
             cpu_tlbs: Ghost(Map::new(
                 keys,
@@ -72,7 +59,6 @@ impl CpuTLB{
                 },
             )),
         };
-        assert(ret.inv());
         ret
     }
 
@@ -112,7 +98,7 @@ impl CpuTLB{
         self.cpu_tlbs.view()
     }
     pub open spec fn spec_index(&self, index: (CpuId, Pcid) ) -> SingleTLB
-        recommends 
+        recommends
             index_valid(NUM_CPUS, index.0),
             usize_in_range::<PCID_MAX>(index.1)
     {
@@ -163,8 +149,6 @@ impl CpuTLB{
     //         self.inv(),
     //         Self::flush_tlb_4k_ensures(self, old(self), cpu_id, pcid, va),
     // {
-
     // }
 }
-
 }

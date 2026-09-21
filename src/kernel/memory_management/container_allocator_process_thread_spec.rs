@@ -140,14 +140,10 @@ verus! {
                     +
                     thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
-                    thread_direct_pending_4k_fold_sum(
-                        container_map.spec_index(c_ptr).view_ghost().owned_threads.view(),
-                        thread_map,
-                    )
+                    thread_direct_pending_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
                     thread_indirect_pending_4k_fold_sum_at_depth(
-                        container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view(),
-                        thread_map,
+                        container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view(), thread_map,
                         container_map.spec_index(c_ptr).view_rodata().view().depth as int,
                     )
                     +

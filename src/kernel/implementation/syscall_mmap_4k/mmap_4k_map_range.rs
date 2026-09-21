@@ -283,10 +283,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     seq_index_lemma::<VAddr>();
                     reveal(PageTable::wf_mapping_4k);
                     spec_va_4k_index_roundtrip_at(
-                        current_va,
-                        spec_v2l4index(current_va),
-                        spec_v2l3index(current_va),
-                        spec_v2l2index(current_va),
+                        current_va, spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va),
                         spec_v2l1index(current_va),
                     );
                 };
@@ -299,7 +296,6 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             proof {
                 assert(mmap_4k_leaf_range_mapped_prefix(krnl.pt_mp.spec_index(pagetable_ptr).view(), range, (i + 1) as int)) by {
                     assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf_mapping_4k()) by { reveal(pagetable_perms_wf); };
-                    reveal(PageTable::wf_mapping_4k);
                     seq_index_lemma::<VAddr>();
                     range.va_range_lemma();
                 };
@@ -307,5 +303,4 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             i = i + 1;
         }
     }
-
 } // verus!

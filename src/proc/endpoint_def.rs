@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
-
 use crate::*;
 
 pub struct Endpoint {
@@ -190,5 +189,4 @@ impl Endpoint {
         self.queue.push_tail(node_addr, node_perm);
     }
 }
-
 } // verus!

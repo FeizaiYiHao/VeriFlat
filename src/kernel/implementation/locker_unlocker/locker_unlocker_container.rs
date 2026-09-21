@@ -82,7 +82,6 @@ impl KernelK {
             proof {
                 container_perms_wf_at(old(self).ctn_mp, container_ptr);
                 assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
-                assert(!typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write)) by { reveal(typed_lock_map_contains_mode); };
                 assert(!old(self).ctn_mp.spec_index(container_ptr)
                     .wlocked_by_thread(old(lctx).thread_id())) by {
                     if old(self).ctn_mp.spec_index(container_ptr)
@@ -90,16 +89,12 @@ impl KernelK {
                     {
                         assert(old(lctx).container_lock_map().dom()
                             .contains(container_ptr)) by {
-                            reveal(typed_lock_maps_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                         };
                     }
                 };
                 assert(!old(self).ctn_mp.spec_index(container_ptr)
-                    .wlocked_by(&*old(lctx))) by {
-                    reveal(RwLock::wlocked_by);
-                    reveal(RwLock::wlocked_by_thread);
-                };
+                    .wlocked_by(&*old(lctx)));
             }
             assert(wlock_requires(self.ctn_mp.spec_index(container_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
@@ -112,7 +107,7 @@ impl KernelK {
                 assert(self.process_management_inv()) by { process_management_inv_preserved_for_container_invariant_fields(*old(self), *self); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { cpu_dirty_map_wf_preserved_for_container_invariant_fields(*old(self), *self); };
                 assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(container_perms_wf); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+                assert(old(lctx).held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR) ==> lctx.held_lock_majors_lt(PAGE_TABLE_LOCK_MAJOR)) by { reveal(container_perms_wf); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             res

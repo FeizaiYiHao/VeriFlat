@@ -5,7 +5,6 @@ pub use veriflat_kernel_core::{create_thread_from_staged_page_merged, kernel_u_n
 #[cfg(not(feature = "split-crates"))]
 pub use crate::kernel::implementation::create_thread_from_staged_page::{create_thread_from_staged_page_merged, kernel_u_new_thread_changed};
 verus! {
-
         /// Commit path: allocate 4k page, create thread, release all locks.
         pub(super) fn add_new_thread_to_proc_container_and_scheduler(
             krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
@@ -115,12 +114,12 @@ verus! {
             proof {
                 assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
                 assert(kernel_u_new_thread_changed(steps.snap_shot, kernel_k_to_kernel_u(*krnl), process_ptr)) by { reveal(kernel_k_to_kernel_u); };
-                assert(steps.snap_shot != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_u_new_thread_changed); };
+                assert(steps.snap_shot != kernel_k_to_kernel_u(*krnl));
                 let ghost step_old_u = steps.snap_shot;
                 steps.end_kernel_step(&*krnl, &*lctx);
                 assert(steps.steps == old(steps).steps.push(KernelStep {
                     old_u: step_old_u, new_u: kernel_k_to_kernel_u(*krnl),
-                })) by { reveal(record_user_view_change); };
+                }));
             }
         }
 }

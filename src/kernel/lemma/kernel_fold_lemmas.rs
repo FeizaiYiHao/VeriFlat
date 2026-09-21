@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-
 // ===== Verified set/thread-fold lemmas =====
 // Consumed by the kernel-preservation lemmas in this module tree.
 
@@ -39,11 +38,7 @@ pub proof fn lemma_process_effective_quota_4k_fold_eq(
         |p: RwLockProcessPtr| process_effective_quota_4k(post.spec_index(p));
     let pre_value =
         |p: RwLockProcessPtr| process_effective_quota_4k(pre.spec_index(p));
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let direct_post_fold = |sum: int, p: RwLockProcessPtr|
@@ -73,11 +68,7 @@ pub proof fn lemma_process_effective_quota_2m_fold_eq(
         |p: RwLockProcessPtr| process_effective_quota_2m(post.spec_index(p));
     let pre_value =
         |p: RwLockProcessPtr| process_effective_quota_2m(pre.spec_index(p));
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let direct_post_fold = |sum: int, p: RwLockProcessPtr|
@@ -107,11 +98,7 @@ pub proof fn lemma_process_effective_quota_1g_fold_eq(
         |p: RwLockProcessPtr| process_effective_quota_1g(post.spec_index(p));
     let pre_value =
         |p: RwLockProcessPtr| process_effective_quota_1g(pre.spec_index(p));
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let direct_post_fold = |sum: int, p: RwLockProcessPtr|
@@ -149,13 +136,7 @@ pub proof fn lemma_process_effective_quota_4k_fold_change_by(
         |p: RwLockProcessPtr| process_effective_quota_4k(pre.spec_index(p));
     let post_value =
         |p: RwLockProcessPtr| process_effective_quota_4k(post.spec_index(p));
-    lemma_set_fold_int_sum_change_by(
-        s,
-        pre_value,
-        post_value,
-        mod_p,
-        x,
-    );
+    lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_p, x);
     let pre_fold = |sum: int, p: RwLockProcessPtr| sum + pre_value(p);
     let post_fold = |sum: int, p: RwLockProcessPtr| sum + post_value(p);
     let direct_pre_fold = |sum: int, p: RwLockProcessPtr|
@@ -184,7 +165,6 @@ pub proof fn lemma_process_effective_quota_4k_fold_nonneg(
     let direct_fold = |sum: int, p: RwLockProcessPtr|
         sum + process_effective_quota_4k(process_map.spec_index(p));
     assert(fold =~= direct_fold);
-    reveal(process_effective_quota_4k_fold_sum);
 }
 
 /// Fold facts for the independent per-thread quota tier. These have
@@ -207,11 +187,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_eq(
         |t: RwLockThreadPtr| thread_effective_quota_4k(post.spec_index(t));
     let pre_value =
         |t: RwLockThreadPtr| thread_effective_quota_4k(pre.spec_index(t));
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -220,7 +196,6 @@ pub proof fn lemma_thread_effective_quota_4k_fold_eq(
         sum + thread_effective_quota_4k(pre.spec_index(t));
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_effective_quota_4k_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_2m_fold_eq(
@@ -241,11 +216,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_eq(
         |t: RwLockThreadPtr| thread_effective_quota_2m(post.spec_index(t));
     let pre_value =
         |t: RwLockThreadPtr| thread_effective_quota_2m(pre.spec_index(t));
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -254,7 +225,6 @@ pub proof fn lemma_thread_effective_quota_2m_fold_eq(
         sum + thread_effective_quota_2m(pre.spec_index(t));
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_effective_quota_2m_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_1g_fold_eq(
@@ -275,11 +245,7 @@ pub proof fn lemma_thread_effective_quota_1g_fold_eq(
         |t: RwLockThreadPtr| thread_effective_quota_1g(post.spec_index(t));
     let pre_value =
         |t: RwLockThreadPtr| thread_effective_quota_1g(pre.spec_index(t));
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -288,7 +254,6 @@ pub proof fn lemma_thread_effective_quota_1g_fold_eq(
         sum + thread_effective_quota_1g(pre.spec_index(t));
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_effective_quota_1g_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_4k_fold_change_by(
@@ -314,13 +279,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_change_by(
         |t: RwLockThreadPtr| thread_effective_quota_4k(pre.spec_index(t));
     let post_value =
         |t: RwLockThreadPtr| thread_effective_quota_4k(post.spec_index(t));
-    lemma_set_fold_int_sum_change_by(
-        s,
-        pre_value,
-        post_value,
-        mod_t,
-        x,
-    );
+    lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_t, x);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -329,7 +288,6 @@ pub proof fn lemma_thread_effective_quota_4k_fold_change_by(
         sum + thread_effective_quota_4k(post.spec_index(t));
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_effective_quota_4k_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_4k_fold_ge_member(
@@ -353,7 +311,6 @@ pub proof fn lemma_thread_effective_quota_4k_fold_ge_member(
     let direct_fold = |sum: int, t: RwLockThreadPtr|
         sum + thread_effective_quota_4k(thread_map.spec_index(t));
     assert(fold =~= direct_fold);
-    reveal(thread_effective_quota_4k_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(
@@ -377,12 +334,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(
         |t: RwLockThreadPtr| thread_effective_quota_4k(pre.spec_index(t));
     let post_value =
         |t: RwLockThreadPtr| thread_effective_quota_4k(post.spec_index(t));
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -391,7 +343,6 @@ pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(
         sum + thread_effective_quota_4k(post.spec_index(t));
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_effective_quota_4k_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(
@@ -415,12 +366,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(
         |t: RwLockThreadPtr| thread_effective_quota_2m(pre.spec_index(t));
     let post_value =
         |t: RwLockThreadPtr| thread_effective_quota_2m(post.spec_index(t));
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -429,7 +375,6 @@ pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(
         sum + thread_effective_quota_2m(post.spec_index(t));
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_effective_quota_2m_fold_sum);
 }
 
 pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(
@@ -453,12 +398,7 @@ pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(
         |t: RwLockThreadPtr| thread_effective_quota_1g(pre.spec_index(t));
     let post_value =
         |t: RwLockThreadPtr| thread_effective_quota_1g(post.spec_index(t));
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -467,7 +407,6 @@ pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(
         sum + thread_effective_quota_1g(post.spec_index(t));
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_effective_quota_1g_fold_sum);
 }
 
 /// The thread direct free-quota-pending fold is preserved when per-thread
@@ -491,11 +430,7 @@ pub proof fn lemma_thread_direct_pending_4k_fold_eq(
         post.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -504,7 +439,6 @@ pub proof fn lemma_thread_direct_pending_4k_fold_eq(
         sum + pre.spec_index(t).view().direct_free_quota_pending_4k.view();
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_direct_pending_4k_fold_sum);
 }
 
 pub proof fn lemma_thread_direct_pending_2m_fold_eq(
@@ -526,11 +460,7 @@ pub proof fn lemma_thread_direct_pending_2m_fold_eq(
         post.spec_index(t).view().direct_free_quota_pending_2m.view() as int;
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().direct_free_quota_pending_2m.view() as int;
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -539,7 +469,6 @@ pub proof fn lemma_thread_direct_pending_2m_fold_eq(
         sum + pre.spec_index(t).view().direct_free_quota_pending_2m.view();
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_direct_pending_2m_fold_sum);
 }
 
 pub proof fn lemma_thread_direct_pending_1g_fold_eq(
@@ -561,11 +490,7 @@ pub proof fn lemma_thread_direct_pending_1g_fold_eq(
         post.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -574,7 +499,6 @@ pub proof fn lemma_thread_direct_pending_1g_fold_eq(
         sum + pre.spec_index(t).view().direct_free_quota_pending_1g.view();
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_direct_pending_1g_fold_sum);
 }
 
 /// The indirect free-quota-pending fold at a specific depth is preserved
@@ -599,11 +523,7 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_eq_at_depth(
         post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -612,7 +532,6 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_eq_at_depth(
         sum + pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_indirect_pending_4k_fold_sum_at_depth);
 }
 
 pub proof fn lemma_thread_indirect_pending_2m_fold_eq_at_depth(
@@ -635,11 +554,7 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_eq_at_depth(
         post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth) as int;
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth) as int;
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -648,7 +563,6 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_eq_at_depth(
         sum + pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth);
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_indirect_pending_2m_fold_sum_at_depth);
 }
 
 pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(
@@ -671,11 +585,7 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(
         post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
-    lemma_set_fold_int_sum_congruence(
-        s,
-        post_value,
-        pre_value,
-    );
+    lemma_set_fold_int_sum_congruence(s, post_value, pre_value);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let direct_post_fold = |sum: int, t: RwLockThreadPtr|
@@ -684,7 +594,6 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_eq_at_depth(
         sum + pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
     assert(post_fold =~= direct_post_fold);
     assert(pre_fold =~= direct_pre_fold);
-    reveal(thread_indirect_pending_1g_fold_sum_at_depth);
 }
 
 /// Direct free-quota-pending fold when a fresh thread
@@ -715,12 +624,7 @@ pub proof fn lemma_thread_direct_pending_4k_fold_insert_zero(
         pre.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
     let post_value = |t: RwLockThreadPtr|
         post.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -729,7 +633,6 @@ pub proof fn lemma_thread_direct_pending_4k_fold_insert_zero(
         sum + post.spec_index(t).view().direct_free_quota_pending_4k.view();
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_direct_pending_4k_fold_sum);
 }
 
 pub proof fn lemma_thread_direct_pending_2m_fold_insert_zero(
@@ -754,12 +657,7 @@ pub proof fn lemma_thread_direct_pending_2m_fold_insert_zero(
         pre.spec_index(t).view().direct_free_quota_pending_2m.view() as int;
     let post_value = |t: RwLockThreadPtr|
         post.spec_index(t).view().direct_free_quota_pending_2m.view() as int;
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -768,7 +666,6 @@ pub proof fn lemma_thread_direct_pending_2m_fold_insert_zero(
         sum + post.spec_index(t).view().direct_free_quota_pending_2m.view();
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_direct_pending_2m_fold_sum);
 }
 
 pub proof fn lemma_thread_direct_pending_1g_fold_insert_zero(
@@ -793,12 +690,7 @@ pub proof fn lemma_thread_direct_pending_1g_fold_insert_zero(
         pre.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
     let post_value = |t: RwLockThreadPtr|
         post.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -807,7 +699,6 @@ pub proof fn lemma_thread_direct_pending_1g_fold_insert_zero(
         sum + post.spec_index(t).view().direct_free_quota_pending_1g.view();
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_direct_pending_1g_fold_sum);
 }
 
 /// Indirect free-quota-pending fold (at a fixed container
@@ -839,12 +730,7 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(
         pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
     let post_value = |t: RwLockThreadPtr|
         post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -853,7 +739,6 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_insert_zero_at_depth(
         sum + post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_indirect_pending_4k_fold_sum_at_depth);
 }
 
 pub proof fn lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(
@@ -873,21 +758,14 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(
                     == pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth),
     ensures
         thread_indirect_pending_2m_fold_sum_at_depth(
-            s.insert(new_t),
-            post,
-            depth,
+            s.insert(new_t), post, depth,
         ) == thread_indirect_pending_2m_fold_sum_at_depth(s, pre, depth),
 {
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth) as int;
     let post_value = |t: RwLockThreadPtr|
         post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth) as int;
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -896,7 +774,6 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_insert_zero_at_depth(
         sum + post.spec_index(t).view().indirect_free_quota_pending_2m.view().spec_index(depth);
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_indirect_pending_2m_fold_sum_at_depth);
 }
 
 pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(
@@ -916,21 +793,14 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(
                     == pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth),
     ensures
         thread_indirect_pending_1g_fold_sum_at_depth(
-            s.insert(new_t),
-            post,
-            depth,
+            s.insert(new_t), post, depth,
         ) == thread_indirect_pending_1g_fold_sum_at_depth(s, pre, depth),
 {
     let pre_value = |t: RwLockThreadPtr|
         pre.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
     let post_value = |t: RwLockThreadPtr|
         post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
-    lemma_set_fold_int_sum_insert_zero(
-        s,
-        pre_value,
-        post_value,
-        new_t,
-    );
+    lemma_set_fold_int_sum_insert_zero(s, pre_value, post_value, new_t);
     let pre_fold = |sum: int, t: RwLockThreadPtr| sum + pre_value(t);
     let post_fold = |sum: int, t: RwLockThreadPtr| sum + post_value(t);
     let direct_pre_fold = |sum: int, t: RwLockThreadPtr|
@@ -939,7 +809,6 @@ pub proof fn lemma_thread_indirect_pending_1g_fold_insert_zero_at_depth(
         sum + post.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth);
     assert(pre_fold =~= direct_pre_fold);
     assert(post_fold =~= direct_post_fold);
-    reveal(thread_indirect_pending_1g_fold_sum_at_depth);
 }
 
 /// The direct-thread-pending fold in the container conservation law is
@@ -958,7 +827,6 @@ pub proof fn lemma_thread_direct_pending_4k_fold_nonneg(
     let direct_fold = |sum: int, t: RwLockThreadPtr|
         sum + thread_map.spec_index(t).view().direct_free_quota_pending_4k.view();
     assert(fold =~= direct_fold);
-    reveal(thread_direct_pending_4k_fold_sum);
 }
 
 /// The indirect-thread-pending fold at a fixed container depth is
@@ -978,7 +846,5 @@ pub proof fn lemma_thread_indirect_pending_4k_fold_nonneg(
     let direct_fold = |sum: int, t: RwLockThreadPtr|
         sum + thread_map.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth);
     assert(fold =~= direct_fold);
-    reveal(thread_indirect_pending_4k_fold_sum_at_depth);
 }
-
 }

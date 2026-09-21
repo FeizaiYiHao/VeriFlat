@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-
 // Framing lemma: if every page slot that is 2m-related (in the OLD or the NEW
 // array) has an unchanged `state` and `owning_container`, then `hugepage_2m_wf`
 // is preserved. Mirror of `process_no_change_to_tree_fields_imply_wf` — scoped to
@@ -49,5 +48,4 @@ pub proof fn hugepage_1g_wf_preserved_for_page_state_eq(
 {
     reveal(hugepage_1g_wf);
 }
-
 }

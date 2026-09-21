@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-
 // Framing-lemma family for the `*_pages_wf` bidirectional invariants. Each
 // point-wise lemma preserves one invariant without leaving a quantified fact
 // in the caller's context.
@@ -191,5 +190,4 @@ pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq(
 {
     reveal(allocator_1g_pages_wf);
 }
-
 }

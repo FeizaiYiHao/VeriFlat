@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 pub open spec fn pagetable_invariant_fields_unchanged(
     pre: PageTableLockedMap,
     post: PageTableLockedMap,
@@ -111,11 +110,6 @@ pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_pagetable_i
             ),
 {
     reveal(container_process_page_pagetable_wf);
-    reveal(process_pagetable_match);
-    reveal(container_page_owner_wf);
-    reveal(mapped_4k_page_pagetable_wf);
-    reveal(mapped_2m_page_pagetable_wf);
-    reveal(mapped_1g_page_pagetable_wf);
 }
 
 pub proof fn lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall()
@@ -181,5 +175,4 @@ pub proof fn lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall()
 {
     reveal(tlb_wf_spec);
 }
-
 }

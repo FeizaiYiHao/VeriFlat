@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-
     pub proof fn thread_lock_id_preserved_for_typed_maps_unchanged(
         pre: &KernelK,
         post: &KernelK,
@@ -30,76 +29,6 @@ verus! {
         };
     }
 
-    pub proof fn cpu_lock_id_preserved_for_typed_maps_unchanged(
-        pre: &KernelK,
-        post: &KernelK,
-        pre_lctx: &LocalContext,
-        post_lctx: &LocalContext,
-        cpu_id: CpuId,
-    )
-        requires
-            typed_lock_maps_aligned(pre, pre_lctx),
-            typed_lock_maps_aligned(post, post_lctx),
-            post_lctx.cpu_lock_map() == pre_lctx.cpu_lock_map(),
-            pre_lctx.cpu_lock_map().dom().contains(cpu_id),
-        ensures
-            post.cpu_arr.lock_id_by_index(cpu_id)
-                == pre.cpu_arr.lock_id_by_index(cpu_id),
-    {
-        reveal(LockedArray::typed_lock_map_aligned);
-    }
-
-    pub proof fn process_lock_id_preserved_for_typed_maps_unchanged(
-        pre: &KernelK,
-        post: &KernelK,
-        pre_lctx: &LocalContext,
-        post_lctx: &LocalContext,
-        process_ptr: RwLockProcessPtr,
-    )
-        requires
-            pre.inv(),
-            post.inv(),
-            typed_lock_maps_aligned(pre, pre_lctx),
-            typed_lock_maps_aligned(post, post_lctx),
-            post_lctx.process_lock_map() == pre_lctx.process_lock_map(),
-            pre_lctx.process_lock_map().dom().contains(process_ptr),
-        ensures
-            post.prc_mp.lock_id_by_key(process_ptr)
-                == pre.prc_mp.lock_id_by_key(process_ptr),
-    {
-        assert(post.prc_mp.lock_id_by_key(process_ptr)
-                == post_lctx.process_lock_map().index(process_ptr).lock_id
-            && pre.prc_mp.lock_id_by_key(process_ptr)
-                == pre_lctx.process_lock_map().index(process_ptr).lock_id) by {
-            reveal(process_perms_wf);
-            reveal(LockedMap::typed_lock_map_aligned);
-            lock_id_fields_eq_imply_eq();
-        };
-    }
-
-    pub proof fn endpoint_lock_id_preserved_for_typed_maps_unchanged(
-        pre: &KernelK,
-        post: &KernelK,
-        pre_lctx: &LocalContext,
-        post_lctx: &LocalContext,
-        endpoint_ptr: RwLockEndpointPtr,
-    )
-        requires
-            pre.inv(),
-            post.inv(),
-            typed_lock_maps_aligned(pre, pre_lctx),
-            typed_lock_maps_aligned(post, post_lctx),
-            post_lctx.endpoint_lock_map() == pre_lctx.endpoint_lock_map(),
-            pre_lctx.endpoint_lock_map().dom().contains(endpoint_ptr),
-        ensures
-            post.ep_mp.lock_id_by_key(endpoint_ptr)
-                == pre.ep_mp.lock_id_by_key(endpoint_ptr),
-    {
-        reveal(endpoint_perms_wf);
-        reveal(LockedMap::typed_lock_map_aligned);
-        lock_id_fields_eq_imply_eq();
-    }
-
     pub proof fn no_locks_held_imply_all_objects_unlocked(
         krnl: &KernelK,
         lctx: &LocalContext,
@@ -111,8 +40,6 @@ verus! {
             krnl.all_objects_unlocked(lctx),
     {
         reveal(KernelK::all_objects_unlocked);
-        reveal(LocalContext::no_locks_held);
-        reveal(typed_lock_maps_aligned);
         reveal(LockedArray::typed_lock_map_aligned);
         reveal(LockedArray2D::typed_lock_map_aligned);
         reveal(LockedMap::typed_lock_map_aligned);
@@ -182,9 +109,7 @@ verus! {
 
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
-        proof {
-            steps.end_kernel_step(&*krnl, &*lctx);
-        }
+        proof { steps.end_kernel_step(&*krnl, &*lctx); }
     }
 
     /// Release process + cpu when the current thread cannot be locked.
@@ -258,9 +183,7 @@ verus! {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
-        proof {
-            steps.end_kernel_step(&*krnl, &*lctx);
-        }
+        proof { steps.end_kernel_step(&*krnl, &*lctx); }
     }
     pub fn release_cpu_and_process_and_thread_and_finish_syscall(
         krnl: &mut KernelK,
@@ -353,9 +276,6 @@ verus! {
             process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm),
         );
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step(&*krnl, &*lctx);
-        }
+        proof { steps.end_kernel_step(&*krnl, &*lctx); }
     }
-
 }

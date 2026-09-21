@@ -7,21 +7,10 @@ use super::syscall_ipc_queue::{
 verus! {
     #[verifier::spinoff_prover]
     pub(super) fn ipc_block_current(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        process_ptr: RwLockProcessPtr,
-        current_thread_ptr: RwLockThreadPtr,
-        endpoint_ptr: RwLockEndpointPtr,
-        endpoint_index: EndpointIdx,
-        waiting_state: ThreadState,
-        payload: IPCPayLoad,
-        pt_regs: &Registers,
-        cpu_lock_perm: Tracked<LockPerm>,
-        process_lock_perm: Tracked<LockPerm>,
-        current_thread_lock_perm: Tracked<LockPerm>,
-        endpoint_lock_perm: Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    waiting_state: ThreadState, payload: IPCPayLoad, pt_regs: &Registers, cpu_lock_perm: Tracked<LockPerm>,
+    process_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<LockPerm>,
     ) -> (ret: RetValueType)
         requires
             old(krnl).inv(),
@@ -183,7 +172,6 @@ verus! {
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
-
         }
 
         krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -192,9 +180,6 @@ verus! {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(lctx.no_locks_held()) by {
-                reveal(LocalContext::no_locks_held);
-            };
             assert(
                 steps.snap_shot.cpu_array[cpu_id as int].state
                     != kernel_k_to_kernel_u(*krnl)
@@ -208,29 +193,17 @@ verus! {
             assert(steps.steps == old(steps).steps.push(KernelStep {
                 old_u: step_old_u,
                 new_u: kernel_k_to_kernel_u(*krnl),
-            })) by {
-                reveal(record_user_view_change);
-            };
+            }));
         }
         RetValueType::CpuIdle
     }
 
     #[verifier::spinoff_prover]
     pub(super) fn ipc_schedule_waiting_peer_and_finish(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        process_ptr: RwLockProcessPtr,
-        current_thread_ptr: RwLockThreadPtr,
-        endpoint_ptr: RwLockEndpointPtr,
-        peer_thread_ptr: RwLockThreadPtr,
-        result: RetValueType,
-        cpu_lock_perm: Tracked<LockPerm>,
-        process_lock_perm: Tracked<LockPerm>,
-        current_thread_lock_perm: Tracked<LockPerm>,
-        endpoint_lock_perm: Tracked<LockPerm>,
-        peer_thread_lock_perm: Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, result: RetValueType, cpu_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>,
+    current_thread_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<LockPerm>, peer_thread_lock_perm: Tracked<LockPerm>,
     ) -> (ret: RetValueType)
         requires
             old(krnl).inv(),
@@ -355,10 +328,7 @@ verus! {
                     .major == SCHEDULER_LOCK_MAJOR
                 &&& !lctx.scheduler_lock_map().dom().contains(peer_scheduler_ptr)
             }) by {
-                reveal(container_scheduler_wf);
-                reveal(process_perms_wf);
-                reveal(thread_perms_wf);
-                reveal(endpoint_perms_wf);
+                reveal(container_scheduler_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(endpoint_perms_wf);
                 reveal(scheduler_perms_wf);
             };
         }
@@ -451,9 +421,7 @@ verus! {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
             };
             steps.end_kernel_step(&*krnl, &*lctx);
-            assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
         }
         result
     }
-
 } // verus!

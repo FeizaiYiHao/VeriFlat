@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use crate::*;
 
 impl PageTable<PT_TYPE> {
@@ -49,16 +48,12 @@ impl PageTable<PT_TYPE> {
                 l4i,
             ) is None,
             ret.1 == PageTableErrorCode::L3EntryNotExist <==> self.spec_resolve_mapping_1g_l3(
-                l4i,
-                l3i,
+                l4i, l3i,
             ) is None && self.spec_resolve_mapping_l3(l4i, l3i) is None
                 && self.spec_resolve_mapping_l3(l4i, l3i) is None && self.spec_resolve_mapping_l4(
                 l4i,
             ) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(
-                l4i,
-                l3i,
-            ) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
             ret.1 != PageTableErrorCode::EntryTakenBy2m,
             ret.1 != PageTableErrorCode::L2EntryNotExist,
             ret.1 != PageTableErrorCode::L1EntryNotExist,
@@ -93,27 +88,17 @@ impl PageTable<PT_TYPE> {
                 l4i,
             ) is None,
             ret.1 == PageTableErrorCode::L3EntryNotExist <==> self.spec_resolve_mapping_1g_l3(
-                l4i,
-                l3i,
+                l4i, l3i,
             ) is None && self.spec_resolve_mapping_l3(l4i, l3i) is None
                 && self.spec_resolve_mapping_l3(l4i, l3i) is None && self.spec_resolve_mapping_l4(
                 l4i,
             ) is Some,
             ret.1 == PageTableErrorCode::L2EntryNotExist <==> self.spec_resolve_mapping_2m_l2(
-                l4i,
-                l3i,
-                l2i,
+                l4i, l3i, l2i,
             ) is None && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is None
                 && self.spec_resolve_mapping_l3(l4i, l3i) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(
-                l4i,
-                l3i,
-            ) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> self.spec_resolve_mapping_2m_l2(
-                l4i,
-                l3i,
-                l2i,
-            ) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
             ret.1 != PageTableErrorCode::L1EntryNotExist,
     {
         match self.resolve_mapping_4k_l3(l4i, l3i) {
@@ -153,33 +138,20 @@ impl PageTable<PT_TYPE> {
                 l4i,
             ) is None,
             ret.1 == PageTableErrorCode::L3EntryNotExist ==> self.spec_resolve_mapping_1g_l3(
-                l4i,
-                l3i,
+                l4i, l3i,
             ) is None && self.spec_resolve_mapping_l3(l4i, l3i) is None
                 && self.spec_resolve_mapping_l3(l4i, l3i) is None && self.spec_resolve_mapping_l4(
                 l4i,
             ) is Some,
             ret.1 == PageTableErrorCode::L2EntryNotExist ==> self.spec_resolve_mapping_2m_l2(
-                l4i,
-                l3i,
-                l2i,
+                l4i, l3i, l2i,
             ) is None && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is None
                 && self.spec_resolve_mapping_l3(l4i, l3i) is Some,
             ret.1 == PageTableErrorCode::L1EntryNotExist ==> self.spec_resolve_mapping_4k_l1(
-                l4i,
-                l3i,
-                l2i,
-                l1i,
+                l4i, l3i, l2i, l1i,
             ) is None && self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(
-                l4i,
-                l3i,
-            ) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> self.spec_resolve_mapping_2m_l2(
-                l4i,
-                l3i,
-                l2i,
-            ) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
             ret.1 != PageTableErrorCode::EntryTakenBy4k,
             ret.1 != PageTableErrorCode::EntryTakenBy1g && ret.1
                 != PageTableErrorCode::EntryTakenBy2m && ret.1 != PageTableErrorCode::NoError
@@ -204,5 +176,4 @@ impl PageTable<PT_TYPE> {
         }
     }
 }
-
 } // verus!

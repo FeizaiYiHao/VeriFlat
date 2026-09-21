@@ -101,6 +101,11 @@ they must point to these canonical sources instead of redefining their rules.
   approval. S may be changed freely without approval, including adding,
   removing, strengthening, weakening, or reorganizing clauses, as long as the
   preceding completeness, semantic, and framing constraints are preserved.
+- Ad-hoc tooling must never block the session. Run every temporary script and
+  bulk text rewrite under `timeout`, test it on the largest target file before
+  a batch run, avoid backtracking-prone regexes over whole files, start
+  long verification runs in the background and poll their logs, and kill and
+  delete any temporary script or stray process before continuing.
 - Report verification and proof-performance results in the conversation. Do
   not retain verification reports, handoff records, run logs, profiles, or
   benchmark source snapshots. Temporary measurement files must be removed

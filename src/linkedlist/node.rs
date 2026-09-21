@@ -3,7 +3,6 @@ use core::mem::MaybeUninit;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
-
 pub struct Node<T>{
     pub value: T,
     pub next: Option<usize>,
@@ -86,11 +85,11 @@ impl<T> ExternalNode<T>{
 
 #[verifier(external_body)]
 pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
-    ensures 
-        forall|k:K| 
+    ensures
+        forall|k:K|
             #![trigger others.spec_index(k).addr()]
-            others.dom().contains(k) 
-            ==> 
+            others.dom().contains(k)
+            ==>
             final(this).addr() != others.spec_index(k).addr(),
         *final(this) == *old(this),
 {
@@ -149,5 +148,4 @@ pub fn node_update_next<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, ne
         (*uptr).assume_init_mut().next = next;
     }
 }
-
 }

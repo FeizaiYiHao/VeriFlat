@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
-
 use crate::*;
 
 pub struct Thread {
@@ -135,7 +134,6 @@ impl Thread{
         thread.endpoint_descriptors.set(0, Some(endpoint_ptr));
         thread.ipc_payload = IPCPayLoad::Empty;
         thread.error_code = None;
-        assert(thread.inv());
         (
             thread,
             scheduler_node_addr,
@@ -356,14 +354,9 @@ impl Thread{
         node_update_value(node_addr, &mut node_perm, thread_ptr);
         let (process_node_addr, mut process_node_perm) =
             thread.proc_linkedlist_node.take();
-        node_update_value(
-            process_node_addr,
-            &mut process_node_perm,
-            thread_ptr,
-        );
+        node_update_value(process_node_addr, &mut process_node_perm, thread_ptr);
         thread.trap_frame.set_self(initial_regs);
         thread.state = ThreadState::SCHEDULED;
-        assert(thread.inv());
         (
             thread,
             node_addr,
@@ -395,9 +388,7 @@ impl Thread {
         let ghost old_cache = self.temp_alloc_cache_4k.view();
         self.temp_alloc_cache_4k = Ghost(old_cache.remove(page_ptr));
         self.quota_4k = self.quota_4k - 1;
-        proof {
-            vstd::set::lemma_set_remove_len(old_cache, page_ptr);
-        }
+        proof { vstd::set::lemma_set_remove_len(old_cache, page_ptr); }
     }
 
     pub fn running_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, pt_regs: &Registers) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
@@ -813,7 +804,6 @@ impl LockInvTrait for Thread {
         &&&
         self.quota_within_bound()
     }
-
 }
 
 impl Thread {
@@ -1049,5 +1039,4 @@ impl LockUserVisibilityTrait for Thread {
         false
     }
 }
-
 } // verus!

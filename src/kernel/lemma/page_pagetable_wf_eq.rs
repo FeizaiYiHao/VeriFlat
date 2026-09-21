@@ -3,7 +3,6 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-
 pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert(
     container_map: ContainerLockedMap,
     process_map: ProcessLockedMap,
@@ -16,12 +15,7 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
     va: VAddr,
 )
     requires
-        container_process_page_pagetable_wf(
-            container_map,
-            process_map,
-            pre_pagetable_map,
-            pre_page_array,
-        ),
+        container_process_page_pagetable_wf(container_map, process_map, pre_pagetable_map, pre_page_array),
         page_pagetable_wf(pre_pagetable_map, pre_page_array),
         page_pagetable_wf(post_pagetable_map, post_page_array),
         container_page_owner_wf(container_map, pre_page_array),
@@ -52,18 +46,9 @@ pub proof fn container_process_page_pagetable_wf_preserved_for_4k_mapping_insert
             )
         },
     ensures
-        container_process_page_pagetable_wf(
-            container_map,
-            process_map,
-            post_pagetable_map,
-            post_page_array,
-        ),
+        container_process_page_pagetable_wf(container_map, process_map, post_pagetable_map, post_page_array),
 {
-    reveal(mapped_4k_page_pagetable_wf);
-    reveal(mapped_2m_page_pagetable_wf);
-    reveal(mapped_1g_page_pagetable_wf);
     reveal(container_page_owner_wf);
-    reveal(process_pagetable_match);
     reveal(container_process_page_pagetable_wf);
 }
 
@@ -106,8 +91,7 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va),
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k()
             == pre_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().insert(
-                va,
-                post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va),
+                va, post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va),
             ),
         post_pagetable_map.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).addr
             == page_ptr,
@@ -123,7 +107,6 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
         page_pagetable_wf(post_pagetable_map, post_page_array),
 {
     reveal(pagetable_perms_wf);
-    reveal(page_array_wf);
     reveal(mapped_4k_page_pagetable_wf);
     reveal(mapped_2m_page_pagetable_wf);
     reveal(mapped_1g_page_pagetable_wf);
@@ -156,5 +139,4 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(
     reveal(pagetable_perms_wf);
     page_ptr_valid_imply_page_index_valid();
 }
-
 }

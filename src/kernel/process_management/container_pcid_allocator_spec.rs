@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn container_pcid_allocator_wf(
     container_map: ContainerLockedMap,
@@ -37,5 +36,4 @@ pub open spec fn container_pcid_allocator_wf(
                 == allocator_ptr
         }
 }
-
 }

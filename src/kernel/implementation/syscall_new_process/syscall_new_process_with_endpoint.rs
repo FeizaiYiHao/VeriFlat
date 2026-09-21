@@ -8,16 +8,9 @@ use super::syscall_new_process_helpers::commit_new_process_with_endpoint;
 use super::syscall_new_process_spec::kernel_u_new_process_shared;
 
 verus! {
-
 pub fn syscall_new_process_with_endpoint(
-    krnl: &mut KernelK,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId,
-    va: VAddr,
-    range: usize,
-    endpoint_index: EndpointIdx,
-    initial_regs: &Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr,
+    range: usize, endpoint_index: EndpointIdx, initial_regs: &Registers,
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -186,7 +179,6 @@ pub fn syscall_new_process_with_endpoint(
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
             };
             steps.end_kernel_step(&*krnl, &*lctx);
-            assert(steps.steps == old(steps).steps) by { reveal(record_user_view_change); };
         }
         return RetValueType::Error;
     }
@@ -205,5 +197,4 @@ pub fn syscall_new_process_with_endpoint(
     );
     RetValueType::SuccessPairUsize { value1: child_ptr, value2: thread_ptr }
 }
-
 }

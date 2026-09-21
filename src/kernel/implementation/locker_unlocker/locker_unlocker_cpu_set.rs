@@ -41,16 +41,12 @@ impl KernelK {
                     cpu_set_ptr,
                     TypedLockMode::Write,
                 )) by {
-                    reveal(typed_lock_maps_aligned);
                     reveal(LockedMap::typed_lock_map_aligned);
                 };
             }
         };
         assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr)
-            .wlocked_by(&*old(lctx))) by {
-            reveal(RwLock::wlocked_by);
-            reveal(RwLock::wlocked_by_thread);
-        };
+            .wlocked_by(&*old(lctx)));
         assert(wlock_requires(self.cpu_set_mp.spec_index(cpu_set_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.cpu_set_mp.wlock(cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
         proof {

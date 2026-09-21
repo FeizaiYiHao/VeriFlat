@@ -460,9 +460,7 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
                 &&& (&target_pagetable_lock_perm).thread_id() == lctx.thread_id()
                 &&& (&target_pagetable_lock_perm).lock_id() == krnl.pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id
             }) by {
-                reveal(process_thread_wf);
                 reveal(process_pagetable_match);
-                reveal(pagetable_perms_wf);
             };
         }
         proof {

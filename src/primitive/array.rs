@@ -50,7 +50,6 @@ impl<A, const N: usize> Array<A, N> {
     pub open spec fn wf(&self) -> bool{
         self.seq.view().len() == N
     }
-
 }
 
 impl<A, const N: usize> Array<A, N> {
@@ -68,7 +67,6 @@ impl<A, const N: usize> Array<A, N> {
 }
 
 impl<const N: usize> Array<u8, N> {
-
     pub fn init2zero(&mut self)
         requires
             old(self).wf(),
@@ -91,7 +89,6 @@ impl<const N: usize> Array<u8, N> {
 }
 
 impl<const N: usize> Array<usize, N> {
-
     pub fn init2zero(&mut self)
         requires
             old(self).wf(),
@@ -114,7 +111,6 @@ impl<const N: usize> Array<usize, N> {
 }
 
 impl<T: Copy, const N: usize> Array<Option<T>, N> {
-
     pub fn init2none(&mut self)
         requires
             old(self).wf(),
@@ -149,5 +145,4 @@ impl<A:Copy, const N: usize> Array<A, N> {
         ret
     }
 }
-
 }

@@ -8,15 +8,9 @@ use super::syscall_new_process_helpers::commit_new_process;
 use super::syscall_new_process_spec::kernel_u_new_process_shared;
 
 verus! {
-
 pub fn syscall_new_process(
-    krnl: &mut KernelK,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    cpu_id: CpuId,
-    va: VAddr,
-    range: usize,
-    initial_regs: &Registers,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr,
+    range: usize, initial_regs: &Registers,
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -179,5 +173,4 @@ pub fn syscall_new_process(
     );
     RetValueType::SuccessPairUsize { value1: child_ptr, value2: thread_ptr }
 }
-
 }

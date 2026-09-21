@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use vstd::assert_seqs_equal;
 use crate::*;
 verus! {
-
 /// Consume a staged page to create a scheduled thread in `process_ptr`.
 pub fn create_thread_from_staged_page_merged(
     krnl: &mut KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
@@ -232,22 +231,18 @@ pub fn create_thread_from_staged_page_merged(
         assert(kernel_u_new_thread_changed(
             kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), process_ptr,
         )) by {
-            reveal(LockedMap::unchanged_except);
-            reveal(kernel_u_new_thread_changed);
             reveal(kernel_k_to_kernel_u);
         };
         assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
         assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
         assert(thread_perms_wf(krnl.thr_mp)) by {
-            reveal(LockedMap::unchanged_except);
             reveal(thread_perms_wf);
             reveal(thread_free_quota_pending_empty_unless_wlocked);
             reveal(thread_temp_alloc_empty_unless_wlocked);
         };
         assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); reveal(LinkedList::wf_value_list); };
         assert(krnl.memory_management_inv()) by {
-            reveal(KernelK::memory_management_inv);
             allocator_4k_pages_wf_preserved_for_page_state_eq(
                 old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_4k_mp, krnl.allc_4k_mp,
             );
@@ -319,7 +314,6 @@ pub fn create_thread_from_staged_page_merged(
         };
         container_no_change_to_tree_fields_imply_wf(krnl.rt_ctn, old(krnl).ctn_mp, krnl.ctn_mp);
         assert(krnl.process_management_inv()) by {
-            reveal(KernelK::process_management_inv);
             assert(old(krnl).ctn_mp.dom().contains(old(krnl).rt_ctn)) by { reveal(container_root_wf); };
             assert(container_process_wf(krnl.ctn_mp, old(krnl).prc_mp)) by { reveal(container_process_wf); };
             assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
@@ -331,7 +325,6 @@ pub fn create_thread_from_staged_page_merged(
             assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
             assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
             assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
-                reveal(LockedMap::unchanged_except);
                 reveal(container_endpoint_wf);
                 reveal(thread_endpoint_ref_counter_wf);
                 reveal(container_thread_endpoint_wf);
@@ -449,7 +442,6 @@ proof fn add_thread_to_container_sets(
     }
     assert(container_perms_wf(*old(container_map)) ==> container_perms_wf(*container_map)) by {
         reveal(container_perms_wf);
-        reveal(containers_inv);
         reveal(container_tree_fields_wf);
     };
 }

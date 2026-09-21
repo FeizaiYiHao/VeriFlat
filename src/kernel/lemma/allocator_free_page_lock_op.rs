@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-
 pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(
     allocator_map: PageAllocatorUnLockedMap,
     pre: PageLockedArray,
@@ -133,5 +132,4 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(
     reveal(container_allocator_global_free_2m_page_wf);
     reveal(container_allocator_cpu_cache_free_2m_page_wf);
 }
-
 }

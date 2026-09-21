@@ -35,6 +35,12 @@
   differences. Interleave baseline/candidate runs, include every sample in the
   comparison, and avoid concurrent heavy verification. Report observed variation
   and repeat as needed before treating a slowdown or speedup as reproducible.
+- Never let self-made tooling stall a session: wrap temporary scripts and
+  multi-file rewrites in `timeout`, dry-run them on the largest target file
+  first, prefer line-based edits over multi-line backtracking regexes, launch
+  focused or workspace verification in the background (`nohup ... &`) and
+  poll the log with short commands, and remove stray processes and temporary
+  scripts before moving on.
 - Report results in the conversation. Do not retain verification reports,
   handoff records, run logs, profiles, or benchmark source snapshots. Use
   temporary files while measuring and remove them before handoff. Keep only

@@ -93,14 +93,11 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
         reveal(allocator_free_page_ptrs_wf);
         let allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
-        assert(allocator.wf() && allocator.cpu_caches_wf());
         assert(allocator.global_pool.view().len() <= NUM_PAGES * 4096) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); allocator.global_pool.view().lemma_len_view(); seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize); };
         assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
             if !(forall|i: int| #![trigger allocator.cpu_caches.view().spec_index(i)] 0 <= i < NUM_CPUS ==> allocator.cpu_caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK) {
                 let i = choose|i: int| #![trigger allocator.cpu_caches.view().spec_index(i)] 0 <= i < NUM_CPUS && allocator.cpu_caches.view().spec_index(i).view().linked_list.len() > ALLOCATOR_MAX_WATERMARK;
-                assert(index_valid(NUM_CPUS, i as usize)) by {
-                    reveal(index_valid);
-                };
+                assert(index_valid(NUM_CPUS, i as usize));
                 assert(allocator.cpu_caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK) by { allocator.cpu_caches.lemma_view_index(i as usize); allocator.cpu_caches.spec_index(i as usize).view().view().linked_list.lemma_len_view(); };
             }
             seq_fold_upper_bound(allocator.cpu_caches.view(), |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
@@ -172,10 +169,7 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
     }
 
     proof {
-        assert(old(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is Write) by {
-            reveal(typed_lock_maps_aligned);
-            reveal(LockedMap::typed_lock_map_aligned);
-        };
+        assert(old(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is Write);
         assert(reclaim_last_4k_mapping_to_cpu_cache_transition(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
             reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
         };
@@ -184,6 +178,5 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         assert(krnl.pt_mp.spec_index(pagetable).view().user_view().mapping_4k =~= old(krnl).pt_mp.spec_index(pagetable).view().user_view().mapping_4k) by { vstd::map::axiom_map_ext_equal(krnl.pt_mp.spec_index(pagetable).view().user_view().mapping_4k, old(krnl).pt_mp.spec_index(pagetable).view().user_view().mapping_4k); };
         assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl); };
     }
-
 }
 }

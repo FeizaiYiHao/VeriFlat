@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 /// Every active synchronous call is represented twice: the waiting caller
 /// points to its callee, and the callee points back to that caller.  Call and
 /// reply are restricted to one container so reply can perform a direct CPU
@@ -42,5 +41,4 @@ pub open spec fn thread_caller_callee_wf(thread_map: ThreadLockedMap) -> bool {
                 == thread_map.spec_index(callee_ptr).view().owning_container
         }
 }
-
 } // verus!

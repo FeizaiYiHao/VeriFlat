@@ -203,7 +203,6 @@ pub(super) fn publish_staged_process(
                 reveal(process_uppertree_seq_wf);
                 lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
             };
-            assert(NUM_PAGES < usize::MAX) by (compute);
         };
         assert(
             page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr)
@@ -241,13 +240,11 @@ pub(super) fn publish_staged_process(
             &&& steps.steps.last().new_u.process_map.spec_index(child_ptr) == kernel_k_to_kernel_u(*krnl).process_map.spec_index(child_ptr)
         }) by {
             reveal(kernel_k_to_kernel_u);
-            reveal(process_pagetable_match);
         };
     }
     proof {
         assert(krnl.prc_mp.spec_index(child_ptr).view_rodata().view().pagetable
             == target_pagetable_ptr) by {
-            reveal(process_pagetable_match);
         };
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr
             == parent_ptr) by {
@@ -263,5 +260,4 @@ pub(super) fn publish_staged_process(
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, target_pagetable_ptr, krnl.pt_mp.spec_index(target_pagetable_ptr).view())) by { reveal(tlb_wf_spec); }; }
     (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm))
 }
-
 }

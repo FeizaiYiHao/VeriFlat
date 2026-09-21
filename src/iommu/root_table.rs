@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 
 verus! {
-
 use crate::*;
 
 pub const PCI_BUS_COUNT: usize = 256;
@@ -68,18 +67,11 @@ fn iommu_context_table_address(
             + VTD_TABLE_SIZE as int * (bus as int + 1),
         ret % VTD_TABLE_SIZE == 0,
 {
-    assert(VTD_TABLE_SIZE == 4096) by (compute);
-    assert(VTD_TABLE_SIZE as int == 4096) by (compute);
     let offset = VTD_TABLE_SIZE * (bus + 1);
     let ret = table_base + offset;
     proof {
-        vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(
-            bus as int + 1,
-            table_base as int,
-            VTD_TABLE_SIZE as int,
-        );
+        vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(bus as int + 1, table_base as int, VTD_TABLE_SIZE as int);
     }
-    assert(ret % VTD_TABLE_SIZE == 0);
     ret
 }
 
@@ -101,7 +93,6 @@ impl VtdLegacyEntry {
     {
         let ret = Self { lower: 0, upper: 0 };
         assert(0usize & 1usize != 1usize) by (bit_vector);
-        assert(!ret.present());
         ret
     }
 
@@ -155,9 +146,6 @@ impl IommuContextTable {
                 VtdLegacyEntry::disabled(),
             ),
         };
-        proof {
-            broadcast use vstd::seq::lemma_seq_new_index;
-        }
         ret
     }
 
@@ -194,9 +182,6 @@ impl IommuDeviceMetadata {
         let ret = Self {
             functions: Array::new_with_init_value(owner_process),
         };
-        proof {
-            broadcast use vstd::seq::lemma_seq_new_index;
-        }
         ret
     }
 
@@ -249,14 +234,10 @@ impl IommuBusMetadata {
                         .functions.spec_index(function) == owner_process,
             decreases PCI_DEVICE_COUNT - device,
         {
-            devices.set(
-                device,
-                IommuDeviceMetadata::new_owner(owner_process),
-            );
+            devices.set(device, IommuDeviceMetadata::new_owner(owner_process));
             device = device + 1;
         }
         let ret = Self { devices };
-        assert(ret.all_owned_by(owner_process));
         ret
     }
 
@@ -387,20 +368,15 @@ impl IommuRootTable {
                         .functions.spec_index(function) == owner_process,
             decreases PCI_BUS_COUNT - bus,
         {
-            assert(VTD_TABLE_SIZE == 4096) by (compute);
             assert(VTD_TABLE_SIZE as int == 4096) by (compute);
-            assert(PCI_BUS_COUNT as int == 256) by (compute);
             assert(
                 IOMMU_ROOT_TABLE_STATIC_SIZE as int == 1_576_960
             )
                 by (compute);
-            assert(bus as int + 1 <= 256);
             assert(
                 4096 * (bus as int + 1) <= 1_048_576
             ) by {
-                assert(bus as int + 1 <= 256);
             }
-            assert(1_048_576 <= 1_576_960);
             assert(
                 table_base as int
                     + 4096 * (bus as int + 1)
@@ -440,15 +416,9 @@ impl IommuRootTable {
                 },
             );
             let context_table = IommuContextTable::new_disabled();
-            proof {
-                reveal(IommuContextTable::all_disabled);
-            }
             context_tables.set(bus, context_table);
             let bus_metadata =
                 IommuBusMetadata::new_owner(owner_process);
-            proof {
-                reveal(IommuBusMetadata::all_owned_by);
-            }
             metadata.set(bus, bus_metadata);
             bus = bus + 1;
         }
@@ -459,10 +429,8 @@ impl IommuRootTable {
             table_base: Ghost(table_base),
         };
         assert(ret.iommu_roots().len() == PCI_BUS_COUNT) by {
-            reveal(IommuRootTable::iommu_roots);
         }
         assert(ret.owners().len() == PCI_BUS_COUNT) by {
-            reveal(IommuRootTable::owners);
         }
         assert(
             ret.table_base.view()
@@ -476,19 +444,6 @@ impl IommuRootTable {
         }
         assert(ret.wf()) by {
             reveal(IommuRootTable::wf);
-            reveal(IommuRootTable::context_table_address);
-            reveal(IommuRootTable::context_entry);
-            reveal(IommuRootTable::iommu_roots);
-            reveal(IommuRootTable::owners);
-            reveal(IommuContextTable::all_disabled);
-            reveal(IommuContextTable::wf);
-            reveal(IommuContextTable::entry);
-            reveal(IommuBusMetadata::all_owned_by);
-            reveal(IommuBusMetadata::wf);
-            reveal(IommuDeviceMetadata::wf);
-            reveal(VtdLegacyEntry::present);
-            reveal(VtdLegacyEntry::address);
-            broadcast use vstd::seq::lemma_seq_new_index;
         }
         assert(
             forall|bus: usize, device: usize, function: usize|
@@ -498,13 +453,6 @@ impl IommuRootTable {
                 ==> ret.spec_index_iommu_root(
                     bus, device, function) is None
         ) by {
-            reveal(IommuRootTable::spec_index_iommu_root);
-            reveal(IommuRootTable::iommu_roots);
-            reveal(IommuRootTable::context_entry);
-            reveal(IommuContextTable::all_disabled);
-            reveal(IommuContextTable::entry);
-            reveal(VtdLegacyEntry::present);
-            broadcast use vstd::seq::lemma_seq_new_index;
         }
         assert(
             forall|bus: usize, device: usize, function: usize|
@@ -514,10 +462,6 @@ impl IommuRootTable {
                 ==> ret.spec_index_owner(
                     bus, device, function) == owner_process
         ) by {
-            reveal(IommuRootTable::spec_index_owner);
-            reveal(IommuRootTable::owners);
-            reveal(IommuBusMetadata::all_owned_by);
-            broadcast use vstd::seq::lemma_seq_new_index;
         }
         ret
     }
@@ -548,11 +492,7 @@ impl IommuRootTable {
         Seq::new(PCI_BUS_COUNT as nat, |bus: int|
             Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
                 Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| {
-                    let context = self.context_entry(
-                        bus as usize,
-                        device as usize,
-                        function as usize,
-                    );
+                    let context = self.context_entry(bus as usize, device as usize, function as usize);
                     if context.present() {
                         Some(context.address())
                     } else {
@@ -680,7 +620,6 @@ impl IommuRootTable {
             }
     }
 }
-
 }
 
 // Compile-time checks for the hardware layout and the stated memory budget.

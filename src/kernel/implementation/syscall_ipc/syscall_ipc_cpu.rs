@@ -8,27 +8,14 @@ use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 verus! {
     #[verifier::spinoff_prover]
     fn finish_ipc_cpu_rendezvous_release(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        process_ptr: RwLockProcessPtr,
-        current_thread_ptr: RwLockThreadPtr,
-        endpoint_ptr: RwLockEndpointPtr,
-        peer_thread_ptr: RwLockThreadPtr,
-        peer_scheduler_ptr: RwLockSchedulerPtr,
-        source_cpu_set: RwLockCpuSetPtr,
-        target_cpu_set: RwLockCpuSetPtr,
-        transfer_cpu_id: CpuId,
-        Ghost(record_step): Ghost<bool>,
-        Tracked(cpu_lock_perm): Tracked<LockPerm>,
-        Tracked(process_lock_perm): Tracked<LockPerm>,
-        Tracked(current_thread_lock_perm): Tracked<LockPerm>,
-        Tracked(endpoint_lock_perm): Tracked<LockPerm>,
-        Tracked(peer_thread_lock_perm): Tracked<LockPerm>,
-        Tracked(peer_scheduler_lock_perm): Tracked<LockPerm>,
-        Tracked(source_cpu_set_lock_perm): Tracked<LockPerm>,
-        Tracked(target_cpu_set_lock_perm): Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, peer_scheduler_ptr: RwLockSchedulerPtr, source_cpu_set: RwLockCpuSetPtr,
+    target_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, Ghost(record_step): Ghost<bool>,
+    Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(process_lock_perm): Tracked<LockPerm>,
+    Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
+    Tracked(peer_thread_lock_perm): Tracked<LockPerm>, Tracked(peer_scheduler_lock_perm): Tracked<LockPerm>,
+    Tracked(source_cpu_set_lock_perm): Tracked<LockPerm>, Tracked(target_cpu_set_lock_perm): Tracked<LockPerm>,
     )
         requires
             old(krnl).inv(),
@@ -46,11 +33,7 @@ verus! {
                         .view().view().view().current_pcid,
                 ),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
-            typed_lock_map_contains_mode(
-                old(lctx).cpu_lock_map(),
-                cpu_id,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             cpu_lock_perm.state() is WriteLock,
             cpu_lock_perm.thread_id() == old(lctx).thread_id(),
             cpu_lock_perm.lock_id()
@@ -60,11 +43,7 @@ verus! {
             old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
             old(krnl).prc_mp.spec_index(process_ptr)
                 .view().owned_threads.view().len() != 0,
-            typed_lock_map_contains_mode(
-                old(lctx).process_lock_map(),
-                process_ptr,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
             process_lock_perm.state() is WriteLock,
             process_lock_perm.thread_id() == old(lctx).thread_id(),
             process_lock_perm.lock_id()
@@ -78,11 +57,7 @@ verus! {
                 .view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr)
                 .view().temp_alloc_clean(),
-            typed_lock_map_contains_mode(
-                old(lctx).thread_lock_map(),
-                current_thread_ptr,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
             current_thread_lock_perm.state() is WriteLock,
             current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
             current_thread_lock_perm.lock_id()
@@ -96,33 +71,21 @@ verus! {
                 .view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr)
                 .view().temp_alloc_clean(),
-            typed_lock_map_contains_mode(
-                old(lctx).thread_lock_map(),
-                peer_thread_ptr,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
             peer_thread_lock_perm.state() is WriteLock,
             peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
             peer_thread_lock_perm.lock_id()
                 == old(krnl).thr_mp.spec_index(peer_thread_ptr)
                     .locking_thread()->Write_lock_id,
             old(krnl).ep_mp.dom().contains(endpoint_ptr),
-            typed_lock_map_contains_mode(
-                old(lctx).endpoint_lock_map(),
-                endpoint_ptr,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
             endpoint_lock_perm.state() is WriteLock,
             endpoint_lock_perm.thread_id() == old(lctx).thread_id(),
             endpoint_lock_perm.lock_id()
                 == old(krnl).ep_mp.spec_index(endpoint_ptr)
                     .locking_thread()->Write_lock_id,
             old(krnl).sched_mp.dom().contains(peer_scheduler_ptr),
-            typed_lock_map_contains_mode(
-                old(lctx).scheduler_lock_map(),
-                peer_scheduler_ptr,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), peer_scheduler_ptr, TypedLockMode::Write),
             peer_scheduler_lock_perm.state() is WriteLock,
             peer_scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
             peer_scheduler_lock_perm.lock_id()
@@ -130,22 +93,14 @@ verus! {
                     .locking_thread()->Write_lock_id,
             source_cpu_set != target_cpu_set,
             old(krnl).cpu_set_mp.dom().contains(source_cpu_set),
-            typed_lock_map_contains_mode(
-                old(lctx).cpu_set_lock_map(),
-                source_cpu_set,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), source_cpu_set, TypedLockMode::Write),
             source_cpu_set_lock_perm.state() is WriteLock,
             source_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
             source_cpu_set_lock_perm.lock_id()
                 == old(krnl).cpu_set_mp.spec_index(source_cpu_set)
                     .locking_thread()->Write_lock_id,
             old(krnl).cpu_set_mp.dom().contains(target_cpu_set),
-            typed_lock_map_contains_mode(
-                old(lctx).cpu_set_lock_map(),
-                target_cpu_set,
-                TypedLockMode::Write,
-            ),
+            typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), target_cpu_set, TypedLockMode::Write),
             target_cpu_set_lock_perm.state() is WriteLock,
             target_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
             target_cpu_set_lock_perm.lock_id()
@@ -200,71 +155,28 @@ verus! {
                     + if record_step { 1int } else { 0int },
             final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
     {
-        krnl.wunlock_cpu_set(
-            target_cpu_set,
-            Tracked(&mut *lctx),
-            Tracked(target_cpu_set_lock_perm),
-        );
-        krnl.wunlock_cpu_set(
-            source_cpu_set,
-            Tracked(&mut *lctx),
-            Tracked(source_cpu_set_lock_perm),
-        );
-        krnl.wunlock_thread(
-            peer_thread_ptr,
-            Tracked(&mut *lctx),
-            Tracked(peer_thread_lock_perm),
-        );
-        krnl.wunlock_thread(
-            current_thread_ptr,
-            Tracked(&mut *lctx),
-            Tracked(current_thread_lock_perm),
-        );
-        krnl.wunlock_scheduler(
-            peer_scheduler_ptr,
-            Tracked(&mut *lctx),
-            Tracked(peer_scheduler_lock_perm),
-        );
-        krnl.wunlock_endpoint(
-            endpoint_ptr,
-            Tracked(&mut *lctx),
-            Tracked(endpoint_lock_perm),
-        );
-        krnl.wunlock_process(
-            process_ptr,
-            Tracked(&mut *lctx),
-            Tracked(process_lock_perm),
-        );
-        krnl.wunlock_cpu(
-            cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(cpu_lock_perm),
-        );
+        krnl.wunlock_cpu_set(target_cpu_set, Tracked(&mut *lctx), Tracked(target_cpu_set_lock_perm));
+        krnl.wunlock_cpu_set(source_cpu_set, Tracked(&mut *lctx), Tracked(source_cpu_set_lock_perm));
+        krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
+        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
+        krnl.wunlock_scheduler(peer_scheduler_ptr, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
+        krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
+        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
                 kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
             };
             steps.end_kernel_step(&*krnl, &*lctx);
-            reveal(record_user_view_change);
         }
     }
 
     pub(super) fn ipc_rendezvous_cpu(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        process_ptr: RwLockProcessPtr,
-        current_thread_ptr: RwLockThreadPtr,
-        endpoint_ptr: RwLockEndpointPtr,
-        peer_thread_ptr: RwLockThreadPtr,
-        is_send: bool,
-        transfer_cpu_id: CpuId,
-        Tracked(cpu_lock_perm): Tracked<LockPerm>,
-        Tracked(process_lock_perm): Tracked<LockPerm>,
-        Tracked(current_thread_lock_perm): Tracked<LockPerm>,
-        Tracked(endpoint_lock_perm): Tracked<LockPerm>,
-        Tracked(peer_thread_lock_perm): Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+    process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, is_send: bool, transfer_cpu_id: CpuId, Tracked(cpu_lock_perm): Tracked<LockPerm>,
+    Tracked(process_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>,
+    Tracked(endpoint_lock_perm): Tracked<LockPerm>, Tracked(peer_thread_lock_perm): Tracked<LockPerm>,
     ) -> (ret: RetValueType)
         requires
             old(krnl).inv(),
@@ -504,27 +416,10 @@ verus! {
             }
         }
         finish_ipc_cpu_rendezvous_release(
-            krnl,
-            Tracked(&mut *lctx),
-            Tracked(&mut *steps),
-            cpu_id,
-            process_ptr,
-            current_thread_ptr,
-            endpoint_ptr,
-            peer_thread_ptr,
-            peer_scheduler_ptr,
-            source_cpu_set,
-            target_cpu_set,
-            transfer_cpu_id,
-            Ghost(result is Success),
-            Tracked(cpu_lock_perm),
-            Tracked(process_lock_perm),
-            Tracked(current_thread_lock_perm),
-            Tracked(endpoint_lock_perm),
-            Tracked(peer_thread_lock_perm),
-            Tracked(peer_scheduler_lock_perm),
-            Tracked(source_cpu_set_lock_perm),
-            Tracked(target_cpu_set_lock_perm),
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr,
+            peer_scheduler_ptr, source_cpu_set, target_cpu_set, transfer_cpu_id, Ghost(result is Success), Tracked(cpu_lock_perm),
+            Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
+            Tracked(peer_scheduler_lock_perm), Tracked(source_cpu_set_lock_perm), Tracked(target_cpu_set_lock_perm),
         );
         caller_result
     }

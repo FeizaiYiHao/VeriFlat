@@ -3,7 +3,6 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-
 /// Semantic allocator fields read by kernel invariants.  Internal quota,
 /// cache, and global-pool lock owners are deliberately excluded.
 pub open spec fn allocator_invariant_fields_unchanged(
@@ -54,10 +53,7 @@ pub proof fn allocator_cache_lock_op_preserves_invariant_fields(
             == pre.spec_index(changed_allocator).quota,
         post.spec_index(changed_allocator).global_pool
             == pre.spec_index(changed_allocator).global_pool,
-        post.spec_index(changed_allocator).cpu_caches.unchanged_except(
-            &pre.spec_index(changed_allocator).cpu_caches,
-            changed_cpu,
-        ),
+        post.spec_index(changed_allocator).cpu_caches.unchanged_except(&pre.spec_index(changed_allocator).cpu_caches, changed_cpu),
     ensures
         allocator_invariant_fields_unchanged(pre, post),
 {
@@ -108,5 +104,4 @@ pub proof fn allocator_global_pool_lock_op_preserves_invariant_fields(
         allocator_invariant_fields_unchanged(pre, post),
 {
 }
-
 }

@@ -3,7 +3,6 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
-
     pub open spec fn pagetable_map_user_view(
         pagetable_map: PageTableLockedMap,
     ) -> Map<RwLockPageTableRoot, PageTableU> {
@@ -162,5 +161,4 @@ verus! {
             reveal(process_iommu_table_match);
         });
     }
-
 }

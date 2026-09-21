@@ -6,7 +6,6 @@ const ASSERT_KERNEL_IRT_OFFSET: [(); 379_584_512] =
     [(); offset_of!(crate::KernelK, irt)];
 
 verus! {
-
 use crate::*;
 
 pub const KERNEL_IRT_OFFSET: usize = 379_584_512;
@@ -420,20 +419,9 @@ pub fn adopt_boot_dom0_pagetable(
         l3_tables.dom().disjoint(l2_tables.dom()),
         l3_tables.dom().disjoint(l1_tables.dom()),
         l2_tables.dom().disjoint(l1_tables.dom()),
-        boot_dom0_manifest_wf(
-            manifest_4k.view(),
-            root_container,
-        ),
+        boot_dom0_manifest_wf(manifest_4k.view(), root_container),
         boot_dom0_pagetable_model(
-            raw_cr3,
-            process_ptr,
-            kernel_l4_end,
-            kernel_entries.view(),
-            manifest_4k.view(),
-            l4_tables,
-            l3_tables,
-            l2_tables,
-            l1_tables,
+            raw_cr3, process_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables,
         ).wf(),
     ensures
         ret.wf(),
@@ -548,12 +536,7 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
             == krnl.allc_4k_mp.spec_index(layout.allocator_4k)
                 .total_free_pages.view(),
     ensures
-        container_process_allocator_quota_4k_wf(
-            krnl.ctn_mp,
-            krnl.prc_mp,
-            krnl.thr_mp,
-            krnl.allc_4k_mp,
-        ),
+        container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp),
 {
     let ghost owned_processes = krnl.ctn_mp.spec_index(
         layout.root_container,
@@ -579,25 +562,10 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
         krnl.thr_mp.spec_index(thread_ptr).view()
             .indirect_free_quota_pending_4k.view()
             .spec_index(0) as int;
-    lemma_set_fold_int_sum_singleton(
-        owned_processes,
-        layout.root_process,
-        process_value_4k,
-    );
-    lemma_set_fold_int_sum_singleton(
-        owned_threads,
-        layout.root_thread,
-        thread_value_4k,
-    );
-    lemma_set_fold_int_sum_singleton(
-        owned_threads,
-        layout.root_thread,
-        direct_pending_value_4k,
-    );
-    lemma_set_fold_int_sum_empty(
-        owned_indirect_threads,
-        indirect_pending_value_4k,
-    );
+    lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_4k);
+    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_4k);
+    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_4k);
+    lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_4k);
     let process_fold_4k =
         |sum: int, process_ptr: RwLockProcessPtr|
             sum + process_value_4k(process_ptr);
@@ -635,10 +603,6 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
         =~= direct_direct_pending_fold_4k);
     assert(indirect_pending_fold_4k
         =~= direct_indirect_pending_fold_4k);
-    reveal(process_effective_quota_4k_fold_sum);
-    reveal(thread_effective_quota_4k_fold_sum);
-    reveal(thread_direct_pending_4k_fold_sum);
-    reveal(thread_indirect_pending_4k_fold_sum_at_depth);
     assert(process_effective_quota_4k_fold_sum(
         owned_processes,
         krnl.prc_mp,
@@ -687,7 +651,6 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
                 krnl.ctn_mp.spec_index(container_ptr).view_rodata()
                     .view().allocator_ptr_4k,
             ).total_free_pages.view() by {
-        assert(container_ptr == layout.root_container);
     };
 }
 
@@ -722,12 +685,7 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
             == krnl.allc_2m_mp.spec_index(layout.allocator_2m)
                 .total_free_pages.view(),
     ensures
-        container_process_allocator_quota_2m_wf(
-            krnl.ctn_mp,
-            krnl.prc_mp,
-            krnl.thr_mp,
-            krnl.allc_2m_mp,
-        ),
+        container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_2m_mp),
 {
     let ghost owned_processes = krnl.ctn_mp.spec_index(
         layout.root_container,
@@ -753,25 +711,10 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
         krnl.thr_mp.spec_index(thread_ptr).view()
             .indirect_free_quota_pending_2m.view()
             .spec_index(0) as int;
-    lemma_set_fold_int_sum_singleton(
-        owned_processes,
-        layout.root_process,
-        process_value_2m,
-    );
-    lemma_set_fold_int_sum_singleton(
-        owned_threads,
-        layout.root_thread,
-        thread_value_2m,
-    );
-    lemma_set_fold_int_sum_singleton(
-        owned_threads,
-        layout.root_thread,
-        direct_pending_value_2m,
-    );
-    lemma_set_fold_int_sum_empty(
-        owned_indirect_threads,
-        indirect_pending_value_2m,
-    );
+    lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_2m);
+    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_2m);
+    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_2m);
+    lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_2m);
     let process_fold_2m =
         |sum: int, process_ptr: RwLockProcessPtr|
             sum + process_value_2m(process_ptr);
@@ -809,10 +752,6 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
         =~= direct_direct_pending_fold_2m);
     assert(indirect_pending_fold_2m
         =~= direct_indirect_pending_fold_2m);
-    reveal(process_effective_quota_2m_fold_sum);
-    reveal(thread_effective_quota_2m_fold_sum);
-    reveal(thread_direct_pending_2m_fold_sum);
-    reveal(thread_indirect_pending_2m_fold_sum_at_depth);
     assert(process_effective_quota_2m_fold_sum(
         owned_processes,
         krnl.prc_mp,
@@ -861,7 +800,6 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
                 krnl.ctn_mp.spec_index(container_ptr).view_rodata()
                     .view().allocator_ptr_2m,
             ).total_free_pages.view() by {
-        assert(container_ptr == layout.root_container);
     };
 }
 
@@ -896,12 +834,7 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
             == krnl.allc_1g_mp.spec_index(layout.allocator_1g)
                 .total_free_pages.view(),
     ensures
-        container_process_allocator_quota_1g_wf(
-            krnl.ctn_mp,
-            krnl.prc_mp,
-            krnl.thr_mp,
-            krnl.allc_1g_mp,
-        ),
+        container_process_allocator_quota_1g_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_1g_mp),
 {
     let ghost owned_processes = krnl.ctn_mp.spec_index(
         layout.root_container,
@@ -927,25 +860,10 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
         krnl.thr_mp.spec_index(thread_ptr).view()
             .indirect_free_quota_pending_1g.view()
             .spec_index(0) as int;
-    lemma_set_fold_int_sum_singleton(
-        owned_processes,
-        layout.root_process,
-        process_value_1g,
-    );
-    lemma_set_fold_int_sum_singleton(
-        owned_threads,
-        layout.root_thread,
-        thread_value_1g,
-    );
-    lemma_set_fold_int_sum_singleton(
-        owned_threads,
-        layout.root_thread,
-        direct_pending_value_1g,
-    );
-    lemma_set_fold_int_sum_empty(
-        owned_indirect_threads,
-        indirect_pending_value_1g,
-    );
+    lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_1g);
+    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_1g);
+    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_1g);
+    lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_1g);
     let process_fold_1g =
         |sum: int, process_ptr: RwLockProcessPtr|
             sum + process_value_1g(process_ptr);
@@ -983,10 +901,6 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
         =~= direct_direct_pending_fold_1g);
     assert(indirect_pending_fold_1g
         =~= direct_indirect_pending_fold_1g);
-    reveal(process_effective_quota_1g_fold_sum);
-    reveal(thread_effective_quota_1g_fold_sum);
-    reveal(thread_direct_pending_1g_fold_sum);
-    reveal(thread_indirect_pending_1g_fold_sum_at_depth);
     assert(process_effective_quota_1g_fold_sum(
         owned_processes,
         krnl.prc_mp,
@@ -1035,7 +949,6 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
                 krnl.ctn_mp.spec_index(container_ptr).view_rodata()
                     .view().allocator_ptr_1g,
             ).total_free_pages.view() by {
-        assert(container_ptr == layout.root_container);
     };
 }
 
@@ -1053,15 +966,7 @@ proof fn prove_boot_container_page_owner_wf(
 )
     requires
         krnl.pg_arr == page_array,
-        boot_page_array_ready(
-            page_array,
-            layout,
-            cpu_page_closure,
-            manifest_4k,
-            free_4k_pool,
-            free_2m_pool,
-            free_1g_pool,
-        ),
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
         krnl.ctn_mp.dom() =~= set![layout.root_container],
         krnl.ctn_mp.spec_index(layout.root_container).view()
             .owned_pages.view() =~= all_valid_pages,
@@ -1090,9 +995,6 @@ proof fn prove_boot_container_page_owner_wf(
                 page_ptr2page_index(page_ptr),
             ).view().view().owning_container == container_ptr
         } by {
-        assert(container_ptr == layout.root_container);
-        assert(all_valid_pages.contains(page_ptr));
-        assert(page_ptr_valid(page_ptr));
         assert(index_valid(
             NUM_PAGES,
             page_ptr2page_index(page_ptr),
@@ -1121,7 +1023,6 @@ proof fn prove_boot_container_page_owner_wf(
                 page_index2page_ptr(page_index),
             )
         } by {
-        assert(page_ptr_valid(page_index2page_ptr(page_index)));
         assert(all_valid_pages.contains(
             page_index2page_ptr(page_index),
         ));
@@ -1143,15 +1044,7 @@ proof fn prove_boot_iommu_table_pages_wf(
         krnl.pg_arr == page_array,
         page_ptr_valid(layout.iommu_table),
         page_ptr_valid(layout.iommu_l4),
-        boot_page_array_ready(
-            page_array,
-            layout,
-            cpu_page_closure,
-            manifest_4k,
-            free_4k_pool,
-            free_2m_pool,
-            free_1g_pool,
-        ),
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
         krnl.it_mp.dom() =~= set![layout.iommu_table],
         krnl.it_mp.spec_index(layout.iommu_table).view()
             .page_closure() =~= set![layout.iommu_l4],
@@ -1202,7 +1095,6 @@ proof fn prove_boot_iommu_table_pages_wf(
                     page_index2page_ptr(page_index),
                 )
         } by {
-        assert(page_index2page_ptr(page_index) == layout.iommu_l4);
     };
     assert forall|iommu_root: RwLockPageTableRoot|
         #![trigger krnl.it_mp.dom().contains(iommu_root)]
@@ -1215,7 +1107,6 @@ proof fn prove_boot_iommu_table_pages_wf(
                 state: Allocated4KPageState::AsIommuTableRoot,
             }
         } by {
-        assert(iommu_root == layout.iommu_table);
     };
     assert forall|iommu_root: RwLockPageTableRoot,
         table_page: PagePtr|
@@ -1232,8 +1123,6 @@ proof fn prove_boot_iommu_table_pages_wf(
                 iommu_table_root: iommu_root,
             }
         } by {
-        assert(iommu_root == layout.iommu_table);
-        assert(table_page == layout.iommu_l4);
     };
 }
 
@@ -1263,11 +1152,7 @@ proof fn prove_boot_container_thread_scheduler_wf(
             =~= Map::<usize, RwLockThreadPtr>::empty()
                 .insert(scheduler_node_addr, layout.root_thread),
     ensures
-        container_thread_scheduler_wf(
-            krnl.ctn_mp,
-            krnl.thr_mp,
-            krnl.sched_mp,
-        ),
+        container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp),
 {
     reveal(container_thread_scheduler_wf);
     assert forall|thread_ptr: RwLockThreadPtr|
@@ -1295,7 +1180,6 @@ proof fn prove_boot_container_thread_scheduler_wf(
                         .scheduler_linkedlist_node.addr(),
                 ) == thread_ptr
         } by {
-        assert(thread_ptr == layout.root_thread);
         assert(krnl.sched_mp.spec_index(layout.scheduler).view()
             .queue.view().len() == 1);
         assert(krnl.sched_mp.spec_index(layout.scheduler).view()
@@ -1331,8 +1215,6 @@ proof fn prove_boot_container_thread_scheduler_wf(
                 == krnl.sched_mp.spec_index(scheduler_ptr).view()
                     .owning_container
         } by {
-        assert(scheduler_ptr == layout.scheduler);
-        assert(thread_ptr == layout.root_thread);
     };
 }
 
@@ -1389,7 +1271,6 @@ proof fn prove_boot_process_thread_wf(
                     .owned_threads.view().len() == 0
             })
             implies krnl.prc_mp.spec_index(process_ptr).wlocked() by {
-            assert(process_ptr == layout.root_process);
             assert(krnl.prc_mp.spec_index(process_ptr).view()
                 .owned_threads.view().len() == 1);
         };
@@ -1434,8 +1315,6 @@ proof fn prove_boot_process_thread_wf(
                         .proc_linkedlist_node.addr(),
                 ) == thread_ptr
         } by {
-        assert(process_ptr == layout.root_process);
-        assert(thread_ptr == layout.root_thread);
     };
     assert forall|thread_ptr: RwLockThreadPtr|
         #![trigger krnl.thr_mp.spec_index(thread_ptr)]
@@ -1448,7 +1327,6 @@ proof fn prove_boot_process_thread_wf(
             &&& krnl.prc_mp.spec_index(process_ptr).view()
                 .owned_threads.view().contains(thread_ptr)
         } by {
-        assert(thread_ptr == layout.root_thread);
         assert(krnl.prc_mp.spec_index(layout.root_process).view()
             .owned_threads.view().len() == 1);
         assert(krnl.prc_mp.spec_index(layout.root_process).view()
@@ -1459,7 +1337,7 @@ proof fn prove_boot_process_thread_wf(
     };
 }
 
-#[verifier::rlimit(40)]
+#[verifier::rlimit(15)]
 #[verifier::spinoff_prover]
 pub fn finish_init_from_boot(
     layout: BootKernelLayout,
@@ -1529,20 +1407,10 @@ pub fn finish_init_from_boot(
         cpu_l3_tables.dom().disjoint(cpu_l2_tables.dom()),
         cpu_l3_tables.dom().disjoint(cpu_l1_tables.dom()),
         cpu_l2_tables.dom().disjoint(cpu_l1_tables.dom()),
-        boot_dom0_manifest_wf(
-            manifest_4k.view(),
-            layout.root_container,
-        ),
+        boot_dom0_manifest_wf(manifest_4k.view(), layout.root_container),
         boot_dom0_pagetable_model(
-            layout.cpu_cr3,
-            layout.root_process,
-            kernel_l4_end,
-            kernel_entries.view(),
-            manifest_4k.view(),
-            cpu_l4_tables,
-            cpu_l3_tables,
-            cpu_l2_tables,
-            cpu_l1_tables,
+            layout.cpu_cr3, layout.root_process, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), cpu_l4_tables, cpu_l3_tables,
+            cpu_l2_tables, cpu_l1_tables,
         ).wf(),
         boot_page_array_ready(
             page_array,
@@ -1554,15 +1422,9 @@ pub fn finish_init_from_boot(
             &free_2m_pool,
             &free_1g_pool,
         ),
-        boot_default_pagetable_ready(
-            default_pagetable,
-            kernel_l4_end,
-        ),
+        boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
         boot_pcid_needflush_ready(pcid_needflush),
-        boot_cpu_published_ready(
-            cpu_published,
-            default_pagetable.view().cr3,
-        ),
+        boot_cpu_published_ready(cpu_published, default_pagetable.view().cr3),
         owned_pci_functions.view().len() == VTD_DOMAIN_COUNT,
         forall|page_ptr: PagePtr|
             #![trigger owned_pages.view().contains(page_ptr)]
@@ -1623,31 +1485,12 @@ pub fn finish_init_from_boot(
             + cpu_l2_tables.dom() + cpu_l1_tables.dom();
     let ghost boot_manifest_4k = manifest_4k.view();
     let cpu_pagetable = adopt_boot_dom0_pagetable(
-        layout.cpu_cr3,
-        layout.cpu_pagetable,
-        layout.root_process,
-        kernel_l4_end,
-        kernel_entries,
-        manifest_4k,
-        layout.root_container,
-        Tracked(cpu_l4_tables),
-        Tracked(cpu_l3_tables),
-        Tracked(cpu_l2_tables),
-        Tracked(cpu_l1_tables),
+        layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container,
+        Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
     );
     let (iommu_l4, Tracked(iommu_l4_perm)) =
-        page_perm_to_page_map(
-            layout.iommu_l4,
-            Tracked(iommu_l4_page_perm),
-        );
-    let iommu_table = PageTable::<IOMMU_TYPE>::new(
-        None,
-        Ghost(Seq::empty()),
-        iommu_l4,
-        Tracked(iommu_l4_perm),
-        0,
-        layout.root_process,
-    );
+        page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
+    let iommu_table = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
     let (
         thread,
         scheduler_node_addr,
@@ -1663,38 +1506,17 @@ pub fn finish_init_from_boot(
         initial_regs,
     );
     let process = Process::new_boot_root(
-        layout.root_process,
-        layout.cpu_pagetable,
-        layout.iommu_table,
-        layout.root_thread,
-        process_node_addr,
-        process_node_perm,
+        layout.root_process, layout.cpu_pagetable, layout.iommu_table, layout.root_thread, process_node_addr, process_node_perm,
         owned_pci_functions,
     );
     let scheduler = Scheduler::new_boot_root(
-        layout.scheduler,
-        layout.root_container,
-        layout.root_thread,
-        scheduler_node_addr,
-        scheduler_node_perm,
+        layout.scheduler, layout.root_container, layout.root_thread, scheduler_node_addr, scheduler_node_perm,
     );
-    let endpoint = Endpoint::new_root(
-        layout.root_endpoint,
-        layout.root_container,
-        layout.root_thread,
-    );
+    let endpoint = Endpoint::new_root(layout.root_endpoint, layout.root_container, layout.root_thread);
     let cpu_set = CpuSet::new_root(layout.root_container);
-    let pcid_allocator = PcidAllocator::new_boot_root(
-        layout.root_container,
-        layout.root_process,
-    );
+    let pcid_allocator = PcidAllocator::new_boot_root(layout.root_container, layout.root_process);
     let ghost all_valid_pages = owned_pages.view();
-    let container = Container::new_boot_root(
-        layout.root_container,
-        layout.root_process,
-        layout.root_endpoint,
-        owned_pages,
-    );
+    let container = Container::new_boot_root(layout.root_container, layout.root_process, layout.root_endpoint, owned_pages);
     let quota_4k = free_4k_pool.length;
     let quota_2m = free_2m_pool.length;
     let quota_1g = free_1g_pool.length;
@@ -1711,45 +1533,17 @@ pub fn finish_init_from_boot(
             reveal(boot_page_array_ready);
         };
         reveal(LinkedList::wf_value_list);
-        assert(free_4k_pool.view().len() == quota_4k);
-        assert(free_2m_pool.view().len() == quota_2m);
-        assert(free_1g_pool.view().len() == quota_1g);
     }
-    let allocator_4k = PageAllocator::new_with_global_pool(
-        layout.root_container,
-        0,
-        free_4k_pool,
-        quota_4k,
-    );
-    let allocator_2m = PageAllocator::new_with_global_pool(
-        layout.root_container,
-        0,
-        free_2m_pool,
-        quota_2m,
-    );
-    let allocator_1g = PageAllocator::new_with_global_pool(
-        layout.root_container,
-        0,
-        free_1g_pool,
-        quota_1g,
-    );
-    proof {
-        reveal(boot_default_pagetable_ready);
-        reveal(PageTable::table_pages_wf);
-        assert(page_ptr_valid(default_cr3));
-    }
-    let cpu_array = Cpu::new_boot_array(
-        layout.root_container,
-        default_cr3,
-    );
+    let allocator_4k = PageAllocator::new_with_global_pool(layout.root_container, 0, free_4k_pool, quota_4k);
+    let allocator_2m = PageAllocator::new_with_global_pool(layout.root_container, 0, free_2m_pool, quota_2m);
+    let allocator_1g = PageAllocator::new_with_global_pool(layout.root_container, 0, free_1g_pool, quota_1g);
+    proof { reveal(PageTable::table_pages_wf); }
+    let cpu_array = Cpu::new_boot_array(layout.root_container, default_cr3);
     let cpu_tlb = CpuTLB::new_empty();
     let iommu_tlb = IommuTLB::new_empty();
     let irt_base = layout.kernel_ptr + KERNEL_IRT_OFFSET;
     assert(VTD_TABLE_SIZE == 4096) by (compute);
-    let irt = IommuRootTable::new_disabled(
-        irt_base,
-        layout.root_process,
-    );
+    let irt = IommuRootTable::new_disabled(irt_base, layout.root_process);
 
     let process_rodata = ReadOnlyNode::new(
         ProcessRO {
@@ -1802,140 +1596,45 @@ pub fn finish_init_from_boot(
     let mut allc_1g_mp = PageAllocatorUnLockedMap::new_empty();
 
     pt_mp.retype_4k_as_unlocked_singleton(
-        layout.cpu_pagetable,
-        cpu_pagetable,
-        (),
-        Ghost(()),
-        Tracked(cpu_pagetable_page_perm),
-        0,
-        layout.root_thread,
+        layout.cpu_pagetable, cpu_pagetable, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::PageTable(layout.cpu_pagetable)),
     );
     it_mp.retype_4k_as_unlocked_singleton(
-        layout.iommu_table,
-        iommu_table,
-        (),
-        Ghost(()),
-        Tracked(iommu_table_page_perm),
-        0,
-        layout.root_thread,
+        layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::IommuTable(layout.iommu_table)),
     );
     ctn_mp.retype_2m_as_unlocked_singleton(
-        layout.root_container,
-        container,
-        container_rodata,
-        Ghost(container_ghost),
-        Tracked(container_page_perm),
-        0,
-        layout.root_thread,
+        layout.root_container, container, container_rodata, Ghost(container_ghost), Tracked(container_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::Container(layout.root_container)),
     );
     sched_mp.retype_4k_as_unlocked_singleton(
-        layout.scheduler,
-        scheduler,
-        (),
-        Ghost(()),
-        Tracked(scheduler_page_perm),
-        0,
-        layout.root_thread,
+        layout.scheduler, scheduler, (), Ghost(()), Tracked(scheduler_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::Scheduler(layout.scheduler)),
     );
     pcid_allc_mp.retype_2m_as_unlocked_singleton(
-        layout.pcid_allocator,
-        pcid_allocator,
-        (),
-        Ghost(()),
-        Tracked(pcid_allocator_page_perm),
-        0,
-        layout.root_thread,
+        layout.pcid_allocator, pcid_allocator, (), Ghost(()), Tracked(pcid_allocator_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::PcidAllocator(layout.pcid_allocator)),
     );
     cpu_set_mp.retype_4k_as_unlocked_singleton(
-        layout.cpu_set,
-        cpu_set,
-        (),
-        Ghost(()),
-        Tracked(cpu_set_page_perm),
-        0,
-        layout.root_thread,
+        layout.cpu_set, cpu_set, (), Ghost(()), Tracked(cpu_set_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::CpuSet(layout.cpu_set)),
     );
     prc_mp.retype_4k_as_unlocked_singleton(
-        layout.root_process,
-        process,
-        process_rodata,
-        Ghost(process_ghost),
-        Tracked(process_page_perm),
-        0,
-        layout.root_thread,
+        layout.root_process, process, process_rodata, Ghost(process_ghost), Tracked(process_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::Process(layout.root_process)),
     );
     thr_mp.retype_4k_as_unlocked_singleton(
-        layout.root_thread,
-        thread,
-        (),
-        Ghost(()),
-        Tracked(thread_page_perm),
-        0,
-        layout.root_thread,
+        layout.root_thread, thread, (), Ghost(()), Tracked(thread_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::Thread(layout.root_thread)),
     );
     ep_mp.retype_4k_as_unlocked_singleton(
-        layout.root_endpoint,
-        endpoint,
-        (),
-        Ghost(()),
-        Tracked(endpoint_page_perm),
-        0,
-        layout.root_thread,
+        layout.root_endpoint, endpoint, (), Ghost(()), Tracked(endpoint_page_perm), 0, layout.root_thread,
         Ghost(KernelObjId::Endpoint(layout.root_endpoint)),
     );
-    allc_4k_mp.retype_page_to_allocator_and_insert(
-        layout.allocator_4k,
-        allocator_4k,
-        Tracked(allocator_4k_page_perm),
-    );
-    allc_2m_mp.retype_page_to_allocator_and_insert(
-        layout.allocator_2m,
-        allocator_2m,
-        Tracked(allocator_2m_page_perm),
-    );
-    allc_1g_mp.retype_page_to_allocator_and_insert(
-        layout.allocator_1g,
-        allocator_1g,
-        Tracked(allocator_1g_page_perm),
-    );
+    allc_4k_mp.retype_page_to_allocator_and_insert(layout.allocator_4k, allocator_4k, Tracked(allocator_4k_page_perm));
+    allc_2m_mp.retype_page_to_allocator_and_insert(layout.allocator_2m, allocator_2m, Tracked(allocator_2m_page_perm));
+    allc_1g_mp.retype_page_to_allocator_and_insert(layout.allocator_1g, allocator_1g, Tracked(allocator_1g_page_perm));
 
-    proof {
-        assert(pt_mp.spec_index(layout.cpu_pagetable).is_init());
-        assert(pt_mp.spec_index(layout.cpu_pagetable).view().inv());
-        assert(pt_mp.spec_index(layout.cpu_pagetable).inv());
-        assert(it_mp.spec_index(layout.iommu_table).is_init());
-        assert(it_mp.spec_index(layout.iommu_table).view().inv());
-        assert(it_mp.spec_index(layout.iommu_table).inv());
-        assert(ctn_mp.spec_index(layout.root_container).is_init());
-        assert(ctn_mp.spec_index(layout.root_container).view().inv());
-        assert(ctn_mp.spec_index(layout.root_container).inv());
-        assert(sched_mp.spec_index(layout.scheduler).is_init());
-        assert(sched_mp.spec_index(layout.scheduler).view().inv());
-        assert(sched_mp.spec_index(layout.scheduler).inv());
-        assert(pcid_allc_mp.spec_index(layout.pcid_allocator).is_init());
-        assert(pcid_allc_mp.spec_index(layout.pcid_allocator).view().inv());
-        assert(pcid_allc_mp.spec_index(layout.pcid_allocator).inv());
-        assert(cpu_set_mp.spec_index(layout.cpu_set).is_init());
-        assert(cpu_set_mp.spec_index(layout.cpu_set).view().inv());
-        assert(cpu_set_mp.spec_index(layout.cpu_set).inv());
-        assert(prc_mp.spec_index(layout.root_process).is_init());
-        assert(prc_mp.spec_index(layout.root_process).view().inv());
-        assert(prc_mp.spec_index(layout.root_process).inv());
-        assert(thr_mp.spec_index(layout.root_thread).is_init());
-        assert(thr_mp.spec_index(layout.root_thread).view().inv());
-        assert(thr_mp.spec_index(layout.root_thread).inv());
-        assert(ep_mp.spec_index(layout.root_endpoint).is_init());
-        assert(ep_mp.spec_index(layout.root_endpoint).view().inv());
-        assert(ep_mp.spec_index(layout.root_endpoint).inv());
-    }
     let krnl = KernelK {
         pt_mp,
         it_mp,
@@ -1963,50 +1662,26 @@ pub fn finish_init_from_boot(
         // Local object construction and unlocks establish each subsystem's
         // intrinsic invariant before any cross-object relation is used.
         assert(krnl.subsystems_inv()) by {
-        assert(krnl.default_pagetable_wf()) by {
-            reveal(KernelK::default_pagetable_wf);
-            reveal(boot_default_pagetable_ready);
-        };
-        assert(pagetable_perms_wf(krnl.pt_mp)) by {
-            reveal(pagetable_perms_wf);
-        };
-        assert(iommu_table_perms_wf(krnl.it_mp)) by {
-            reveal(iommu_table_perms_wf);
-        };
-        assert(krnl.irt.wf());
-        assert(page_array_wf(krnl.pg_arr)) by {
-            reveal(page_array_wf);
-            reveal(boot_page_array_ready);
-        };
-        assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by {
-            reveal(cpu_array_wf);
-            reveal(boot_default_pagetable_ready);
-        };
-        assert(pcid_needflush_wf(krnl.pcid_needflush)) by {
-            reveal(pcid_needflush_wf);
-            reveal(boot_pcid_needflush_ready);
-        };
+        assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+        assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
+        assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); };
+        assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
+        assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
+        assert(pcid_needflush_wf(krnl.pcid_needflush));
         assert(cpu_published_wf(
             krnl.cpu_published,
             krnl.cpu_arr,
             krnl.pcid_needflush,
         )) by {
             reveal(cpu_published_wf);
-            reveal(boot_cpu_published_ready);
-            reveal(boot_pcid_needflush_ready);
         };
-        assert(krnl.cpu_tlb.inv());
-        assert(krnl.iommu_tlb.inv());
         assert(container_perms_wf(krnl.ctn_mp)) by {
             reveal(container_perms_wf);
-            assert(krnl.ctn_mp.perms_wf());
             assert(containers_inv(krnl.ctn_mp)) by {
-                reveal(containers_inv);
                 assert forall|container_ptr: RwLockContainerPtr|
                     #![trigger krnl.ctn_mp.dom().contains(container_ptr)]
                     krnl.ctn_mp.dom().contains(container_ptr)
                     implies krnl.ctn_mp.spec_index(container_ptr).inv() by {
-                    assert(container_ptr == layout.root_container);
                 };
             };
             assert(container_tree_fields_wf(krnl.ctn_mp)) by {
@@ -2035,23 +1710,17 @@ pub fn finish_init_from_boot(
                             .view_rodata().view().depth
                             <= MAX_CONTAINER_TREE_DEPTH
                     } by {
-                    assert(container_ptr == layout.root_container);
                 };
             };
         };
-        assert(process_perms_wf(krnl.prc_mp)) by {
-            reveal(process_perms_wf);
-        };
+        assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
         assert(thread_perms_wf(krnl.thr_mp)) by {
             reveal(thread_perms_wf);
-            assert(krnl.thr_mp.perms_wf());
             assert(threads_inv(krnl.thr_mp)) by {
-                reveal(threads_inv);
                 assert forall|thread_ptr: RwLockThreadPtr|
                     #![trigger krnl.thr_mp.dom().contains(thread_ptr)]
                     krnl.thr_mp.dom().contains(thread_ptr)
                     implies krnl.thr_mp.spec_index(thread_ptr).inv() by {
-                    assert(thread_ptr == layout.root_thread);
                 };
             };
             assert(thread_free_quota_pending_empty_unless_wlocked(
@@ -2066,7 +1735,6 @@ pub fn finish_init_from_boot(
                         .locking_thread() is Write)
                     implies krnl.thr_mp.spec_index(thread_ptr).view()
                         .free_quota_pending_clean() by {
-                    assert(thread_ptr == layout.root_thread);
                 };
             };
             assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by {
@@ -2079,7 +1747,6 @@ pub fn finish_init_from_boot(
                         .locking_thread() is Write)
                     implies krnl.thr_mp.spec_index(thread_ptr).view()
                         .temp_alloc_clean() by {
-                    assert(thread_ptr == layout.root_thread);
                 };
             };
             assert(thread_endpoint_transit_only_when_wlocked(
@@ -2092,32 +1759,16 @@ pub fn finish_init_from_boot(
                         is IPC_ENDPOINT_TRANSIT
                     implies krnl.thr_mp.spec_index(thread_ptr)
                         .locking_thread() is Write by {
-                    assert(thread_ptr == layout.root_thread);
                 };
             };
         };
-        assert(scheduler_perms_wf(krnl.sched_mp)) by {
-            reveal(scheduler_perms_wf);
-        };
-        assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by {
-            reveal(cpu_set_perms_wf);
-        };
-        assert(pcid_allocator_perms_wf(krnl.pcid_allc_mp)) by {
-            reveal(pcid_allocator_perms_wf);
-        };
-        assert(endpoint_perms_wf(krnl.ep_mp)) by {
-            reveal(endpoint_perms_wf);
-        };
-        assert(allocator_perms_wf(krnl.allc_4k_mp)) by {
-            reveal(allocator_perms_wf);
-        };
-        assert(allocator_perms_wf(krnl.allc_2m_mp)) by {
-            reveal(allocator_perms_wf);
-        };
-        assert(allocator_perms_wf(krnl.allc_1g_mp)) by {
-            reveal(allocator_perms_wf);
-        };
-            reveal(KernelK::subsystems_inv);
+        assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
+        assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
+        assert(pcid_allocator_perms_wf(krnl.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
+        assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
+        assert(allocator_perms_wf(krnl.allc_4k_mp)) by { reveal(allocator_perms_wf); };
+        assert(allocator_perms_wf(krnl.allc_2m_mp)) by { reveal(allocator_perms_wf); };
+        assert(allocator_perms_wf(krnl.allc_1g_mp)) by { reveal(allocator_perms_wf); };
         };
 
         // The boot page manifest is the single source of truth for physical
@@ -2135,22 +1786,11 @@ pub fn finish_init_from_boot(
             reveal(boot_page_array_ready);
         };
         prove_boot_container_page_owner_wf(
-            &krnl,
-            layout,
-            page_array,
-            boot_cpu_page_closure,
-            boot_manifest_4k,
-            &free_4k_pool,
-            &free_2m_pool,
-            &free_1g_pool,
+            &krnl, layout, page_array, boot_cpu_page_closure, boot_manifest_4k, &free_4k_pool, &free_2m_pool, &free_1g_pool,
             all_valid_pages,
         );
-        assert(hugepage_2m_wf(krnl.pg_arr)) by {
-            reveal(boot_page_array_ready);
-        };
-        assert(hugepage_1g_wf(krnl.pg_arr)) by {
-            reveal(boot_page_array_ready);
-        };
+        assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
+        assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
         assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by {
             reveal(mapped_4k_page_pagetable_wf);
             reveal(mapped_2m_page_pagetable_wf);
@@ -2179,14 +1819,7 @@ pub fn finish_init_from_boot(
             reveal(boot_page_array_ready);
         };
         prove_boot_iommu_table_pages_wf(
-            &krnl,
-            layout,
-            page_array,
-            boot_cpu_page_closure,
-            boot_manifest_4k,
-            &free_4k_pool,
-            &free_2m_pool,
-            &free_1g_pool,
+            &krnl, layout, page_array, boot_cpu_page_closure, boot_manifest_4k, &free_4k_pool, &free_2m_pool, &free_1g_pool,
         );
         assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by {
             reveal(thread_pages_wf);
@@ -2217,34 +1850,18 @@ pub fn finish_init_from_boot(
             reveal(endpoint_pages_wf);
             reveal(boot_page_array_ready);
         };
-        assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by {
-            reveal(process_pagetable_match);
-        };
-        assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by {
-            reveal(process_iommu_table_match);
-        };
+        assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
+        assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
         assert(krnl.allocator_free_pages_wf()) by {
             reveal(allocator_free_page_ptrs_wf);
             reveal(boot_page_array_ready);
-            reveal(boot_free_4k_pool_wf);
-            reveal(boot_free_2m_pool_wf);
-            reveal(boot_free_1g_pool_wf);
         };
         // Root process/thread quotas are zero; all remaining quota equals each
         // allocator's global-pool length. Singleton folds make that equality
         // explicit without expanding a general finite-set induction in this VC.
-        prove_boot_container_process_allocator_quota_4k_wf(
-            &krnl,
-            layout,
-        );
-        prove_boot_container_process_allocator_quota_2m_wf(
-            &krnl,
-            layout,
-        );
-        prove_boot_container_process_allocator_quota_1g_wf(
-            &krnl,
-            layout,
-        );
+        prove_boot_container_process_allocator_quota_4k_wf(&krnl, layout);
+        prove_boot_container_process_allocator_quota_2m_wf(&krnl, layout);
+        prove_boot_container_process_allocator_quota_1g_wf(&krnl, layout);
         assert(container_process_allocator_quota_wf(
             krnl.ctn_mp,
             krnl.prc_mp,
@@ -2268,7 +1885,6 @@ pub fn finish_init_from_boot(
             reveal(container_allocator_free_4k_page_wf);
             reveal(container_allocator_global_free_4k_page_wf);
             reveal(container_allocator_cpu_cache_free_4k_page_wf);
-            reveal(boot_free_4k_pool_wf);
             reveal(boot_page_array_ready);
         };
         assert(container_allocator_free_2m_page_wf(
@@ -2278,7 +1894,6 @@ pub fn finish_init_from_boot(
             reveal(container_allocator_free_2m_page_wf);
             reveal(container_allocator_global_free_2m_page_wf);
             reveal(container_allocator_cpu_cache_free_2m_page_wf);
-            reveal(boot_free_2m_pool_wf);
             reveal(boot_page_array_ready);
         };
         assert(container_allocator_free_1g_page_wf(
@@ -2288,10 +1903,8 @@ pub fn finish_init_from_boot(
             reveal(container_allocator_free_1g_page_wf);
             reveal(container_allocator_global_free_1g_page_wf);
             reveal(container_allocator_cpu_cache_free_1g_page_wf);
-            reveal(boot_free_1g_pool_wf);
             reveal(boot_page_array_ready);
         };
-            reveal(KernelK::memory_management_inv);
         };
 
         // The initial process graph is one root container, one process, one
@@ -2309,9 +1922,7 @@ pub fn finish_init_from_boot(
         };
         assert(krnl.ctn_mp.spec_index(krnl.rt_ctn).view()
             .root_process_in_processes());
-        assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by {
-            reveal(container_process_wf);
-        };
+        assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_process_wf); };
         assert(per_container_process_tree_wf(
             krnl.ctn_mp,
             krnl.prc_mp,
@@ -2325,9 +1936,7 @@ pub fn finish_init_from_boot(
             reveal(process_subtree_set_exclusive);
             reveal(per_container_process_tree_wf);
         };
-        assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by {
-            reveal(container_endpoint_wf);
-        };
+        assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
         assert(container_cpu_wf(
             krnl.ctn_mp,
             krnl.cpu_set_mp,
@@ -2341,12 +1950,8 @@ pub fn finish_init_from_boot(
         )) by {
             reveal(thread_endpoint_ref_counter_wf);
         };
-        assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
-            reveal(thread_endpoint_queue_wf);
-        };
-        assert(thread_caller_callee_wf(krnl.thr_mp)) by {
-            reveal(thread_caller_callee_wf);
-        };
+        assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
+        assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
         assert(container_thread_endpoint_wf(
             krnl.ctn_mp,
             krnl.thr_mp,
@@ -2354,12 +1959,8 @@ pub fn finish_init_from_boot(
         )) by {
             reveal(container_thread_endpoint_wf);
         };
-        assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by {
-            reveal(container_scheduler_wf);
-        };
-        assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by {
-            reveal(container_cpu_set_wf);
-        };
+        assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
+        assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
         assert(container_pcid_allocator_wf(
             krnl.ctn_mp,
             krnl.pcid_allc_mp,
@@ -2373,26 +1974,11 @@ pub fn finish_init_from_boot(
         )) by {
             reveal(process_pcid_allocator_wf);
         };
-        prove_boot_container_thread_scheduler_wf(
-            &krnl,
-            layout,
-            scheduler_node_addr,
-        );
-        assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by {
-            reveal(container_thread_wf);
-        };
-        assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by {
-            reveal(process_cpu_wf);
-        };
-        prove_boot_process_thread_wf(
-            &krnl,
-            layout,
-            process_node_addr,
-        );
-        assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by {
-            reveal(thread_cpu_wf);
-        };
-            reveal(KernelK::process_management_inv);
+        prove_boot_container_thread_scheduler_wf(&krnl, layout, scheduler_node_addr);
+        assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
+        assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { reveal(process_cpu_wf); };
+        prove_boot_process_thread_wf(&krnl, layout, process_node_addr);
+        assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
         };
 
         // IOMMU ownership and both TLB invariants are vacuous over the freshly
@@ -2442,14 +2028,9 @@ pub fn finish_init_from_boot(
         )) by {
             reveal(tlb_wf_spec);
         };
-            reveal(KernelK::inv);
         };
     }
-    PPtr::<KernelK>::from_usize(layout.kernel_ptr).put(
-        Tracked(&mut kernel_perm),
-        krnl,
-    );
+    PPtr::<KernelK>::from_usize(layout.kernel_ptr).put(Tracked(&mut kernel_perm), krnl);
     Tracked(kernel_perm)
 }
-
 }

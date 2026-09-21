@@ -8,7 +8,7 @@ verus! {
 pub(super) fn allocate_new_container_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     current_thread_ptr: RwLockThreadPtr, parent_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId,
-    Tracked(current_thread_lock_perm): Tracked<&LockPerm>,
+    Tracked(current_thread_lock_perm): Tracked<&LockPerm>
 ) -> (ret: (ArrayVec<PagePtr, 9>, PagePtr, PagePtr, Tracked<Map<PagePtr, LockPerm>>, Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         old(krnl).inv(),
@@ -62,13 +62,7 @@ pub(super) fn allocate_new_container_pages(
         ret.0.len() == 9,
         ret.0.view().no_duplicates(),
         ret.3.view().dom() == ret.0.view().to_set(),
-        allocated_4k_page_lock_perms_wf(
-            ret.3.view(),
-            final(krnl),
-            final(lctx),
-            current_thread_ptr,
-            parent_container_ptr,
-        ),
+        allocated_4k_page_lock_perms_wf(ret.3.view(), final(krnl), final(lctx), current_thread_ptr, parent_container_ptr),
         ret.0.view().to_set().subset_of(
             final(krnl).ctn_mp.spec_index(parent_container_ptr)
                 .view().owned_pages.view(),
@@ -129,20 +123,15 @@ pub(super) fn allocate_new_container_pages(
             .view().quota_2m
             == old(krnl).thr_mp.spec_index(current_thread_ptr)
                 .view().quota_2m,
-        thread_effective_quota_4k(
-            final(krnl).thr_mp.spec_index(current_thread_ptr),
-        ) == thread_effective_quota_4k(
-            old(krnl).thr_mp.spec_index(current_thread_ptr),
+        thread_effective_quota_4k(final(krnl).thr_mp.spec_index(current_thread_ptr)) == thread_effective_quota_4k(
+            old(krnl).thr_mp.spec_index(current_thread_ptr)
         ) - 9,
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
         current_thread_lock_perm.lock_id()
             == final(krnl).thr_mp.spec_index(current_thread_ptr)
                 .locking_thread()->Write_lock_id,
         final(lctx).page_lock_map().dom()
-            == page_ptrs_to_indices(ret.0.view()).union(seq![
-                page_ptr2page_index(ret.1),
-                page_ptr2page_index(ret.2),
-            ].to_set()),
+            == page_ptrs_to_indices(ret.0.view()).union(seq![page_ptr2page_index(ret.1), page_ptr2page_index(ret.2)].to_set()),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).container_lock_map()
@@ -165,91 +154,36 @@ pub(super) fn allocate_new_container_pages(
             == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps()
             == old(lctx).allocator_1g_lock_maps(),
-        held_containers_unchanged(
-            old(krnl).ctn_mp,
-            final(krnl).ctn_mp,
-            old(lctx),
-        ),
-        held_processes_unchanged(
-            old(krnl).prc_mp,
-            final(krnl).prc_mp,
-            old(lctx),
-        ),
-        held_threads_unchanged_except(
-            old(krnl).thr_mp,
-            final(krnl).thr_mp,
-            old(lctx),
-            set![current_thread_ptr],
-        ),
-        held_endpoints_unchanged(
-            old(krnl).ep_mp,
-            final(krnl).ep_mp,
-            old(lctx),
-        ),
-        held_schedulers_unchanged(
-            old(krnl).sched_mp,
-            final(krnl).sched_mp,
-            old(lctx),
-        ),
-        held_pcid_allocators_unchanged(
-            old(krnl).pcid_allc_mp,
-            final(krnl).pcid_allc_mp,
-            old(lctx),
-        ),
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![current_thread_ptr]),
+        held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
+        held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
+        held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
         held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
-        held_pagetables_unchanged(
-            old(krnl).pt_mp,
-            final(krnl).pt_mp,
-            old(lctx),
-        ),
-        held_iommu_tables_unchanged(
-            old(krnl).it_mp,
-            final(krnl).it_mp,
-            old(lctx),
-        ),
-        held_cpus_unchanged(
-            old(krnl).cpu_arr,
-            final(krnl).cpu_arr,
-            old(lctx),
-        ),
+        held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
+        held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
+        held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
 {
     proof {
-        broadcast use group_held_objects_unchanged_transitive;
         assert(
             krnl.thr_mp.spec_index(current_thread_ptr)
                 .view().temp_alloc_cache_2m.view().len() == 0
-        ) by {
-            reveal(Thread::temp_alloc_clean);
-        };
+        );
         assert(
-            thread_effective_quota_2m(
-                krnl.thr_mp.spec_index(current_thread_ptr),
-            ) >= 2
-        ) by {
-            reveal(thread_effective_quota_2m);
-        };
+            thread_effective_quota_2m(krnl.thr_mp.spec_index(current_thread_ptr)) >= 2
+        );
     }
     let (pages_4k, Tracked(page_4k_lock_perms)) = allocate_free_4k_pages::<9>(
-            krnl,
-            current_thread_ptr,
-            parent_container_ptr,
-            caller_cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(&mut *steps),
-            Tracked(current_thread_lock_perm),
-        );
+        krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
+        Tracked(current_thread_lock_perm)
+    );
     let ghost staged_4k_cache = krnl.thr_mp
         .spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view();
-    let ghost effective_2m_before_container = thread_effective_quota_2m(
-        krnl.thr_mp.spec_index(current_thread_ptr),
-    );
+    let ghost effective_2m_before_container = thread_effective_quota_2m(krnl.thr_mp.spec_index(current_thread_ptr));
     proof {
         assert(staged_4k_cache == pages_4k.view().to_set()) by {
-            reveal(Thread::temp_alloc_clean);
-            vstd::set::axiom_set_ext_equal(
-                staged_4k_cache,
-                pages_4k.view().to_set(),
-            );
+            vstd::set::axiom_set_ext_equal(staged_4k_cache, pages_4k.view().to_set());
         };
         assert(
             lctx.holds_no_allocator_locks(PageSize::SZ2m)
@@ -257,83 +191,38 @@ pub(super) fn allocate_new_container_pages(
         ) by {
             reveal(LocalContext::holds_no_allocator_locks);
         };
-        assert(effective_2m_before_container >= 2) by {
-            reveal(thread_effective_quota_2m);
-            reveal(Thread::temp_alloc_clean);
-        };
     }
     let (container_page, Tracked(container_page_lock_perm)) = allocate_free_2m_page(
-            krnl,
-            current_thread_ptr,
-            parent_container_ptr,
-            caller_cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(&mut *steps),
-            Tracked(current_thread_lock_perm),
-        );
-    let ghost effective_2m_before_pcid_allocator = thread_effective_quota_2m(
-            krnl.thr_mp.spec_index(current_thread_ptr),
-        );
+        krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
+        Tracked(current_thread_lock_perm)
+    );
+    let ghost effective_2m_before_pcid_allocator = thread_effective_quota_2m(krnl.thr_mp.spec_index(current_thread_ptr));
     proof {
-        assert(effective_2m_before_container >= 2) by {
-            reveal(thread_effective_quota_2m);
-            reveal(Thread::temp_alloc_clean);
-        };
         assert(
             effective_2m_before_pcid_allocator >= 1
         ) by {
-            assert(effective_2m_before_container >= 2) by {
-                reveal(thread_effective_quota_2m);
-                reveal(Thread::temp_alloc_clean);
-            };
             assert(
                 effective_2m_before_pcid_allocator
                     == effective_2m_before_container - 1
-            ) by {
-                reveal(thread_effective_quota_2m);
-            };
+            );
         };
     }
     let (pcid_allocator_page, Tracked(pcid_allocator_page_lock_perm)) = allocate_free_2m_page(
-            krnl,
-            current_thread_ptr,
-            parent_container_ptr,
-            caller_cpu_id,
-            Tracked(&mut *lctx),
-            Tracked(&mut *steps),
-            Tracked(current_thread_lock_perm),
-        );
+        krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
+        Tracked(current_thread_lock_perm)
+    );
     proof {
         assert(page_index_2m_valid(page_ptr2page_index(container_page)))
             by {
                 reveal(hugepage_2m_wf);
             };
-        assert(page_index_2m_valid(
-            page_ptr2page_index(pcid_allocator_page),
-        )) by {
-            reveal(hugepage_2m_wf);
-        };
+        assert(page_index_2m_valid(page_ptr2page_index(pcid_allocator_page))) by { reveal(hugepage_2m_wf); };
         page_ptr_roundtrip();
-        assert(page_ptr_2m_valid(container_page)) by {
-            reveal(page_ptr_2m_valid);
-            reveal(page_index_2m_valid);
-            reveal(spec_page_index2page_ptr);
-        };
-        assert(page_ptr_2m_valid(pcid_allocator_page)) by {
-            reveal(page_ptr_2m_valid);
-            reveal(page_index_2m_valid);
-            reveal(spec_page_index2page_ptr);
-        };
-        assert(container_page != pcid_allocator_page) by {
-            reveal(Set::contains);
-        };
         assert(
             krnl.thr_mp.spec_index(current_thread_ptr)
                 .view().temp_alloc_cache_2m.view()
                 == set![container_page, pcid_allocator_page]
         ) by {
-            broadcast use vstd::set::lemma_set_insert_same;
-            broadcast use vstd::set::lemma_set_insert_different;
             assert_sets_equal!(
                 krnl.thr_mp.spec_index(current_thread_ptr)
                     .view().temp_alloc_cache_2m.view()
@@ -343,16 +232,10 @@ pub(super) fn allocate_new_container_pages(
         assert(
             lctx.page_lock_map().dom()
                 == page_ptrs_to_indices(pages_4k.view()).union(seq![
-                    page_ptr2page_index(container_page),
-                    page_ptr2page_index(pcid_allocator_page),
+                    page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)
                 ].to_set())
         ) by {
-            seq![
-                page_ptr2page_index(container_page),
-                page_ptr2page_index(pcid_allocator_page),
-            ].to_set_ensures();
-            reveal(Seq::contains);
-            broadcast use vstd::set::lemma_set_union;
+            seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set_ensures();
         };
         assert(
             lctx.holds_no_allocator_locks(PageSize::SZ4k)
@@ -367,20 +250,12 @@ pub(super) fn allocate_new_container_pages(
         )) by {
             pages_4k.view().to_set_ensures();
             page_ptr_roundtrip();
-            reveal(Set::subset_of);
-            reveal(allocated_4k_page_lock_perms_wf);
             reveal(container_page_owner_wf);
         };
     }
     (
-        pages_4k,
-        container_page,
-        pcid_allocator_page,
-        Tracked(page_4k_lock_perms),
-        Tracked(container_page_lock_perm),
-        Tracked(pcid_allocator_page_lock_perm),
+        pages_4k, container_page, pcid_allocator_page, Tracked(page_4k_lock_perms), Tracked(container_page_lock_perm),
+        Tracked(pcid_allocator_page_lock_perm)
     )
 }
-
-
 }

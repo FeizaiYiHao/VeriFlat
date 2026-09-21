@@ -46,9 +46,7 @@ impl KernelK {
                 assert(page_invariant_fields_unchanged(old(self).pg_arr, self.pg_arr)) by { page_lock_op_preserves_invariant_fields(old(self).pg_arr, self.pg_arr, page_index); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { lemma_memory_management_inv_preserved_for_page_invariant_fields_forall(); };
-                assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                    reveal(LockedArray::typed_lock_map_aligned);
-                };
+                assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
             }
             ret
@@ -99,14 +97,11 @@ impl KernelK {
                 assert(page_invariant_fields_unchanged(old(self).pg_arr, self.pg_arr)) by { page_lock_op_preserves_invariant_fields(old(self).pg_arr, self.pg_arr, page_index); };
                 assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(self.memory_management_inv()) by { lemma_memory_management_inv_preserved_for_page_invariant_fields_forall(); };
-                assert(typed_lock_maps_aligned(self, &*lctx)) by {
-                    reveal(LockedArray::typed_lock_map_aligned);
-                };
+                assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
                 assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by {
                     kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self);
                 };
             }
         }
-
 }
 } // verus!

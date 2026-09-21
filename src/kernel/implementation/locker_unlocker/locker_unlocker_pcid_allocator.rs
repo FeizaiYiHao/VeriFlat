@@ -64,11 +64,7 @@ impl KernelK {
             final(lctx).held_lock_majors_lt(PROCESS_LOCK_MAJOR),
     {
         proof {
-            assert(old(self).subsystems_inv());
-            pcid_allocator_perms_wf_at(
-                old(self).pcid_allc_mp,
-                allocator_ptr,
-            );
+            pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr);
             assert(old(lctx).held_lock_majors_lt(PCID_ALLOCATOR_LOCK_MAJOR)) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); };
             assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by { reveal(lock_id_set_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); };
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr)
@@ -81,16 +77,12 @@ impl KernelK {
                         allocator_ptr,
                         TypedLockMode::Write,
                     )) by {
-                        reveal(typed_lock_maps_aligned);
                         reveal(LockedMap::typed_lock_map_aligned);
                     };
                 }
             };
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr)
-                .wlocked_by(&*old(lctx))) by {
-                reveal(RwLock::wlocked_by);
-                reveal(RwLock::wlocked_by_thread);
-            };
+                .wlocked_by(&*old(lctx)));
         }
         assert(wlock_requires(self.pcid_allc_mp.spec_index(allocator_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.pcid_allc_mp.wlock(allocator_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PcidAllocator(allocator_ptr)));
@@ -100,7 +92,7 @@ impl KernelK {
             assert(self.memory_management_inv()) by { reveal(pcid_allocator_pages_wf); };
             assert(self.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            assert(lctx.held_lock_majors_lt(PROCESS_LOCK_MAJOR)) by { reveal(pcid_allocator_perms_wf); assert(PCID_ALLOCATOR_LOCK_MAJOR < PROCESS_LOCK_MAJOR) by (compute); broadcast use vstd::set::lemma_set_insert_same; broadcast use vstd::set::lemma_set_insert_different; };
+            assert(lctx.held_lock_majors_lt(PROCESS_LOCK_MAJOR)) by { reveal(pcid_allocator_perms_wf); assert(PCID_ALLOCATOR_LOCK_MAJOR < PROCESS_LOCK_MAJOR) by (compute); };
             assert(kernel_k_to_kernel_u(*self) == kernel_k_to_kernel_u(*old(self))) by { kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(self), self); };
         }
         ret

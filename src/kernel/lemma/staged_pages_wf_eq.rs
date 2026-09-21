@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-
 // Framing lemmas for each page-size component of `thread_staged_pages_wf`.
 // Hypothesis: same thread domain, the corresponding per-thread
 // `temp_alloc_cache_*` unchanged, and every page slot that is old or new
@@ -87,5 +86,4 @@ pub proof fn thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_s
 {
     reveal(thread_staged_pages_1g_wf);
 }
-
 }

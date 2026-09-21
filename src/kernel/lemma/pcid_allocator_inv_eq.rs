@@ -3,7 +3,6 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-
 pub proof fn lemma_container_pcid_allocator_wf_preserved_for_container_invariant_fields_forall()
     ensures
         forall|pre: ContainerLockedMap,
@@ -36,7 +35,6 @@ pub proof fn lemma_process_pcid_allocator_wf_preserved_for_container_invariant_f
             ==> process_pcid_allocator_wf(post, process_map, pcid_allocator_map),
 {
     reveal(process_pcid_allocator_wf);
-    reveal(container_process_wf);
 }
 
 pub proof fn lemma_process_pcid_allocator_wf_preserved_for_process_quota_4k_framed_fields_forall()
@@ -85,5 +83,4 @@ pub proof fn pcid_allocator_pages_wf_preserved_for_page_state_eq(
 {
     reveal(pcid_allocator_pages_wf);
 }
-
 }

@@ -43,31 +43,11 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
             page_ptr2page_index(iommu_table_page_ptr),
             page_ptr2page_index(iommu_l4_page_ptr),
         ],
-        typed_lock_map_contains_mode(
-            old(lctx).page_lock_map(),
-            page_ptr2page_index(process_page_ptr),
-            TypedLockMode::Write,
-        ),
-        typed_lock_map_contains_mode(
-            old(lctx).page_lock_map(),
-            page_ptr2page_index(pagetable_page_ptr),
-            TypedLockMode::Write,
-        ),
-        typed_lock_map_contains_mode(
-            old(lctx).page_lock_map(),
-            page_ptr2page_index(l4_page_ptr),
-            TypedLockMode::Write,
-        ),
-        typed_lock_map_contains_mode(
-            old(lctx).page_lock_map(),
-            page_ptr2page_index(iommu_table_page_ptr),
-            TypedLockMode::Write,
-        ),
-        typed_lock_map_contains_mode(
-            old(lctx).page_lock_map(),
-            page_ptr2page_index(iommu_l4_page_ptr),
-            TypedLockMode::Write,
-        ),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(process_page_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(pagetable_page_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_page_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_table_page_ptr), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(iommu_l4_page_ptr), TypedLockMode::Write),
         process_page_lock_perm.state() is WriteLock,
         process_page_lock_perm.thread_id() == old(lctx).thread_id(),
         process_page_lock_perm.lock_id()
@@ -104,22 +84,14 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         old(krnl).prc_mp.spec_index(parent_ptr)
             .view().owned_threads.view().len() != 0,
         !old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
-        typed_lock_map_contains_mode(
-            old(lctx).process_lock_map(),
-            parent_ptr,
-            TypedLockMode::Write,
-        ),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), parent_ptr, TypedLockMode::Write),
         parent_lock_perm.state() is WriteLock,
         parent_lock_perm.thread_id() == old(lctx).thread_id(),
         parent_lock_perm.lock_id()
             == old(krnl).prc_mp.spec_index(parent_ptr)
                 .locking_thread()->Write_lock_id,
         old(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
-        typed_lock_map_contains_mode(
-            old(lctx).pcid_allocator_lock_map(),
-            pcid_allocator_ptr,
-            TypedLockMode::Write,
-        ),
+        typed_lock_map_contains_mode(old(lctx).pcid_allocator_lock_map(), pcid_allocator_ptr, TypedLockMode::Write),
         pcid_allocator_lock_perm.state() is WriteLock,
         pcid_allocator_lock_perm.thread_id() == old(lctx).thread_id(),
         pcid_allocator_lock_perm.lock_id()
@@ -196,44 +168,12 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
             == old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view(),
         final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
 {
-    krnl.wunlock_page(
-        page_ptr2page_index(iommu_l4_page_ptr),
-        Tracked(&mut *lctx),
-        Tracked(iommu_l4_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(iommu_table_page_ptr),
-        Tracked(&mut *lctx),
-        Tracked(iommu_table_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(l4_page_ptr),
-        Tracked(&mut *lctx),
-        Tracked(l4_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(pagetable_page_ptr),
-        Tracked(&mut *lctx),
-        Tracked(pagetable_page_lock_perm),
-    );
-    krnl.wunlock_page(
-        page_ptr2page_index(process_page_ptr),
-        Tracked(&mut *lctx),
-        Tracked(process_page_lock_perm),
-    );
-    krnl.wunlock_pcid_allocator(
-        pcid_allocator_ptr,
-        Tracked(&mut *lctx),
-        Tracked(pcid_allocator_lock_perm),
-    );
-    krnl.wunlock_process(
-        parent_ptr,
-        Tracked(&mut *lctx),
-        Tracked(parent_lock_perm),
-    );
-    proof {
-        reveal(typed_lock_maps_removed);
-    }
+    krnl.wunlock_page(page_ptr2page_index(iommu_l4_page_ptr), Tracked(&mut *lctx), Tracked(iommu_l4_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(iommu_table_page_ptr), Tracked(&mut *lctx), Tracked(iommu_table_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(l4_page_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(pagetable_page_ptr), Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm));
+    krnl.wunlock_page(page_ptr2page_index(process_page_ptr), Tracked(&mut *lctx), Tracked(process_page_lock_perm));
+    krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
+    krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
 }
-
 }

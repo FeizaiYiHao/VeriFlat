@@ -3,7 +3,6 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-
 pub open spec fn scheduler_invariant_fields_unchanged(
     pre: SchedulerLockedMap,
     post: SchedulerLockedMap,
@@ -30,5 +29,4 @@ pub proof fn scheduler_lock_op_preserves_invariant_fields(
         scheduler_invariant_fields_unchanged(pre, post),
 {
 }
-
 }

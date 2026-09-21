@@ -174,9 +174,7 @@ use crate::*;
                 &&& pei_valid(indices.1)
                 &&& pei_valid(indices.2)
                 &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(
-                    indices.0,
-                    indices.1,
-                    indices.2,
+                    indices.0, indices.1, indices.2,
                 ) == old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(
                     indices.0,
                     indices.1,
@@ -218,15 +216,11 @@ use crate::*;
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
                 assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by {
-                    assert(pagetable_pages_wf(old(krnl).pt_mp, old(krnl).pg_arr)) by {
-                        reveal(KernelK::inv);
-                        reveal(KernelK::memory_management_inv);
-                    };
+                    assert(pagetable_pages_wf(old(krnl).pt_mp, old(krnl).pg_arr));
                     assert(pagetable_root_page_forward_wf(old(krnl).pt_mp, old(krnl).pg_arr)) by { reveal(pagetable_pages_wf); };
                     assert(pagetable_closure_page_forward_wf(old(krnl).pt_mp, old(krnl).pg_arr)) by { reveal(pagetable_pages_wf); };
                     assert(pagetable_root_page_backward_wf(old(krnl).pt_mp, old(krnl).pg_arr)) by { reveal(pagetable_pages_wf); };
                     assert(pagetable_closure_page_backward_wf(old(krnl).pt_mp, old(krnl).pg_arr)) by { reveal(pagetable_pages_wf); };
-                    assert(pagetable_root_page_forward_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_root_page_forward_wf); };
                     assert(pagetable_closure_page_forward_wf(krnl.pt_mp, krnl.pg_arr)) by {
                         assert forall|p_i: PageIndex|
                             #![trigger krnl.pt_mp.dom().contains(
@@ -258,33 +252,21 @@ use crate::*;
                                 }
                             };
                             assert(krnl.pg_arr.spec_index(p_i)
-                                == old(krnl).pg_arr.spec_index(p_i)) by {
-                                reveal(LockedArray::entries_unchanged_except);
-                            };
+                                == old(krnl).pg_arr.spec_index(p_i));
                             let pt_ptr = krnl.pg_arr.spec_index(p_i).view().view().state
                                 ->Allocated4k_state->PageTable_pagetable_root;
                             assert(old(krnl).pt_mp.dom().contains(pt_ptr)
                                 && old(krnl).pt_mp.spec_index(pt_ptr).view().page_closure()
-                                    .contains(page_index2page_ptr(p_i))) by {
-                                reveal(pagetable_closure_page_forward_wf);
-                            };
-                            assert(krnl.pt_mp.dom().contains(pt_ptr)) by {
-                                reveal(LockedMap::unchanged_except);
-                            };
+                                    .contains(page_index2page_ptr(p_i)));
                             if pt_ptr == pagetable_ptr {
                                 assert(krnl.pt_mp.spec_index(pt_ptr).view().page_closure()
                                     == old(krnl).pt_mp.spec_index(pt_ptr).view().page_closure());
                             } else {
                                 assert(krnl.pt_mp.spec_index(pt_ptr)
-                                    == old(krnl).pt_mp.spec_index(pt_ptr)) by {
-                                    reveal(LockedMap::unchanged_except);
-                                };
+                                    == old(krnl).pt_mp.spec_index(pt_ptr));
                             }
                         };
-                        reveal(pagetable_closure_page_forward_wf);
                     };
-                    assert(pagetable_root_page_backward_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_root_page_backward_wf); };
-                    assert(pagetable_closure_page_backward_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_closure_page_backward_wf); };
                     reveal(pagetable_pages_wf);
                 };
                 assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(iommu_table_pages_wf); };
@@ -331,9 +313,7 @@ use crate::*;
             }) by {
                 reveal(kernel_k_to_kernel_u);
                 reveal(process_thread_wf);
-                reveal(process_pagetable_match);
             };
         }
     }
-
 }

@@ -1,7 +1,6 @@
 use vstd::prelude::*;
-use super::super::*; 
+use super::super::*;
 verus! {
-
 // -------------------- Begin of Const --------------------
 pub const MAX_NUM_ENDPOINT_DESCRIPTORS: usize = 128;
 
@@ -118,8 +117,8 @@ pub const ALLOCATOR_MIN_WATERMARK: usize = 0;
 pub const ALLOCATOR_MAX_WATERMARK: usize = 256;
 pub const ALLOCATOR_BATCH: usize = 64;
 
-pub const NO_KILL_STATE: bool = false; 
-pub const HAS_KILL_STATE: bool = true; 
+pub const NO_KILL_STATE: bool = false;
+pub const HAS_KILL_STATE: bool = true;
 
 pub const PAGE_TABLE_HAS_KILL_STATE: bool = NO_KILL_STATE;
 pub const PAGE_HAS_KILL_STATE: bool = NO_KILL_STATE;
@@ -134,5 +133,4 @@ pub const THREAD_HAS_KILL_STATE: bool = HAS_KILL_STATE;
 pub const ENDPOINT_HAS_KILL_STATE: bool = NO_KILL_STATE;
 pub const ALLOCATOR_HAS_KILL_STATE: bool = NO_KILL_STATE;
 // -------------------- End of Const --------------------
-
 }

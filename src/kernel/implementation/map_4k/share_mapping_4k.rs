@@ -31,7 +31,6 @@ pub fn required_4k_directory_pages_for_empty_target(
     let end = target_range.index(target_range.len - 1);
     proof {
         target_range.va_range_lemma();
-        assert(end >= start) by { reveal(spec_va_add_range); };
         assert({
             &&& (start >> 21) <= (end >> 21)
             &&& (start >> 30) <= (end >> 30)
@@ -47,14 +46,11 @@ pub fn required_4k_directory_pages_for_empty_target(
     let l1_pages = (end >> 21) - (start >> 21) + 1;
     let l2_pages = (end >> 30) - (start >> 30) + 1;
     let l3_pages = (end >> 39) - (start >> 39) + 1;
-    proof { reveal(spec_required_4k_directory_pages_for_empty_target); }
     l1_pages + l2_pages + l3_pages
 }
 
 pub open spec fn share_mapping_4k_source_range_present(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    source_range: &VaRange4K,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, source_range: &VaRange4K,
 ) -> bool
     recommends
         krnl.pt_mp.dom().contains(source_pagetable),
@@ -87,11 +83,7 @@ pub open spec fn share_mapping_4k_source_range_present(
 }
 
 pub open spec fn share_mapping_4k_leaf_structure_ready(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    target_pagetable: RwLockPageTableRoot,
-    source_va: VAddr,
-    target_va: VAddr,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, source_va: VAddr, target_va: VAddr,
 ) -> bool {
     let source_indices = spec_va2index(source_va);
     let target_indices = spec_va2index(target_va);
@@ -120,10 +112,7 @@ pub open spec fn share_mapping_4k_leaf_structure_ready(
 }
 
 pub open spec fn share_mapping_4k_leaf_owner_compatible(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    target_container: RwLockContainerPtr,
-    source_va: VAddr,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_va: VAddr,
 ) -> bool {
     let owner = krnl.pt_mp.spec_index(source_pagetable).view()
         .mapping_4k().spec_index(source_va).owning_container@;
@@ -133,24 +122,16 @@ pub open spec fn share_mapping_4k_leaf_owner_compatible(
 }
 
 pub open spec fn share_mapping_4k_leaf_ready(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    target_pagetable: RwLockPageTableRoot,
-    target_container: RwLockContainerPtr,
-    source_va: VAddr,
-    target_va: VAddr,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr,
+    source_va: VAddr, target_va: VAddr,
 ) -> bool {
     &&& share_mapping_4k_leaf_structure_ready(krnl, source_pagetable, target_pagetable, source_va, target_va)
     &&& share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_va)
 }
 
 pub open spec fn share_mapping_4k_range_structure_ready_from(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    target_pagetable: RwLockPageTableRoot,
-    source_range: &VaRange4K,
-    target_range: &VaRange4K,
-    first: int,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, source_range: &VaRange4K,
+    target_range: &VaRange4K, first: int,
 ) -> bool {
     forall|i: int|
         #![trigger source_range.view().spec_index(i),
@@ -160,10 +141,7 @@ pub open spec fn share_mapping_4k_range_structure_ready_from(
 }
 
 pub open spec fn share_mapping_4k_range_owner_compatible(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    target_container: RwLockContainerPtr,
-    source_range: &VaRange4K,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_range: &VaRange4K,
 ) -> bool {
     forall|i: int|
         #![trigger source_range.view().spec_index(i)]
@@ -172,11 +150,7 @@ pub open spec fn share_mapping_4k_range_owner_compatible(
 }
 
 pub open spec fn share_mapping_4k_range_owner_compatible_prefix(
-    krnl: &KernelK,
-    source_pagetable: RwLockPageTableRoot,
-    target_container: RwLockContainerPtr,
-    source_range: &VaRange4K,
-    upper: int,
+    krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_range: &VaRange4K, upper: int,
 ) -> bool {
     forall|i: int|
         #![trigger source_range.view().spec_index(i)]
@@ -203,9 +177,7 @@ pub open spec fn share_mapping_4k_target_map_with_shared_prefix(
 }
 
 pub open spec fn share_mapping_4k_range_mapped_prefix(
-    target: PageTable<PT_TYPE>,
-    target_range: &VaRange4K,
-    upper: int,
+    target: PageTable<PT_TYPE>, target_range: &VaRange4K, upper: int,
 ) -> bool {
     forall|i: int|
         #![trigger target.mapping_4k().dom().contains(target_range.view().spec_index(i))]
@@ -215,9 +187,7 @@ pub open spec fn share_mapping_4k_range_mapped_prefix(
 
 /// Every not-yet-shared target VA is still absent from the 4K mapping.
 pub open spec fn share_mapping_4k_target_range_empty_from(
-    pagetable: PageTable<PT_TYPE>,
-    target_range: &VaRange4K,
-    first: int,
+    pagetable: PageTable<PT_TYPE>, target_range: &VaRange4K, first: int,
 ) -> bool {
     forall|i: int|
         #![trigger pagetable.mapping_4k().dom().contains(target_range.view().spec_index(i))]
@@ -226,9 +196,7 @@ pub open spec fn share_mapping_4k_target_range_empty_from(
 }
 
 pub open spec fn share_mapping_4k_reverse_mappings(
-    krnl: &KernelK,
-    target_pagetable: RwLockPageTableRoot,
-    target_range: &VaRange4K,
+    krnl: &KernelK, target_pagetable: RwLockPageTableRoot, target_range: &VaRange4K,
 ) -> bool {
     forall|i: int|
         #![trigger krnl.pt_mp.spec_index(target_pagetable)
@@ -253,10 +221,7 @@ pub open spec fn share_mapping_4k_reverse_mappings(
 
 /// Checks a source 4K range without mutating krnl or page-table state.
 pub fn share_mapping_4k_source_precheck(
-    krnl: &KernelK,
-    source_range: &VaRange4K,
-    source_pagetable: RwLockPageTableRoot,
-    Tracked(lctx): Tracked<&LocalContext>,
+    krnl: &KernelK, source_range: &VaRange4K, source_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&LocalContext>,
     Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: bool)
     requires
@@ -434,7 +399,6 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
 {
     let source_indices = va2index(source_va);
     proof {
-        assert(krnl.subsystems_inv());
         pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
         pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
     }
@@ -443,13 +407,7 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         &&& spec_index2va(source_indices) == source_va
         &&& krnl.pt_mp.spec_index(source_pagetable).view().spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
     }) by {
-        spec_va_4k_index_roundtrip_at(
-            source_va,
-            source_indices.0,
-            source_indices.1,
-            source_indices.2,
-            source_indices.3,
-        );
+        spec_va_4k_index_roundtrip_at(source_va, source_indices.0, source_indices.1, source_indices.2, source_indices.3);
         reveal(PageTable::wf_mapping_4k);
     };
     let source_entry;
@@ -481,7 +439,6 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         }) by {
             page_ptr_valid_imply_page_index_valid();
             reveal(mapped_4k_page_pagetable_wf);
-            reveal(page_array_wf);
         };
     }
     let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
@@ -505,13 +462,7 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
     }
     proof {
         assert(spec_index2va(target_indices) == target_va) by {
-            spec_va_4k_index_roundtrip_at(
-                target_va,
-                target_indices.0,
-                target_indices.1,
-                target_indices.2,
-                target_indices.3,
-            );
+            spec_va_4k_index_roundtrip_at(target_va, target_indices.0, target_indices.1, target_indices.2, target_indices.3);
         };
     }
     {
@@ -755,7 +706,6 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         ret == share_mapping_4k_range_owner_compatible(final(krnl), source_pagetable, target_container, source_range),
 {
     proof {
-        assert(krnl.subsystems_inv());
         thread_perms_wf_at(krnl.thr_mp, target_thread);
         pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
         assert(krnl.ctn_mp.dom().contains(target_container)) by { reveal(container_thread_wf); };
@@ -878,14 +828,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
                 &&& spec_index2va(source_indices) == source_va
                 &&& krnl.pt_mp.spec_index(source_pagetable).view().spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
             }) by {
-                spec_va_4k_index_roundtrip_at(
-                    source_va,
-                    source_indices.0,
-                    source_indices.1,
-                    source_indices.2,
-                    source_indices.3,
-                );
-                reveal(PageTable::wf_mapping_4k);
+                spec_va_4k_index_roundtrip_at(source_va, source_indices.0, source_indices.1, source_indices.2, source_indices.3);
             };
         }
         let source_entry;
@@ -904,9 +847,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
                 &&& krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR
                 &&& lctx.lock_id_acyclic(krnl.pg_arr.lock_id_by_index(page_index))
             }) by {
-                reveal(PageTable::wf_mapping_4k);
                 page_ptr_valid_imply_page_index_valid();
-                reveal(page_array_wf);
             };
         }
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
@@ -1196,9 +1137,7 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
                 page_ptr_valid_imply_page_index_valid();
             };
             assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
-            assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by {
-                pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
-            };
+            assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
             assert(share_mapping_4k_range_structure_ready_from(krnl, source_pagetable, target_pagetable, source_range, target_range, (i + 1) as int)) by {
                 source_range.va_range_lemma();
                 target_range.va_range_lemma();
@@ -1224,11 +1163,7 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
 
 #[verifier::spinoff_prover]
 proof fn prove_share_mapping_4k_build_target_slot_usable(
-    current_target: PageTable<PT_TYPE>,
-    initial_target: PageTable<PT_TYPE>,
-    target_range: &VaRange4K,
-    i: usize,
-    target_va: VAddr,
+    current_target: PageTable<PT_TYPE>, initial_target: PageTable<PT_TYPE>, target_range: &VaRange4K, i: usize, target_va: VAddr,
 )
     requires
         target_range.wf(),
@@ -1242,11 +1177,7 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
             || initial_target.spec_mapping_4k_va_range_buildable(target_range),
         current_target.mapping_1g() == initial_target.mapping_1g(),
         current_target.mapping_2m() == initial_target.mapping_2m(),
-        share_mapping_4k_target_range_empty_from(
-            current_target,
-            target_range,
-            i as int,
-        ),
+        share_mapping_4k_target_range_empty_from(current_target, target_range, i as int),
     ensures
         va_4k_valid(target_va),
         current_target.kernel_l4_end <= spec_v2l4index(target_va),
@@ -1255,32 +1186,16 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
         pei_valid(spec_v2l2index(target_va)),
         pei_valid(spec_v2l1index(target_va)),
         initial_target.spec_4k_entry_usable(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
-            spec_v2l1index(target_va),
+            spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
         ),
-        current_target.spec_resolve_mapping_1g_l3(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-        ) is None,
-        current_target.spec_resolve_mapping_2m_l2(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
-        ) is None,
+        current_target.spec_resolve_mapping_1g_l3(spec_v2l4index(target_va), spec_v2l3index(target_va)) is None,
+        current_target.spec_resolve_mapping_2m_l2(spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va)) is None,
         !current_target.mapping_4k().dom().contains(target_va),
         current_target.spec_resolve_mapping_4k_l1(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
-            spec_v2l1index(target_va),
+            spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
         ) is None,
         current_target.spec_4k_entry_usable(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
-            spec_v2l1index(target_va),
+            spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
         ),
 {
     assert({
@@ -1308,15 +1223,8 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
     )) by {
         if initial_target.is_empty() {
             spec_va_4k_index_roundtrip_at(
-                target_va,
-                spec_v2l4index(target_va),
-                spec_v2l3index(target_va),
-                spec_v2l2index(target_va),
-                spec_v2l1index(target_va),
+                target_va, spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
             );
-            reveal(PageTable::wf_mapping_1g);
-            reveal(PageTable::wf_mapping_2m);
-            reveal(PageTable::wf_mapping_4k);
         } else {
             assert(initial_target.spec_resolve_mapping_4k_l1(
                 spec_va2index(target_range.view().spec_index(i as int)).0,
@@ -1329,14 +1237,9 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
         }
     };
     assert({
-        &&& current_target.spec_resolve_mapping_1g_l3(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-        ) is None
+        &&& current_target.spec_resolve_mapping_1g_l3(spec_v2l4index(target_va), spec_v2l3index(target_va)) is None
         &&& current_target.spec_resolve_mapping_2m_l2(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
+            spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va),
         ) is None
     }) by {
         reveal(PageTable::wf_mapping_1g);
@@ -1345,19 +1248,12 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
     assert({
         &&& !current_target.mapping_4k().dom().contains(target_va)
         &&& current_target.spec_resolve_mapping_4k_l1(
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
-            spec_v2l1index(target_va),
+            spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
         ) is None
     }) by {
         reveal(PageTable::wf_mapping_4k);
         spec_va_4k_index_roundtrip_at(
-            target_va,
-            spec_v2l4index(target_va),
-            spec_v2l3index(target_va),
-            spec_v2l2index(target_va),
-            spec_v2l1index(target_va),
+            target_va, spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
         );
     };
 }
@@ -1382,56 +1278,19 @@ proof fn prove_share_mapping_4k_iteration_target_partition(
         source_va == source_range.view().spec_index(i as int),
         target_va == target_range.view().spec_index(i as int),
         previous_target.mapping_4k()
-            == share_mapping_4k_target_map_with_shared_prefix(
-                source,
-                initial_target,
-                source_range,
-                target_range,
-                i as nat,
-            ),
+            == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, i as nat),
         current_target.mapping_4k()
-            == previous_target.mapping_4k().insert(
-                target_va,
-                source.spec_index(source_va),
-            ),
-        share_mapping_4k_range_mapped_prefix(
-            previous_target,
-            target_range,
-            i as int,
-        ),
-        share_mapping_4k_target_range_empty_from(
-            previous_target,
-            target_range,
-            i as int,
-        ),
+            == previous_target.mapping_4k().insert(target_va, source.spec_index(source_va)),
+        share_mapping_4k_range_mapped_prefix(previous_target, target_range, i as int),
+        share_mapping_4k_target_range_empty_from(previous_target, target_range, i as int),
     ensures
         current_target.mapping_4k()
-            == share_mapping_4k_target_map_with_shared_prefix(
-                source,
-                initial_target,
-                source_range,
-                target_range,
-                (i + 1) as nat,
-            ),
-        share_mapping_4k_range_mapped_prefix(
-            current_target,
-            target_range,
-            (i + 1) as int,
-        ),
-        share_mapping_4k_target_range_empty_from(
-            current_target,
-            target_range,
-            (i + 1) as int,
-        ),
+            == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, (i + 1) as nat),
+        share_mapping_4k_range_mapped_prefix(current_target, target_range, (i + 1) as int),
+        share_mapping_4k_target_range_empty_from(current_target, target_range, (i + 1) as int),
 {
     assert(current_target.mapping_4k()
-        == share_mapping_4k_target_map_with_shared_prefix(
-            source,
-            initial_target,
-            source_range,
-            target_range,
-            (i + 1) as nat,
-        )) by {
+        == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, (i + 1) as nat)) by {
         source_range.va_range_lemma();
         target_range.va_range_lemma();
     };
@@ -1777,14 +1636,9 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
         let source_va = source_range.index(i);
         let target_va = target_range.index(i);
         proof {
-            assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by {
-                pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
-            };
+            assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
             prove_share_mapping_4k_build_target_slot_usable(
-                krnl.pt_mp.spec_index(target_pagetable).view(),
-                old(krnl).pt_mp.spec_index(target_pagetable).view(),
-                target_range,
-                i,
+                krnl.pt_mp.spec_index(target_pagetable).view(), old(krnl).pt_mp.spec_index(target_pagetable).view(), target_range, i,
                 target_va,
             );
         }
@@ -1816,19 +1670,11 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
                 page_ptr_valid_imply_page_index_valid();
             };
             assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
-            assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by {
-                pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
-            };
+            assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
             prove_share_mapping_4k_iteration_target_partition(
                 old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(),
-                old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(),
-                target_before_share,
-                krnl.pt_mp.spec_index(target_pagetable).view(),
-                source_range,
-                target_range,
-                i,
-                source_va,
-                target_va,
+                old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_before_share,
+                krnl.pt_mp.spec_index(target_pagetable).view(), source_range, target_range, i, source_va, target_va,
             );
         }
         assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { reveal(container_allocator_wf); };

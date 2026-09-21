@@ -3,7 +3,6 @@ use vstd::simple_pptr::*;
 use crate::define::*;
 use super::*;
 verus! {
-
 pub trait LockInvTrait{
     spec fn inv(&self) -> bool;
 }
@@ -19,7 +18,6 @@ pub trait LockMajorTrait {
     spec fn lock_major_3_predicate(&self) -> bool;
     spec fn lock_major_default_predicate(&self) -> bool;
 
-    
     open spec fn lock_major_sat(&self, lock_major: LockMajorId) -> bool{
         if lock_major == self.lock_major_1(){
             self.lock_major_1_predicate()
@@ -78,7 +76,7 @@ pub trait LockMinorTrait {
 }
 
 pub trait LockUserVisibilityTrait{
-    spec fn is_user_visible() -> bool; 
+    spec fn is_user_visible() -> bool;
 }
 
 pub trait UserViewHasKillState{
@@ -88,5 +86,4 @@ pub trait UserViewHasKillState{
 pub trait LockIdTrait {
     spec fn lock_id(&self) -> LockId;
 }
-
 }

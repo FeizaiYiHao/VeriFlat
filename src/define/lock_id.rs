@@ -75,7 +75,7 @@ impl LockOwnerId{
         |||
         self === other
         |||
-        self is NotApp || other is NotApp 
+        self is NotApp || other is NotApp
     }
     pub open spec fn spec_gt(self, other: Self) -> bool {
         // Owner-id order (high → low): None > Some(big) > … > Some(small) > High.
@@ -108,7 +108,7 @@ impl LockOwnerId{
         self == other
         |||
         self > other
-    }    
+    }
     pub open spec fn spec_lt(self, other: Self) -> bool {
         // Mirror of spec_gt: a < b iff b > a (NotApp rows stay false). Order
         // high → low is None > Some(big) > Some(small) > High, so `None` is
@@ -147,7 +147,7 @@ pub struct LockId{
 }
 
 pub proof fn lock_id_fields_eq_imply_eq()
-    ensures 
+    ensures
         forall|lock_id1: LockId, lock_id2: LockId|
             {
                 &&& lock_id1.container == lock_id2.container
@@ -261,6 +261,4 @@ pub ghost enum KernelObjId {
 /// identity when lock ids are copied or change during a Release section.
 pub type HeldLock = (LockId, KernelObjId);
 // -------------------- End of kernel obj id ------------------
-
-
 }

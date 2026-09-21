@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use vstd::simple_pptr::*;
 verus! {
-
 pub struct AllocatorQuota {
     pub value: usize,
     pub minor: Ghost<LockMinorId>,
@@ -56,5 +55,4 @@ impl AllocatorQuota {
         ensures ret == self.lock_minor(),
     { self as *const AllocatorQuota as LockMinorId }
 }
-
 }

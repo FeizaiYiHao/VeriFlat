@@ -125,9 +125,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             kernel_entries: kernel_entries_ghost,
             proc_ptr: proc_ptr,
         };
-        proof {
-            ret.l4_table.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
-        }
+        proof { ret.l4_table.borrow_mut().tracked_insert(page_map_ptr, page_map_perm); }
 
         assert(ret.wf_l4()) by { reveal(PageTable::wf_l4); };
         assert(ret.wf_l3()) by { reveal(PageTable::wf_l3); };
@@ -165,7 +163,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
 
     pub open   spec fn mapping_4k(&self) -> Map<VAddr, MapEntry> {
         self.mapping_4k.view()
-
     }
     pub open   spec fn mapping_2m(&self) -> Map<VAddr, MapEntry> {
         self.mapping_2m.view()
@@ -562,7 +559,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         } else {
             None
         }
-
     }
 
     pub open spec fn va_addr_valid(&self) -> bool {
@@ -903,7 +899,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                             == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {
     }
-
 }
 
     impl<const TABLE_TYPE:PTType> LockInvTrait for  PageTable<TABLE_TYPE> {
@@ -948,7 +943,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         open spec fn lock_major_default_predicate(&self) -> bool {
             true
         }
-
     }
 
     impl<const TABLE_TYPE:PTType> LockOwnerIdTrait for  PageTable<TABLE_TYPE> {
@@ -966,5 +960,4 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             true
         }
     }
-
 } // verus!

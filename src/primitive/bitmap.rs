@@ -4,14 +4,12 @@ use vstd::set::*;
 
 use crate::*;
 verus! {
-
 pub struct BitMap<T, const N: usize>{
     pub bit_map: Array<T, N>,
     pub map: Ghost<Map<usize, T>>,
 }
 
 impl<T:Copy, const N: usize> BitMap<T, N>{
-
     pub open spec fn view(&self) -> Map<usize, T>{
         self.map.view()
     }
@@ -35,7 +33,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
     }
 
     pub fn new_with_init_value(value:T) -> (ret:Self)
-        ensures 
+        ensures
             ret.inv(),
             ret.view() == Map::new(Seq::new(N as nat, |i: int| i as usize).to_set(), |k:usize|{value}),
     {
@@ -49,11 +47,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
         assert forall|i: usize| #![auto] usize_in_range::<N>(i)
             implies ret.view().dom().contains(i)
         by {
-            vstd::seq::lemma_seq_new_index(
-                N as nat,
-                |i: int| i as usize,
-                i as int,
-            );
+            vstd::seq::lemma_seq_new_index(N as nat, |i: int| i as usize, i as int);
         };
         ret
     }
@@ -86,10 +80,7 @@ impl<T:Copy, const N: usize> BitMap<T, N>{
 
 
         self.bit_map.set(index, value);
-        proof {
-            self.map = Ghost(self.map.view().insert(index, value));
-        }
+        proof { self.map = Ghost(self.map.view().insert(index, value)); }
     }
-
 }
 }

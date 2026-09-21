@@ -140,5 +140,4 @@ verus! {
             assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
         }
     }
-
 } // verus!

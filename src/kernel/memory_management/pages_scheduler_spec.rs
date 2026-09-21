@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn scheduler_pages_wf(
     scheduler_map: SchedulerLockedMap,
@@ -31,5 +30,4 @@ pub open spec fn scheduler_pages_wf(
                     state: Allocated4KPageState::AsScheduler,
                 })
 }
-
 }

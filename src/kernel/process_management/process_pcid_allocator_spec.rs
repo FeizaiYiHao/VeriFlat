@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn process_pcid_allocator_wf(
     container_map: ContainerLockedMap,
@@ -48,5 +47,4 @@ pub open spec fn process_pcid_allocator_wf(
                     .view().owning_container.view()
         }
 }
-
 }

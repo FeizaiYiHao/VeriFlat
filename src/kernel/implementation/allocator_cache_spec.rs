@@ -25,5 +25,4 @@ pub(crate) open spec fn allocator_cache_key_prefix_seq(alloc_ptr: RwLockPageAllo
 pub(crate) open spec fn allocator_cache_key_prefix(alloc_ptr: RwLockPageAllocatorPtr, upper: CpuId) -> Set<(RwLockPageAllocatorPtr, CpuId)> {
     allocator_cache_key_prefix_seq(alloc_ptr, upper).to_set()
 }
-
 }

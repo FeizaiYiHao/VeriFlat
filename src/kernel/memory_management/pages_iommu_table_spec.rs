@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-
 #[verifier::opaque]
 pub open spec fn iommu_table_pages_wf(
     iommu_table_map: IommuTableLockedMap,
@@ -68,5 +67,4 @@ pub open spec fn iommu_table_pages_wf(
                 }
         }
 }
-
 }

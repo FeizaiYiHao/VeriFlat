@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use vstd::simple_pptr::*;
 verus! {
-
 pub struct AllocatorCache {
     pub linked_list: LinkedList<PagePtr, 233>,
 }
@@ -45,5 +44,4 @@ impl AllocatorCache {
         ALLOCATOR_MIN_WATERMARK <= self.linked_list.view().len() <= ALLOCATOR_MAX_WATERMARK
     }
 }
-
 }

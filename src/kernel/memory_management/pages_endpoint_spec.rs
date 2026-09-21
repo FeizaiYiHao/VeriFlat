@@ -27,6 +27,5 @@ verus! {
             {
                 page_array.spec_index(page_ptr2page_index(e_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::AsEndpoint}
             }
-
         }
 }

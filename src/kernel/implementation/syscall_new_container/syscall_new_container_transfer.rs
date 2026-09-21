@@ -1,8 +1,73 @@
 use vstd::prelude::*;
 use crate::*;
-use super::syscall_new_container_transfer_spec::staged_4k_page_container_transfer_transition;
+use super::*;
 
 verus! {
+#[verifier::opaque]
+/// Transfers one staged 4K page from the parent container's ownership set to
+/// the child container's. Only that page entry and the two containers change.
+pub open spec fn staged_4k_page_container_transfer_transition(
+    pre: KernelK, post: KernelK, page_ptr: PagePtr,
+    staging_thread_ptr: RwLockThreadPtr,
+    parent: RwLockContainerPtr, child: RwLockContainerPtr,
+) -> bool {
+    let page_index = page_ptr2page_index(page_ptr);
+    let old_page = pre.pg_arr.spec_index(page_index).view();
+    let new_page = post.pg_arr.spec_index(page_index).view();
+    &&& page_ptr_valid(page_ptr)
+    &&& parent != child
+    &&& pre.ctn_mp.dom().contains(parent)
+    &&& pre.ctn_mp.dom().contains(child)
+    &&& pre.ctn_mp.spec_index(parent).view().owned_pages.view().contains(page_ptr)
+    &&& pre.ctn_mp.spec_index(child).view_rodata().view().parent == Some(parent)
+    &&& pre.thr_mp.dom().contains(staging_thread_ptr)
+    &&& pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
+    &&& old_page.view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr })
+    &&& old_page.view().owning_container == parent
+    &&& post == (KernelK { pg_arr: post.pg_arr, ctn_mp: post.ctn_mp, ..pre })
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
+    &&& forall|j: PageIndex|
+        #![trigger pre.pg_arr.spec_index(j).view().view().state]
+        #![trigger post.pg_arr.spec_index(j).view().view().state]
+        index_valid(NUM_PAGES, j) ==> {
+            &&& post.pg_arr.spec_index(j).view().view().state == pre.pg_arr.spec_index(j).view().view().state
+            &&& post.pg_arr.spec_index(j).view().view().mappings() == pre.pg_arr.spec_index(j).view().view().mappings()
+            &&& (j != page_index ==> post.pg_arr.spec_index(j).view().view().owning_container == pre.pg_arr.spec_index(j).view().view().owning_container)
+        }
+    &&& new_page.is_init() == old_page.is_init()
+    &&& new_page.view_rodata() == old_page.view_rodata()
+    &&& new_page.view_ghost() == old_page.view_ghost()
+    &&& new_page.locking_thread() == old_page.locking_thread()
+    &&& new_page.being_killed() == old_page.being_killed()
+    &&& new_page.view() == (Page { owning_container: child, ..old_page.view() })
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
+    &&& forall|c: RwLockContainerPtr|
+        #![trigger pre.ctn_mp.spec_index(c)]
+        #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let old_container = pre.ctn_mp.spec_index(c);
+            let new_container = post.ctn_mp.spec_index(c);
+            &&& post.ctn_mp.view().spec_index(c).is_init() == pre.ctn_mp.view().spec_index(c).is_init()
+            &&& post.ctn_mp.view().spec_index(c).addr() == pre.ctn_mp.view().spec_index(c).addr()
+            &&& (c != parent && c != child ==> new_container == old_container)
+            &&& (c == parent || c == child ==> {
+                &&& new_container.is_init() == old_container.is_init()
+                &&& new_container.view_rodata() == old_container.view_rodata()
+                &&& new_container.view_ghost() == old_container.view_ghost()
+                &&& new_container.locking_thread() == old_container.locking_thread()
+                &&& new_container.being_killed() == old_container.being_killed()
+                &&& new_container.view() == (Container {
+                    owned_pages: Ghost(if c == parent {
+                        old_container.view().owned_pages.view().remove(page_ptr)
+                    } else {
+                        old_container.view().owned_pages.view().insert(page_ptr)
+                    }),
+                    ..old_container.view()
+                })
+            })
+        }
+}
+
 #[verifier::spinoff_prover]
 proof fn staged_4k_page_container_transfer_eof_process_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr,
@@ -18,7 +83,7 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(
     reveal(staged_4k_page_container_transfer_transition);
     assert(post.process_management_inv()) by {
         assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by {
-            reveal(container_perms_wf); reveal(LinkedList::wf_value_list); reveal(container_tree_wf);
+            reveal(container_perms_wf); reveal(LinkedList::wf_value_list);
             reveal(container_root_wf); reveal(container_children_parent_wf); reveal(containers_linkedlist_wf);
             reveal(container_children_depth_wf); reveal(container_subtree_set_wf);
             reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
@@ -38,7 +103,6 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(
     };
 }
 
-#[verifier::rlimit(120)]
 pub(super) proof fn staged_4k_page_container_transfer_eof(
     pre: KernelK, post: KernelK, page_ptr: PagePtr,
     staging_thread_ptr: RwLockThreadPtr,
@@ -65,8 +129,8 @@ pub(super) proof fn staged_4k_page_container_transfer_eof(
         assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
         assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
             assert(post.pg_arr.spec_index(page_index).view().view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr })) by { reveal(staged_4k_page_container_transfer_transition); };
-            assert(!pre.pg_arr.spec_index(page_index).view().view().is_mapped() && !post.pg_arr.spec_index(page_index).view().view().is_mapped()) by { reveal(Page::is_mapped); };
-            reveal(page_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf);
+            assert(!pre.pg_arr.spec_index(page_index).view().view().is_mapped() && !post.pg_arr.spec_index(page_index).view().view().is_mapped());
+            reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf);
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by {
             reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(container_page_owner_wf);

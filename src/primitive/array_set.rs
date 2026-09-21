@@ -14,7 +14,6 @@ pub struct ArraySet<const N: usize> {
 }
 
 impl <const N: usize> ArraySet<N> {
-
     pub fn new() -> (ret:Self)
         ensures
             ret.wf(),
@@ -124,7 +123,7 @@ impl <const N: usize> ArraySet<N> {
 
     pub open spec fn elements_in_range(&self) -> bool{
         &&&
-        forall|i:usize| 
+        forall|i:usize|
             #![trigger self.view().contains(i)]
             self.view().contains(i) ==> 0 <= i < N
     }
@@ -137,12 +136,12 @@ impl <const N: usize> ArraySet<N> {
         &&&
         0 <= self.len <= N
         &&&
-        forall|i:usize| 
+        forall|i:usize|
             #![trigger self.data.view().spec_index(i as int)]
             #![trigger self.set.view().contains(i)]
             0 <= i < N && self.data.view().spec_index(i as int) ==> self.set.view().contains(i)
         &&&
-        forall|i:usize| 
+        forall|i:usize|
             #![trigger self.data.view().spec_index(i as int)]
             #![trigger self.set.view().contains(i)]
             self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
@@ -267,5 +266,4 @@ impl <const N: usize> ArraySet<N> {
         Self::lemma_finite_set_bounded_size(s.insert(v), n);
     }
 }
-
 }

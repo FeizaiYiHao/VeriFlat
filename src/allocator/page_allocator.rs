@@ -4,7 +4,6 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-
 pub struct PageAllocator{
     pub cpu_caches: LockedArray<AllocatorCache, (), (), NUM_CPUS, NO_KILL_STATE>,
     pub global_pool: RwLock<GlobalPool, (), (), NO_KILL_STATE>,
@@ -54,9 +53,7 @@ impl PageAllocator{
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        assert(linked_list.view().len() == linked_list.length) by {
-            reveal(LinkedList::wf_value_list);
-        };
+        assert(linked_list.view().len() == linked_list.length) by { reveal(LinkedList::wf_value_list); };
         let mut cache_array:
             Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS>
                 = Array::new();
@@ -83,24 +80,14 @@ impl PageAllocator{
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache {
-                linked_list: LinkedList::new(
-                    Some(container_depth),
-                    Some(cpu_id),
-                ),
+                linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)),
             };
-            cache_array.set(
-                cpu_id,
-                RwLock::new_unlocked(cache, (), Ghost(())),
-            );
+            cache_array.set(cpu_id, RwLock::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let total_free_pages = linked_list.length;
         let cpu_caches = LockedArray::from_array(cache_array);
-        let global_pool = RwLock::new_unlocked(
-            GlobalPool { linked_list },
-            (),
-            Ghost(()),
-        );
+        let global_pool = RwLock::new_unlocked(GlobalPool { linked_list }, (), Ghost(()));
         let quota = RwLock::new_unlocked(
             AllocatorQuota {
                 value: quota_value,
@@ -172,24 +159,15 @@ impl PageAllocator{
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache {
-                linked_list: LinkedList::new(
-                    Some(container_depth),
-                    Some(cpu_id),
-                ),
+                linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)),
             };
-            cache_array.set(
-                cpu_id,
-                RwLock::new_unlocked(cache, (), Ghost(())),
-            );
+            cache_array.set(cpu_id, RwLock::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let cpu_caches = LockedArray::from_array(cache_array);
         let global_pool = RwLock::new_unlocked(
             GlobalPool {
-                linked_list: LinkedList::new(
-                    Some(container_depth),
-                    Some(owning_container),
-                ),
+                linked_list: LinkedList::new(Some(container_depth), Some(owning_container)),
             },
             (),
             Ghost(()),
@@ -210,9 +188,7 @@ impl PageAllocator{
             total_free_pages: Ghost(0),
             owning_container,
         };
-        proof {
-            lemma_cache_len_fold_all_zero(ret.cpu_caches.view());
-        }
+        proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); }
         ret
     }
 
@@ -248,7 +224,6 @@ impl PageAllocator{
     pub open spec fn total_free_pages_wf(&self) -> bool {
         self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| {sum + cpu_rw_lock.view().linked_list.len()}) == self.total_free_pages.view()
     }
-
 }
 
 impl PageAllocator{
@@ -295,10 +270,7 @@ impl PageAllocator{
             final(self).quota.lock_id() == old(self).quota.lock_id(),
             wunlock_ensures(old(self).quota, final(self).quota),
             unlock_ensures(
-                old(lctx),
-                final(lctx),
-                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()),
-                old(self).quota.lock_id(),
+                old(lctx), final(lctx), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()), old(self).quota.lock_id(),
             ),
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).global_pool == old(self).global_pool,
@@ -377,9 +349,7 @@ impl PageAllocator{
                 == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
             wunlock_ensures(old(self).cpu_caches.spec_index(cpu_id).view(), final(self).cpu_caches.spec_index(cpu_id).view()),
             unlock_ensures(
-                old(lctx),
-                final(lctx),
-                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id),
+                old(lctx), final(lctx), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id),
                 old(self).cpu_caches.spec_index(cpu_id).lock_id(),
             ),
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
@@ -459,9 +429,7 @@ impl PageAllocator{
             final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
             wunlock_ensures(old(self).global_pool, final(self).global_pool),
             unlock_ensures(
-                old(lctx),
-                final(lctx),
-                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()),
+                old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()),
                 old(self).global_pool.lock_id(),
             ),
             final(self).cpu_caches == old(self).cpu_caches,
@@ -513,9 +481,7 @@ impl PageAllocator{
             cache.linked_list.push_head(node_addr, node_perm);
         }
         self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
-        assert(self.wf()) by {
-            lemma_cache_len_fold_change_one_array(self.cpu_caches, old(self).cpu_caches, cpu_id);
-        };
+        assert(self.wf()) by { lemma_cache_len_fold_change_one_array(self.cpu_caches, old(self).cpu_caches, cpu_id); };
     }
 
     pub fn pop_cache_page(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
@@ -551,22 +517,15 @@ impl PageAllocator{
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
     {
-        proof {
-            lemma_cache_len_fold_ge_elem(old(self).cpu_caches.view(), cpu_id as int);
-        }
+        proof { lemma_cache_len_fold_ge_elem(old(self).cpu_caches.view(), cpu_id as int); }
         let (node_addr, node_perm) = {
             let cache_mut = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = cache_mut.linked_list.pop_head();
-            assert(old(self).cpu_caches.spec_index(cpu_id).view().view().linked_list.map().dom().contains(node_addr)) by {
-                reveal(LinkedList::wf_perms);
-                reveal(LinkedList::wf_map);
-            };
+            assert(old(self).cpu_caches.spec_index(cpu_id).view().view().linked_list.map().dom().contains(node_addr));
             (node_addr, Tracked(node_perm))
         };
         self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
-        proof {
-            lemma_cache_len_fold_change_one_array(old(self).cpu_caches, self.cpu_caches, cpu_id);
-        }
+        proof { lemma_cache_len_fold_change_one_array(old(self).cpu_caches, self.cpu_caches, cpu_id); }
         (node_addr, node_perm)
     }
 
@@ -643,16 +602,11 @@ impl PageAllocator{
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
     {
-        proof {
-            lemma_cache_len_fold_nonneg(old(self).cpu_caches.view());
-        }
+        proof { lemma_cache_len_fold_nonneg(old(self).cpu_caches.view()); }
         let (node_addr, node_perm) = {
             let poll_mut = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = poll_mut.linked_list.pop_head();
-            assert(old(self).global_pool.view().map().dom().contains(node_addr)) by {
-                reveal(LinkedList::wf_perms);
-                reveal(LinkedList::wf_map);
-            };
+            assert(old(self).global_pool.view().map().dom().contains(node_addr));
             (node_addr, Tracked(node_perm))
         };
         self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
@@ -758,5 +712,4 @@ impl PageAllocator{
         (node_addr, page_ptr)
     }
 }
-
 }
