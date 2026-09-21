@@ -53,6 +53,8 @@ verus! {
         reveal(container_tree_fields_wf);
     }
 
+    pub proof fn container_perms_wf_map(container_perms: ContainerLockedMap) requires container_perms_wf(container_perms) ensures container_perms.perms_wf() { reveal(container_perms_wf); }
+
     #[verifier::opaque]
     pub open spec fn container_tree_fields_wf(container_perms: ContainerLockedMap) -> bool {
         forall|c_ptr: RwLockContainerPtr|
@@ -155,6 +157,16 @@ verus! {
                 &&& container_perms.spec_index(u_ptr).view_ghost().uppertree_seq.view() =~= container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().subrange(0, container_perms.spec_index(u_ptr).view_rodata().view().depth as int)
             }
     }
+
+    pub proof fn container_uppertree_seq_in_dom(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, container_ptr: RwLockContainerPtr)
+        requires container_uppertree_seq_wf(root_container, container_perms), container_perms.dom().contains(container_ptr),
+        ensures forall|u_ptr: RwLockContainerPtr| #[trigger] container_perms.spec_index(container_ptr).view_ghost().uppertree_seq.view().contains(u_ptr) ==> container_perms.dom().contains(u_ptr),
+    { reveal(container_uppertree_seq_wf); }
+
+    pub proof fn container_uppertree_seq_not_self(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, container_ptr: RwLockContainerPtr)
+        requires container_perms_wf(container_perms), container_uppertree_seq_wf(root_container, container_perms), container_perms.dom().contains(container_ptr),
+        ensures !container_perms.spec_index(container_ptr).view_ghost().uppertree_seq.view().contains(container_ptr),
+    { reveal(container_perms_wf); reveal(container_tree_fields_wf); reveal(container_uppertree_seq_wf); reveal(Seq::contains); }
 
     #[verifier::opaque]
     pub open spec fn container_subtree_set_exclusive(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap) -> bool {

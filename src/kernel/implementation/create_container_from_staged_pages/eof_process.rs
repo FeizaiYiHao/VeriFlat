@@ -50,7 +50,7 @@ pub(super) proof fn eof_container_tree_wf(
     ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
 {
-    assert(container_tree_wf(pre.rt_ctn, pre.ctn_mp)) by { reveal(KernelK::inv); };
+    assert(container_tree_wf(pre.rt_ctn, pre.ctn_mp));
     assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
     assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by {
         reveal(container_children_parent_wf);
@@ -61,17 +61,17 @@ pub(super) proof fn eof_container_tree_wf(
         reveal(container_children_parent_wf);
         seq_push_lemma::<RwLockContainerPtr>();
     };
-    assert(container_children_depth_wf(pre.rt_ctn, pre.ctn_mp)) by { reveal(KernelK::inv); };
+    assert(container_children_depth_wf(pre.rt_ctn, pre.ctn_mp));
     assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by {
-        assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(KernelK::inv); reveal(container_perms_wf); };
+        assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
         let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
         reveal(container_children_depth_wf);
         reveal(container_tree_fields_wf);
         seq_push_lemma::<RwLockContainerPtr>();
     };
-    assert(container_subtree_set_wf(pre.rt_ctn, pre.ctn_mp)) by { reveal(KernelK::inv); };
-    assert(container_uppertree_seq_wf(pre.rt_ctn, pre.ctn_mp)) by { reveal(KernelK::inv); };
-    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(KernelK::inv); reveal(container_perms_wf); };
+    assert(container_subtree_set_wf(pre.rt_ctn, pre.ctn_mp));
+    assert(container_uppertree_seq_wf(pre.rt_ctn, pre.ctn_mp));
+    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by {
         reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf);
         reveal(container_tree_fields_wf); seq_push_lemma::<RwLockContainerPtr>();
@@ -81,8 +81,8 @@ pub(super) proof fn eof_container_tree_wf(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(container_subtree_set_exclusive(pre.rt_ctn, pre.ctn_mp)) by { reveal(KernelK::inv); };
-    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(KernelK::inv); reveal(container_perms_wf); };
+    assert(container_subtree_set_exclusive(pre.rt_ctn, pre.ctn_mp));
+    assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_subtree_set_exclusive(post.rt_ctn, post.ctn_mp)) by {
         reveal(container_subtree_set_wf);
@@ -127,9 +127,9 @@ pub(super) proof fn eof_container_relations_wf(
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
-    assert(container_process_wf(pre.ctn_mp, pre.prc_mp)) by { reveal(KernelK::inv); };
+    assert(container_process_wf(pre.ctn_mp, pre.prc_mp));
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
-    assert(per_container_process_tree_wf(pre.ctn_mp, pre.prc_mp)) by { reveal(KernelK::inv); };
+    assert(per_container_process_tree_wf(pre.ctn_mp, pre.prc_mp));
     assert(process_tree_wf(process_page, set![process_page], post.prc_mp,)) by {
         reveal(process_root_wf);
         reveal(process_children_parent_wf);
@@ -143,29 +143,29 @@ pub(super) proof fn eof_container_relations_wf(
         reveal(per_container_process_tree_wf); reveal(container_process_wf);
         process_no_change_to_tree_fields_imply_wf_forall();
     };
-    assert(container_cpu_set_wf(pre.ctn_mp, pre.cpu_set_mp)) by { reveal(KernelK::inv); };
+    assert(container_cpu_set_wf(pre.ctn_mp, pre.cpu_set_mp));
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
-    assert(container_cpu_wf(pre.ctn_mp, pre.cpu_set_mp, pre.cpu_arr)) by { reveal(KernelK::inv); };
+    assert(container_cpu_wf(pre.ctn_mp, pre.cpu_set_mp, pre.cpu_arr));
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_set_wf); reveal(container_cpu_wf); };
-    assert(container_thread_endpoint_wf(pre.ctn_mp, pre.thr_mp, pre.ep_mp)) by { reveal(KernelK::inv); };
+    assert(container_thread_endpoint_wf(pre.ctn_mp, pre.thr_mp, pre.ep_mp));
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
         reveal(thread_endpoint_ref_counter_wf);
         reveal(container_endpoint_wf);
         reveal(container_thread_endpoint_wf);
     };
-    assert(container_pcid_allocator_wf(pre.ctn_mp, pre.pcid_allc_mp)) by { reveal(KernelK::inv); };
+    assert(container_pcid_allocator_wf(pre.ctn_mp, pre.pcid_allc_mp));
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
-    assert(process_pcid_allocator_wf(pre.ctn_mp, pre.prc_mp, pre.pcid_allc_mp)) by { reveal(KernelK::inv); };
+    assert(process_pcid_allocator_wf(pre.ctn_mp, pre.prc_mp, pre.pcid_allc_mp));
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by {
         pcid_allocator_perms_wf_at(post.pcid_allc_mp, pcid_allocator_page);
         reveal(process_pcid_allocator_wf);
     };
-    assert(container_thread_scheduler_wf(pre.ctn_mp, pre.thr_mp, pre.sched_mp,)) by { reveal(KernelK::inv); };
+    assert(container_thread_scheduler_wf(pre.ctn_mp, pre.thr_mp, pre.sched_mp,));
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp,)) by {
         reveal(container_thread_wf); reveal(container_scheduler_wf);
         reveal(container_thread_scheduler_wf);
     };
-    assert(process_thread_wf(pre.prc_mp, pre.thr_mp)) by { reveal(KernelK::inv); };
+    assert(process_thread_wf(pre.prc_mp, pre.thr_mp));
     assert(process_empty_lists_wlocked(post.prc_mp)) by {
         assert(process_empty_lists_wlocked(pre.prc_mp)) by { reveal(process_thread_wf); };
         reveal(process_empty_lists_wlocked);
@@ -232,7 +232,7 @@ pub(super) proof fn eof_direct_invariants(
         iommu_tlb_wf_spec(post.iommu_tlb, &post.irt, post.prc_mp, post.it_mp),
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush,),
         tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush),{
-    assert(cpu_dirty_map_wf(pre.ctn_mp, pre.cpu_set_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp, pre.pcid_needflush,)) by { reveal(KernelK::inv); };
+    assert(cpu_dirty_map_wf(pre.ctn_mp, pre.cpu_set_mp, pre.prc_mp, pre.cpu_arr, pre.cpu_tlb, pre.pt_mp, pre.pcid_needflush,));
     assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by {
         reveal(container_cpu_wf);
         reveal(cpu_dirty_map_contains_container_processes);
@@ -487,7 +487,7 @@ pub(super) proof fn eof_container_page_owner_wf(
     ensures
         container_page_owner_wf(post.ctn_mp, post.pg_arr),
 {
-    assert(container_page_owner_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(KernelK::inv); };
+    assert(container_page_owner_wf(pre.ctn_mp, pre.pg_arr));
     assert(container_page_owner_forward_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(container_page_owner_backward_wf(pre.ctn_mp, pre.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(container_page_owner_forward_wf(post.ctn_mp, post.pg_arr)) by { broadcast use eof_container_page_owner_forward; };

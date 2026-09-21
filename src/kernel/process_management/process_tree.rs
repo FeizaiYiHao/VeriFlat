@@ -11,6 +11,8 @@ verus! {
             process_perms.dom().contains(p_ptr) ==> process_perms.spec_index(p_ptr).inv()
     }
 
+    pub proof fn process_perms_wf_map(process_perms: ProcessLockedMap) requires process_perms_wf(process_perms) ensures process_perms.perms_wf() { reveal(process_perms_wf); }
+
     pub proof fn process_perms_wf_at(process_perms: ProcessLockedMap, process_ptr: RwLockProcessPtr)
         requires
             process_perms_wf(process_perms),

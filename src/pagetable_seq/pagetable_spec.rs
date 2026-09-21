@@ -681,6 +681,8 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
                     == self.l4_table.view().spec_index(self.cr3).value().spec_index(i)
     }
 
+    pub proof fn kernel_l4_end_valid(&self) requires self.kernel_entries_wf() ensures pei_valid(self.kernel_l4_end) { reveal(PageTable::kernel_entries_wf); }
+
     pub open   spec fn wf(&self) -> bool {
         &&& self.va_addr_valid()
         &&& self.wf_l4()

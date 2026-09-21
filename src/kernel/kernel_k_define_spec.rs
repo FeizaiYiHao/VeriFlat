@@ -237,6 +237,8 @@ verus! {
                 ==> self.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == self.dflt_pt.view().kernel_l4_end
         }
 
+        pub proof fn default_pagetable_view_inv(&self) requires self.default_pagetable_wf() ensures self.dflt_pt.view().inv() { reveal(KernelK::default_pagetable_wf); }
+
         pub open spec fn allocator_free_pages_wf(&self) -> bool{
             &&&
             allocator_free_page_ptrs_wf(self.allc_4k_mp)

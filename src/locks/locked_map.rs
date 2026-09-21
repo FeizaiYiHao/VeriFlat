@@ -119,6 +119,18 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             ==> typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write))
     }
 
+    pub proof fn typed_lock_map_aligned_held_in_dom(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId)
+        where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
+        requires self.typed_lock_map_aligned(held_locks, thread_id),
+        ensures forall|key: usize| #[trigger] held_locks.dom().contains(key) ==> self.dom().contains(key),
+    { reveal(LockedMap::typed_lock_map_aligned); }
+
+    pub proof fn typed_lock_map_aligned_write_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, key: usize)
+        where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
+        requires self.typed_lock_map_aligned(held_locks, thread_id), typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write),
+        ensures self.dom().contains(key), self.spec_index(key).wlocked_by_thread(thread_id),
+    { reveal(LockedMap::typed_lock_map_aligned); }
+
     pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
         requires
             old(self).perms_wf(),

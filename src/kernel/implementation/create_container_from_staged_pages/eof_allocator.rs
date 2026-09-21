@@ -37,7 +37,7 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_ptr_valid(
     if alloc_ptr == allocator_4k_page {
         funding_pages.to_set_ensures();
     } else {
-        assert(allocator_free_page_ptrs_wf(pre.allc_4k_mp)) by { reveal(KernelK::inv); };
+        assert(allocator_free_page_ptrs_wf(pre.allc_4k_mp));
         reveal(allocator_free_page_ptrs_wf);
     }
 }
@@ -228,24 +228,24 @@ pub(super) proof fn eof_allocator_quota_wf(
     let child_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view();
     let child_indirect_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view();
     let child_depth = post.ctn_mp.spec_index(container_page).view_rodata().view().depth as int;
-    assert(container_process_wf(pre.ctn_mp, pre.prc_mp) && container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp) && container_thread_wf(post.ctn_mp, pre.thr_mp)) by { reveal(KernelK::inv); reveal(container_thread_wf); };
+    assert(container_process_wf(pre.ctn_mp, pre.prc_mp) && container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp) && container_thread_wf(post.ctn_mp, pre.thr_mp)) by { reveal(container_thread_wf); };
     lemma_process_effective_quota_folds_singleton(child_processes, post.prc_mp, process_page);
     lemma_thread_quota_folds_empty(child_threads, pre.thr_mp, child_depth);
     lemma_thread_quota_folds_empty(child_indirect_threads, pre.thr_mp, child_depth);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, pre.thr_mp, post.allc_4k_mp)) by {
-        assert(container_process_allocator_quota_4k_wf(pre.ctn_mp, pre.prc_mp, pre.thr_mp, pre.allc_4k_mp)) by { reveal(KernelK::inv); };
+        assert(container_process_allocator_quota_4k_wf(pre.ctn_mp, pre.prc_mp, pre.thr_mp, pre.allc_4k_mp));
         reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf);
         lemma_process_effective_quota_4k_fold_sum_eq_forall();
     };
     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, pre.thr_mp, post.allc_2m_mp)) by {
-        assert(container_process_allocator_quota_2m_wf(pre.ctn_mp, pre.prc_mp, pre.thr_mp, pre.allc_2m_mp)) by { reveal(KernelK::inv); };
+        assert(container_process_allocator_quota_2m_wf(pre.ctn_mp, pre.prc_mp, pre.thr_mp, pre.allc_2m_mp));
         reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); reveal(container_allocator_wf);
         lemma_process_effective_quota_2m_fold_sum_eq_forall();
     };
     container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, pre.thr_mp, post.allc_1g_mp)) by {
-        assert(container_process_allocator_quota_1g_wf(pre.ctn_mp, pre.prc_mp, pre.thr_mp, pre.allc_1g_mp)) by { reveal(KernelK::inv); };
+        assert(container_process_allocator_quota_1g_wf(pre.ctn_mp, pre.prc_mp, pre.thr_mp, pre.allc_1g_mp));
         reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); reveal(container_allocator_wf);
         lemma_process_effective_quota_1g_fold_sum_eq_forall();
     };
@@ -288,12 +288,12 @@ pub(super) proof fn eof_allocator_free_pages_wf(
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    assert(pre.allocator_free_pages_wf()) by { reveal(KernelK::inv); };
+    assert(pre.allocator_free_pages_wf());
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(KernelK::inv); };
-    assert(allocator_free_page_ptrs_wf(pre.allc_4k_mp)) by { reveal(KernelK::inv); };
+    assert(container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr,));
+    assert(allocator_free_page_ptrs_wf(pre.allc_4k_mp));
     assert(container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
     assert(container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr,)) by {
@@ -314,8 +314,8 @@ pub(super) proof fn eof_allocator_free_pages_wf(
         reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); };
-    assert(container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr,)) by { reveal(KernelK::inv); };
-    assert(allocator_free_page_ptrs_wf(pre.allc_2m_mp)) by { reveal(KernelK::inv); };
+    assert(container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr,));
+    assert(allocator_free_page_ptrs_wf(pre.allc_2m_mp));
     assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr,)) by {
         page_ptr_valid_imply_page_index_valid();
         page_ptr_roundtrip();
@@ -333,8 +333,8 @@ pub(super) proof fn eof_allocator_free_pages_wf(
         reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr,)) by { reveal(container_allocator_free_2m_page_wf); };
-    assert(container_allocator_free_1g_page_wf(pre.allc_1g_mp, pre.pg_arr,)) by { reveal(KernelK::inv); };
-    assert(allocator_free_page_ptrs_wf(pre.allc_1g_mp)) by { reveal(KernelK::inv); };
+    assert(container_allocator_free_1g_page_wf(pre.allc_1g_mp, pre.pg_arr,));
+    assert(allocator_free_page_ptrs_wf(pre.allc_1g_mp));
     assert(container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by {
         page_ptr_valid_imply_page_index_valid();
         page_ptr_roundtrip();
@@ -352,7 +352,7 @@ pub(super) proof fn eof_allocator_free_pages_wf(
         reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by { reveal(container_allocator_free_1g_page_wf); };
-    assert(container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp,)) by { reveal(KernelK::inv); };
+    assert(container_allocator_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp,));
     assert(container_allocator_4k_forward_wf(post.ctn_mp, post.allc_4k_mp)) by { reveal(container_allocator_wf); };
     assert(container_allocator_4k_backward_wf(post.ctn_mp, post.allc_4k_mp)) by { reveal(container_allocator_wf); };
     assert(container_allocator_2m_forward_wf(post.ctn_mp, post.allc_2m_mp)) by { reveal(container_allocator_wf); };

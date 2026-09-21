@@ -290,6 +290,13 @@ verus! {
         &&& container_page_owner_backward_wf(container_map, page_array)
     }
 
+    pub proof fn container_page_owner_backward_at(container_map: ContainerLockedMap, page_array: PageLockedArray, page_index: PageIndex)
+        requires container_page_owner_wf(container_map, page_array), index_valid(NUM_PAGES, page_index),
+        ensures
+            container_map.dom().contains(page_array.spec_index(page_index).view().view().owning_container),
+            container_map.spec_index(page_array.spec_index(page_index).view().view().owning_container).view().owned_pages.view().contains(page_index2page_ptr(page_index)),
+    { reveal(container_page_owner_wf); }
+
     pub open spec fn container_allocator_global_free_4k_forward_wf(
         allocator_4k_map: PageAllocatorUnLockedMap,
         page_array: PageLockedArray,
