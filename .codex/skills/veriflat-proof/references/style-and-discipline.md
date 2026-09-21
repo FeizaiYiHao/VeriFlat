@@ -73,10 +73,17 @@
   a failed proof with these mechanisms or `assume_specification`. Changes to
   established TCB contracts or additional trusted construction paths require
   specific user authorization; zero explicit assumptions does not mean zero trust.
-- Scope each opaque reveal to the assertion that consumes it. Do not
-  redundantly reveal a non-opaque open spec. An EOF S may be opaque-open and
-  revealed once at its producer and once per closure VC when fail-on-delete
-  requires it. Other function-scope reveals require genuinely shared goals.
+- Scope each opaque reveal to the assertion that consumes it. Do not add a
+  reveal of a non-opaque open spec to new proof. An existing one is not a
+  semantic no-op at the SMT level: Verus encodes every `reveal(f)` as the
+  ground fact `(assume (fuel_bool fuel%f))`, which lets the definition axiom
+  fire one E-matching round earlier than deriving it through the
+  `fuel_defaults` quantifier. Removing such a reveal is a deletion test like any
+  other hint (both verification modes, rlimit compared against a baseline), not
+  a free cleanup; e.g. `eof_container_uppertree_seq_wf` fails without its two
+  `reveal(KernelK::inv)`. An EOF S may be opaque-open and revealed once at its
+  producer and once per closure VC when fail-on-delete requires it. Other
+  function-scope reveals require genuinely shared goals.
 - Do not add `assert forall`. Fix the producer trigger/contract instead.
   Exceptions are the approved linked-list/fold patterns and the existing
   quantified lift in
