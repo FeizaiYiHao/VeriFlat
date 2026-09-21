@@ -9,6 +9,8 @@ verus! {
         &&&
         schedulers_inv(scheduler_map)
     }
+
+    pub proof fn scheduler_perms_wf_map(scheduler_map: SchedulerLockedMap) requires scheduler_perms_wf(scheduler_map) ensures scheduler_map.perms_wf() { reveal(scheduler_perms_wf); }
     pub open spec fn schedulers_inv(scheduler_map: SchedulerLockedMap) -> bool{
         &&&
         forall|scheduler_p:RwLockSchedulerPtr|

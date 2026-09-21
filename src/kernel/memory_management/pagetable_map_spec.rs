@@ -9,6 +9,8 @@ verus! {
         &&&
         pagetables_inv(pagetable_perms)
     }
+
+    pub proof fn pagetable_perms_wf_map(pagetable_perms: PageTableLockedMap) requires pagetable_perms_wf(pagetable_perms) ensures pagetable_perms.perms_wf() { reveal(pagetable_perms_wf); }
     pub open spec fn pagetables_inv(pagetable_perms: PageTableLockedMap) -> bool{
         &&&
         forall|pagetable_p:RwLockPageTableRoot|

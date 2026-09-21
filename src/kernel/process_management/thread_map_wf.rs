@@ -18,6 +18,8 @@ verus! {
         &&&
         thread_endpoint_transit_only_when_wlocked(thread_map)
     }
+
+    pub proof fn thread_perms_wf_map(thread_map: ThreadLockedMap) requires thread_perms_wf(thread_map) ensures thread_map.perms_wf() { reveal(thread_perms_wf); }
     pub open spec fn threads_inv(thread_map: ThreadLockedMap) -> bool{
         &&&
         forall|thread_p:RwLockThreadPtr|
