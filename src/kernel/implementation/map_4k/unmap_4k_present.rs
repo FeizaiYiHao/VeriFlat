@@ -19,7 +19,7 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
     ensures
         final(krnl).inv(),
-        kernel_k_to_kernel_u(*final(krnl)) != kernel_k_to_kernel_u(*old(krnl)),
+        kernel_k_to_nonlock_kernel_u(*final(krnl)) != kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         lock_id_set_aligned(final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -57,10 +57,9 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         let l2 = pt.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
         l1_ptr = l2.addr;
     }
-    let pt = krnl.pt_mp.borrow_mut_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-    pt.unmap_4k_page_user_view(indices.0, indices.1, indices.2, indices.3, l1_ptr, Tracked(&mut *lctx));
+    pagetable_map_clear_4k_present(&mut krnl.pt_mp, pagetable, indices, l1_ptr, Tracked(&mut *lctx), pagetable_perm);
     proof {
-        assert(krnl.subsystems_inv()) by { reveal(pagetable_perms_wf); reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
         assert(krnl.memory_management_inv()) by {
             assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
             assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
@@ -69,12 +68,11 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         };
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
-        assert(kernel_k_to_kernel_u(*old(krnl)).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
-            && !kernel_k_to_kernel_u(*krnl).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)) by {
-                reveal(kernel_k_to_kernel_u);
+        assert(kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
+            && !kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)) by {
+                reveal(kernel_k_to_nonlock_kernel_u);
                 reveal(process_pagetable_match);
             };
-        assert(typed_lock_maps_aligned(krnl, lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 }

@@ -41,3 +41,5 @@ pub mod cpu_set_map_wf;
 pub use cpu_set_map_wf::*;
 pub mod container_cpu_set_spec;
 pub use container_cpu_set_spec::*;
+pub mod process_subsystem_mutation;
+pub use process_subsystem_mutation::*;

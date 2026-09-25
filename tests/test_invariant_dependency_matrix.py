@@ -30,8 +30,8 @@ class InvariantDependencyMatrixTest(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(len(report["rows"]), 68)
         self.assertEqual(report["errors"], [])
-        self.assertEqual(report["helper-count"], 89)
-        self.assertEqual(report["classified-helper-count"], 89)
+        self.assertEqual(report["helper-count"], 86)
+        self.assertEqual(report["classified-helper-count"], 86)
         self.assertEqual(report["unclassified-helpers"], [])
         self.assertTrue(all(row["fields"] for row in report["rows"]))
 
