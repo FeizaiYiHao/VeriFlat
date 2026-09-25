@@ -20,6 +20,7 @@ pub mod iommu_root_table_spec;
 
 pub mod allocator_spec;
 pub mod huge_page_spec;
+pub mod subsystem_mutation;
 
 pub use pages_thread_spec::*;
 pub use pages_scheduler_spec::*;
@@ -37,6 +38,7 @@ pub use iommu_table_map_spec::*;
 pub use page_array_spec::*;
 pub use allocator_spec::*;
 pub use huge_page_spec::*;
+pub use subsystem_mutation::*;
 pub use process_pagetable_spec::*;
 pub use process_iommu_table_spec::*;
 pub use iommu_root_table_spec::*;

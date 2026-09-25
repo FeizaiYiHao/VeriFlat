@@ -166,7 +166,19 @@ pub fn create_thread_from_staged_page_merged(
         container_perms_wf_at(krnl.ctn_mp, container_ptr);
         scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr);
         thread_perms_wf_at(krnl.thr_mp, staging_thread_ptr);
+        assert(krnl.sched_mp.spec_index(scheduler_ptr).view().owning_container == container_ptr) by {
+            reveal(container_scheduler_wf);
+        };
+        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
+            == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth) by {
+            reveal(container_process_wf);
+        };
+        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable
+            == krnl.prc_mp.spec_index(process_ptr).view().pagetable) by {
+            reveal(process_pagetable_match);
+        };
         assert(!krnl.thr_mp.dom().contains(page_ptr)) by { reveal(thread_pages_wf); };
+        assert(page_ptr != staging_thread_ptr) by { reveal(thread_pages_wf); };
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(container_ptr)) by {
             uppers.to_set_ensures();
             reveal(container_uppertree_seq_wf);
@@ -204,23 +216,20 @@ pub fn create_thread_from_staged_page_merged(
         page_ptr, container_ptr, container_depth, process_ptr, process_depth, proc_pagetable, Ghost(uppers), initial_regs,
     );
     let page_index = page_ptr2page_index(page_ptr);
-    let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
-    let page_mut = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(page_lock_perm));
-    let Tracked(page_perm) = take_perm_4k(page_mut);
-    page_mut.state = PageState::Allocated4k { state: Allocated4KPageState::AsThread };
-    proof { lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index)); }
-    let Tracked(thread_perm) = krnl.retype_page_to_thread_and_insert(page_ptr, thread_value, Tracked(page_perm), Tracked(&mut *lctx));
-    let staging_thread_mut = krnl.thr_mp.borrow_mut_typed(staging_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    staging_thread_mut.consume_staged_4k(page_ptr);
-    let process_mut = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
-    process_mut.add_owned_thread(page_ptr, node_addr, node_perm);
-    {
-        let scheduler_mut = krnl.sched_mp.borrow_mut_typed(scheduler_ptr, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(scheduler_lock_perm));
-        scheduler_mut.enqueue_scheduled_thread(page_ptr, sched_node_addr, sched_node_perm);
-    }
+    let Tracked(page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, page_index, PageState::Allocated4k { state: Allocated4KPageState::AsThread },
+        Tracked(&mut *lctx), Tracked(page_lock_perm),
+    );
+    let Tracked(thread_perm) = process_subsystem_create_scheduled_thread(
+        &krnl.ctn_mp, &mut krnl.prc_mp, &mut krnl.thr_mp, &mut krnl.sched_mp, page_ptr, process_ptr,
+        staging_thread_ptr, container_ptr, scheduler_ptr, thread_value, sched_node_addr, sched_node_perm,
+        node_addr, node_perm, Tracked(page_perm), Tracked(&mut *lctx), Tracked(process_lock_perm),
+        Tracked(staging_thread_lock_perm), Tracked(scheduler_lock_perm),
+    );
     proof {
         add_thread_to_container_sets(
-            &mut krnl.ctn_mp, container_ptr, page_ptr, uppers, lctx.container_lock_map(), lctx.thread_id(),
+            &mut krnl.ctn_mp, container_ptr, page_ptr, uppers, krnl.thr_mp, krnl.sched_mp,
+            lctx.container_lock_map(), lctx.thread_id(),
         );
         let ghost old_owned_threads = old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view();
         let ghost new_owned_threads = krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view();
@@ -234,14 +243,6 @@ pub fn create_thread_from_staged_page_merged(
             reveal(kernel_k_to_kernel_u);
         };
         assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-        assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
-        assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
-        assert(thread_perms_wf(krnl.thr_mp)) by {
-            reveal(thread_perms_wf);
-            reveal(thread_free_quota_pending_empty_unless_wlocked);
-            reveal(thread_temp_alloc_empty_unless_wlocked);
-        };
-        assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); reveal(LinkedList::wf_value_list); };
         assert(krnl.memory_management_inv()) by {
             allocator_4k_pages_wf_preserved_for_page_state_eq(
                 old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_4k_mp, krnl.allc_4k_mp,
@@ -334,20 +335,8 @@ pub fn create_thread_from_staged_page_merged(
             assert(container_pcid_allocator_wf(krnl.ctn_mp, krnl.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
             assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
             assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
-            assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by {
-                reveal(container_thread_scheduler_wf);
-                reveal(container_thread_wf);
-                reveal(container_scheduler_wf);
-                seq_push_lemma::<RwLockThreadPtr>();
-            };
             assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
-            assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by {
-                reveal(container_process_wf);
-                reveal(process_pagetable_match);
-                reveal(process_thread_wf);
-                reveal(process_empty_lists_wlocked);
-                seq_push_lemma::<RwLockThreadPtr>();
-            };
+            assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_thread_wf); };
             assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
         };
         assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
@@ -363,87 +352,6 @@ pub fn create_thread_from_staged_page_merged(
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
     }
     (page_ptr, Tracked(thread_perm))
-}
-
-/// Publish a thread in its direct container and all ancestor containers.
-proof fn add_thread_to_container_sets(
-    tracked container_map: &mut ContainerLockedMap, direct_container_ptr: RwLockContainerPtr, t_ptr: RwLockThreadPtr,
-    uppers: Seq<RwLockContainerPtr>, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId,
-)
-    requires
-        old(container_map).perms_wf(),
-        old(container_map).dom().contains(direct_container_ptr),
-        uppers.to_set().subset_of(old(container_map).dom()),
-        uppers.no_duplicates(),
-        !uppers.to_set().contains(direct_container_ptr),
-        old(container_map).typed_lock_map_aligned(held_locks, thread_id),
-    ensures
-        final(container_map).perms_wf(),
-        final(container_map).dom() == old(container_map).dom(),
-        container_perms_wf(*old(container_map)) ==> container_perms_wf(*final(container_map)),
-        final(container_map).typed_lock_map_aligned(held_locks, thread_id),
-        forall|c: RwLockContainerPtr|
-            #![trigger final(container_map).spec_index(c)]
-            old(container_map).dom().contains(c) ==> {
-                &&& final(container_map).spec_index(c).view() == old(container_map).spec_index(c).view()
-                &&& final(container_map).spec_index(c).view_rodata() == old(container_map).spec_index(c).view_rodata()
-                &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
-                &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()
-                &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
-                    uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq,
-                    subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
-                    owned_threads: if c == direct_container_ptr {
-                        Ghost(old(container_map).spec_index(c).view_ghost().owned_threads.view().insert(t_ptr))
-                    } else {
-                        old(container_map).spec_index(c).view_ghost().owned_threads
-                    },
-                    owned_indirect_threads: if uppers.to_set().contains(c) {
-                        Ghost(old(container_map).spec_index(c).view_ghost().owned_indirect_threads.view().insert(t_ptr))
-                    } else {
-                        old(container_map).spec_index(c).view_ghost().owned_indirect_threads
-                    },
-                }
-            },
-    decreases uppers.len(),
-{
-    if uppers.len() > 0 {
-        let c0 = uppers.spec_index(0);
-        assert(uppers.to_set().contains(c0)) by { uppers.to_set_ensures(); };
-        assert(uppers.drop_first().to_set().subset_of(container_map.dom())) by {
-            uppers.to_set_ensures();
-            uppers.drop_first().to_set_ensures();
-            broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
-        };
-        assert(!uppers.drop_first().to_set().contains(direct_container_ptr)) by {
-            uppers.to_set_ensures();
-            uppers.drop_first().to_set_ensures();
-            broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
-        };
-        add_thread_to_container_sets(container_map, direct_container_ptr, t_ptr, uppers.drop_first(), held_locks, thread_id);
-        container_map.update_ghost(c0, ContainerGhost {
-            uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq,
-            subtree_set: container_map.spec_index(c0).view_ghost().subtree_set,
-            owned_threads: container_map.spec_index(c0).view_ghost().owned_threads,
-            owned_indirect_threads: Ghost(container_map.spec_index(c0).view_ghost().owned_indirect_threads.view().insert(t_ptr)),
-        });
-        assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert({
-            &&& !uppers.drop_first().to_set().contains(c0)
-            &&& uppers.to_set() =~= uppers.drop_first().to_set().insert(c0)
-        }) by { broadcast use vstd::seq_lib::lemma_seq_subrange_elements; };
-    } else {
-        container_map.update_ghost(direct_container_ptr, ContainerGhost {
-            uppertree_seq: container_map.spec_index(direct_container_ptr).view_ghost().uppertree_seq,
-            subtree_set: container_map.spec_index(direct_container_ptr).view_ghost().subtree_set,
-            owned_threads: Ghost(container_map.spec_index(direct_container_ptr).view_ghost().owned_threads.view().insert(t_ptr)),
-            owned_indirect_threads: container_map.spec_index(direct_container_ptr).view_ghost().owned_indirect_threads,
-        });
-        assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
-    }
-    assert(container_perms_wf(*old(container_map)) ==> container_perms_wf(*container_map)) by {
-        reveal(container_perms_wf);
-        reveal(container_tree_fields_wf);
-    };
 }
 
 pub open spec fn kernel_u_new_thread_changed(old_u: KernelU, new_u: KernelU, process_ptr: RwLockProcessPtr) -> bool {

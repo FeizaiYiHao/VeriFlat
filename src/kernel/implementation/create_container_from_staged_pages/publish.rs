@@ -937,16 +937,20 @@ pub(super) fn publish_staged_container_root_mutation(
         let ghost consumed_4k_pages = bootstrap_pages.union(funding_pages.to_set());
         let ghost initial_cache = krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view();
         assert(initial_cache == consumed_4k_pages.insert(thread_page)) by { vstd::set::axiom_set_ext_equal(initial_cache, consumed_4k_pages.insert(thread_page)); };
-        assert(thread_perms_wf(krnl.thr_mp));
-        thread_perms_wf_at(krnl.thr_mp, current_thread_ptr);
         funding_pages.unique_seq_to_set();
         assert(bootstrap_pages.disjoint(funding_pages.to_set())) by { reveal(new_container_moved_pages); };
         vstd::set_lib::lemma_set_disjoint_lens(bootstrap_pages, funding_pages.to_set());
         vstd::set::lemma_set_insert_len(consumed_4k_pages, thread_page);
+        assert(funding_page_count < krnl.thr_mp.spec_index(current_thread_ptr).view().quota_4k - 8) by {
+            thread_perms_wf_at(krnl.thr_mp, current_thread_ptr);
+        };
         let ghost initial_2m_cache = krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view();
         assert(initial_2m_cache =~= set![container_page, pcid_allocator_page]) by { vstd::set::axiom_set_ext_equal(initial_2m_cache, set![container_page, pcid_allocator_page]); };
     }
-    consume_new_container_thread_staging(&mut krnl.thr_mp, current_thread_ptr, thread_page, funding_page_count, Ghost(bootstrap_pages.union(funding_pages.to_set())), Tracked(&*lctx), Tracked(current_thread_lock_perm));
+    thread_map_consume_new_container_staging(
+        &mut krnl.thr_mp, current_thread_ptr, thread_page, funding_page_count,
+        Ghost(bootstrap_pages.union(funding_pages.to_set())), Tracked(&*lctx), Tracked(current_thread_lock_perm),
+    );
     proof {
         assert forall|page_ptr: PagePtr|
             #![trigger funding_page_lock_perms.dom().contains(page_ptr)]

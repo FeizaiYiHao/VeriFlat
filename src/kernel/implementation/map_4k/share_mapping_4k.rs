@@ -456,19 +456,18 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
             mapped_4k_page_ref_count_lt_usize_max(krnl.pt_mp, krnl.pg_arr, page_index);
         };
     }
-    {
-        let page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
-        add_4k_mapping(page, target_pagetable, target_va);
-    }
+    page_array_add_4k_mapping(
+        &mut krnl.pg_arr, page_index, target_pagetable, target_va, Tracked(&*lctx), Tracked(&page_lock_perm),
+    );
     proof {
         assert(spec_index2va(target_indices) == target_va) by {
             spec_va_4k_index_roundtrip_at(target_va, target_indices.0, target_indices.1, target_indices.2, target_indices.3);
         };
     }
-    {
-        let target = krnl.pt_mp.borrow_mut_typed(target_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-        target.map_4k_page(target_indices.0,target_indices.1,target_indices.2,target_indices.3,target_l1_ptr,&source_entry,Tracked(&mut *lctx));
-    }
+    pagetable_map_insert_4k(
+        &mut krnl.pt_mp, target_pagetable, target_indices, target_l1_ptr, &source_entry,
+        Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm),
+    );
 
     proof {
         assert(krnl.subsystems_inv()) by {
@@ -484,8 +483,6 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
                 allocator_1g_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_1g_mp, krnl.allc_1g_mp);
             };
             assert(container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).pg_arr, krnl.pg_arr); };
-            assert(hugepage_2m_wf(krnl.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
-            assert(hugepage_1g_wf(krnl.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
             assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by {
                 assert({
                     let target_entry = krnl.pt_mp .spec_index(target_pagetable).view().mapping_4k().spec_index(target_va);

@@ -524,73 +524,58 @@ pub fn create_process_from_staged_pages(
             reveal(process_children_parent_wf);
             lemma_kernel_object_ptr_seq_len_bounded(&*krnl, parent_children);
         };
-        assert(parent_children.len() < usize::MAX);
+        assert(parent_children.len() < usize::MAX) by { assert(NUM_PAGES < usize::MAX) by (compute); };
         assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr)
             .view().process_is_unallocated(process_page_ptr)) by {
             reveal(process_pcid_allocator_wf);
         };
     }
     let ghost page_array_before_l4_retype = krnl.pg_arr;
-    let ghost old_l4_page_lock_id = krnl.pg_arr.lock_id_by_index(l4_page_index);
-    let l4_page_mut = krnl.pg_arr.borrow_mut_typed(l4_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(l4_page_lock_perm));
-    let Tracked(l4_page_perm) = retype_owned_4k_to_kernel_object(
-        l4_page_mut,
+    let Tracked(l4_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, l4_page_index,
         PageState::Allocated4k {
             state: Allocated4KPageState::PageTable {
                 pagetable_root: pagetable_page_ptr,
             },
         },
+        Tracked(&mut *lctx), Tracked(l4_page_lock_perm),
     );
     proof {
         page_pagetable_wf_preserved_for_nonmapped_page_change(
             krnl.pt_mp, krnl.pt_mp, page_array_before_l4_retype, krnl.pg_arr, l4_page_index,
         );
     }
-    proof { lctx.update_lock_id(KernelObjId::Page(l4_page_index), old_l4_page_lock_id, krnl.pg_arr.lock_id_by_index(l4_page_index)); }
-    proof {
-        assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); };
-    }
-    {
-        let staging_thread_mut = krnl.thr_mp.borrow_mut_typed(staging_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-        proof {
-            lemma_set_ext_equal_three_distinct_len(
-                staging_thread_mut.temp_alloc_cache_4k.view(), process_page_ptr, pagetable_page_ptr, l4_page_ptr,
-            );
-        }
-        staging_thread_mut.consume_staged_4k(l4_page_ptr);
-    }
+    assert(krnl.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view().len() == 3) by {
+        lemma_set_ext_equal_three_distinct_len(
+            krnl.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view(),
+            process_page_ptr, pagetable_page_ptr, l4_page_ptr,
+        );
+    };
+    thread_map_consume_staged_4k(
+        &mut krnl.thr_mp, staging_thread_ptr, l4_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm),
+    );
     let (l4_ptr, Tracked(mut l4_perm)) = page_perm_to_page_map(l4_page_ptr, Tracked(l4_page_perm));
     let default_pt = krnl.dflt_pt.borrow();
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
     proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { reveal(PageTable::kernel_entries_wf); }; }
     let pagetable_value = PageTable::<PT_TYPE>::new(Some(pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, process_page_ptr);
 
-    proof {
-        assert(typed_lock_map_contains_mode(
-            lctx.page_lock_map(),
-            pagetable_page_index,
-            TypedLockMode::Write,
-        ));
-    }
     let ghost page_array_before_pagetable_retype = krnl.pg_arr;
-    let ghost old_pagetable_page_lock_id = krnl.pg_arr.lock_id_by_index(pagetable_page_index);
-    let pagetable_page_mut = krnl.pg_arr.borrow_mut_typed(pagetable_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
-    let Tracked(pagetable_page_perm) = retype_owned_4k_to_kernel_object(
-        pagetable_page_mut,
+    let Tracked(pagetable_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, pagetable_page_index,
         PageState::Allocated4k {
             state: Allocated4KPageState::AsPageTableRoot,
         },
+        Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm),
     );
     proof {
         page_pagetable_wf_preserved_for_nonmapped_page_change(
             krnl.pt_mp, krnl.pt_mp, page_array_before_pagetable_retype, krnl.pg_arr, pagetable_page_index,
         );
     }
-    proof { lctx.update_lock_id(KernelObjId::Page(pagetable_page_index), old_pagetable_page_lock_id, krnl.pg_arr.lock_id_by_index(pagetable_page_index)); }
-    {
-        let staging_thread_mut = krnl.thr_mp.borrow_mut_typed(staging_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-        staging_thread_mut.consume_staged_4k(pagetable_page_ptr);
-    }
+    thread_map_consume_staged_4k(
+        &mut krnl.thr_mp, staging_thread_ptr, pagetable_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm),
+    );
     proof {
         assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
     }
@@ -605,92 +590,37 @@ pub fn create_process_from_staged_pages(
         assert(parent_ancestors.len() == parent_depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
         assert(ancestors.len() == process_rodata.view().depth) by { seq_push_lemma::<RwLockProcessPtr>(); };
     }
-    proof {
-        assert(typed_lock_map_contains_mode(
-            lctx.page_lock_map(),
-            process_page_index,
-            TypedLockMode::Write,
-        ));
-    }
     let ghost page_array_before_process_retype = krnl.pg_arr;
-    let ghost old_process_page_lock_id = krnl.pg_arr.lock_id_by_index(process_page_index);
-    let process_page_mut = krnl.pg_arr.borrow_mut_typed(process_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(process_page_lock_perm));
-    let Tracked(process_page_perm) = retype_owned_4k_to_kernel_object(
-        process_page_mut,
+    let Tracked(process_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, process_page_index,
         PageState::Allocated4k {
             state: Allocated4KPageState::AsProcess,
         },
+        Tracked(&mut *lctx), Tracked(process_page_lock_perm),
     );
     proof {
         page_pagetable_wf_preserved_for_nonmapped_page_change(
             krnl.pt_mp, krnl.pt_mp, page_array_before_process_retype, krnl.pg_arr, process_page_index,
         );
     }
-    proof { lctx.update_lock_id(KernelObjId::Page(process_page_index), old_process_page_lock_id, krnl.pg_arr.lock_id_by_index(process_page_index)); }
-    {
-        let staging_thread_mut = krnl.thr_mp.borrow_mut_typed(staging_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-        staging_thread_mut.consume_staged_4k(process_page_ptr);
-    }
+    thread_map_consume_staged_4k(
+        &mut krnl.thr_mp, staging_thread_ptr, process_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm),
+    );
     proof {
         assert(krnl.prc_mp.perms_wf()) by { reveal(process_perms_wf); };
     }
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_page_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
-    let ghost process_map_after_mint = krnl.prc_mp;
-    proof {
-        assert(krnl.prc_mp.typed_lock_map_aligned(
-            lctx.process_lock_map(),
-            lctx.thread_id(),
-        ));
-    }
-
-    let child_mut = krnl.prc_mp.borrow_mut_typed(process_page_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm));
-    let (child_node_addr, child_node_perm) = child_mut.parent_linkedlist_node.take();
-    proof {
-        assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
-        assert(krnl.prc_mp.spec_index(parent_ptr)
-            == process_map_after_mint.spec_index(parent_ptr));
-        assert(process_map_after_mint.spec_index(parent_ptr)
-            == old(krnl).prc_mp.spec_index(parent_ptr));
-        assert(krnl.prc_mp.typed_lock_map_aligned(
-            lctx.process_lock_map(),
-            lctx.thread_id(),
-        )) by {
-        };
-        assert(typed_lock_map_contains_mode(
-            lctx.process_lock_map(),
-            parent_ptr,
-            TypedLockMode::Write,
-        ));
-    }
-    let parent_mut = krnl.prc_mp.borrow_mut_typed(parent_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(parent_lock_perm));
-    parent_mut.add_child(process_page_ptr, child_node_addr, child_node_perm);
-    proof {
-        assert(process_perms_wf(krnl.prc_mp)) by {
-            reveal(process_perms_wf);
-            seq_push_unique_lemma::<RwLockProcessPtr>();
-        };
-        assert(krnl.prc_mp.typed_lock_map_aligned(
-            lctx.process_lock_map(),
-            lctx.thread_id(),
-        )) by {
-        };
-    }
-
-    proof {
-        assert(ancestors.to_set().subset_of(krnl.prc_mp.dom())) by { ancestors.to_set_ensures(); reveal(process_uppertree_seq_wf); };
-        process_insert_child_into_ancestor_subtree_sets(
-            &mut krnl.prc_mp, ancestors, process_page_ptr, lctx.process_lock_map(), lctx.thread_id(),
-        );
-    }
-    let ghost container_map_before_process_publish = krnl.ctn_mp;
-    proof {
-        assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); };
-        assert(krnl.pcid_allc_mp.perms_wf()) by { reveal(pcid_allocator_perms_wf); };
-    }
-    let container_mut = krnl.ctn_mp.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_lock_perm));
-    container_mut.add_owned_process(process_page_ptr);
-    let pcid_allocator_mut = krnl.pcid_allc_mp.borrow_mut_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(pcid_allocator_lock_perm));
-    pcid_allocator_mut.alloc(pcid, process_page_ptr);
+    process_map_link_new_child(
+        &mut krnl.prc_mp, parent_ptr, process_page_ptr, Ghost(ancestors), Tracked(&*lctx),
+        Tracked(parent_lock_perm), Tracked(&process_lock_perm),
+    );
+    container_map_add_owned_process(
+        &mut krnl.ctn_mp, container_ptr, process_page_ptr, Tracked(&*lctx), Tracked(container_lock_perm),
+    );
+    pcid_allocator_map_alloc(
+        &mut krnl.pcid_allc_mp, pcid_allocator_ptr, process_page_ptr, pcid,
+        Tracked(&*lctx), Tracked(pcid_allocator_lock_perm),
+    );
 
     proof {
         assert(create_process_from_staged_pages_kernel_state_framing(
