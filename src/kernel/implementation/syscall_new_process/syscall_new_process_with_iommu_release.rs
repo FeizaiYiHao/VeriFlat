@@ -18,9 +18,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
     requires
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Release,
-        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         page_ptr_valid(process_page_ptr),
         page_ptr_valid(pagetable_page_ptr),
         page_ptr_valid(l4_page_ptr),
@@ -113,13 +111,12 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
     ensures
         final(krnl).inv(),
-        kernel_k_to_kernel_u(*final(krnl))
-            == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_k_to_nonlock_kernel_u(*final(krnl))
+            == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).page_lock_map()
             == old(lctx).page_lock_map()
                 .remove(page_ptr2page_index(iommu_l4_page_ptr))
@@ -166,7 +163,6 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
             == old(krnl).pcid_allc_mp.dom(),
         final(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view()
             == old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view(),
-        final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
 {
     krnl.wunlock_page(page_ptr2page_index(iommu_l4_page_ptr), Tracked(&mut *lctx), Tracked(iommu_l4_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(iommu_table_page_ptr), Tracked(&mut *lctx), Tracked(iommu_table_page_lock_perm));

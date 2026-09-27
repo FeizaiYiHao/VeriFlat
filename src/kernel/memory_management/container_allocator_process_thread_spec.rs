@@ -121,6 +121,7 @@ verus! {
 
     // Proof dependencies (confirmed for thread-map preservation):
     // container_thread_wf.
+    // Global-pool page removal additionally needs container_allocator_wf.
     #[verifier::opaque]
     pub open spec fn container_process_allocator_quota_4k_wf(
             container_map: ContainerLockedMap,

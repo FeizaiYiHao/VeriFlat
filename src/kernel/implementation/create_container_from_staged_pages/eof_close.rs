@@ -55,15 +55,13 @@ pub(super) proof fn eof_subsystems_inv(
     ensures
         post.subsystems_inv(),
 {
-    assert(pre.subsystems_inv());
+    reveal(publish_staged_container_root_kernel_state_framing);
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(containers_inv(post.ctn_mp)) by {
-        assert(container_perms_wf(pre.ctn_mp));
         reveal(container_perms_wf);
     };
     assert(container_tree_fields_wf(post.ctn_mp)) by {
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
-        assert(container_perms_wf(pre.ctn_mp));
         container_perms_wf_at(pre.ctn_mp, parent_container_ptr);
         reveal(container_tree_fields_wf);
         assert(!pre.ctn_mp.spec_index(parent_container_ptr).view().children.view().contains(container_page)) by {
@@ -78,7 +76,7 @@ pub(super) proof fn eof_subsystems_inv(
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked);
+        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked);
     };
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
@@ -199,6 +197,5 @@ pub(super) proof fn eof_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(post.inv());
 }
 }

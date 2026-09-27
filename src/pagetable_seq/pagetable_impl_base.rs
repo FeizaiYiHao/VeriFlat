@@ -15,19 +15,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
         ensures
             self.spec_resolve_mapping_l4(target_l4i) == ret,
-            forall|l3i: L3Index|
-                #![trigger pei_valid(l3i)]
-                pei_valid(l3i)
-                ==> forall|l2i: L2Index|
-                    #![trigger pei_valid(l2i)]
-                    pei_valid(l2i)
-                ==> forall|l1i: L1Index|
+            forall|l3i: L3Index, l2i: L2Index, l1i: L1Index|
                 #![trigger spec_index2va((target_l4i, l3i, l2i, l1i))]
                 #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, l3i, l2i, l1i)]
-                pei_valid(l1i) && ret is None
+                pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && ret is None
                     ==> self.spec_resolve_mapping_4k_l1(target_l4i, l3i, l2i, l1i) is None
-                    && self.mapping_4k().dom().contains(spec_index2va((target_l4i, l3i, l2i, l1i)))
-                    == false,
+                    && self.mapping_4k().dom().contains(spec_index2va((target_l4i, l3i, l2i, l1i))) == false,
     {
         assert({
             &&& self.l4_table.view().dom().contains(self.cr3)
@@ -72,17 +65,12 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.spec_resolve_mapping_l4(target_l4i) =~= Some(*l4_entry),
         ensures
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= ret,
-            forall|l2i: L2Index|
-                #![trigger pei_valid(l2i)]
-                pei_valid(l2i)
-                ==> forall|l1i: L1Index|
+            forall|l2i: L2Index, l1i: L1Index|
                 #![trigger spec_index2va((target_l4i, target_l3i, l2i, l1i))]
                 #![trigger self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, l2i, l1i)]
-                pei_valid(l1i) && ret is None
+                pei_valid(l2i) && pei_valid(l1i) && ret is None
                     ==> self.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, l2i, l1i) is None
-                    && self.mapping_4k().dom().contains(
-                    spec_index2va((target_l4i, target_l3i, l2i, l1i)),
-                ) == false,
+                    && self.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, l2i, l1i))) == false,
     {
         assert({
             &&& self.l3_tables.view().dom().contains(l4_entry.addr)
@@ -346,9 +334,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -444,6 +430,9 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_map_perm.value().wf(),
             forall|i: usize|
                 #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                #![trigger page_map_perm.value().spec_index(i).perm.present]
+                #![trigger page_map_perm.value().spec_index(i).perm.ps]
+                #![trigger page_map_perm.value().spec_index(i).perm.kernel_present]
                 pei_valid(i) ==>
                 page_map_perm.value().spec_index(i).is_empty(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -451,9 +440,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -471,7 +458,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             final(self).kernel_entries =~= old(self).kernel_entries,
     {
-        assert(forall|i: usize| #![trigger page_map_perm.value().spec_index(i).is_empty()] #![trigger page_map_perm.value().spec_index(i).perm.present] #![trigger page_map_perm.value().spec_index(i).perm.ps] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty() && page_map_perm.value().spec_index(i).perm.present == false && page_map_perm.value().spec_index(i).perm.write == false && page_map_perm.value().spec_index(i).perm.execute_disable == false && page_map_perm.value().spec_index(i).perm.ps == false);
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps && old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.write && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.execute_disable) by {
             reveal(PageTable::wf_l4);
             reveal(PageTable::rwx_upper_level_entries);
@@ -562,15 +548,16 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             page_map_perm.value().wf(),
             forall|i: usize|
                 #![trigger page_map_perm.value().spec_index(i).is_empty()]
+                #![trigger page_map_perm.value().spec_index(i).perm.present]
+                #![trigger page_map_perm.value().spec_index(i).perm.ps]
+                #![trigger page_map_perm.value().spec_index(i).perm.kernel_present]
                 pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,
@@ -587,7 +574,6 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(self).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             final(self).kernel_entries =~= old(self).kernel_entries,
     {
-        assert(forall|i: usize| #![trigger page_map_perm.value().spec_index(i).is_empty()] #![trigger page_map_perm.value().spec_index(i).perm.present] #![trigger page_map_perm.value().spec_index(i).perm.ps] #![trigger page_map_perm.value().spec_index(i).perm.kernel_present] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty() && page_map_perm.value().spec_index(i).perm.present == false && page_map_perm.value().spec_index(i).perm.write == false && page_map_perm.value().spec_index(i).perm.execute_disable == false && page_map_perm.value().spec_index(i).perm.ps == false && page_map_perm.value().spec_index(i).perm.kernel_present == false);
         assert(old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.present && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.ps && old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.write && !old(self).spec_resolve_mapping_l4(target_l4i)->0.perm.execute_disable) by {
             reveal(PageTable::wf_l4);
             reveal(PageTable::rwx_upper_level_entries);
@@ -681,9 +667,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             final(self).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).page_closure() == old(self).page_closure(),

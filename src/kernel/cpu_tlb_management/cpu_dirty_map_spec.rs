@@ -87,7 +87,7 @@ verus! {
             && ((!needflush.spec_index(cpu_i, pcid).view().needflush && !tlb.spec_index((cpu_i, pcid)).is_empty()) || cpu_array.spec_index(cpu_i).view().view().view().current_pcid == pcid)
             ==>
             {
-                &&&  
+                &&&
                 process_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr)
                 &&& !process_map.spec_index(cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().process_ptr).view().zombie
                 &&&

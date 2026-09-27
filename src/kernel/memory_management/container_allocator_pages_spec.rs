@@ -348,6 +348,8 @@ verus! {
                     == allocator_4k_map.spec_index(alloc_ptr).owning_container
     }
 
+    // Proof dependencies (confirmed for global-pool page removal): allocator_perms_wf,
+    // allocator_free_page_ptrs_wf. Entry facts are exposed through container_allocator_free_4k_page_wf.
     #[verifier::opaque]
     pub open spec fn container_allocator_global_free_4k_page_wf(
         allocator_4k_map: PageAllocatorUnLockedMap,
@@ -433,6 +435,7 @@ verus! {
             allocator_4k_map, page_array)
     }
 
+    // Proof dependency (confirmed for cache-page removal): allocator_perms_wf.
     #[verifier::opaque]
     pub open spec fn container_allocator_global_free_2m_page_wf(
         allocator_2m_map: PageAllocatorUnLockedMap,
@@ -478,6 +481,7 @@ verus! {
                     == allocator_2m_map.spec_index(alloc_ptr).owning_container
     }
 
+    // Proof dependency (confirmed for CPU-cache pop): allocator_perms_wf.
     #[verifier::opaque]
     pub open spec fn container_allocator_cpu_cache_free_2m_page_wf(
         allocator_2m_map: PageAllocatorUnLockedMap,

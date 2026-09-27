@@ -33,6 +33,8 @@ pub mod kernel;
 pub use kernel::kernel_k_define_spec::*;
 pub use kernel::kernel_u_define_spec::*;
 pub use kernel::kernel_total_define_spec::*;
+pub use kernel::kernel_step_wrappers::*;
+pub use kernel::kernel_step_spec::*;
 pub use kernel::held_objects_unchanged_spec::*;
 pub use kernel::process_management::*;
 pub use kernel::memory_management::*;
@@ -47,6 +49,7 @@ pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::lock_owned_2m_page_tails::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
+pub use kernel::implementation::transfer_staged_4k_page::*;
 
 verus! {
 global size_of usize == 8;

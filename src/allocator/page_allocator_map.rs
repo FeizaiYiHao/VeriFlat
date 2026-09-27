@@ -654,6 +654,7 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(ret.0),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(ret.0) == ret.1.view().value().view(),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
+            !final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(ret.1.view().value().view()),
             final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().map().remove(ret.0),
             final(self).spec_index(alloc_ptr).total_free_pages.view() == old(self).spec_index(alloc_ptr).total_free_pages.view() - 1,
             final(self).spec_index(alloc_ptr).cpu_caches.entries_unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
@@ -865,9 +866,7 @@ impl UnLockedMap<usize, PageAllocator> {
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).quota.locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set().contains((
-                old(self).spec_index(alloc_ptr).quota.lock_id(),
-                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr))),
+            old(lctx).lock_entry_contains(old(self).spec_index(alloc_ptr).quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -942,9 +941,7 @@ impl UnLockedMap<usize, PageAllocator> {
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set().contains((
-                old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(),
-                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id))),
+            old(lctx).lock_entry_contains(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_id(), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -1015,9 +1012,7 @@ impl UnLockedMap<usize, PageAllocator> {
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set().contains((
-                old(self).spec_index(alloc_ptr).global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr))),
+            old(lctx).lock_entry_contains(old(self).spec_index(alloc_ptr).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),

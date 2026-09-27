@@ -120,7 +120,7 @@ verus! {
         }
         pub open spec fn is_mapped(&self) -> bool {
             match self.state{
-                PageState::Mapped4k 
+                PageState::Mapped4k
                 |PageState::Mapped2m
                 |PageState::Mapped1g => true,
                 _ => false,
@@ -136,7 +136,7 @@ verus! {
         }
         pub open spec fn is_allocated(&self) -> bool {
             match self.state{
-                PageState::Allocated4k{..} 
+                PageState::Allocated4k{..}
                 |PageState::Allocated2m{..} => true,
                 _ => false,
             }
@@ -150,7 +150,7 @@ verus! {
         }
         pub open spec fn is_merged(&self) -> bool {
             match self.state{
-                PageState::Merged2m 
+                PageState::Merged2m
                 |PageState::Merged1g => true,
                 _ => false,
             }
@@ -223,12 +223,12 @@ verus! {
         }
     }
 
-    
+
     impl LockOwnerIdTrait for Page{
         open spec fn container_depth(&self) -> LockOwnerId {
             LockOwnerId::None
         }
-    
+
         open spec fn process_depth(&self) -> LockOwnerId {
             LockOwnerId::None
         }

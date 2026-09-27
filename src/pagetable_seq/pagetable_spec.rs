@@ -50,21 +50,24 @@ pub struct PageTable<const TABLE_TYPE:PTType> {
     pub proc_ptr: RwLockProcessPtr
 }
 
-/// The part of a page table observable through a process address space.
+/// The page-table mappings and outer lock mode visible through a process.
 ///
 /// Directory topology, backing page-map pages, CR3/PCID bookkeeping, and the
 /// owning process pointer are kernel implementation state.  Publishing or
 /// removing an abstract mapping changes this view; preparing an empty walk
 /// does not.
 pub ghost struct PageTableU {
+    pub lock_state: LockStateU,
     pub mapping_4k: Map<VAddr, MapEntry>,
     pub mapping_2m: Map<VAddr, MapEntry>,
     pub mapping_1g: Map<VAddr, MapEntry>,
 }
 
 impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
-    pub open spec fn user_view(&self) -> PageTableU {
+    /// The owner of the outer RwLock supplies its mode; the payload has no lock state.
+    pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
+            lock_state,
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
@@ -215,7 +218,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     pub open   spec fn disjoint_l4(&self) -> bool {
         &&&
         forall|i: L4Index, j: L4Index|
-            #![trigger pei_valid(i), pei_valid(j)]
+            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i), self.l4_table.view().spec_index(self.cr3).value().spec_index(j)]
             i != j && self.kernel_l4_end <= i && pei_valid(i) && self.kernel_l4_end <= j && pei_valid(j)
             && self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present
             && self.l4_table.view().spec_index(self.cr3).value().spec_index(j).perm.present
@@ -238,7 +241,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p)
             ==> forall|i: L3Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps
                 && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present
@@ -249,7 +252,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p)
             ==> forall|i: L3Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present
                 && !self.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps
@@ -264,7 +267,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             self.l3_tables.view().dom().contains(pi)
             && self.l3_tables.view().dom().contains(pj)
             ==> forall|l3i: L3Index, l3j: L3Index|
-                #![trigger pei_valid(l3i), pei_valid(l3j)]
+                #![trigger self.l3_tables.view().spec_index(pi).value().spec_index(l3i), self.l3_tables.view().spec_index(pj).value().spec_index(l3j)]
                 pei_valid(l3i) && pei_valid(l3j)
                 && self.l3_tables.view().spec_index(pi).value().spec_index(l3i).perm.present
                 && !self.l3_tables.view().spec_index(pi).value().spec_index(l3i).perm.ps
@@ -293,7 +296,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l2_tables.view().dom().contains(p)]
             self.l2_tables.view().dom().contains(p)
             ==> forall|i: L2Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l2_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
             && self.l2_tables.view().spec_index(p).value().spec_index(i).perm.ps
             && self.l2_tables.view().spec_index(p).value().spec_index(i).perm.present
@@ -304,7 +307,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l2_tables.view().dom().contains(p)]
             self.l2_tables.view().dom().contains(p)
             ==> forall|i: L2Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l2_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l2_tables.view().spec_index(p).value().spec_index(i).perm.present
                 && self.l2_tables.view().spec_index(p).value().spec_index(i).perm.ps == false
@@ -359,7 +362,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l1_tables.view().dom().contains(p)]
             self.l1_tables.view().dom().contains(p)
             ==> forall|i: L1Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l1_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l1_tables.view().spec_index(p).value().spec_index(i).perm.present
                 ==>
@@ -371,17 +374,14 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open   spec fn user_only(&self) -> bool {
         &&& forall|i: L4Index|
-            #![trigger
-                // self.l4_table.view().spec_index(self.cr3).value().spec_index(i),
-                pei_valid(i)
-            ]
+            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i)]
             self.kernel_l4_end <= i && pei_valid(i) && self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present
                 ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.user
         &&& forall|p: PageMapPtr|
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p)
             ==> forall|i: L3Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present
                 ==> self.l3_tables.view().spec_index(p).value().spec_index(i).perm.user
@@ -389,7 +389,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l2_tables.view().dom().contains(p)]
             self.l2_tables.view().dom().contains(p)
             ==> forall|i: L2Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l2_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l2_tables.view().spec_index(p).value().spec_index(i).perm.present
                 ==> self.l2_tables.view().spec_index(p).value().spec_index(i).perm.user
@@ -397,7 +397,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l1_tables.view().dom().contains(p)]
             self.l1_tables.view().dom().contains(p)
             ==> forall|i: L1Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l1_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l1_tables.view().spec_index(p).value().spec_index(i).perm.present
                 ==> self.l1_tables.view().spec_index(p).value().spec_index(i).perm.user
@@ -406,10 +406,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open   spec fn rwx_upper_level_entries(&self) -> bool {
         &&& forall|i: L4Index|
-            #![trigger
-                // self.l4_table.view().spec_index(self.cr3).value().spec_index(i)
-                 pei_valid(i)
-                ]
+            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i)]
             self.kernel_l4_end <= i && pei_valid(i) && self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present
                 ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.write
                 && !self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.execute_disable
@@ -417,7 +414,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l3_tables.view().dom().contains(p)]
             self.l3_tables.view().dom().contains(p)
             ==> forall|i: L3Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l3_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l3_tables.view().spec_index(p).value().spec_index(i).perm.present
                 && !self.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps
@@ -427,7 +424,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             #![trigger self.l2_tables.view().dom().contains(p)]
             self.l2_tables.view().dom().contains(p)
             ==> forall|i: L2Index|
-                #![trigger pei_valid(i)]
+                #![trigger self.l2_tables.view().spec_index(p).value().spec_index(i)]
                 pei_valid(i)
                 && self.l2_tables.view().spec_index(p).value().spec_index(i).perm.present
                 && !self.l2_tables.view().spec_index(p).value().spec_index(i).perm.ps

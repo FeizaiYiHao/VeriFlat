@@ -229,7 +229,7 @@ impl ToLockId for RwLockPageTableRoot{
 //
 // Ghost identifier of a lockable kernel object. Each variant carries enough
 // information to uniquely locate the object in the kernel. It is paired with
-// the dynamic `LockId` in `LocalContext::lock_id_set`.
+// the dynamic `LockId` in the `LocalContext` typed held-lock maps.
 //
 // The user passes a `Ghost<KernelObjId>` to every wlock-style call alongside
 // the `Ghost<LockId>`. The lock primitive does NOT verify the user-supplied
@@ -255,10 +255,5 @@ pub ghost enum KernelObjId {
     AllocatorGlobalPool(PageSize, RwLockPageAllocatorPtr),
 }
 
-/// One lock currently held by a thread, paired with the unique logical kernel
-/// object on which it was acquired.  Keeping the object identity alongside the
-/// dynamic ordering id prevents the LocalContext ledger from losing object
-/// identity when lock ids are copied or change during a Release section.
-pub type HeldLock = (LockId, KernelObjId);
 // -------------------- End of kernel obj id ------------------
 }

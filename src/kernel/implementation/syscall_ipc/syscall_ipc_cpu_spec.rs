@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 #[verifier::opaque]
 /// Dequeues and schedules the endpoint waiter and, on success, moves the Off
-/// CPU between the source and target CPU sets. PCID state is framed separately.
+/// CPU between the source and target CPU sets, preserving PCID and published state.
 pub open spec fn ipc_cpu_rendezvous_transition(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
@@ -45,6 +45,8 @@ pub open spec fn ipc_cpu_rendezvous_transition(
     &&& post.pg_arr == pre.pg_arr
     &&& post.ctn_mp == pre.ctn_mp
     &&& post.prc_mp == pre.prc_mp
+    &&& post.pcid_needflush == pre.pcid_needflush
+    &&& post.cpu_published == pre.cpu_published
     &&& post.pcid_allc_mp == pre.pcid_allc_mp
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
@@ -103,11 +105,14 @@ pub open spec fn ipc_cpu_rendezvous_transition(
     &&& forall|key: RwLockThreadPtr|
         #![trigger pre.thr_mp.spec_index(key)]
         #![trigger post.thr_mp.spec_index(key)]
+        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
+        #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
         pre.thr_mp.dom().contains(key) ==> {
             let before = pre.thr_mp.spec_index(key);
             let after = post.thr_mp.spec_index(key);
             &&& post.thr_mp.view().spec_index(key).is_init() == pre.thr_mp.view().spec_index(key).is_init()
             &&& post.thr_mp.view().spec_index(key).addr() == pre.thr_mp.view().spec_index(key).addr()
+            &&& after.view().temp_alloc_cache_2m == before.view().temp_alloc_cache_2m
             &&& !(key == peer_thread_ptr) ==> after == before
         }
     &&& {

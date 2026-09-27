@@ -4,6 +4,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+    // Proof dependencies (confirmed for descriptor updates): thread_perms_wf.
     #[verifier::opaque]
     pub open spec fn thread_endpoint_ref_counter_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool
     {

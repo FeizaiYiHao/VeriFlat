@@ -37,10 +37,10 @@ verus! {
                 page_array.spec_index(p_i).view().view().state is Free2m
                 |||
                 page_array.spec_index(p_i).view().view().state is Owned2m
-                ||| 
-                page_array.spec_index(p_i).view().view().state is Allocated2m 
                 |||
-                page_array.spec_index(p_i).view().view().state is Mapped2m 
+                page_array.spec_index(p_i).view().view().state is Allocated2m
+                |||
+                page_array.spec_index(p_i).view().view().state is Mapped2m
             }
             ==>
             page_index_2m_valid(p_i)
@@ -60,13 +60,13 @@ verus! {
             && index_valid(NUM_PAGES, p_j)
             && {
                 |||
-                page_array.spec_index(p_i).view().view().state is Free2m 
+                page_array.spec_index(p_i).view().view().state is Free2m
                 |||
                 page_array.spec_index(p_i).view().view().state is Owned2m
-                ||| 
-                page_array.spec_index(p_i).view().view().state is Allocated2m 
                 |||
-                page_array.spec_index(p_i).view().view().state is Mapped2m 
+                page_array.spec_index(p_i).view().view().state is Allocated2m
+                |||
+                page_array.spec_index(p_i).view().view().state is Mapped2m
             }
             &&
             spec_page_index_merge_2m_valid(p_i, p_j)
@@ -89,13 +89,13 @@ verus! {
             ==>
             {
                 |||
-                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Free2m 
+                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Free2m
                 |||
                 page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Owned2m
                 |||
-                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Allocated2m 
-                ||| 
-                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Mapped2m 
+                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Allocated2m
+                |||
+                page_array.spec_index(spec_page_index_truncate_2m(p_i)).view().view().state is Mapped2m
             }
     }
 
@@ -117,7 +117,7 @@ verus! {
             && {
                 page_array.spec_index(p_i).view().view().state is Free1g
                 ||
-                page_array.spec_index(p_i).view().view().state is Mapped1g 
+                page_array.spec_index(p_i).view().view().state is Mapped1g
             }
             ==>
             page_index_1g_valid(p_i)
@@ -134,9 +134,9 @@ verus! {
             && index_valid(NUM_PAGES, p_j)
             && {
                 |||
-                page_array.spec_index(p_i).view().view().state is Free1g 
+                page_array.spec_index(p_i).view().view().state is Free1g
                 |||
-                page_array.spec_index(p_i).view().view().state is Mapped1g 
+                page_array.spec_index(p_i).view().view().state is Mapped1g
             }
             &&
             spec_page_index_merge_1g_valid(p_i, p_j)
@@ -159,9 +159,9 @@ verus! {
             ==>
             {
                 |||
-                page_array.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Free1g 
-                ||| 
-                page_array.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Mapped1g 
+                page_array.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Free1g
+                |||
+                page_array.spec_index(spec_page_index_truncate_1g(p_i)).view().view().state is Mapped1g
             }
     }
 

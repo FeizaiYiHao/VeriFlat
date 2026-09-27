@@ -9,7 +9,7 @@ verus! {
         Map::new(
             pagetable_map.dom(),
             |ptr: RwLockPageTableRoot|
-                pagetable_map.spec_index(ptr).view().user_view(),
+                pagetable_map.spec_index(ptr).view().user_view(pagetable_map.spec_index(ptr).lock_state_u()),
         )
     }
 
@@ -19,20 +19,52 @@ verus! {
         Map::new(
             iommu_table_map.dom(),
             |ptr: RwLockPageTableRoot|
-                iommu_table_map.spec_index(ptr).view().user_view(),
+                iommu_table_map.spec_index(ptr).view().user_view(iommu_table_map.spec_index(ptr).lock_state_u()),
         )
     }
 
-    /// User-level projection of the kernel state.
-    ///
-    /// This is a sound capture of the kernel user-level view because
-    /// `LocalContext` does not provide any interface that allows
-    /// Lock → Operate → Unlock → Lock on user-visible objects within a
-    /// single syscall. Therefore, all operations on the user view can
-    /// be seen as atomic from the syscall's perspective.
+    /// Kernel projection sampled at atomic-section boundaries. Object lock modes
+    /// are visible; ownership tokens, reader counts, and allocator internals are not.
     pub ghost struct KernelU{
         pub cpu_array: Seq<CpuU>,
+        pub container_map: Map<RwLockContainerPtr, ContainerU>,
         pub process_map: Map<RwLockProcessPtr, ProcessU>,
+        pub thread_map: Map<RwLockThreadPtr, ThreadU>,
+        pub endpoint_map: Map<RwLockEndpointPtr, EndpointU>,
+        pub iommu_root_table: IommuRootTableU,
+        pub cpu_tlb: Map<(CpuId, Pcid), SingleTLB>,
+        pub iommu_tlb: Map<VtdDomainId, SingleIotlb>,
+    }
+
+    /// Business-field projection used only to classify steps and state business contracts.
+    /// Stored snapshots and step recording always use the complete `KernelU`.
+    #[verifier::opaque]
+    pub open spec fn kernel_u_nonlock_fields(u: KernelU) -> KernelU {
+        KernelU {
+            cpu_array: u.cpu_array.map_values(|c: CpuU| CpuU { lock_state: LockStateU::Unlocked, ..c }),
+            container_map: Map::new(u.container_map.dom(), |k: RwLockContainerPtr|
+                ContainerU { lock_state: LockStateU::Unlocked, ..u.container_map.spec_index(k) }),
+            process_map: Map::new(u.process_map.dom(), |k: RwLockProcessPtr| {
+                let p = u.process_map.spec_index(k);
+                ProcessU {
+                    lock_state: LockStateU::Unlocked,
+                    pagetable: match p.pagetable {
+                        Some(t) => Some(PageTableU { lock_state: LockStateU::Unlocked, ..t }),
+                        None => None,
+                    },
+                    iommu_table: match p.iommu_table {
+                        Some(t) => Some(PageTableU { lock_state: LockStateU::Unlocked, ..t }),
+                        None => None,
+                    },
+                    ..p
+                }
+            }),
+            thread_map: Map::new(u.thread_map.dom(), |k: RwLockThreadPtr|
+                ThreadU { lock_state: LockStateU::Unlocked, ..u.thread_map.spec_index(k) }),
+            endpoint_map: Map::new(u.endpoint_map.dom(), |k: RwLockEndpointPtr|
+                EndpointU { lock_state: LockStateU::Unlocked, ..u.endpoint_map.spec_index(k) }),
+            ..u
+        }
     }
 
     /// Project a `KernelK` into its user-visible `KernelU`. This is the
@@ -40,17 +72,57 @@ verus! {
     /// compares this projection with the preceding snapshot; only a changed
     /// projection is recorded as a user-visible step.
     #[verifier::opaque]
-    pub open spec fn kernel_k_to_kernel_u(krnl: KernelK) -> KernelU {
+    pub open spec fn kernel_k_to_kernel_u(krnl: KernelK) -> KernelU { kernel_k_user_projection(krnl, true) }
+
+    /// Direct form of `kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl))`.
+    #[verifier::opaque]
+    pub open spec fn kernel_k_to_nonlock_kernel_u(krnl: KernelK) -> KernelU { kernel_k_user_projection(krnl, false) }
+
+    pub open spec fn kernel_k_user_projection(krnl: KernelK, include_lock_state: bool) -> KernelU {
         KernelU {
+            iommu_root_table: krnl.irt.user_view(),
+            cpu_tlb: krnl.cpu_tlb.view(),
+            iommu_tlb: krnl.iommu_tlb.view(),
+            endpoint_map: Map::new(krnl.ep_mp.dom(), |ptr: RwLockEndpointPtr| {
+                let e = krnl.ep_mp.spec_index(ptr);
+                EndpointU {
+                    lock_state: if include_lock_state { e.lock_state_u() } else { LockStateU::Unlocked },
+                    queue: e.view().queue.view(), queue_state: e.view().queue_state,
+                    owning_threads: e.view().owning_threads.view(), owning_container: e.view().owning_container,
+                    killed: e.being_killed(),
+                }
+            }),
             cpu_array: Seq::new(
                 NUM_CPUS as nat,
                 |i: int| {
                     let c = krnl.cpu_arr.spec_index(i as usize).value.view().view();
                     CpuU {
+                        lock_state: if include_lock_state { krnl.cpu_arr.spec_index(i as usize).value.lock_state_u() } else { LockStateU::Unlocked },
                         owning_container: c.owning_container,
                         state: c.state,
                         current_process: c.current_process,
                         current_thread: c.current_thread,
+                    }
+                },
+            ),
+            container_map: Map::new(
+                krnl.ctn_mp.dom(),
+                |ptr: RwLockContainerPtr| {
+                    let c = krnl.ctn_mp.spec_index(ptr).view();
+                    let c_ghost = krnl.ctn_mp.spec_index(ptr).view_ghost();
+                    let c_ro = krnl.ctn_mp.spec_index(ptr).view_rodata().view();
+                    ContainerU {
+                        lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
+                        children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
+                        root_process: c.root_process, owned_processes: c.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
+                        owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
+                        parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
+                        scheduler: krnl.sched_mp.spec_index(c_ro.scheduler).view().queue.view(),
+                        free_pcids: PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(c_ro.pcid_allocator).view().ref_counters.view()),
+                        quota_4k: krnl.allc_4k_mp.spec_index(c_ro.allocator_ptr_4k).quota.view().view(),
+                        quota_2m: krnl.allc_2m_mp.spec_index(c_ro.allocator_ptr_2m).quota.view().view(),
+                        quota_1g: krnl.allc_1g_mp.spec_index(c_ro.allocator_ptr_1g).quota.view().view(),
+                        killed: krnl.ctn_mp.spec_index(ptr).being_killed(),
                     }
                 },
             ),
@@ -61,17 +133,20 @@ verus! {
                     let p_ghost = krnl.prc_mp.spec_index(ptr).view_ghost();
                     let p_ro = krnl.prc_mp.spec_index(ptr).view_rodata().view();
                     ProcessU {
+                        lock_state: if include_lock_state { krnl.prc_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
                         zombie: p.zombie,
                         pagetable: if p.zombie { None } else {
-                            Some(pagetable_map_user_view(krnl.pt_mp).spec_index(p.pagetable))
+                            let t = pagetable_map_user_view(krnl.pt_mp).spec_index(p.pagetable);
+                            Some(if include_lock_state { t } else { PageTableU { lock_state: LockStateU::Unlocked, ..t } })
                         },
                         iommu_table: match (p.zombie, p.iommu_table) {
-                            (false, Some(iommu_table)) => Some(
-                                iommu_table_map_user_view(krnl.it_mp)
-                                    .spec_index(iommu_table),
-                            ),
+                            (false, Some(iommu_table)) => {
+                                let t = iommu_table_map_user_view(krnl.it_mp).spec_index(iommu_table);
+                                Some(if include_lock_state { t } else { PageTableU { lock_state: LockStateU::Unlocked, ..t } })
+                            },
                             _ => None,
                         },
+                        owned_pci_functions: p.owned_pci_functions.view(),
                         quota_4k: p.quota_4k,
                         quota_2m: p.quota_2m,
                         quota_1g: p.quota_1g,
@@ -85,43 +160,51 @@ verus! {
                     }
                 },
             ),
+            thread_map: Map::new(
+                krnl.thr_mp.dom(),
+                |ptr: RwLockThreadPtr| {
+                    let t = krnl.thr_mp.spec_index(ptr).view();
+                    ThreadU {
+                        lock_state: if include_lock_state { krnl.thr_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
+                        state: t.state,
+                        caller: t.caller,
+                        callee: t.callee,
+                        owning_container: t.owning_container,
+                        owning_proc: t.owning_proc,
+                        quota_4k: t.quota_4k,
+                        quota_2m: t.quota_2m,
+                        quota_1g: t.quota_1g,
+                        endpoint_descriptors: t.endpoint_descriptors.view(),
+                        blocking_endpoint_ptr: t.blocking_endpoint_ptr,
+                        ipc_payload: t.ipc_payload,
+                        error_code: t.error_code,
+                        trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None },
+                        syscall_progress: t.syscall_progress.view(),
+                        killed: krnl.thr_mp.spec_index(ptr).being_killed(),
+                    }
+                },
+            ),
         }
     }
 
-    /// Framing lemma: `kernel_k_to_kernel_u` reads only a handful of per-element
-    /// projections, NOT whole fields. So the user-view projections of two
-    /// `KernelK`s are equal whenever they agree on exactly those projections:
-    ///   - per cpu slot, the payload `value.view()`;
-    ///   - per process, `view()` / `view_rodata()` / `view_ghost()` /
-    ///     `being_killed()`, plus the process domain;
-    ///   - per CPU/IOMMU pagetable entry, `view().user_view()`; directory
-    ///     topology and lock state are irrelevant.
-    /// Stated per-element (not as `process_map == ..` / `pagetable_map == ..`)
-    /// so a caller that moved lock state on a held pagetable / process — which
-    /// leaves the WHOLE map unequal but every `.view()` intact — can still use
-    /// it. Mirror of `container_no_change_to_tree_fields_imply_wf`.
-    pub proof fn kernel_no_change_to_user_view_fields_imply_kernel_u_eq(pre: &KernelK, post: &KernelK)
+    /// Equal per-element business fields imply equal nonlock projections.
+    /// Complete U equality additionally requires equal observable lock modes.
+    pub proof fn kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(pre: &KernelK, post: &KernelK)
         requires
+            kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
+            post.irt.owners() == pre.irt.owners(),
+            post.irt.iommu_roots() == pre.irt.iommu_roots(),
+            post.cpu_tlb.view() == pre.cpu_tlb.view(),
+            post.iommu_tlb.view() == pre.iommu_tlb.view(),
+            kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
             // This connects each process's projected pagetable pointer to the
             // domain on which the per-entry framing premise below applies.
             // Domain equality alone does not constrain `Map::spec_index` at a
             // process-referenced key unless that key is known to be present.
             process_pagetable_match(pre.prc_mp, pre.pt_mp),
             process_iommu_table_match(pre.prc_mp, pre.it_mp),
-            // pagetable_map: only the abstract mapping projection is read.
-            post.pt_mp.dom() =~= pre.pt_mp.dom(),
-            forall|pt: RwLockPageTableRoot|
-                #![trigger post.pt_mp.spec_index(pt).view().user_view()]
-                pre.pt_mp.dom().contains(pt) ==>
-                    post.pt_mp.spec_index(pt).view().user_view()
-                        == pre.pt_mp.spec_index(pt).view().user_view(),
-            post.it_mp.dom() =~= pre.it_mp.dom(),
-            forall|pt: RwLockPageTableRoot|
-                #![trigger post.it_mp.spec_index(pt).view().user_view()]
-                pre.it_mp.dom().contains(pt) ==>
-                    post.it_mp.spec_index(pt).view().user_view()
-                        == pre.it_mp.spec_index(pt).view().user_view(),
-            post.irt == pre.irt,
+            kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
+            kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
             // process_map: same domain, and per process only the fields
             // `ProcessU` projects are read — quota/children fields off `view()`,
             // tree closure fields off `view_ghost()`, `parent`/`depth` off
@@ -141,8 +224,28 @@ verus! {
                     && post.prc_mp.spec_index(ptr).view().owned_threads.view() == pre.prc_mp.spec_index(ptr).view().owned_threads.view()
                     && post.prc_mp.spec_index(ptr).view().pagetable == pre.prc_mp.spec_index(ptr).view().pagetable
                     && post.prc_mp.spec_index(ptr).view().iommu_table == pre.prc_mp.spec_index(ptr).view().iommu_table
+                    && post.prc_mp.spec_index(ptr).view().owned_pci_functions.view() == pre.prc_mp.spec_index(ptr).view().owned_pci_functions.view()
                     && post.prc_mp.spec_index(ptr).view_rodata() == pre.prc_mp.spec_index(ptr).view_rodata()
                     && post.prc_mp.spec_index(ptr).being_killed() == pre.prc_mp.spec_index(ptr).being_killed(),
+            post.thr_mp.dom() =~= pre.thr_mp.dom(),
+            forall|ptr: RwLockThreadPtr|
+                #![trigger post.thr_mp.spec_index(ptr)]
+                pre.thr_mp.dom().contains(ptr) ==>
+                    post.thr_mp.spec_index(ptr).view().state == pre.thr_mp.spec_index(ptr).view().state
+                    && post.thr_mp.spec_index(ptr).view().caller == pre.thr_mp.spec_index(ptr).view().caller
+                    && post.thr_mp.spec_index(ptr).view().callee == pre.thr_mp.spec_index(ptr).view().callee
+                    && post.thr_mp.spec_index(ptr).view().owning_container == pre.thr_mp.spec_index(ptr).view().owning_container
+                    && post.thr_mp.spec_index(ptr).view().owning_proc == pre.thr_mp.spec_index(ptr).view().owning_proc
+                    && post.thr_mp.spec_index(ptr).view().quota_4k == pre.thr_mp.spec_index(ptr).view().quota_4k
+                    && post.thr_mp.spec_index(ptr).view().quota_2m == pre.thr_mp.spec_index(ptr).view().quota_2m
+                    && post.thr_mp.spec_index(ptr).view().quota_1g == pre.thr_mp.spec_index(ptr).view().quota_1g
+                    && post.thr_mp.spec_index(ptr).view().endpoint_descriptors.view() == pre.thr_mp.spec_index(ptr).view().endpoint_descriptors.view()
+                    && post.thr_mp.spec_index(ptr).view().blocking_endpoint_ptr == pre.thr_mp.spec_index(ptr).view().blocking_endpoint_ptr
+                    && post.thr_mp.spec_index(ptr).view().ipc_payload == pre.thr_mp.spec_index(ptr).view().ipc_payload
+                    && post.thr_mp.spec_index(ptr).view().error_code == pre.thr_mp.spec_index(ptr).view().error_code
+                    && post.thr_mp.spec_index(ptr).view().trap_frame == pre.thr_mp.spec_index(ptr).view().trap_frame
+                    && post.thr_mp.spec_index(ptr).view().syscall_progress == pre.thr_mp.spec_index(ptr).view().syscall_progress
+                    && post.thr_mp.spec_index(ptr).being_killed() == pre.thr_mp.spec_index(ptr).being_killed(),
             // cpu_array: per-slot payload `view()`.
             forall|i: usize|
                 #![trigger post.cpu_arr.spec_index(i).value.view()]
@@ -150,15 +253,22 @@ verus! {
                     post.cpu_arr.spec_index(i).value.view()
                         == pre.cpu_arr.spec_index(i).value.view(),
         ensures
-            kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post),
+            kernel_k_to_nonlock_kernel_u(*pre) == kernel_k_to_nonlock_kernel_u(*post),
     {
-        reveal(kernel_k_to_kernel_u);
-        let pre_u = kernel_k_to_kernel_u(*pre);
-        let post_u = kernel_k_to_kernel_u(*post);
+        reveal(kernel_k_to_nonlock_kernel_u);
+        reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+        reveal(kernel_endpoint_nonlock_fields_unchanged);
+        let pre_u = kernel_k_to_nonlock_kernel_u(*pre);
+        let post_u = kernel_k_to_nonlock_kernel_u(*post);
+        assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
         assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
+        assert_maps_equal!(post_u.container_map, pre_u.container_map, ptr => {});
         assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => {
             reveal(process_pagetable_match);
             reveal(process_iommu_table_match);
+            reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         });
+        assert_maps_equal!(post_u.thread_map, pre_u.thread_map, ptr => {});
+        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, ptr => {});
     }
 }

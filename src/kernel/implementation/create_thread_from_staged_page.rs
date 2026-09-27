@@ -47,7 +47,6 @@ pub fn create_thread_from_staged_page_merged(
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
@@ -61,6 +60,7 @@ pub fn create_thread_from_staged_page_merged(
         final(krnl).thr_mp.dom() =~= old(krnl).thr_mp.dom().insert(page_ptr),
         final(krnl).thr_mp.spec_index(page_ptr).view().free_quota_pending_clean(),
         final(krnl).thr_mp.spec_index(page_ptr).view().temp_alloc_clean(),
+        final(krnl).thr_mp.spec_index(page_ptr).view().syscall_progress.view() is None,
         final(krnl).thr_mp.spec_index(page_ptr).view().state is SCHEDULED,
         final(krnl).thr_mp.spec_index(page_ptr).view().trap_frame.is_some(),
         *final(krnl).thr_mp.spec_index(page_ptr).view().trap_frame.get_some_0() == *initial_regs,
@@ -87,6 +87,7 @@ pub fn create_thread_from_staged_page_merged(
             old(krnl).prc_mp.dom().contains(p) && p != process_ptr ==> final(krnl).prc_mp.spec_index(p).view().owned_threads == old(krnl).prc_mp.spec_index(p).view().owned_threads,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_clean(),
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().free_quota_pending_clean(),
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 1,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().state == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state,
         final(krnl).thr_mp.dom().contains(staging_thread_ptr),
@@ -94,7 +95,7 @@ pub fn create_thread_from_staged_page_merged(
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
         staging_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(staging_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.lock_id_by_key(staging_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(staging_thread_ptr),
-        kernel_u_new_thread_changed(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), process_ptr),
+        kernel_new_thread_fields(old(krnl), final(krnl), process_ptr, staging_thread_ptr, container_ptr, page_ptr, *initial_regs, None),
         process_lock_perm.lock_id() == final(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
         final(krnl).prc_mp.lock_id_by_key(process_ptr) == old(krnl).prc_mp.lock_id_by_key(process_ptr),
         final(krnl).sched_mp.dom().contains(scheduler_ptr),
@@ -126,7 +127,6 @@ pub fn create_thread_from_staged_page_merged(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         *final(krnl) == (KernelK {
@@ -138,6 +138,17 @@ pub fn create_thread_from_staged_page_merged(
             ..*old(krnl)
         }),
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
+        forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
+            old(krnl).ctn_mp.dom().contains(c) ==> {
+                &&& final(krnl).ctn_mp.spec_index(c).view() == old(krnl).ctn_mp.spec_index(c).view()
+                &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+                &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+                &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+                &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view()
+                    == if c == container_ptr { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(page_ptr) }
+                        else { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
+                &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
+            },
         final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
         final(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes == old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes,
         forall|c: RwLockContainerPtr|
@@ -155,10 +166,6 @@ pub fn create_thread_from_staged_page_merged(
         forall|c_ptr: RwLockContainerPtr|
             #![trigger final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq]
             old(krnl).ctn_mp.dom().contains(c_ptr) ==> final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set()
-            .remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))
-            .insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr))))
-            .insert((final(krnl).thr_mp.lock_id_by_key(page_ptr), KernelObjId::Thread(page_ptr))),
 {
     let ghost uppers = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     proof {
@@ -166,17 +173,9 @@ pub fn create_thread_from_staged_page_merged(
         container_perms_wf_at(krnl.ctn_mp, container_ptr);
         scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr);
         thread_perms_wf_at(krnl.thr_mp, staging_thread_ptr);
-        assert(krnl.sched_mp.spec_index(scheduler_ptr).view().owning_container == container_ptr) by {
-            reveal(container_scheduler_wf);
-        };
-        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
-            == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth) by {
-            reveal(container_process_wf);
-        };
-        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable
-            == krnl.prc_mp.spec_index(process_ptr).view().pagetable) by {
-            reveal(process_pagetable_match);
-        };
+        assert(krnl.sched_mp.spec_index(scheduler_ptr).view().owning_container == container_ptr) by { reveal(container_scheduler_wf); };
+        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth) by { reveal(container_process_wf); };
+        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == krnl.prc_mp.spec_index(process_ptr).view().pagetable) by { reveal(process_pagetable_match); };
         assert(!krnl.thr_mp.dom().contains(page_ptr)) by { reveal(thread_pages_wf); };
         assert(page_ptr != staging_thread_ptr) by { reveal(thread_pages_wf); };
         assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(container_ptr)) by {
@@ -233,15 +232,8 @@ pub fn create_thread_from_staged_page_merged(
         );
         let ghost old_owned_threads = old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view();
         let ghost new_owned_threads = krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view();
-        assert_seqs_equal!(
-            new_owned_threads.subrange(0, old_owned_threads.len() as int) == old_owned_threads,
-            i => { seq_subrange_split_lemma::<RwLockThreadPtr>(); }
-        );
-        assert(kernel_u_new_thread_changed(
-            kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), process_ptr,
-        )) by {
-            reveal(kernel_k_to_kernel_u);
-        };
+        assert_seqs_equal!(new_owned_threads.subrange(0, old_owned_threads.len() as int) == old_owned_threads,
+            i => { seq_subrange_split_lemma::<RwLockThreadPtr>(); });
         assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(krnl.memory_management_inv()) by {
             allocator_4k_pages_wf_preserved_for_page_state_eq(
@@ -340,7 +332,9 @@ pub fn create_thread_from_staged_page_merged(
             assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
         };
         assert(iommu_root_table_process_wf(&krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
-        assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+        assert(process_pci_function_ownership_wf(&krnl.irt, krnl.prc_mp)) by {
+            reveal(process_pci_function_ownership_wf); reveal(process_subsystem_create_scheduled_thread_transition_framing);
+        };
         assert(iommu_tlb_wf_spec(krnl.iommu_tlb, &krnl.irt, krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
         assert(cpu_dirty_map_wf(
             krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush,
@@ -351,31 +345,71 @@ pub fn create_thread_from_staged_page_merged(
         };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
     }
+    proof {
+        assert_seqs_equal!(
+            Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None::<RwLockEndpointPtr>)
+                == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { None } else { None }),
+            i => {}
+        );
+        assert(kernel_new_thread_fields(
+            old(krnl), krnl, process_ptr, staging_thread_ptr, container_ptr, page_ptr, *initial_regs, None,
+        )) by { reveal(kernel_new_thread_fields); reveal(container_scheduler_wf); };
+    }
     (page_ptr, Tracked(thread_perm))
 }
 
-pub open spec fn kernel_u_new_thread_changed(old_u: KernelU, new_u: KernelU, process_ptr: RwLockProcessPtr) -> bool {
+#[verifier::opaque]
+pub open spec fn kernel_u_new_thread_changed(
+    old_u: KernelU, new_u: KernelU, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
+    container_ptr: RwLockContainerPtr, new_thread_ptr: RwLockThreadPtr,
+    initial_regs: Registers, endpoint_ptr: Option<RwLockEndpointPtr>,
+) -> bool {
+    let old_staging = old_u.thread_map.spec_index(staging_thread_ptr);
+    let new_thread = new_u.thread_map.spec_index(new_thread_ptr);
+    &&& match endpoint_ptr {
+        Some(e) => old_u.endpoint_map.dom().contains(e) && new_u.endpoint_map == old_u.endpoint_map.insert(e, EndpointU {
+            owning_threads: old_u.endpoint_map.spec_index(e).owning_threads.insert((new_thread_ptr, 0usize)),
+            ..old_u.endpoint_map.spec_index(e)
+        }),
+        None => new_u.endpoint_map == old_u.endpoint_map,
+    }
+    &&& new_u.iommu_root_table == old_u.iommu_root_table
+    &&& new_u.cpu_tlb == old_u.cpu_tlb
+    &&& new_u.iommu_tlb == old_u.iommu_tlb
     &&& new_u.cpu_array == old_u.cpu_array
-    &&& new_u.process_map.dom() == old_u.process_map.dom()
+    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& new_u.container_map == old_u.container_map.insert(container_ptr, ContainerU {
+        owned_threads: old_u.container_map.spec_index(container_ptr).owned_threads.insert(new_thread_ptr),
+        scheduler: old_u.container_map.spec_index(container_ptr).scheduler.push(new_thread_ptr),
+        ..old_u.container_map.spec_index(container_ptr)
+    })
     &&& old_u.process_map.dom().contains(process_ptr)
-    &&& new_u.process_map.spec_index(process_ptr).quota_4k == old_u.process_map.spec_index(process_ptr).quota_4k
-    &&& new_u.process_map.spec_index(process_ptr).owned_threads.len() == old_u.process_map.spec_index(process_ptr).owned_threads.len() + 1
-    &&& new_u.process_map.spec_index(process_ptr).owned_threads.subrange(
-        0, old_u.process_map.spec_index(process_ptr).owned_threads.len() as int,
-    ) == old_u.process_map.spec_index(process_ptr).owned_threads
-    &&& new_u.process_map.spec_index(process_ptr).zombie == old_u.process_map.spec_index(process_ptr).zombie
-    &&& new_u.process_map.spec_index(process_ptr).pagetable == old_u.process_map.spec_index(process_ptr).pagetable
-    &&& new_u.process_map.spec_index(process_ptr).iommu_table == old_u.process_map.spec_index(process_ptr).iommu_table
-    &&& new_u.process_map.spec_index(process_ptr).quota_2m == old_u.process_map.spec_index(process_ptr).quota_2m
-    &&& new_u.process_map.spec_index(process_ptr).quota_1g == old_u.process_map.spec_index(process_ptr).quota_1g
-    &&& new_u.process_map.spec_index(process_ptr).parent == old_u.process_map.spec_index(process_ptr).parent
-    &&& new_u.process_map.spec_index(process_ptr).children == old_u.process_map.spec_index(process_ptr).children
-    &&& new_u.process_map.spec_index(process_ptr).depth == old_u.process_map.spec_index(process_ptr).depth
-    &&& new_u.process_map.spec_index(process_ptr).uppertree_seq == old_u.process_map.spec_index(process_ptr).uppertree_seq
-    &&& new_u.process_map.spec_index(process_ptr).subtree_set == old_u.process_map.spec_index(process_ptr).subtree_set
-    &&& new_u.process_map.spec_index(process_ptr).killed == old_u.process_map.spec_index(process_ptr).killed
-    &&& forall|p: RwLockProcessPtr|
-        #![trigger new_u.process_map.spec_index(p)]
-        old_u.process_map.dom().contains(p) && p != process_ptr ==> new_u.process_map.spec_index(p) == old_u.process_map.spec_index(p)
+    &&& old_u.thread_map.dom().contains(staging_thread_ptr)
+    &&& !old_u.thread_map.dom().contains(new_thread_ptr)
+    &&& old_staging.quota_4k > 0
+    &&& new_thread == (ThreadU {
+        lock_state: LockStateU::Unlocked,
+        state: ThreadState::SCHEDULED,
+        caller: None,
+        callee: None,
+        owning_container: container_ptr,
+        owning_proc: process_ptr,
+        quota_4k: 0,
+        quota_2m: 0,
+        quota_1g: 0,
+        endpoint_descriptors: Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint_ptr } else { None }),
+        blocking_endpoint_ptr: None,
+        ipc_payload: IPCPayLoad::Empty,
+        error_code: None,
+        trap_frame: Some(initial_regs),
+        syscall_progress: None,
+        killed: false,
+    })
+    &&& new_u.thread_map == old_u.thread_map.insert(staging_thread_ptr, ThreadU {
+        quota_4k: (old_staging.quota_4k as int - 1) as usize, ..old_staging
+    }).insert(new_thread_ptr, new_thread)
+    &&& new_u.process_map == old_u.process_map.insert(process_ptr, ProcessU {
+        owned_threads: old_u.process_map.spec_index(process_ptr).owned_threads.push(new_thread_ptr), ..old_u.process_map.spec_index(process_ptr)
+    })
 }
 }

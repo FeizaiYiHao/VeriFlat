@@ -1,7 +1,16 @@
 use vstd::prelude::*;
+use vstd::assert_seqs_equal;
 use vstd::simple_pptr::*;
 verus! {
 use crate::*;
+
+/// Deepest page-table level installed so far for the 4K page being mapped.
+pub ghost enum Mmap4kDirectory { None, L4, L3, L2 }
+
+/// Progress of a multi-step syscall owned by the write-locked thread.
+pub ghost enum SyscallProgress {
+    Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
+}
 
 pub struct Thread {
     pub state: ThreadState,
@@ -53,10 +62,36 @@ pub struct Thread {
     pub indirect_free_quota_pending_4k: Ghost<Seq<usize>>,
     pub indirect_free_quota_pending_2m: Ghost<Seq<usize>>,
     pub indirect_free_quota_pending_1g: Ghost<Seq<usize>>,
+
+    /// Some only while this thread is write-locked by its running syscall.
+    pub syscall_progress: Ghost<Option<SyscallProgress>>,
 }
 
 pub type ThreadRwLock = RwLock<Thread, (), (), THREAD_HAS_KILL_STATE>;
 pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>;
+
+pub ghost struct ThreadU {
+    pub lock_state: LockStateU,
+    pub state: ThreadState,
+    pub caller: Option<RwLockThreadPtr>,
+    pub callee: Option<RwLockThreadPtr>,
+    pub owning_container: RwLockContainerPtr,
+    pub owning_proc: RwLockProcessPtr,
+    pub quota_4k: usize,
+    pub quota_2m: usize,
+    pub quota_1g: usize,
+    pub endpoint_descriptors: Seq<Option<RwLockEndpointPtr>>,
+    pub blocking_endpoint_ptr: Option<RwLockEndpointPtr>,
+    pub ipc_payload: IPCPayLoad,
+    pub error_code: Option<RetValueType>,
+    pub trap_frame: Option<Registers>,
+    pub syscall_progress: Option<SyscallProgress>,
+    pub killed: bool,
+}
+
+impl UserViewHasKillState for ThreadU {
+    open spec fn killed(&self) -> bool { self.killed }
+}
 
 impl Thread{
     pub fn new_boot_root(
@@ -101,6 +136,7 @@ impl Thread{
             ret.0.blocking_endpoint_ptr is None,
             ret.0.blocking_endpoint_index is None,
             ret.0.free_quota_pending_clean(),
+            ret.0.syscall_progress.view() is None,
             ret.0.temp_alloc_clean(),
             ret.0.quota_4k == 0,
             ret.0.quota_2m == 0,
@@ -145,6 +181,7 @@ impl Thread{
 
     pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
         &&& self.owning_container == other.owning_container
+        &&& self.syscall_progress == other.syscall_progress
         &&& self.container_depth == other.container_depth
         &&& self.scheduler_linkedlist_node.addr()
             == other.scheduler_linkedlist_node.addr()
@@ -241,7 +278,12 @@ impl Thread{
                 #![trigger ret.endpoint_descriptors.spec_index(edp_index)]
                 edp_idx_valid(edp_index)
                 ==> ret.endpoint_descriptors.spec_index(edp_index) is None,
+            ret.endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None),
+            ret.ipc_payload is Empty,
+            ret.error_code is None,
+            ret.trap_frame.is_none(),
             ret.free_quota_pending_clean(),
+            ret.syscall_progress.view() is None,
             ret.temp_alloc_clean(),
             ret.quota_4k == 0,
             ret.quota_2m == 0,
@@ -251,6 +293,12 @@ impl Thread{
             Array<Option<RwLockEndpointPtr>, MAX_NUM_ENDPOINT_DESCRIPTORS>
                 = Array::new();
         endpoint_descriptors.init2none();
+        proof {
+            assert_seqs_equal!(
+                endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None),
+                i => {}
+            );
+        }
         let ret = Self {
             state: ThreadState::RUNNING { cpu_id: 0 },
             caller: None,
@@ -291,6 +339,7 @@ impl Thread{
                 container_depth as nat,
                 |i: int| 0usize,
             )),
+            syscall_progress: Ghost(None),
         };
         ret
     }
@@ -343,7 +392,11 @@ impl Thread{
                 #![trigger ret.0.endpoint_descriptors.spec_index(edp_index)]
                 edp_idx_valid(edp_index)
                 ==> ret.0.endpoint_descriptors.spec_index(edp_index) is None,
+            ret.0.endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None),
+            ret.0.ipc_payload is Empty,
+            ret.0.error_code is None,
             ret.0.free_quota_pending_clean(),
+            ret.0.syscall_progress.view() is None,
             ret.0.temp_alloc_clean(),
             ret.0.quota_4k == 0,
             ret.0.quota_2m == 0,
@@ -471,7 +524,9 @@ impl Thread {
             final(self).trap_frame.is_some(),
             final(self).trap_frame.get_some_0() =~= pt_regs,
             final(self).caller == old(self).caller,
+            final(self).syscall_progress == old(self).syscall_progress,
             final(self).callee == old(self).callee,
+            final(self).error_code == old(self).error_code,
             ret.0 == final(self).endpoint_linkedlist_node.addr(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
@@ -515,6 +570,7 @@ impl Thread {
             final(self).trap_frame == old(self).trap_frame,
             final(self).proc_linkedlist_node == old(self).proc_linkedlist_node,
             final(self).caller == old(self).caller,
+            final(self).syscall_progress == old(self).syscall_progress,
             final(self).callee == old(self).callee,
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
@@ -560,6 +616,7 @@ impl Thread {
             final(self).error_code == old(self).error_code,
             final(self).trap_frame == old(self).trap_frame,
             final(self).caller == old(self).caller,
+            final(self).syscall_progress == old(self).syscall_progress,
             final(self).callee == old(self).callee,
     {
         self.endpoint_linkedlist_node.put(endpoint_node_perm);
@@ -591,6 +648,7 @@ impl Thread {
             final(self).ipc_payload is Empty,
             final(self).trap_frame == old(self).trap_frame,
             final(self).caller == old(self).caller,
+            final(self).syscall_progress == old(self).syscall_progress,
             final(self).callee == old(self).callee,
             ret.0 == final(self).scheduler_linkedlist_node.addr(),
             ret.1.view().is_init(),
@@ -627,6 +685,7 @@ impl Thread {
             final(self).state is WAITING_REPLY,
             final(self).callee == Some(callee_ptr),
             final(self).caller == old(self).caller,
+            final(self).syscall_progress == old(self).syscall_progress,
             final(self).blocking_endpoint_ptr is None,
             final(self).blocking_endpoint_index is None,
             final(self).endpoint_linkedlist_node.is_init(),
@@ -683,6 +742,7 @@ impl Thread {
             final(self).state is WAITING_REPLY,
             final(self).callee == Some(callee_ptr),
             final(self).caller == old(self).caller,
+            final(self).syscall_progress == old(self).syscall_progress,
             final(self).trap_frame.is_some(),
             final(self).trap_frame.get_some_0() =~= pt_regs,
     {

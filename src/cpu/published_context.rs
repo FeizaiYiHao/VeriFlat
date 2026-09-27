@@ -20,9 +20,7 @@ impl KernelK {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
     {
         let ret = self.cpu_published[cpu_id].load(Tracked(&mut *lctx));
         assert(self.inv() ==> (page_ptr_valid(ret.0) && pcid_valid(ret.1))) by { reveal(cpu_published_wf); };

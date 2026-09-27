@@ -31,7 +31,11 @@ they must point to these canonical sources instead of redefining their rules.
 - All Verus spec, proof, contract, and exec edits must use the dense canonical
   style in the proof skill, with `syscall_alloc_quota/` as the hand-edited
   reference. Minimize vertical space, keep one logical contract clause per
-  line, and keep short scoped proofs on one line. Pack function parameters,
+  line, and keep short scoped proofs on one line, except blocks with local
+  `let` bindings: put the opening brace, each `let`
+  statement, each `&&&`/`|||` clause, and the closing brace on separate lines.
+  This applies repository-wide to spec, contract, proof, and exec blocks;
+  never compress these blocks into a single line. Pack function parameters,
   call arguments, tuple elements, and collection-literal elements into compact
   readable groups instead of defaulting to one item per line; wrap long groups
   across a few balanced lines rather than forcing one enormous line. Do not
@@ -72,6 +76,11 @@ they must point to these canonical sources instead of redefining their rules.
   transition/framing summary, may not contain final invariants or `*_wf`
   closure, and may not change model semantics. This exception does not authorize
   reusable or cross-operation framing abstractions.
+- Every new proof lemma requires explicit user approval unless it is an EOF
+  closure function, a step-wrapper-layer lemma in `kernel_step_wrappers.rs`,
+  or a fold-related lemma. Operation-local K→U bridging lemmas placed next to
+  an exec function are not exempt: state the generic K→U fact in the
+  step-wrapper layer and derive the operation's step predicates from it.
 - Ordinary edits to a function's `requires` and `ensures` do not require
   separate approval, including clauses that state which fields or lock-map
   entries are preserved. Do not classify a normal contract edit as a new

@@ -29,8 +29,8 @@
   instead of defining more specs.
 - Prove S at the mutation producer from constructor/update/callee facts. The
   main exec equation may retain intermediate facts required to execute later
-  mutations and must retain `typed_lock_maps_aligned` and
-  `lock_id_set_aligned`, but it must not close any final post-state invariant,
+  mutations and must retain `typed_lock_maps_aligned`, but it must not close
+  any final post-state invariant,
   invariant group, or `*_wf` leaf. One scoped reveal opens opaque S; do not
   unfold `KernelK::inv`, subsystem invariants, or old invariant leaves merely
   to state it.

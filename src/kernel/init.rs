@@ -30,30 +30,7 @@ pub struct BootKernelLayout {
 }
 
 impl BootKernelLayout {
-    pub open spec fn object_pages(&self) -> Set<PagePtr> {
-        set![
-            self.root_container,
-            self.pcid_allocator,
-            self.allocator_4k,
-            self.allocator_2m,
-            self.allocator_1g,
-            self.scheduler,
-            self.cpu_set,
-            self.root_process,
-            self.cpu_pagetable,
-            self.root_thread,
-            self.root_endpoint,
-            self.iommu_table,
-            self.iommu_l4
-        ]
-    }
-
-    pub open spec fn pointers_distinct(&self) -> bool {
-        self.object_pages().len() == 13
-    }
-
     pub open spec fn pointers_wf(&self) -> bool {
-        &&& self.pointers_distinct()
         &&& page_ptr_2m_valid(self.root_container)
         &&& page_ptr_2m_valid(self.pcid_allocator)
         &&& page_ptr_valid(self.allocator_4k)
@@ -562,10 +539,6 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
         krnl.thr_mp.spec_index(thread_ptr).view()
             .indirect_free_quota_pending_4k.view()
             .spec_index(0) as int;
-    lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_4k);
-    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_4k);
-    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_4k);
-    lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_4k);
     let process_fold_4k =
         |sum: int, process_ptr: RwLockProcessPtr|
             sum + process_value_4k(process_ptr);
@@ -597,61 +570,22 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
             sum + krnl.thr_mp.spec_index(thread_ptr).view()
                 .indirect_free_quota_pending_4k.view()
                 .spec_index(0);
-    assert(process_fold_4k =~= direct_process_fold_4k);
-    assert(thread_fold_4k =~= direct_thread_fold_4k);
-    assert(direct_pending_fold_4k
-        =~= direct_direct_pending_fold_4k);
-    assert(indirect_pending_fold_4k
-        =~= direct_indirect_pending_fold_4k);
-    assert(process_effective_quota_4k_fold_sum(
-        owned_processes,
-        krnl.prc_mp,
-    ) == 0);
-    assert(thread_effective_quota_4k_fold_sum(
-        owned_threads,
-        krnl.thr_mp,
-    ) == 0);
-    assert(thread_direct_pending_4k_fold_sum(
-        owned_threads,
-        krnl.thr_mp,
-    ) == 0);
-    assert(thread_indirect_pending_4k_fold_sum_at_depth(
-        owned_indirect_threads,
-        krnl.thr_mp,
-        0,
-    ) == 0);
-    reveal(container_process_allocator_quota_4k_wf);
-    assert forall|container_ptr: RwLockContainerPtr|
-        #![trigger krnl.ctn_mp.spec_index(container_ptr)
-            .view_rodata().view().allocator_ptr_4k]
-        krnl.ctn_mp.dom().contains(container_ptr)
-        implies process_effective_quota_4k_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view()
-                .owned_processes.view(),
-            krnl.prc_mp,
-        ) + thread_effective_quota_4k_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_threads.view(),
-            krnl.thr_mp,
-        ) + thread_direct_pending_4k_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_threads.view(),
-            krnl.thr_mp,
-        ) + thread_indirect_pending_4k_fold_sum_at_depth(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_indirect_threads.view(),
-            krnl.thr_mp,
-            krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                .view().depth as int,
-        ) + krnl.allc_4k_mp.spec_index(
-            krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                .view().allocator_ptr_4k,
-        ).quota.view().view()
-            == krnl.allc_4k_mp.spec_index(
-                krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                    .view().allocator_ptr_4k,
-            ).total_free_pages.view() by {
+    assert({
+        &&& process_fold_4k =~= direct_process_fold_4k
+        &&& thread_fold_4k =~= direct_thread_fold_4k
+        &&& direct_pending_fold_4k =~= direct_direct_pending_fold_4k
+        &&& indirect_pending_fold_4k =~= direct_indirect_pending_fold_4k
+        &&& owned_processes.fold(0int, process_fold_4k) == 0
+        &&& owned_threads.fold(0int, thread_fold_4k) == 0
+        &&& owned_threads.fold(0int, direct_pending_fold_4k) == 0
+        &&& owned_indirect_threads.fold(0int, indirect_pending_fold_4k) == 0
+    }) by {
+        lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_4k);
+        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_4k);
+        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_4k);
+        lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_4k);
     };
+    reveal(container_process_allocator_quota_4k_wf);
 }
 
 #[verifier::spinoff_prover]
@@ -711,10 +645,6 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
         krnl.thr_mp.spec_index(thread_ptr).view()
             .indirect_free_quota_pending_2m.view()
             .spec_index(0) as int;
-    lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_2m);
-    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_2m);
-    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_2m);
-    lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_2m);
     let process_fold_2m =
         |sum: int, process_ptr: RwLockProcessPtr|
             sum + process_value_2m(process_ptr);
@@ -746,61 +676,22 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
             sum + krnl.thr_mp.spec_index(thread_ptr).view()
                 .indirect_free_quota_pending_2m.view()
                 .spec_index(0);
-    assert(process_fold_2m =~= direct_process_fold_2m);
-    assert(thread_fold_2m =~= direct_thread_fold_2m);
-    assert(direct_pending_fold_2m
-        =~= direct_direct_pending_fold_2m);
-    assert(indirect_pending_fold_2m
-        =~= direct_indirect_pending_fold_2m);
-    assert(process_effective_quota_2m_fold_sum(
-        owned_processes,
-        krnl.prc_mp,
-    ) == 0);
-    assert(thread_effective_quota_2m_fold_sum(
-        owned_threads,
-        krnl.thr_mp,
-    ) == 0);
-    assert(thread_direct_pending_2m_fold_sum(
-        owned_threads,
-        krnl.thr_mp,
-    ) == 0);
-    assert(thread_indirect_pending_2m_fold_sum_at_depth(
-        owned_indirect_threads,
-        krnl.thr_mp,
-        0,
-    ) == 0);
-    reveal(container_process_allocator_quota_2m_wf);
-    assert forall|container_ptr: RwLockContainerPtr|
-        #![trigger krnl.ctn_mp.spec_index(container_ptr)
-            .view_rodata().view().allocator_ptr_2m]
-        krnl.ctn_mp.dom().contains(container_ptr)
-        implies process_effective_quota_2m_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view()
-                .owned_processes.view(),
-            krnl.prc_mp,
-        ) + thread_effective_quota_2m_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_threads.view(),
-            krnl.thr_mp,
-        ) + thread_direct_pending_2m_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_threads.view(),
-            krnl.thr_mp,
-        ) + thread_indirect_pending_2m_fold_sum_at_depth(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_indirect_threads.view(),
-            krnl.thr_mp,
-            krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                .view().depth as int,
-        ) + krnl.allc_2m_mp.spec_index(
-            krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                .view().allocator_ptr_2m,
-        ).quota.view().view()
-            == krnl.allc_2m_mp.spec_index(
-                krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                    .view().allocator_ptr_2m,
-            ).total_free_pages.view() by {
+    assert({
+        &&& process_fold_2m =~= direct_process_fold_2m
+        &&& thread_fold_2m =~= direct_thread_fold_2m
+        &&& direct_pending_fold_2m =~= direct_direct_pending_fold_2m
+        &&& indirect_pending_fold_2m =~= direct_indirect_pending_fold_2m
+        &&& owned_processes.fold(0int, process_fold_2m) == 0
+        &&& owned_threads.fold(0int, thread_fold_2m) == 0
+        &&& owned_threads.fold(0int, direct_pending_fold_2m) == 0
+        &&& owned_indirect_threads.fold(0int, indirect_pending_fold_2m) == 0
+    }) by {
+        lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_2m);
+        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_2m);
+        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_2m);
+        lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_2m);
     };
+    reveal(container_process_allocator_quota_2m_wf);
 }
 
 #[verifier::spinoff_prover]
@@ -860,10 +751,6 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
         krnl.thr_mp.spec_index(thread_ptr).view()
             .indirect_free_quota_pending_1g.view()
             .spec_index(0) as int;
-    lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_1g);
-    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_1g);
-    lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_1g);
-    lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_1g);
     let process_fold_1g =
         |sum: int, process_ptr: RwLockProcessPtr|
             sum + process_value_1g(process_ptr);
@@ -895,61 +782,22 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
             sum + krnl.thr_mp.spec_index(thread_ptr).view()
                 .indirect_free_quota_pending_1g.view()
                 .spec_index(0);
-    assert(process_fold_1g =~= direct_process_fold_1g);
-    assert(thread_fold_1g =~= direct_thread_fold_1g);
-    assert(direct_pending_fold_1g
-        =~= direct_direct_pending_fold_1g);
-    assert(indirect_pending_fold_1g
-        =~= direct_indirect_pending_fold_1g);
-    assert(process_effective_quota_1g_fold_sum(
-        owned_processes,
-        krnl.prc_mp,
-    ) == 0);
-    assert(thread_effective_quota_1g_fold_sum(
-        owned_threads,
-        krnl.thr_mp,
-    ) == 0);
-    assert(thread_direct_pending_1g_fold_sum(
-        owned_threads,
-        krnl.thr_mp,
-    ) == 0);
-    assert(thread_indirect_pending_1g_fold_sum_at_depth(
-        owned_indirect_threads,
-        krnl.thr_mp,
-        0,
-    ) == 0);
-    reveal(container_process_allocator_quota_1g_wf);
-    assert forall|container_ptr: RwLockContainerPtr|
-        #![trigger krnl.ctn_mp.spec_index(container_ptr)
-            .view_rodata().view().allocator_ptr_1g]
-        krnl.ctn_mp.dom().contains(container_ptr)
-        implies process_effective_quota_1g_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view()
-                .owned_processes.view(),
-            krnl.prc_mp,
-        ) + thread_effective_quota_1g_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_threads.view(),
-            krnl.thr_mp,
-        ) + thread_direct_pending_1g_fold_sum(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_threads.view(),
-            krnl.thr_mp,
-        ) + thread_indirect_pending_1g_fold_sum_at_depth(
-            krnl.ctn_mp.spec_index(container_ptr).view_ghost()
-                .owned_indirect_threads.view(),
-            krnl.thr_mp,
-            krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                .view().depth as int,
-        ) + krnl.allc_1g_mp.spec_index(
-            krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                .view().allocator_ptr_1g,
-        ).quota.view().view()
-            == krnl.allc_1g_mp.spec_index(
-                krnl.ctn_mp.spec_index(container_ptr).view_rodata()
-                    .view().allocator_ptr_1g,
-            ).total_free_pages.view() by {
+    assert({
+        &&& process_fold_1g =~= direct_process_fold_1g
+        &&& thread_fold_1g =~= direct_thread_fold_1g
+        &&& direct_pending_fold_1g =~= direct_direct_pending_fold_1g
+        &&& indirect_pending_fold_1g =~= direct_indirect_pending_fold_1g
+        &&& owned_processes.fold(0int, process_fold_1g) == 0
+        &&& owned_threads.fold(0int, thread_fold_1g) == 0
+        &&& owned_threads.fold(0int, direct_pending_fold_1g) == 0
+        &&& owned_indirect_threads.fold(0int, indirect_pending_fold_1g) == 0
+    }) by {
+        lemma_set_fold_int_sum_singleton(owned_processes, layout.root_process, process_value_1g);
+        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, thread_value_1g);
+        lemma_set_fold_int_sum_singleton(owned_threads, layout.root_thread, direct_pending_value_1g);
+        lemma_set_fold_int_sum_empty(owned_indirect_threads, indirect_pending_value_1g);
     };
+    reveal(container_process_allocator_quota_1g_wf);
 }
 
 #[verifier::spinoff_prover]
@@ -978,7 +826,6 @@ proof fn prove_boot_container_page_owner_wf(
         container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr),
 {
     reveal(container_page_owner_wf);
-    reveal(boot_page_array_ready);
     page_ptr_valid_imply_page_index_valid();
     page_index_valid_imply_page_ptr_valid();
     page_ptr_roundtrip();
@@ -995,17 +842,7 @@ proof fn prove_boot_container_page_owner_wf(
                 page_ptr2page_index(page_ptr),
             ).view().view().owning_container == container_ptr
         } by {
-        assert(index_valid(
-            NUM_PAGES,
-            page_ptr2page_index(page_ptr),
-        ));
-        assert(!(krnl.pg_arr.spec_index(
-            page_ptr2page_index(page_ptr),
-        ).view().view().state is Owned4k));
-        assert(krnl.pg_arr.spec_index(
-            page_ptr2page_index(page_ptr),
-        ).view().view().owning_container
-            == layout.root_container);
+        assert(index_valid(NUM_PAGES, page_ptr2page_index(page_ptr)) && !(krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k) && krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == layout.root_container) by { reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); };
     };
     assert forall|page_index: PageIndex|
         #![trigger krnl.pg_arr.spec_index(page_index).view().view()
@@ -1023,9 +860,8 @@ proof fn prove_boot_container_page_owner_wf(
                 page_index2page_ptr(page_index),
             )
         } by {
-        assert(all_valid_pages.contains(
-            page_index2page_ptr(page_index),
-        ));
+        assert(all_valid_pages.contains(page_index2page_ptr(page_index))) by { page_index_valid_imply_page_ptr_valid(); };
+        reveal(boot_page_array_ready);
     };
 }
 
@@ -1057,73 +893,6 @@ proof fn prove_boot_iommu_table_pages_wf(
     page_index_valid_imply_page_ptr_valid();
     page_ptr_roundtrip();
     page_index_roundtrip();
-    assert forall|page_index: PageIndex|
-        #![trigger krnl.it_mp.dom().contains(
-            page_index2page_ptr(page_index),
-        )]
-        index_valid(NUM_PAGES, page_index)
-        && (krnl.pg_arr.spec_index(page_index).view().view().state
-            matches PageState::Allocated4k {
-                state: Allocated4KPageState::AsIommuTableRoot,
-            })
-        implies krnl.it_mp.dom().contains(
-            page_index2page_ptr(page_index),
-        ) by {
-        assert(page_index2page_ptr(page_index)
-            == layout.iommu_table);
-    };
-    assert forall|page_index: PageIndex|
-        #![trigger krnl.it_mp.dom().contains(
-            krnl.pg_arr.spec_index(page_index).view().view().state
-                ->IOMMUTable_iommu_table_root)]
-        #![trigger krnl.it_mp.spec_index(
-            krnl.pg_arr.spec_index(page_index).view().view().state
-                ->IOMMUTable_iommu_table_root)
-            .view().page_closure().contains(
-                page_index2page_ptr(page_index),
-            )]
-        index_valid(NUM_PAGES, page_index)
-        && (krnl.pg_arr.spec_index(page_index).view().view().state
-            matches PageState::IOMMUTable { iommu_table_root })
-        implies {
-            let iommu_root =
-                krnl.pg_arr.spec_index(page_index).view().view().state
-                    ->IOMMUTable_iommu_table_root;
-            &&& krnl.it_mp.dom().contains(iommu_root)
-            &&& krnl.it_mp.spec_index(iommu_root).view()
-                .page_closure().contains(
-                    page_index2page_ptr(page_index),
-                )
-        } by {
-    };
-    assert forall|iommu_root: RwLockPageTableRoot|
-        #![trigger krnl.it_mp.dom().contains(iommu_root)]
-        krnl.it_mp.dom().contains(iommu_root)
-        implies {
-            &&& page_ptr_valid(iommu_root)
-            &&& krnl.pg_arr.spec_index(
-                page_ptr2page_index(iommu_root),
-            ).view().view().state == PageState::Allocated4k {
-                state: Allocated4KPageState::AsIommuTableRoot,
-            }
-        } by {
-    };
-    assert forall|iommu_root: RwLockPageTableRoot,
-        table_page: PagePtr|
-        #![trigger krnl.it_mp.spec_index(iommu_root).view()
-            .page_closure().contains(table_page)]
-        krnl.it_mp.dom().contains(iommu_root)
-        && krnl.it_mp.spec_index(iommu_root).view()
-            .page_closure().contains(table_page)
-        implies {
-            &&& page_ptr_valid(table_page)
-            &&& krnl.pg_arr.spec_index(
-                page_ptr2page_index(table_page),
-            ).view().view().state == PageState::IOMMUTable {
-                iommu_table_root: iommu_root,
-            }
-        } by {
-    };
 }
 
 #[verifier::spinoff_prover]
@@ -1180,41 +949,8 @@ proof fn prove_boot_container_thread_scheduler_wf(
                         .scheduler_linkedlist_node.addr(),
                 ) == thread_ptr
         } by {
-        assert(krnl.sched_mp.spec_index(layout.scheduler).view()
-            .queue.view().len() == 1);
-        assert(krnl.sched_mp.spec_index(layout.scheduler).view()
-            .queue.view().spec_index(0) == layout.root_thread);
         krnl.sched_mp.spec_index(layout.scheduler).view()
             .queue.view().lemma_index_contains(0);
-        assert(krnl.sched_mp.spec_index(layout.scheduler).view()
-            .queue.view().contains(layout.root_thread));
-        assert(krnl.sched_mp.spec_index(layout.scheduler).view()
-            .queue.map().dom().contains(scheduler_node_addr));
-        assert(krnl.sched_mp.spec_index(layout.scheduler).view()
-            .queue.map().spec_index(scheduler_node_addr)
-            == layout.root_thread);
-    };
-    assert forall|scheduler_ptr: RwLockSchedulerPtr,
-        thread_ptr: RwLockThreadPtr|
-        #![trigger krnl.sched_mp.spec_index(scheduler_ptr).view()
-            .queue.view().contains(thread_ptr)]
-        #![trigger krnl.thr_mp.spec_index(thread_ptr).view().state,
-            krnl.sched_mp.spec_index(scheduler_ptr).view().queue]
-        #![trigger krnl.thr_mp.spec_index(thread_ptr).view()
-            .owning_container,
-            krnl.sched_mp.spec_index(scheduler_ptr).view().queue]
-        krnl.sched_mp.dom().contains(scheduler_ptr)
-        && krnl.sched_mp.spec_index(scheduler_ptr).view()
-            .queue.view().contains(thread_ptr)
-        implies {
-            &&& krnl.thr_mp.dom().contains(thread_ptr)
-            &&& krnl.thr_mp.spec_index(thread_ptr).view().state
-                is SCHEDULED
-            &&& krnl.thr_mp.spec_index(thread_ptr).view()
-                .owning_container
-                == krnl.sched_mp.spec_index(scheduler_ptr).view()
-                    .owning_container
-        } by {
     };
 }
 
@@ -1260,61 +996,6 @@ proof fn prove_boot_process_thread_wf(
     reveal(process_empty_lists_wlocked);
     reveal(process_thread_wf);
     assert(process_empty_lists_wlocked(krnl.prc_mp)) by {
-        assert forall|process_ptr: RwLockProcessPtr|
-            #![trigger krnl.prc_mp.spec_index(process_ptr)]
-            krnl.prc_mp.dom().contains(process_ptr)
-            && (if krnl.prc_mp.spec_index(process_ptr).view().zombie {
-                krnl.prc_mp.spec_index(process_ptr).view()
-                    .children.view().len() == 0
-            } else {
-                krnl.prc_mp.spec_index(process_ptr).view()
-                    .owned_threads.view().len() == 0
-            })
-            implies krnl.prc_mp.spec_index(process_ptr).wlocked() by {
-            assert(krnl.prc_mp.spec_index(process_ptr).view()
-                .owned_threads.view().len() == 1);
-        };
-    };
-    assert forall|process_ptr: RwLockProcessPtr,
-        thread_ptr: RwLockThreadPtr|
-        #![trigger krnl.prc_mp.spec_index(process_ptr),
-            krnl.thr_mp.spec_index(thread_ptr)]
-        #![trigger krnl.prc_mp.spec_index(process_ptr).view()
-            .owned_threads.view().contains(thread_ptr)]
-        krnl.prc_mp.dom().contains(process_ptr)
-        && krnl.prc_mp.spec_index(process_ptr).view()
-            .owned_threads.view().contains(thread_ptr)
-        implies {
-            &&& krnl.thr_mp.dom().contains(thread_ptr)
-            &&& krnl.thr_mp.spec_index(thread_ptr).view()
-                .owning_proc == process_ptr
-            &&& krnl.thr_mp.spec_index(thread_ptr).view()
-                .owning_container
-                == krnl.prc_mp.spec_index(process_ptr)
-                    .view_rodata().view().owning_container
-            &&& krnl.thr_mp.spec_index(thread_ptr).view()
-                .container_depth
-                == krnl.prc_mp.spec_index(process_ptr)
-                    .view_rodata().view().container_depth
-            &&& krnl.thr_mp.spec_index(thread_ptr).view()
-                .process_depth
-                == krnl.prc_mp.spec_index(process_ptr)
-                    .view_rodata().view().depth
-            &&& krnl.thr_mp.spec_index(thread_ptr).view()
-                .proc_pagetable_ptr
-                == krnl.prc_mp.spec_index(process_ptr).view()
-                    .pagetable
-            &&& krnl.prc_mp.spec_index(process_ptr).view()
-                .owned_threads.map().dom().contains(
-                    krnl.thr_mp.spec_index(thread_ptr).view()
-                        .proc_linkedlist_node.addr(),
-                )
-            &&& krnl.prc_mp.spec_index(process_ptr).view()
-                .owned_threads.map().spec_index(
-                    krnl.thr_mp.spec_index(thread_ptr).view()
-                        .proc_linkedlist_node.addr(),
-                ) == thread_ptr
-        } by {
     };
     assert forall|thread_ptr: RwLockThreadPtr|
         #![trigger krnl.thr_mp.spec_index(thread_ptr)]
@@ -1327,11 +1008,6 @@ proof fn prove_boot_process_thread_wf(
             &&& krnl.prc_mp.spec_index(process_ptr).view()
                 .owned_threads.view().contains(thread_ptr)
         } by {
-        assert(krnl.prc_mp.spec_index(layout.root_process).view()
-            .owned_threads.view().len() == 1);
-        assert(krnl.prc_mp.spec_index(layout.root_process).view()
-            .owned_threads.view().spec_index(0)
-            == layout.root_thread);
         krnl.prc_mp.spec_index(layout.root_process).view()
             .owned_threads.view().lemma_index_contains(0);
     };
@@ -1521,17 +1197,9 @@ pub fn finish_init_from_boot(
     let quota_2m = free_2m_pool.length;
     let quota_1g = free_1g_pool.length;
     proof {
-        assert(free_4k_pool.wf() && free_4k_pool.view().no_duplicates()
-            && free_4k_pool.container_depth == Some(0)
-            && free_4k_pool.minor == Some(layout.root_container)
-            && free_2m_pool.wf() && free_2m_pool.view().no_duplicates()
-            && free_2m_pool.container_depth == Some(0)
-            && free_2m_pool.minor == Some(layout.root_container)
-            && free_1g_pool.wf() && free_1g_pool.view().no_duplicates()
-            && free_1g_pool.container_depth == Some(0)
-            && free_1g_pool.minor == Some(layout.root_container)) by {
-            reveal(boot_page_array_ready);
-        };
+        assert(free_4k_pool.wf() && free_4k_pool.container_depth == Some(0) && free_4k_pool.minor == Some(layout.root_container)
+            && free_2m_pool.wf() && free_2m_pool.container_depth == Some(0) && free_2m_pool.minor == Some(layout.root_container)
+            && free_1g_pool.wf() && free_1g_pool.container_depth == Some(0) && free_1g_pool.minor == Some(layout.root_container)) by { reveal(boot_page_array_ready); };
         reveal(LinkedList::wf_value_list);
     }
     let allocator_4k = PageAllocator::new_with_global_pool(layout.root_container, 0, free_4k_pool, quota_4k);
@@ -1667,7 +1335,6 @@ pub fn finish_init_from_boot(
         assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); };
         assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
         assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
-        assert(pcid_needflush_wf(krnl.pcid_needflush));
         assert(cpu_published_wf(
             krnl.cpu_published,
             krnl.cpu_arr,
@@ -1678,89 +1345,29 @@ pub fn finish_init_from_boot(
         assert(container_perms_wf(krnl.ctn_mp)) by {
             reveal(container_perms_wf);
             assert(containers_inv(krnl.ctn_mp)) by {
-                assert forall|container_ptr: RwLockContainerPtr|
-                    #![trigger krnl.ctn_mp.dom().contains(container_ptr)]
-                    krnl.ctn_mp.dom().contains(container_ptr)
-                    implies krnl.ctn_mp.spec_index(container_ptr).inv() by {
-                };
             };
             assert(container_tree_fields_wf(krnl.ctn_mp)) by {
                 reveal(container_tree_fields_wf);
-                assert forall|container_ptr: RwLockContainerPtr|
-                    #![trigger krnl.ctn_mp.spec_index(container_ptr).view().children]
-                    #![trigger krnl.ctn_mp.spec_index(container_ptr)
-                        .view_ghost().uppertree_seq]
-                    #![trigger krnl.ctn_mp.spec_index(container_ptr)
-                        .view_ghost().subtree_set]
-                    #![trigger krnl.ctn_mp.spec_index(container_ptr)
-                        .view_rodata().view().depth]
-                    krnl.ctn_mp.dom().contains(container_ptr)
-                    implies {
-                        &&& krnl.ctn_mp.spec_index(container_ptr).view()
-                            .children.view().no_duplicates()
-                        &&& krnl.ctn_mp.spec_index(container_ptr)
-                            .view_ghost().uppertree_seq.view().no_duplicates()
-                        &&& !krnl.ctn_mp.spec_index(container_ptr).view()
-                            .children.view().contains(container_ptr)
-                        &&& krnl.ctn_mp.spec_index(container_ptr)
-                            .view_ghost().uppertree_seq.view().len()
-                            == krnl.ctn_mp.spec_index(container_ptr)
-                                .view_rodata().view().depth
-                        &&& krnl.ctn_mp.spec_index(container_ptr)
-                            .view_rodata().view().depth
-                            <= MAX_CONTAINER_TREE_DEPTH
-                    } by {
-                };
             };
         };
         assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
         assert(thread_perms_wf(krnl.thr_mp)) by {
             reveal(thread_perms_wf);
             assert(threads_inv(krnl.thr_mp)) by {
-                assert forall|thread_ptr: RwLockThreadPtr|
-                    #![trigger krnl.thr_mp.dom().contains(thread_ptr)]
-                    krnl.thr_mp.dom().contains(thread_ptr)
-                    implies krnl.thr_mp.spec_index(thread_ptr).inv() by {
-                };
             };
             assert(thread_free_quota_pending_empty_unless_wlocked(
                 krnl.thr_mp,
             )) by {
                 reveal(thread_free_quota_pending_empty_unless_wlocked);
-                assert forall|thread_ptr: RwLockThreadPtr|
-                    #![trigger krnl.thr_mp.spec_index(thread_ptr)
-                        .locking_thread()]
-                    krnl.thr_mp.dom().contains(thread_ptr)
-                    && !(krnl.thr_mp.spec_index(thread_ptr)
-                        .locking_thread() is Write)
-                    implies krnl.thr_mp.spec_index(thread_ptr).view()
-                        .free_quota_pending_clean() by {
-                };
             };
             assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by {
                 reveal(thread_temp_alloc_empty_unless_wlocked);
-                assert forall|thread_ptr: RwLockThreadPtr|
-                    #![trigger krnl.thr_mp.spec_index(thread_ptr)
-                        .locking_thread()]
-                    krnl.thr_mp.dom().contains(thread_ptr)
-                    && !(krnl.thr_mp.spec_index(thread_ptr)
-                        .locking_thread() is Write)
-                    implies krnl.thr_mp.spec_index(thread_ptr).view()
-                        .temp_alloc_clean() by {
-                };
             };
             assert(thread_endpoint_transit_only_when_wlocked(
                 krnl.thr_mp,
             )) by {
-                assert forall|thread_ptr: RwLockThreadPtr|
-                    #![trigger krnl.thr_mp.spec_index(thread_ptr).view().state]
-                    krnl.thr_mp.dom().contains(thread_ptr)
-                    && krnl.thr_mp.spec_index(thread_ptr).view().state
-                        is IPC_ENDPOINT_TRANSIT
-                    implies krnl.thr_mp.spec_index(thread_ptr)
-                        .locking_thread() is Write by {
-                };
             };
+            assert(thread_syscall_progress_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
         };
         assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
@@ -1862,14 +1469,6 @@ pub fn finish_init_from_boot(
         prove_boot_container_process_allocator_quota_4k_wf(&krnl, layout);
         prove_boot_container_process_allocator_quota_2m_wf(&krnl, layout);
         prove_boot_container_process_allocator_quota_1g_wf(&krnl, layout);
-        assert(container_process_allocator_quota_wf(
-            krnl.ctn_mp,
-            krnl.prc_mp,
-            krnl.thr_mp,
-            krnl.allc_4k_mp,
-            krnl.allc_2m_mp,
-            krnl.allc_1g_mp,
-        ));
         assert(container_allocator_wf(
             krnl.ctn_mp,
             krnl.allc_4k_mp,
@@ -1920,8 +1519,6 @@ pub fn finish_init_from_boot(
             reveal(container_uppertree_seq_wf);
             reveal(container_subtree_set_exclusive);
         };
-        assert(krnl.ctn_mp.spec_index(krnl.rt_ctn).view()
-            .root_process_in_processes());
         assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_process_wf); };
         assert(per_container_process_tree_wf(
             krnl.ctn_mp,

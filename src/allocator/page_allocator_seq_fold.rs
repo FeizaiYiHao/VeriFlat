@@ -3,6 +3,22 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+pub proof fn lemma_cache_len_fold_upper_bound(caches: LockedArray<AllocatorCache, (), (), NUM_CPUS, NO_KILL_STATE>)
+    requires
+        caches.inv(),
+        forall|cpu: CpuId| #![trigger index_valid(NUM_CPUS, cpu)] index_valid(NUM_CPUS, cpu) ==> caches.spec_index(cpu).inv(),
+    ensures
+        caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
+{
+    assert forall|i: int| #![trigger caches.view().spec_index(i)]
+        0 <= i < NUM_CPUS implies caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK
+    by {
+        assert(index_valid(NUM_CPUS, i as usize) && caches.view().spec_index(i) == caches.spec_index(i as usize).view()) by { caches.lemma_view_index(i as usize); };
+        caches.spec_index(i as usize).view().view().linked_list.lemma_len_view();
+    };
+    seq_fold_upper_bound(caches.view(), |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
+}
+
 pub proof fn lemma_cache_len_fold_congruence(
     s1: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,
     s2: Seq<RwLock<AllocatorCache, (), (), NO_KILL_STATE>>,

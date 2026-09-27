@@ -1,4 +1,6 @@
 use vstd::prelude::*;
+use vstd::assert_maps_equal;
+use vstd::assert_seqs_equal;
 use crate::*;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::attach_endpoint_reference_and_unlock;
@@ -8,6 +10,7 @@ use super::super::syscall_new_thread::syscall_new_thread_helpers::{
     create_thread_from_staged_page_merged,
     kernel_u_new_thread_changed,
 };
+use super::super::syscall_new_thread::syscall_new_thread_spec::*;
 
 verus! {
         pub(super) fn add_new_thread_with_endpoint(
@@ -28,7 +31,13 @@ verus! {
                 edp_idx_valid(endpoint_index),
                 old(krnl).inv(),
                 old(lctx).kernel_view_locking_state() is Acquire,
-                old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+                kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+                kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+                old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+                old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+                old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+                old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+                kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
                 old(krnl).thr_mp.dom().contains(current_thread_ptr),
                 old(krnl).ctn_mp.dom().contains(container_ptr),
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
@@ -38,6 +47,10 @@ verus! {
                 typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
                 old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
                 old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
+                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
+                old(krnl).ep_mp.dom().contains(endpoint_ptr),
                 scheduler_lock_perm.view().state() is WriteLock,
                 scheduler_lock_perm.view().thread_id() == old(lctx).thread_id(),
                 scheduler_lock_perm.view().lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
@@ -60,10 +73,11 @@ verus! {
                 current_thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
                 typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
                 old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
-                old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is RUNNING,
+                old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
+                old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 1,
                 old(lctx).page_lock_map().dom().is_empty(),
@@ -77,22 +91,21 @@ verus! {
                 old(lctx).cpu_set_lock_map().dom().is_empty(),
                 old(lctx).pagetable_lock_map().dom().is_empty(),
                 old(lctx).iommu_table_lock_map().dom().is_empty(),
-                old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-                old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-                old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
-                old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-                old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+                held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
-                lock_id_set_aligned(old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
-                lock_id_set_aligned(final(lctx)),
                 final(lctx).no_locks_held(),
-                final(steps).steps.len() == old(steps).steps.len() + 1,
-                final(steps).steps.last().new_u == kernel_k_to_kernel_u(*final(krnl)),
-                final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-                kernel_u_new_thread_changed(final(steps).steps.last().old_u, final(steps).steps.last().new_u, process_ptr),
+                final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
+                final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+                final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+                final(steps).snapshot_k() == *final(krnl),
+                new_thread_with_endpoint_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, endpoint_index),
+                new_thread_step(
+                    final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id,
+                    final(steps).nonlock_view().last().new_u.process_map.spec_index(process_ptr).owned_threads.last(), *initial_regs, Some(endpoint_ptr),
+                ),
         {
             let tracked mut process_lock_perm = process_lock_perm.get();
             let tracked mut current_thread_lock_perm = current_thread_lock_perm.get();
@@ -100,6 +113,7 @@ verus! {
             let tracked scheduler_lock_perm = scheduler_lock_perm.get();
             let tracked endpoint_lock_perm = endpoint_lock_perm.get();
 
+            proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
             let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(
                 krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
                 Tracked(&current_thread_lock_perm),
@@ -116,8 +130,8 @@ verus! {
                 Tracked(&page_lock_perm), Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm),
                 Tracked(&scheduler_lock_perm), initial_regs,
             );
-
             proof {
+                assert(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None)) by { reveal(kernel_new_thread_fields); };
                 assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { reveal(container_endpoint_wf); };
                 assert({
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
@@ -136,14 +150,23 @@ verus! {
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
 
             proof {
-                assert(lctx.no_locks_held()) by { reveal(LocalContext::holds_no_allocator_locks); };
-                assert(kernel_u_new_thread_changed(steps.snap_shot, kernel_k_to_kernel_u(*krnl), process_ptr)) by { reveal(kernel_k_to_kernel_u); };
-                assert(steps.snap_shot != kernel_k_to_kernel_u(*krnl));
-                let ghost step_old_u = steps.snap_shot;
-                steps.end_kernel_step(&*krnl, &*lctx);
-                assert(steps.steps == old(steps).steps.push(KernelStep {
-                    old_u: step_old_u, new_u: kernel_k_to_kernel_u(*krnl),
-                }));
+                let ghost descriptors = krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view();
+                assert_seqs_equal!(
+                    descriptors == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat,
+                        |i: int| if i == 0 { Some(endpoint_ptr) } else { None }),
+                    i => {}
+                );
+                assert(kernel_new_thread_fields(
+                    &steps.snapshot_k(), krnl, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr,
+                    *initial_regs, Some(endpoint_ptr),
+                )) by { reveal(kernel_new_thread_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                steps.end_kernel_step_new_thread_on_cpu(
+                    &*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, Some(endpoint_ptr), endpoint_index,
+                );
+                assert({
+                    &&& new_thread_with_endpoint_step_pre(steps.nonlock_view().last().old_u, cpu_id, endpoint_index)
+                    &&& new_thread_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, new_thread_ptr, *initial_regs, Some(endpoint_ptr))
+                }) by { reveal(kernel_u_new_thread_changed); };
             }
         }
 }

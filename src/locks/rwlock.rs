@@ -135,6 +135,9 @@ impl RwLockInner{
     }
 }
 
+/// Observable mode of a lock, independent of ownership and reader count.
+pub ghost enum LockStateU { Unlocked, ReadLocked, WriteLocked }
+
 pub enum RwLockState{
     Write{thread_id: LockThreadId, lock_id: LockToken},
     Read{reader_map: Map<LockThreadId, LockToken>},
@@ -188,6 +191,14 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
             ghost_value: Ghost(ghost_value),
             is_init: Ghost(true),
             locking_thread: Ghost(RwLockState::None),
+        }
+    }
+
+    pub open spec fn lock_state_u(&self) -> LockStateU {
+        match self.locking_thread() {
+            RwLockState::None => LockStateU::Unlocked,
+            RwLockState::Read { .. } => LockStateU::ReadLocked,
+            RwLockState::Write { .. } => LockStateU::WriteLocked,
         }
     }
 
@@ -469,12 +480,12 @@ impl<T:LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_id_set().contains((LockId {
+            old(lctx).lock_entry_contains(LockId {
                 container: old(self).view().container_depth(),
                 process: old(self).view().process_depth(),
                 major: old(self).view().current_lock_major(),
                 minor: old(self).view().lock_minor(),
-            }, obj_id.view())),
+            }, obj_id.view()),
         ensures
             wunlock_ensures(*old(self), *final(self)),
             unlock_ensures(
@@ -542,8 +553,8 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
 
-            old(lctx).lock_id_set().contains((
-                lock_id.view(), obj_id.view())),
+            old(lctx).lock_entry_contains(
+                lock_id.view(), obj_id.view()),
         ensures
             old(self).being_killed() == final(self).being_killed(),
             wunlock_ensures(*old(self), *final(self)),
@@ -628,10 +639,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
                 &&&
                 final(lctx).thread_id() == old(lctx).thread_id()
                 &&&
-                final(lctx).lock_id_set()
-                    == old(lctx).lock_id_set()
-                        .insert((lock_id.view(), obj_id.view()))
-                &&&
                 final(lctx).kernel_view_locking_state() is Release
             }
     {
@@ -647,9 +654,9 @@ pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STA
     &&&
     old.inv()
     &&&
-    // LocalContext records write ownership only.  Reader contention is handled
-    // by the physical lock; there is no verified rlock acquisition path.
-    old.wlocked_by(lctx) == false
+    // The acquiring thread must hold neither a read nor a write lock here; other
+    // threads' contention is handled by the physical lock.
+    old.locked_by(lctx) == false
     &&&
     lctx.kernel_view_locking_state() is Acquire
 }

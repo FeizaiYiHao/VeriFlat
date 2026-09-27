@@ -17,7 +17,6 @@ pub fn page_array_retype_owned_4k(
         old(page_array).spec_index(page_index).view().view().state is Owned4k,
         new_state is Allocated4k || new_state is IOMMUTable,
         old(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(old(lctx)),
     ensures
         page_array_wf(*final(page_array)),
         final(page_array).inv(),
@@ -52,9 +51,6 @@ pub fn page_array_retype_owned_4k(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set()
-            .remove((old(page_array).lock_id_by_index(page_index), KernelObjId::Page(page_index)))
-            .insert((final(page_array).lock_id_by_index(page_index), KernelObjId::Page(page_index))),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_index), TypedHeldLock {
             lock_id: final(page_array).lock_id_by_index(page_index), mode: TypedLockMode::Write,
         }),
@@ -62,7 +58,6 @@ pub fn page_array_retype_owned_4k(
             lock_id: final(page_array).lock_id_by_index(page_index), mode: TypedLockMode::Write,
         }),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
-        lock_id_set_aligned(final(lctx)),
 {
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init()
         && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
@@ -147,7 +142,6 @@ pub fn pagetable_map_insert_4k(
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         pagetable_lock_perm.lock_id() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         old(lctx).kernel_view_locking_state() is Acquire,
-        lock_id_set_aligned(old(lctx)),
         old(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
         pei_valid(indices.1),
         pei_valid(indices.2),
@@ -165,9 +159,7 @@ pub fn pagetable_map_insert_4k(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(pagetable_map).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
         final(pagetable_map).lock_id_by_key(pagetable_ptr) == old(pagetable_map).lock_id_by_key(pagetable_ptr),
         final(pagetable_map).spec_index(pagetable_ptr).locking_thread() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread(),
@@ -220,7 +212,6 @@ pub fn pagetable_map_clear_4k_present(
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         pagetable_lock_perm.lock_id() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         old(lctx).kernel_view_locking_state() is Acquire,
-        lock_id_set_aligned(old(lctx)),
         old(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
         pei_valid(indices.1),
         pei_valid(indices.2),
@@ -235,9 +226,7 @@ pub fn pagetable_map_clear_4k_present(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(pagetable_map).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
         final(pagetable_map).lock_id_by_key(pagetable_ptr) == old(pagetable_map).lock_id_by_key(pagetable_ptr),
         final(pagetable_map).spec_index(pagetable_ptr).locking_thread() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread(),
@@ -279,7 +268,6 @@ pub fn pagetable_map_unmap_4k_kernel(
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         pagetable_lock_perm.lock_id() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         old(lctx).kernel_view_locking_state() is Acquire,
-        lock_id_set_aligned(old(lctx)),
         old(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
         pei_valid(indices.1),
         pei_valid(indices.2),
@@ -295,9 +283,7 @@ pub fn pagetable_map_unmap_4k_kernel(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(pagetable_map).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
         final(pagetable_map).lock_id_by_key(pagetable_ptr) == old(pagetable_map).lock_id_by_key(pagetable_ptr),
         final(pagetable_map).spec_index(pagetable_ptr).locking_thread() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread(),
@@ -463,7 +449,6 @@ pub fn page_array_retype_owned_4k_for_container(
     requires
         page_array_wf(*old(pages)),
         old(pages).typed_lock_map_aligned(old(lctx).page_lock_map(), old(lctx).thread_id()),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         page_ptr_valid(page_ptr),
         old(pages).spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k,
@@ -475,7 +460,6 @@ pub fn page_array_retype_owned_4k_for_container(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         final(pages).inv(),
         page_array_wf(*final(pages)),
         final(pages).typed_lock_map_aligned(final(lctx).page_lock_map(), final(lctx).thread_id()),
@@ -531,7 +515,6 @@ pub fn page_array_retype_owned_2m_for_container(
     requires
         page_array_wf(*old(pages)),
         old(pages).typed_lock_map_aligned(old(lctx).page_lock_map(), old(lctx).thread_id()),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         page_ptr_2m_valid(page_ptr),
         old(pages).spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned2m,
@@ -543,7 +526,6 @@ pub fn page_array_retype_owned_2m_for_container(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         final(pages).inv(),
         page_array_wf(*final(pages)),
         final(pages).typed_lock_map_aligned(final(lctx).page_lock_map(), final(lctx).thread_id()),

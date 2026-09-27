@@ -61,7 +61,7 @@ impl LockOwnerIdTrait for Scheduler {
 
 impl LockUserVisibilityTrait for Scheduler {
     open spec fn is_user_visible() -> bool {
-        false
+        true
     }
 }
 

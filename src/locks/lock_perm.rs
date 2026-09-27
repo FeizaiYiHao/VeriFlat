@@ -10,7 +10,7 @@ pub tracked enum LockState {
 
 /// Opaque identity of an acquired lock instance. This authorizes access to an
 /// `RwLock`; `ordering_lock_id` records the structured id registered in the
-/// held-lock ledger at acquisition time.
+/// typed held-lock maps at acquisition time.
 pub type LockToken = usize;
 
 pub tracked struct LockPerm {

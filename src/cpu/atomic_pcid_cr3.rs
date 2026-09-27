@@ -31,9 +31,7 @@ impl AtomicPcidCr3 {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
     {
         let packed = self.atomic.load(Tracked(&mut *lctx));
         (packed & MEM_MASK as usize, packed & 0xfffusize)

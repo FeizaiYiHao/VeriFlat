@@ -89,6 +89,10 @@ impl PcidAllocator {
         &&& self.ref_counters.spec_index(id) == 0
     }
 
+    pub open spec fn free_pcids(ref_counters: Seq<usize>) -> Set<Pcid> {
+        Set::range(1usize, PCID_MAX).filter(|id: Pcid| ref_counters.spec_index(id as int) == 0)
+    }
+
     pub fn find_lowest_free_nonzero(&self) -> (ret: Option<Pcid>)
         requires
             self.wf(),
@@ -204,7 +208,7 @@ impl LockOwnerIdTrait for PcidAllocator {
 
 impl LockUserVisibilityTrait for PcidAllocator {
     open spec fn is_user_visible() -> bool {
-        false
+        true
     }
 }
 } // verus!

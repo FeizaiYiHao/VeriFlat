@@ -2,7 +2,7 @@
 
 use vstd::prelude::*;
 
-use veriflat_alloc_page::allocate_free_4k_page::allocate_free_4k_impl_base::allocate_free_4k_page;
+use veriflat_alloc_page::allocate_free_4k_page::allocate_free_4k_impl_base::{allocate_free_4k_page, allocate_free_4k_page_k};
 use veriflat_kernel_core::*;
 
 pub mod syscall_new_thread;

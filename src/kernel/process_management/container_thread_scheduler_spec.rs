@@ -3,15 +3,15 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn container_scheduler_wf(container_map: ContainerLockedMap, 
+    pub open spec fn container_scheduler_wf(container_map: ContainerLockedMap,
             scheduler_map: SchedulerLockedMap) -> bool {
         &&&
         forall|c_ptr:RwLockContainerPtr|
             #![trigger container_map.dom().contains(c_ptr)]
             container_map.dom().contains(c_ptr)
             ==>
-            scheduler_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().scheduler) 
-            && 
+            scheduler_map.dom().contains(container_map.spec_index(c_ptr).view_rodata().view().scheduler)
+            &&
             scheduler_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().scheduler).view().owning_container == c_ptr
         &&&
         forall|s_ptr:RwLockSchedulerPtr|
@@ -27,7 +27,7 @@ verus! {
     // container_scheduler_wf.
     #[verifier::opaque]
     pub open spec fn container_thread_scheduler_wf(container_map: ContainerLockedMap,
-            thread_map: ThreadLockedMap, 
+            thread_map: ThreadLockedMap,
             scheduler_map: SchedulerLockedMap) -> bool {
         &&&
         forall|t_ptr:RwLockThreadPtr|

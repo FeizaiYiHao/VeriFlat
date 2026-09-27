@@ -51,12 +51,10 @@ use vstd::simple_pptr::*;
             }),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((ret.1.view().ordering_lock_id(), obj_id.view())),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
                 lock_id: ret.1.view().ordering_lock_id(),
                 mode: TypedLockMode::Write,
             }),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
     {
         unimplemented!()
     }
@@ -99,12 +97,10 @@ use vstd::simple_pptr::*;
             }),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((ret.1.view().ordering_lock_id(), obj_id.view())),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
                 lock_id: ret.1.view().ordering_lock_id(),
                 mode: TypedLockMode::Write,
             }),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
     {
         unimplemented!()
     }
@@ -128,7 +124,6 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             page_perm.addr() == page_ptr,
             value.inv(),
             old(lctx).typed_lock_entry(obj_id.view()) is None,
-            lock_id_set_aligned(old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -167,12 +162,10 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).lock_id_by_key(page_ptr), obj_id.view())),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
                 lock_id: final(self).lock_id_by_key(page_ptr),
                 mode: TypedLockMode::Write,
             }),
-            lock_id_set_aligned(final(lctx)),
     {
         let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
             page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id,
@@ -198,7 +191,6 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             page_perm.addr() == page_ptr,
             value.inv(),
             old(lctx).typed_lock_entry(obj_id.view()) is None,
-            lock_id_set_aligned(old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -237,12 +229,10 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             ret.view().ordering_lock_id() == final(self).lock_id_by_key(page_ptr),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).lock_id_by_key(page_ptr), obj_id.view())),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock {
                 lock_id: final(self).lock_id_by_key(page_ptr),
                 mode: TypedLockMode::Write,
             }),
-            lock_id_set_aligned(final(lctx)),
     {
         let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(
             page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id,
@@ -425,7 +415,6 @@ impl KernelK {
             page_perm.addr() == page_ptr,
             thread_value.inv(),
             typed_lock_maps_aligned(old(self), old(lctx)),
-            lock_id_set_aligned(old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             *final(self) == (KernelK {
@@ -458,13 +447,11 @@ impl KernelK {
             final(self).thr_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().insert((final(self).thr_mp.lock_id_by_key(page_ptr), KernelObjId::Thread(page_ptr))),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(page_ptr), TypedHeldLock {
                 lock_id: final(self).thr_mp.lock_id_by_key(page_ptr),
                 mode: TypedLockMode::Write,
             }),
             typed_lock_maps_aligned(final(self), final(lctx)),
-            lock_id_set_aligned(final(lctx)),
     {
         proof {
             assert(
@@ -472,11 +459,6 @@ impl KernelK {
             ) by {
                 reveal(LockedMap::typed_lock_map_aligned);
             };
-            assert(
-                old(lctx).typed_lock_entry(
-                    KernelObjId::Thread(page_ptr),
-                ) is None
-            );
         }
         let Tracked(thread_perm) = self.thr_mp.retype_4k_and_insert(
             page_ptr, thread_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)),

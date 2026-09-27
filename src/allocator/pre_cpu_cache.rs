@@ -33,7 +33,6 @@ impl LockUserVisibilityTrait for AllocatorCache {
 impl AllocatorCache {
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()
-        &&& self.linked_list.view().no_duplicates()
         &&& self.watermark_wf()
     }
 

@@ -147,9 +147,7 @@ pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
@@ -180,9 +178,7 @@ pub(super) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(pa
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
         final(page_map_perms).dom() == old(page_map_perms).dom(),
         forall|p: PageMapPtr|
             #![trigger final(page_map_perms).spec_index(p)]

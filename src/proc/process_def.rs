@@ -30,9 +30,11 @@ pub struct ProcessGhost {
 pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
+    pub lock_state: LockStateU,
     pub zombie: bool,
     pub pagetable: Option<PageTableU>,
     pub iommu_table: Option<PageTableU>,
+    pub owned_pci_functions: Set<PciBdf>,
     pub quota_4k: usize,
     pub quota_2m: usize,
     pub quota_1g: usize,

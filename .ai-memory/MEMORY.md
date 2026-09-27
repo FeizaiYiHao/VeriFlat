@@ -27,8 +27,8 @@ Historical verification counters, timing snapshots, completed migration
 handoffs, old proof scaffolding, and superseded lock-map designs belong in Git
 history. In particular, do not recover `LocalContext::wf()`, `lock_seq`,
 `user_view_locking_state`, or former scalar/object-parallel ledgers from old
-commits. The current `LocalContext` uses typed held-lock maps plus the exact
-`lock_id_set`; see the kernel-model skill and live code.
+commits. The current `LocalContext` uses typed held-lock maps only (the former exact
+`lock_id_set` ledger was removed); see the kernel-model skill and live code.
 
 When a durable design changes, update the relevant note in place instead of
 adding another dated milestone file.
