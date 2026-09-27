@@ -88,7 +88,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
             lp.view().state() is WriteLock,
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).spec_index(row, col).locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set().contains((old(self).lock_id_by_index(row, col), obj)),
+            old(lctx).lock_entry_contains(old(self).lock_id_by_index(row, col), obj),
         ensures
             wunlock_ensures(old(self).spec_index(row, col), final(self).spec_index(row, col)),
             unlock_ensures(old(lctx), final(lctx), obj, old(self).lock_id_by_index(row, col)),

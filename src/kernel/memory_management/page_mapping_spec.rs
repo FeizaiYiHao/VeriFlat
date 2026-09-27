@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
+    // Proof dependency (confirmed for nonmapped-page changes): pagetable_perms_wf.
     pub open spec fn page_pagetable_wf(pagetable_map: PageTableLockedMap, page_array: PageLockedArray) -> bool {
         &&&
         mapped_4k_page_pagetable_wf(pagetable_map, page_array)
@@ -112,6 +113,8 @@ verus! {
                 == page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_1g().spec_index(va).addr)).view().view().owning_container
     }
 
+    // Proof dependencies (confirmed for global-pool page removal): container_page_owner_wf,
+    // mapped_4k_page_pagetable_wf, mapped_2m_page_pagetable_wf, mapped_1g_page_pagetable_wf.
     #[verifier::opaque]
     pub open spec fn container_process_page_pagetable_wf(container_map: ContainerLockedMap,
             process_map: ProcessLockedMap,

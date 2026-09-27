@@ -17,6 +17,8 @@ verus! {
         thread_temp_alloc_empty_unless_wlocked(thread_map)
         &&&
         thread_endpoint_transit_only_when_wlocked(thread_map)
+        &&&
+        thread_syscall_progress_only_when_wlocked(thread_map)
     }
 
     pub proof fn thread_perms_wf_map(thread_map: ThreadLockedMap) requires thread_perms_wf(thread_map) ensures thread_map.perms_wf() { reveal(thread_perms_wf); }
@@ -52,6 +54,14 @@ verus! {
             thread_map.dom().contains(thread_ptr)
                 && thread_map.spec_index(thread_ptr).view().state
                     is IPC_ENDPOINT_TRANSIT
+            ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+    }
+
+    #[verifier::opaque]
+    pub open spec fn thread_syscall_progress_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
+        forall|thread_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(thread_ptr).view().syscall_progress]
+            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().syscall_progress.view() is Some
             ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
     }
 }

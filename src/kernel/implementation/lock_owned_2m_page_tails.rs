@@ -288,11 +288,6 @@ pub proof fn owned_4k_page_not_in_2m_region(
         page_2m_ptr_prefix_member_bounds(head, 512, page_ptr);
         if page_ptr2page_index(page_ptr) != head {
             owned_4k_page_not_in_2m_tail(krnl, page_ptr, head);
-            assert(
-                page_2m_tail_indices(head).contains(
-                    page_ptr2page_index(page_ptr),
-                )
-            );
         }
     }
 }
@@ -321,15 +316,6 @@ pub(super) proof fn distinct_2m_heads_have_disjoint_tails(
 
 pub(super) open spec fn page_2m_tail_prefix_indices(head: PageIndex, count: usize) -> Set<PageIndex> {
     Set::range((head + 1) as usize, (head + 1 + count) as usize)
-}
-
-pub open spec fn merged_page_lock_id(index: PageIndex) -> LockId {
-    LockId {
-        container: LockOwnerId::None,
-        process: LockOwnerId::None,
-        major: MERGED_PAGE_LOCK_MAJOR,
-        minor: index,
-    }
 }
 
 pub open spec fn owned_2m_tail_lock_perms_wf(
@@ -363,20 +349,18 @@ pub fn wlock_owned_2m_page_tails(
         old(lctx).page_lock_map().dom().disjoint(
             page_2m_tail_indices(head),
         ),
-        old(lctx).lock_id_acyclic(merged_page_lock_id((head + 1) as usize)),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (old(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        final(lctx).lock_id_acyclic(merged_page_lock_id(
-            (head + 512) as usize,
-        )),
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (final(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 512),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         forall|index: PageIndex|
             #![trigger final(krnl).pg_arr.spec_index(index)]
@@ -437,7 +421,6 @@ pub fn wlock_owned_2m_page_tails(
             lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
-            lock_id_set_aligned(&*lctx),
             lctx.page_lock_map().remove_keys(
                 page_2m_tail_prefix_indices(head, count),
             ) == old(lctx).page_lock_map(),
@@ -504,7 +487,9 @@ pub fn wlock_owned_2m_page_tails(
                     &&& perms.spec_index(index).lock_id()
                         == krnl.pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
                 },
-            lctx.lock_id_acyclic(merged_page_lock_id((head + 1 + count) as usize)),
+            lctx.pcid_needflush_lock_map().dom().is_empty(),
+            forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (krnl.pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1 + count),
         decreases 511 - count,
     {
         let index = head + 1usize + count;
@@ -512,28 +497,6 @@ pub fn wlock_owned_2m_page_tails(
             assert(
                 krnl.pg_arr.spec_index(index).view().view().state is Merged2m
             ) by { reveal(hugepage_2m_wf); };
-            assert(
-                krnl.pg_arr.lock_id_by_index(index)
-                    == merged_page_lock_id(index)
-            ) by { reveal(page_array_wf); };
-            assert(!lctx.page_lock_map().dom().contains(index)) by {
-                if lctx.page_lock_map().dom().contains(index) {
-                    assert(
-                        lctx.typed_lock_entry(KernelObjId::Page(index))
-                            .unwrap().lock_id
-                            == krnl.pg_arr.lock_id_by_index(index)
-                    ) by { reveal(LockedArray::typed_lock_map_aligned); };
-                    assert(
-                        lctx.lock_id_set().contains((
-                            krnl.pg_arr.lock_id_by_index(index),
-                            KernelObjId::Page(index),
-                        ))
-                    ) by { reveal(lock_id_set_aligned); };
-                }
-            };
-            assert(
-                lctx.lock_id_acyclic(krnl.pg_arr.lock_id_by_index(index))
-            ) by { lctx.lemma_lock_id_eq_imply_acyclic_eq(); };
         }
         let Tracked(perm) =
             krnl.wlock_page(index, Tracked(&mut *lctx));
@@ -564,13 +527,6 @@ pub fn wlock_owned_2m_page_tails(
                     key => {}
                 );
             };
-            if count + 1usize < 511usize {
-                assert(
-                    lctx.lock_id_acyclic(
-                        merged_page_lock_id((head + 1 + count + 1) as usize),
-                    )
-                );
-            }
         }
         count = count + 1usize;
     }
@@ -586,12 +542,6 @@ pub fn wlock_owned_2m_page_tails(
                 }
             );
         };
-        assert(owned_2m_tail_lock_perms_wf(
-            perms,
-            krnl.pg_arr,
-            lctx,
-            head,
-        ));
         assert(held_pages_unchanged(
             old(krnl).pg_arr,
             krnl.pg_arr,
@@ -599,8 +549,11 @@ pub fn wlock_owned_2m_page_tails(
         )) by {
             reveal(LockedArray::typed_lock_map_aligned);
         };
-        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
+            assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
+            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal, kernel_iommu_table_nonlock_fields_unchanged_for_equal;
+            kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
         };
     }
     Tracked(perms)
@@ -854,15 +807,8 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         let first_index = first_head + 1usize + count;
         let second_index = second_head + 1usize + count;
         proof {
-            assert(
-                page_2m_tail_indices(first_head).contains(first_index)
-            );
-            assert(
-                page_2m_tail_indices(second_head).contains(second_index)
-            );
-            assert(
-                !page_2m_tail_indices(second_head).contains(first_index)
-            );
+            assert(page_2m_tail_indices(first_head).contains(first_index)) by { vstd::set_lib::range_set_properties((first_head + 1) as usize, (first_head + 512) as usize); };
+            assert(page_2m_tail_indices(second_head).contains(second_index) && !page_2m_tail_indices(second_head).contains(first_index)) by { vstd::set_lib::range_set_properties((second_head + 1) as usize, (second_head + 512) as usize); };
         }
         let first_page = pages.borrow_mut_typed(
             first_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(first_perms.tracked_borrow(first_index)),
@@ -928,22 +874,6 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
                 }
             );
         };
-        assert(owned_2m_tail_lock_perms_wf(
-            *first_perms,
-            *pages,
-            lctx,
-            first_head,
-        ));
-        assert(owned_2m_tail_lock_perms_wf(
-            *second_perms,
-            *pages,
-            lctx,
-            second_head,
-        ));
-        assert(staged_4k_page_chain(
-            *pages,
-            preserved_page_ptr_seq,
-        ));
     }
 }
 
@@ -958,14 +888,12 @@ pub fn wunlock_owned_2m_page_tails(
         page_index_2m_valid(head),
         owned_2m_tail_lock_perms_wf(perms, old(krnl).pg_arr, old(lctx), head),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_k_to_kernel_u(*final(krnl))
-            == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_k_to_nonlock_kernel_u(*final(krnl))
+            == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).page_lock_map()
@@ -1030,7 +958,6 @@ pub fn wunlock_owned_2m_page_tails(
             count > 0
                 ==> lctx.kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(krnl, &*lctx),
-            lock_id_set_aligned(&*lctx),
             lctx.page_lock_map()
                 == old(lctx).page_lock_map().remove_keys(
                     page_2m_tail_prefix_indices(head, count),
@@ -1117,13 +1044,7 @@ pub fn wunlock_owned_2m_page_tails(
     {
         let index = head + 1usize + count;
         proof {
-            assert(
-                page_2m_tail_indices(head).contains(index)
-            );
-            assert(
-                !page_2m_tail_prefix_indices(head, count).contains(index)
-            );
-            assert(perms.dom().contains(index));
+            assert(perms.dom().contains(index)) by { vstd::set_lib::range_set_properties((head + 1) as usize, (head + 512) as usize); vstd::set_lib::range_set_properties((head + 1) as usize, (head + 1 + count) as usize); };
         }
         let tracked perm = perms.tracked_remove(index);
         krnl.wunlock_page(index, Tracked(&mut *lctx), Tracked(perm));
@@ -1171,8 +1092,11 @@ pub fn wunlock_owned_2m_page_tails(
             );
         };
         held_pages_unchanged_except_for_changed_set(old(krnl).pg_arr, krnl.pg_arr, old(lctx), page_2m_tail_indices(head));
-        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-            kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
+            assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
+            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal, kernel_iommu_table_nonlock_fields_unchanged_for_equal;
+            kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
         };
     }
 }

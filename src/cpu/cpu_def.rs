@@ -47,6 +47,7 @@ pub ghost struct CpuView {
 }
 
 pub ghost struct CpuU {
+    pub lock_state: LockStateU,
     pub owning_container: RwLockContainerPtr,
     pub state: CpuState,
     pub current_process: Option<RwLockProcessPtr>,
@@ -377,9 +378,7 @@ impl CpuLockedArray {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             old(lctx).cpu_lock_map().index(cpu_id).lock_id == old(self).spec_index(cpu_id).lock_id(),
             final(self).inv(),
             final(self).entries_unchanged_except(old(self), cpu_id),
@@ -484,9 +483,7 @@ impl CpuLockedArray {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             old(lctx).cpu_lock_map().index(cpu_id).lock_id == old(self).spec_index(cpu_id).lock_id(),
             final(self).inv(),
             final(self).entries_unchanged_except(old(self), cpu_id),

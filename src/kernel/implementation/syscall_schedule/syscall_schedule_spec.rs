@@ -157,4 +157,74 @@ pub open spec fn scheduler_context_switch_transition(
             SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
         } else { pre.cpu_tlb.spec_index((c, p)) })
 }
+
+/// The PCID whose `(cpu_id, pcid)` TLB entry the switch to `next_thread` flushes, if any.
+pub open spec fn schedule_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr) -> Option<Pcid> {
+    let next_process = pre.thr_mp.spec_index(next_thread).view().owning_proc;
+    let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
+    let pcid = target.pcid;
+    let dirty = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+    if pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
+        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)) {
+        Some(pcid)
+    } else { None }
+}
+
+/// User-visible precondition of the scheduler switch step on `cpu_id`.
+pub open spec fn schedule_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let container = old_u.container_map.spec_index(cpu.owning_container);
+    let next_thread = container.scheduler[0];
+    let next = old_u.thread_map.spec_index(next_thread);
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& !(cpu.state is Off)
+    &&& old_u.container_map.dom().contains(cpu.owning_container)
+    &&& container.scheduler.len() > 0
+    &&& old_u.thread_map.dom().contains(next_thread)
+    &&& !next.killed
+    &&& next.state is SCHEDULED
+    &&& next.owning_container == cpu.owning_container
+    &&& old_u.process_map.dom().contains(next.owning_proc)
+    &&& cpu.current_process is Some == cpu.current_thread is Some
+    &&& (cpu.current_thread is Some ==> {
+        let prev = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
+        &&& cpu.current_thread.unwrap() != next_thread
+        &&& old_u.thread_map.dom().contains(cpu.current_thread.unwrap())
+        &&& !prev.killed
+        &&& prev.state == (ThreadState::RUNNING { cpu_id })
+        &&& prev.owning_proc == cpu.current_process.unwrap()
+        &&& old_u.process_map.dom().contains(cpu.current_process.unwrap())
+        &&& !old_u.process_map.spec_index(cpu.current_process.unwrap()).killed
+    })
+}
+
+/// User-visible scheduler switch step: `cpu_id` runs the head of its container's scheduler,
+/// the previous thread is requeued at the tail, and at most one PCID TLB entry is flushed.
+pub open spec fn schedule_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, entry_regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let container = old_u.container_map.spec_index(cpu.owning_container);
+    let next_thread = container.scheduler[0];
+    let next = old_u.thread_map.spec_index(next_thread);
+    let requeued = match cpu.current_thread {
+        Some(prev) => old_u.thread_map.insert(prev, ThreadU {
+            state: ThreadState::SCHEDULED, error_code: None, trap_frame: Some(entry_regs), ..old_u.thread_map.spec_index(prev)
+        }),
+        None => old_u.thread_map,
+    };
+    new_u == (KernelU {
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
+            state: CpuState::Running, current_process: Some(next.owning_proc), current_thread: Some(next_thread), ..cpu
+        }),
+        container_map: old_u.container_map.insert(cpu.owning_container, ContainerU {
+            scheduler: match cpu.current_thread { Some(prev) => container.scheduler.skip(1).push(prev), None => container.scheduler.skip(1) },
+            ..container
+        }),
+        thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, error_code: None, trap_frame: None, ..next }),
+        cpu_tlb: match flushed_pcid {
+            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            None => old_u.cpu_tlb,
+        },
+        ..old_u
+    })
+}
 }

@@ -11,6 +11,15 @@ pub struct Endpoint {
     pub owning_container: RwLockContainerPtr,
 }
 
+pub ghost struct EndpointU {
+    pub lock_state: LockStateU,
+    pub queue: Seq<RwLockThreadPtr>,
+    pub queue_state: EndpointState,
+    pub owning_threads: Set<(RwLockThreadPtr, EndpointIdx)>,
+    pub owning_container: RwLockContainerPtr,
+    pub killed: bool,
+}
+
 impl LockInvTrait for Endpoint {
     open spec fn inv(&self) -> bool {
         &&&
@@ -66,7 +75,7 @@ impl LockOwnerIdTrait for Endpoint {
 
 impl LockUserVisibilityTrait for Endpoint {
     open spec fn is_user_visible() -> bool {
-        false
+        true
     }
 }
 

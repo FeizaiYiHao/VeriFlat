@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_maps_equal;
 use crate::*;
 use super::*;
 
@@ -59,7 +60,7 @@ pub(super) proof fn eof_subsystems_inv(
     ensures
         post.subsystems_inv(),
 {
-    assert(pre.subsystems_inv());
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     let process_page_index = page_ptr2page_index(process_page_ptr);
     let pagetable_page_index = page_ptr2page_index(pagetable_page_ptr);
     let l4_page_index = page_ptr2page_index(l4_page_ptr);
@@ -120,7 +121,7 @@ pub(super) proof fn eof_subsystems_inv(
     };
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf);
-        reveal(thread_temp_alloc_empty_unless_wlocked);
+        reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked);
     };
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
@@ -202,7 +203,7 @@ pub(super) proof fn eof_page_table_relations(
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
 {
-    assert(page_pagetable_wf(pre.pt_mp, pre.pg_arr));
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
         reveal(mapped_4k_page_pagetable_wf);
         reveal(mapped_2m_page_pagetable_wf);
@@ -231,7 +232,7 @@ pub(super) proof fn eof_memory_relations(
     container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
 )
     requires
-        pre.inv(),
+        pre.memory_management_inv(),
         post.subsystems_inv(),
         page_ptr_valid(process_page_ptr),
         page_ptr_valid(pagetable_page_ptr),
@@ -310,6 +311,7 @@ pub(super) proof fn eof_memory_relations(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     assert(allocator_pages_wf(
         post.pg_arr,
         post.allc_4k_mp,
@@ -333,7 +335,6 @@ pub(super) proof fn eof_memory_relations(
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
-    assert(post.allocator_free_pages_wf());
     assert(container_allocator_wf(
         post.ctn_mp,
         post.allc_4k_mp,
@@ -411,15 +412,7 @@ pub(super) proof fn eof_allocator_quota_wf(
         container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
         container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
 {
-    assert(container_process_wf(pre.ctn_mp, pre.prc_mp));
-    assert(container_thread_wf(pre.ctn_mp, pre.thr_mp));
-    assert(container_process_allocator_quota_4k_wf(
-        pre.ctn_mp,
-        pre.prc_mp,
-        pre.thr_mp,
-        pre.allc_4k_mp,
-    )) by {
-    };
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     assert(container_process_allocator_quota_4k_wf(
         post.ctn_mp,
         post.prc_mp,
@@ -451,15 +444,6 @@ pub(super) proof fn eof_allocator_quota_wf(
     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(
         post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp,
     );
-    assert(container_process_wf(pre.ctn_mp, pre.prc_mp));
-    assert(container_thread_wf(pre.ctn_mp, pre.thr_mp));
-    assert(container_process_allocator_quota_2m_wf(
-        pre.ctn_mp,
-        pre.prc_mp,
-        pre.thr_mp,
-        pre.allc_2m_mp,
-    )) by {
-    };
     assert(container_process_allocator_quota_2m_wf(
         post.ctn_mp,
         post.prc_mp,
@@ -473,19 +457,9 @@ pub(super) proof fn eof_allocator_quota_wf(
         lemma_process_effective_quota_2m_fold_sum_eq_forall();
         reveal(container_process_allocator_quota_2m_wf);
     };
-    assert(container_thread_wf(post.ctn_mp, pre.thr_mp));
     container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(
         post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp,
     );
-    assert(container_process_wf(pre.ctn_mp, pre.prc_mp));
-    assert(container_thread_wf(pre.ctn_mp, pre.thr_mp));
-    assert(container_process_allocator_quota_1g_wf(
-        pre.ctn_mp,
-        pre.prc_mp,
-        pre.thr_mp,
-        pre.allc_1g_mp,
-    )) by {
-    };
     assert(container_process_allocator_quota_1g_wf(
         post.ctn_mp,
         post.prc_mp,
@@ -499,7 +473,6 @@ pub(super) proof fn eof_allocator_quota_wf(
         lemma_process_effective_quota_1g_fold_sum_eq_forall();
         reveal(container_process_allocator_quota_1g_wf);
     };
-    assert(container_thread_wf(post.ctn_mp, pre.thr_mp));
     container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(
         post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp,
     );
@@ -588,14 +561,6 @@ pub(super) proof fn eof_memory_management_inv(
         pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr,
         staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
     );
-    assert(container_process_allocator_quota_wf(
-        post.ctn_mp,
-        post.prc_mp,
-        post.thr_mp,
-        post.allc_4k_mp,
-        post.allc_2m_mp,
-        post.allc_1g_mp,
-    ));
 }
 
 #[verifier::spinoff_prover]
@@ -637,8 +602,7 @@ pub(super) proof fn eof_process_tree_invariants(
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
 {
-    assert(pre.subsystems_inv());
-    assert(pre.process_management_inv());
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     let ancestors =
         pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr);
     let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
@@ -676,7 +640,7 @@ pub(super) proof fn eof_process_tree_invariants(
     };
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf);
-        reveal(thread_temp_alloc_empty_unless_wlocked);
+        reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked);
     };
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
@@ -699,11 +663,6 @@ pub(super) proof fn eof_process_tree_invariants(
     };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
-        assert(process_tree_wf(
-            post.ctn_mp.spec_index(container_ptr).view().root_process,
-            post.ctn_mp.spec_index(container_ptr).view().owned_processes.view(),
-            post.prc_mp,
-        ));
         reveal(per_container_process_tree_wf);
         reveal(container_process_wf);
         reveal(process_uppertree_seq_wf);
@@ -742,6 +701,7 @@ pub(super) proof fn eof_process_management_inv(
     ensures
         post.process_management_inv(),
 {
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     eof_process_tree_invariants(
         pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr,
         staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
@@ -902,10 +862,43 @@ pub(super) proof fn eof_inv(
         post.pcid_allc_mp.perms_wf(),
         post.pcid_allc_mp.spec_index(pcid_allocator_ptr).inv(),
     ensures
+        post == (KernelK {
+            pg_arr: post.pg_arr, prc_mp: post.prc_mp, pt_mp: post.pt_mp, it_mp: post.it_mp,
+            ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre
+        }),
+        post.prc_mp.dom() == pre.prc_mp.dom().insert(process_page_ptr),
+        post.prc_mp.spec_index(parent_ptr).view().owned_threads == pre.prc_mp.spec_index(parent_ptr).view().owned_threads,
+        post.prc_mp.spec_index(parent_ptr).being_killed() == pre.prc_mp.spec_index(parent_ptr).being_killed(),
+        !post.prc_mp.spec_index(process_page_ptr).being_killed(),
+        !post.prc_mp.spec_index(process_page_ptr).view().zombie,
+        post.prc_mp.spec_index(process_page_ptr).view_rodata().view().owning_container == container_ptr,
+        post.prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr,
+        post.prc_mp.spec_index(process_page_ptr).view().iommu_table == Some(iommu_table_page_ptr),
+        post.pt_mp.dom() == pre.pt_mp.dom().insert(pagetable_page_ptr),
+        forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt)]
+            pre.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt) == pre.pt_mp.spec_index(pt),
+        post.pt_mp.spec_index(pagetable_page_ptr).view().is_empty(),
+        post.pt_mp.spec_index(pagetable_page_ptr).view().proc_ptr == process_page_ptr,
+        post.prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
+        post.ctn_mp.dom() == pre.ctn_mp.dom(),
+        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
+        post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
+        post.thr_mp.dom() == pre.thr_mp.dom(),
+        post.thr_mp.spec_index(staging_thread_ptr).view() == (Thread {
+            quota_4k: (pre.thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 5) as usize,
+            temp_alloc_cache_4k: Ghost(Set::empty()), ..pre.thr_mp.spec_index(staging_thread_ptr).view()
+        }),
+        post.thr_mp.spec_index(staging_thread_ptr).being_killed() == pre.thr_mp.spec_index(staging_thread_ptr).being_killed(),
+        post.pcid_allc_mp.dom() == pre.pcid_allc_mp.dom(),
+        post.it_mp.dom() == pre.it_mp.dom().insert(iommu_table_page_ptr),
+        post.it_mp.spec_index(iommu_table_page_ptr).view().is_empty(),
         post.inv(),
-        kernel_u_create_process_with_iommu_changed(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(post), parent_ptr, process_page_ptr),
-        kernel_k_to_kernel_u(post) != kernel_k_to_kernel_u(pre),
+        kernel_u_create_process_with_iommu_changed(
+            kernel_k_to_nonlock_kernel_u(pre), kernel_k_to_nonlock_kernel_u(post), parent_ptr, process_page_ptr, staging_thread_ptr,
+        ),
+        kernel_k_to_nonlock_kernel_u(post) != kernel_k_to_nonlock_kernel_u(pre),
 {
+    reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing);
     eof_subsystems_inv(
         pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr,
         staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
@@ -950,16 +943,27 @@ pub(super) proof fn eof_inv(
     )) by {
         reveal(tlb_wf_spec);
     };
-    assert(post.inv());
     assert(kernel_u_create_process_with_iommu_changed(
-        kernel_k_to_kernel_u(pre),
-        kernel_k_to_kernel_u(post),
+        kernel_k_to_nonlock_kernel_u(pre),
+        kernel_k_to_nonlock_kernel_u(post),
         parent_ptr,
         process_page_ptr,
+        staging_thread_ptr,
     )) by {
-        reveal(kernel_k_to_kernel_u);
+        reveal(kernel_u_create_process_with_iommu_changed);
+        reveal(kernel_k_to_nonlock_kernel_u);
         reveal(process_pagetable_match);
         reveal(process_iommu_table_match);
+        let old_u = kernel_k_to_nonlock_kernel_u(pre);
+        let new_u = kernel_k_to_nonlock_kernel_u(post);
+        assert_maps_equal!(
+            new_u.thread_map,
+            old_u.thread_map.insert(
+                staging_thread_ptr, new_u.thread_map.spec_index(staging_thread_ptr),
+            ),
+            t => {}
+        );
     };
+    assert(kernel_k_to_nonlock_kernel_u(post) != kernel_k_to_nonlock_kernel_u(pre)) by { reveal(kernel_u_create_process_with_iommu_changed); };
 }
 }

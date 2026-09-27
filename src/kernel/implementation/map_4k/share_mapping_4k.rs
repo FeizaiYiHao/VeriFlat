@@ -160,6 +160,7 @@ pub open spec fn share_mapping_4k_range_owner_compatible_prefix(
 
 /// Target map after copying the first `upper` source-range mappings to the
 /// corresponding target-range addresses.
+#[verifier::opaque]
 pub open spec fn share_mapping_4k_target_map_with_shared_prefix(
     source: Map<VAddr, MapEntry>,
     target: Map<VAddr, MapEntry>,
@@ -176,23 +177,25 @@ pub open spec fn share_mapping_4k_target_map_with_shared_prefix(
     }
 }
 
+#[verifier::opaque]
 pub open spec fn share_mapping_4k_range_mapped_prefix(
-    target: PageTable<PT_TYPE>, target_range: &VaRange4K, upper: int,
+    target: Map<VAddr, MapEntry>, target_range: &VaRange4K, upper: int,
 ) -> bool {
     forall|i: int|
-        #![trigger target.mapping_4k().dom().contains(target_range.view().spec_index(i))]
+        #![trigger target.dom().contains(target_range.view().spec_index(i))]
         0 <= i < upper
-        ==> target.mapping_4k().dom().contains(target_range.view().spec_index(i))
+        ==> target.dom().contains(target_range.view().spec_index(i))
 }
 
 /// Every not-yet-shared target VA is still absent from the 4K mapping.
+#[verifier::opaque]
 pub open spec fn share_mapping_4k_target_range_empty_from(
-    pagetable: PageTable<PT_TYPE>, target_range: &VaRange4K, first: int,
+    pagetable: Map<VAddr, MapEntry>, target_range: &VaRange4K, first: int,
 ) -> bool {
     forall|i: int|
-        #![trigger pagetable.mapping_4k().dom().contains(target_range.view().spec_index(i))]
+        #![trigger pagetable.dom().contains(target_range.view().spec_index(i))]
         first <= i < target_range.len
-        ==> !pagetable.mapping_4k().dom().contains(target_range.view().spec_index(i))
+        ==> !pagetable.dom().contains(target_range.view().spec_index(i))
 }
 
 pub open spec fn share_mapping_4k_reverse_mappings(
@@ -262,11 +265,13 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
-        old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         old(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
         source_pagetable != target_pagetable,
         old(krnl).thr_mp.dom().contains(source_thread),
         old(krnl).thr_mp.dom().contains(target_thread),
@@ -276,7 +281,7 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         !old(krnl).thr_mp.spec_index(target_thread).being_killed(),
         old(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         old(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-        old(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
+        mmap_4k_quota_thread_container_compatible(old(krnl), old(lctx), target_thread, target_container),
         old(krnl).prc_mp.dom().contains(target_process),
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -299,12 +304,19 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         target_pagetable_lock_perm.state() is WriteLock,
         target_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         target_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).ctn_mp.dom().contains(target_container),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-        old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         share_mapping_4k_leaf_ready(old(krnl), source_pagetable, target_pagetable, target_container, source_va, target_va),
     ensures
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
@@ -316,11 +328,8 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
-        final(lctx).page_lock_map().dom().is_empty(),
         final(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         final(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         final(krnl).thr_mp.dom().contains(source_thread),
         final(krnl).thr_mp.dom().contains(target_thread),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), source_thread, TypedLockMode::Write),
@@ -329,7 +338,7 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         !final(krnl).thr_mp.spec_index(target_thread).being_killed(),
         final(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         final(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-        final(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
+        mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), target_thread, target_container),
         final(krnl).prc_mp.dom().contains(target_process),
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -344,30 +353,34 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         final(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
         source_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        final(steps).steps.len() == old(steps).steps.len() + 1,
-        final(steps).steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps,
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
+        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
+        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+        final(steps).snapshot_k() == *final(krnl),
         {
             let source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
-            &&& final(steps).steps.last().new_u.process_map.dom().contains(source_process)
-            &&& kernel_k_to_kernel_u(*final(krnl)).process_map.dom().contains(source_process)
-            &&& final(steps).steps.last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable
-            &&& final(steps).steps.last().new_u.process_map.dom().contains(target_process)
+            &&& final(steps).nonlock_view().last().new_u.process_map.dom().contains(source_process)
+            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.dom().contains(source_process)
+            &&& final(steps).nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable
+            &&& final(steps).nonlock_view().last().new_u.process_map.dom().contains(target_process)
+            &&& final(steps).nonlock_view().last().new_u.thread_map.dom().contains(target_thread)
+            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.dom().contains(target_thread)
+            &&& final(steps).nonlock_view().last().new_u.thread_map.spec_index(target_thread)
+                == kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.spec_index(target_thread)
             &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), target_process, TypedLockMode::Write) && ({
                 let iommu_table = old(krnl).prc_mp.spec_index(target_process).view().iommu_table;
                 ||| iommu_table is None
                 ||| iommu_table is Some && old(lctx).iommu_table_lock_map().dom().contains(iommu_table.unwrap())
             }) ==> {
-                &&& kernel_k_to_kernel_u(*final(krnl)).process_map.dom().contains(target_process)
-                &&& final(steps).steps.last().new_u.process_map.spec_index(target_process) == kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(target_process)
+                &&& kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.dom().contains(target_process)
+                &&& final(steps).nonlock_view().last().new_u.process_map.spec_index(target_process) == kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.spec_index(target_process)
             }
         },
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         final(krnl).thr_mp.lock_id_by_key(target_thread) == old(krnl).thr_mp.lock_id_by_key(target_thread),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-        final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
@@ -383,7 +396,7 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         final(krnl).prc_mp.spec_index(target_process).view_rodata() == old(krnl).prc_mp.spec_index(target_process).view_rodata(),
         final(krnl).pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k().insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k().spec_index(source_va)),
-        final(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k == old(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k.insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().user_view().mapping_4k.spec_index(source_va)),
+        final(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k == old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k.insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
@@ -397,6 +410,8 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings().contains((target_pagetable, target_va))
         },
 {
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+
     let source_indices = va2index(source_va);
     proof {
         pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
@@ -435,7 +450,6 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
                 is Mapped4k
             &&& !lctx.page_lock_map().dom().contains(page_index)
             &&& krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR
-            &&& lctx.lock_id_acyclic(krnl.pg_arr.lock_id_by_index(page_index))
         }) by {
             page_ptr_valid_imply_page_index_valid();
             reveal(mapped_4k_page_pagetable_wf);
@@ -521,18 +535,6 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
         };
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, target_pagetable, target_va, krnl.pcid_needflush); };
-        assert(kernel_k_to_kernel_u(*krnl) != kernel_k_to_kernel_u(*old(krnl))) by {
-            assert({
-                let process_ptr = target_process;
-                &&& kernel_k_to_kernel_u(*old(krnl)).process_map.dom().contains(process_ptr)
-                &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process_ptr)
-                &&& !kernel_k_to_kernel_u(*old(krnl)).process_map .spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(target_va)
-                &&& kernel_k_to_kernel_u(*krnl).process_map .spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(target_va)
-            }) by {
-                reveal(kernel_k_to_kernel_u);
-                reveal(process_pagetable_match);
-            };
-        };
     }
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
     proof {
@@ -541,39 +543,36 @@ fn share_one_mapping_4k(krnl: &mut KernelK, source_thread: RwLockThreadPtr, targ
                 lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write,
             });
         };
-        assert(krnl.pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k =~= old(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k.insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().user_view().mapping_4k.spec_index(source_va))) by { vstd::map::axiom_map_ext_equal(krnl.pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k, old(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k.insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().user_view().mapping_4k.spec_index(source_va))); };
-        krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
-        assert({
-            let source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
-            &&& steps.steps.last().new_u.process_map.dom().contains(source_process)
-            &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(source_process)
-            &&& steps.steps.last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_kernel_u(*krnl).process_map.spec_index(source_process).pagetable
-            &&& steps.steps.last().new_u.process_map.dom().contains(target_process)
-            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), target_process, TypedLockMode::Write) && ({
-                let iommu_table = old(krnl).prc_mp.spec_index(target_process).view().iommu_table;
-                ||| iommu_table is None
-                ||| iommu_table is Some && old(lctx).iommu_table_lock_map().dom().contains(iommu_table.unwrap())
-            }) ==> {
-                &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(target_process)
-                &&& steps.steps.last().new_u.process_map.spec_index(target_process) == kernel_k_to_kernel_u(*krnl).process_map.spec_index(target_process)
-            }
-        }) by {
-            reveal(kernel_k_to_kernel_u);
+        assert(krnl.pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k =~= old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k.insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va))) by { vstd::map::axiom_map_ext_equal(krnl.pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k, old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k.insert(target_va, old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va))); };
+        assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, target_process, target_pagetable, target_va)) by {
+            reveal(kernel_process_4k_mapping_changed);
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
+            reveal(kernel_pagetable_nonlock_fields_unchanged);
             reveal(process_pagetable_match);
-            reveal(process_iommu_table_match);
         };
+        let ghost source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
+        assert({
+            &&& krnl.prc_mp.dom().contains(source_process)
+            &&& !krnl.prc_mp.spec_index(source_process).view().zombie
+            &&& krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable
+        }) by { reveal(process_pagetable_match); };
+        assert(!krnl.prc_mp.spec_index(target_process).view().zombie
+            && krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable) by { reveal(process_pagetable_match); };
+        krnl.kernel_step_boundary_process_4k_mapping_changed(
+            &mut *lctx, &mut *steps, target_process, target_pagetable, target_va,
+            source_process, source_pagetable, target_thread,
+        );
         assert({
             let mapped_page = krnl.pt_mp .spec_index(target_pagetable).view().mapping_4k().spec_index(target_va).addr;
             krnl.pg_arr.spec_index(page_ptr2page_index(mapped_page)).view().view().mappings().contains((target_pagetable, target_va))
         }) by { reveal(mapped_4k_page_pagetable_wf); };
         assert({
-            &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
             &&& krnl.ctn_mp.dom().contains(target_container)
             &&& krnl.prc_mp.dom().contains(target_process)
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable
             &&& ((krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process && krnl.thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable) || typed_lock_map_contains_mode(lctx.process_lock_map(), target_process, TypedLockMode::Write))
-        }) by { reveal(process_pagetable_match); reveal(container_process_wf); reveal(LocalContext::holds_no_allocator_locks); };
+        }) by { reveal(process_pagetable_match); reveal(container_process_wf); };
     }
 }
 
@@ -589,11 +588,13 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
-        old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         old(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
         source_pagetable != target_pagetable,
         old(krnl).thr_mp.dom().contains(source_thread),
         old(krnl).thr_mp.dom().contains(target_thread),
@@ -603,7 +604,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         !old(krnl).thr_mp.spec_index(target_thread).being_killed(),
         old(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         old(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-        old(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
+        mmap_4k_quota_thread_container_compatible(old(krnl), old(lctx), target_thread, target_container),
         old(krnl).prc_mp.dom().contains(target_process),
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -626,13 +627,22 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         target_pagetable_lock_perm.state() is WriteLock,
         target_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         target_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         source_range.wf(),
         old(krnl).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_va2index(source_range.start).0,
         share_mapping_4k_source_range_present(old(krnl), source_pagetable, source_range),
         old(krnl).thr_mp.spec_index(target_thread).view().owning_proc == target_process,
+        old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
     ensures
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
             old(lctx).pagetable_lock_map().dom().contains(pt)
@@ -643,11 +653,8 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
-        final(lctx).page_lock_map().dom().is_empty(),
         final(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         final(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         final(krnl).thr_mp.dom().contains(source_thread),
         final(krnl).thr_mp.dom().contains(target_thread),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), source_thread, TypedLockMode::Write),
@@ -656,7 +663,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         !final(krnl).thr_mp.spec_index(target_thread).being_killed(),
         final(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         final(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-        final(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
+        mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), target_thread, target_container),
         final(krnl).prc_mp.dom().contains(target_process),
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -671,10 +678,18 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         final(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
         source_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        final(steps).steps.len() == old(steps).steps.len(),
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
+        final(steps).nonlock_view().len() == old(steps).nonlock_view().len(),
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
+        final(krnl).irt.owners() == final(steps).snapshot_k().irt.owners(),
+        final(krnl).irt.iommu_roots() == final(steps).snapshot_k().irt.iommu_roots(),
+        final(krnl).cpu_tlb.view() == final(steps).snapshot_k().cpu_tlb.view(),
+        final(krnl).iommu_tlb.view() == final(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
@@ -690,18 +705,11 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         final(krnl).pt_mp.spec_index(target_pagetable).view() == old(krnl).pt_mp.spec_index(target_pagetable).view(),
         final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
         final(krnl).thr_mp.spec_index(target_thread).view() == old(krnl).thr_mp.spec_index(target_thread).view(),
-        ({
-            &&& old(lctx).page_lock_map().dom().is_empty()
-            &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k)
-            &&& old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)
-        }) ==> {
-            &&& final(lctx).page_lock_map().dom().is_empty()
-            &&& final(lctx).holds_no_allocator_locks(PageSize::SZ4k)
-            &&& final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)
-        },
         share_mapping_4k_source_range_present(final(krnl), source_pagetable, source_range),
         ret == share_mapping_4k_range_owner_compatible(final(krnl), source_pagetable, target_container, source_range),
 {
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+
     proof {
         thread_perms_wf_at(krnl.thr_mp, target_thread);
         pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
@@ -717,6 +725,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
             &&& held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx))
             &&& held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx))
+            &&& held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx))
         }) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     }
     let mut i: usize = 0;
@@ -730,11 +739,13 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
             krnl.inv(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
-            lock_id_set_aligned(&*lctx),
-            lctx.page_lock_map().dom().is_empty(),
             lctx.thread_lock_map().dom() == set![source_thread, target_thread],
             lctx.pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-            lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+            lctx.pcid_needflush_lock_map().dom().is_empty(),
+            lctx.scheduler_lock_map().dom().is_empty(),
+            lctx.cpu_set_lock_map().dom().is_empty(),
+            forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
             source_pagetable != target_pagetable,
             krnl.thr_mp.dom().contains(source_thread),
             krnl.thr_mp.dom().contains(target_thread),
@@ -744,7 +755,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
             !krnl.thr_mp.spec_index(target_thread).being_killed(),
             krnl.thr_mp.spec_index(source_thread).view().owning_proc != target_process,
             krnl.thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-            krnl.thr_mp.spec_index(target_thread).view().owning_container == target_container,
+            mmap_4k_quota_thread_container_compatible(krnl, lctx, target_thread, target_container),
             krnl.prc_mp.dom().contains(target_process),
             krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
             krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -767,7 +778,14 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
             target_pagetable_lock_perm.state() is WriteLock,
             target_pagetable_lock_perm.thread_id() == lctx.thread_id(),
             target_pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-            steps.snap_shot == kernel_k_to_kernel_u(*krnl),
+            steps.nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),
+            kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp),
+            krnl.irt.owners() == steps.snapshot_k().irt.owners(),
+            krnl.irt.iommu_roots() == steps.snapshot_k().irt.iommu_roots(),
+            krnl.cpu_tlb.view() == steps.snapshot_k().cpu_tlb.view(),
+            krnl.iommu_tlb.view() == steps.snapshot_k().iommu_tlb.view(),
+            kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
             index_valid(NUM_CPUS, cpu_id),
             krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -780,11 +798,12 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
             share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
             0 <= i <= source_range.len,
             all_compatible == share_mapping_4k_range_owner_compatible_prefix(krnl, source_pagetable, target_container, source_range, i as int),
-            steps.steps.len() == old(steps).steps.len(),
+            steps.nonlock_view().len() == old(steps).nonlock_view().len(),
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
             typed_lock_maps_unchanged(old(lctx), lctx),
+            held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx)),
             old(lctx).thread_lock_map().dom().contains(source_thread),
             old(lctx).thread_lock_map().dom().contains(target_thread),
             old(lctx).pagetable_lock_map().dom().contains(source_pagetable),
@@ -805,16 +824,10 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
             krnl.pt_mp.spec_index(target_pagetable).view() == old(krnl).pt_mp .spec_index(target_pagetable).view(),
             krnl.thr_mp.spec_index(target_thread).view() == old(krnl).thr_mp.spec_index(target_thread).view(),
             krnl.thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
-            ({
-                &&& old(lctx).page_lock_map().dom().is_empty()
-                &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k)
-                &&& old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)
-            }) ==> {
-                &&& lctx.page_lock_map().dom().is_empty()
-                &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
-                &&& lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR)
-            },
             krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process,
+            lctx.holds_no_allocator_locks(PageSize::SZ4k),
+            lctx.holds_no_allocator_locks(PageSize::SZ2m),
+            lctx.holds_no_allocator_locks(PageSize::SZ1g),
         decreases source_range.len - i,
     {
         let source_va = source_range.index(i);
@@ -842,10 +855,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
                 &&& index_valid(NUM_PAGES, page_index)
                 &&& !lctx.page_lock_map().dom().contains(page_index)
                 &&& krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR
-                &&& lctx.lock_id_acyclic(krnl.pg_arr.lock_id_by_index(page_index))
-            }) by {
-                page_ptr_valid_imply_page_index_valid();
-            };
+            }) by { page_ptr_valid_imply_page_index_valid(); };
         }
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
         let page_owner;
@@ -881,7 +891,9 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
                     lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write,
                 });
             };
-            krnl.kernel_step_boundary(&mut *lctx, &mut *steps);
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
             assert({
                 &&& held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx))
                 &&& held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx))
@@ -900,7 +912,6 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
                 &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable
                 &&& ((krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process && krnl.thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable) || typed_lock_map_contains_mode(lctx.process_lock_map(), target_process, TypedLockMode::Write))
             }) by { reveal(container_thread_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
-            assert(old(lctx).holds_no_allocator_locks(PageSize::SZ4k) ==> lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
             assert(share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by {
                 reveal(mapped_4k_page_pagetable_wf);
                 page_ptr_valid_imply_page_index_valid();
@@ -912,6 +923,14 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         proof {
             assert(all_compatible == share_mapping_4k_range_owner_compatible_prefix(krnl, source_pagetable, target_container, source_range, (i + 1) as int)) by {
                 assert(share_mapping_4k_range_owner_compatible_prefix(krnl, source_pagetable, target_container, source_range, (i + 1) as int) == (share_mapping_4k_range_owner_compatible_prefix(krnl, source_pagetable, target_container, source_range, i as int) && share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_va))) by { source_range.va_range_lemma(); };
+            };
+        }
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)
+                && kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)
+                && kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by {
+                broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_for_equal;
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             };
         }
         i = i + 1;
@@ -930,11 +949,13 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         old(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         source_pagetable != target_pagetable,
         old(krnl).thr_mp.dom().contains(source_thread),
         old(krnl).thr_mp.dom().contains(target_thread),
@@ -967,12 +988,19 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
         target_pagetable_lock_perm.state() is WriteLock,
         target_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         target_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).ctn_mp.dom().contains(target_container),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-        old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+        old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         source_range.wf(),
         old(krnl).pt_mp.spec_index(source_pagetable).view().wf(),
         old(krnl).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_va2index(source_range.start).0,
@@ -991,11 +1019,9 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).page_lock_map().dom().is_empty(),
         final(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         final(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         final(krnl).thr_mp.dom().contains(source_thread),
         final(krnl).thr_mp.dom().contains(target_thread),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), source_thread, TypedLockMode::Write),
@@ -1019,15 +1045,23 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
         final(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
         source_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        final(steps).steps.len() == old(steps).steps.len() + source_range.len,
-        final(steps).steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps,
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
+        old(steps).nonlock_view().len() as int + source_range.len as int <= final(steps).nonlock_view().len() as int,
+        final(steps).nonlock_view().len() as int <= old(steps).nonlock_view().len() as int + 4 * source_range.len as int,
+        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
+        final(krnl).irt.owners() == final(steps).snapshot_k().irt.owners(),
+        final(krnl).irt.iommu_roots() == final(steps).snapshot_k().irt.iommu_roots(),
+        final(krnl).cpu_tlb.view() == final(steps).snapshot_k().cpu_tlb.view(),
+        final(krnl).iommu_tlb.view() == final(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(krnl).pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
         final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(), old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), source_range, target_range, source_range.len as nat),
-        share_mapping_4k_range_mapped_prefix(final(krnl).pt_mp.spec_index(target_pagetable).view(), target_range, source_range.len as int),
+        share_mapping_4k_range_mapped_prefix(final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, source_range.len as int),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
@@ -1038,6 +1072,14 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
                 && pei_valid(l3i) && pei_valid(l2i) ==> final(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l2(l4i, l3i, l2i) == old(krnl).pt_mp.spec_index(target_pagetable).view().spec_resolve_mapping_l2(l4i, l3i, l2i),
         share_mapping_4k_reverse_mappings(final(krnl), target_pagetable, target_range),
 {
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+
+    assert(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(
+        krnl.pt_mp.spec_index(source_pagetable).view().mapping_4k(),
+        krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(),
+        source_range, target_range, 0,
+    )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
+    assert(share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, 0)) by { reveal(share_mapping_4k_range_mapped_prefix); };
     let mut i: usize = 0;
     while i < source_range.len
         invariant
@@ -1048,11 +1090,13 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
             krnl.inv(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
-            lock_id_set_aligned(&*lctx),
             lctx.page_lock_map().dom().is_empty(),
             lctx.thread_lock_map().dom() == set![source_thread, target_thread],
             lctx.pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-            lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+            lctx.pcid_needflush_lock_map().dom().is_empty(),
+            lctx.scheduler_lock_map().dom().is_empty(),
+            lctx.cpu_set_lock_map().dom().is_empty(),
+            forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             source_pagetable != target_pagetable,
             krnl.thr_mp.dom().contains(source_thread),
             krnl.thr_mp.dom().contains(target_thread),
@@ -1085,12 +1129,20 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
             target_pagetable_lock_perm.state() is WriteLock,
             target_pagetable_lock_perm.thread_id() == lctx.thread_id(),
             target_pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-            steps.snap_shot == kernel_k_to_kernel_u(*krnl),
+            steps.nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),
+            kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp),
+            krnl.irt.owners() == steps.snapshot_k().irt.owners(),
+            krnl.irt.iommu_roots() == steps.snapshot_k().irt.iommu_roots(),
+            krnl.cpu_tlb.view() == steps.snapshot_k().cpu_tlb.view(),
+            krnl.iommu_tlb.view() == steps.snapshot_k().iommu_tlb.view(),
+            kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
             index_valid(NUM_CPUS, cpu_id),
             typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
             lctx.cpu_lock_map().dom().contains(cpu_id),
             lctx.holds_no_allocator_locks(PageSize::SZ4k),
-            lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+            lctx.holds_no_allocator_locks(PageSize::SZ2m),
+            lctx.holds_no_allocator_locks(PageSize::SZ1g),
             source_range.wf(),
             krnl.pt_mp.spec_index(source_pagetable).view().wf(),
             krnl.pt_mp.spec_index(source_pagetable).view().kernel_l4_end
@@ -1098,8 +1150,8 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
             target_range.wf(),
             source_range.len == target_range.len,
             0 <= i <= source_range.len,
-            steps.steps.len() == old(steps).steps.len() + i,
-            steps.steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps,
+            steps.nonlock_view().len() == old(steps).nonlock_view().len() + i,
+            steps.nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
@@ -1113,7 +1165,7 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
             share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range),
             share_mapping_4k_range_structure_ready_from(krnl, source_pagetable, target_pagetable, source_range, target_range, i as int),
             krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(), old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), source_range, target_range, i as nat),
-            share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view(), target_range, i as int),
+            share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, i as int),
             krnl.pt_mp.spec_index(target_pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m(),
             krnl.pt_mp.spec_index(target_pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g(),
             krnl.pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
@@ -1126,32 +1178,48 @@ pub fn share_mapping_4k(krnl: &mut KernelK, source_range: &VaRange4K, target_ran
     {
         let source_va = source_range.index(i);
         let target_va = target_range.index(i);
+        proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+        proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
+        proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
         share_one_mapping_4k(krnl, source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, source_va, target_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
         proof {
-            assert(steps.steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps) by { vstd::seq::lemma_seq_subrange_composition(steps.steps, 0, (steps.steps.len() - 1) as int, 0, old(steps).steps.len() as int); };
+            assert(steps.nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view()) by { vstd::seq::lemma_seq_subrange_composition(steps.nonlock_view(), 0, (steps.nonlock_view().len() - 1) as int, 0, old(steps).nonlock_view().len() as int); };
             assert(share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by {
                 reveal(mapped_4k_page_pagetable_wf);
                 page_ptr_valid_imply_page_index_valid();
             };
-            assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
+            assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_thread_wf); };
             assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
             assert(share_mapping_4k_range_structure_ready_from(krnl, source_pagetable, target_pagetable, source_range, target_range, (i + 1) as int)) by {
                 source_range.va_range_lemma();
                 target_range.va_range_lemma();
             };
-            assert(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(), old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), source_range, target_range, (i + 1) as nat)) by {
+            assert(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(
+                old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(),
+                old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(),
+                source_range, target_range, (i + 1) as nat,
+            )) by { reveal(share_mapping_4k_target_map_with_shared_prefix);
                 source_range.va_range_lemma();
                 target_range.va_range_lemma();
             };
-            assert(share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view(), target_range, (i + 1) as int)) by {
+            assert(share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, (i + 1) as int)) by { reveal(share_mapping_4k_range_mapped_prefix);
                 seq_index_lemma::<VAddr>();
                 target_range.va_range_lemma();
+            };
+        }
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)
+                && kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)
+                && kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by {
+                broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_for_equal;
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             };
         }
         i = i + 1;
     }
     proof {
         assert(share_mapping_4k_reverse_mappings(krnl, target_pagetable, target_range)) by {
+            reveal(share_mapping_4k_range_mapped_prefix);
             page_ptr_valid_imply_page_index_valid();
             reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf);
         };
@@ -1174,7 +1242,7 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
             || initial_target.spec_mapping_4k_va_range_buildable(target_range),
         current_target.mapping_1g() == initial_target.mapping_1g(),
         current_target.mapping_2m() == initial_target.mapping_2m(),
-        share_mapping_4k_target_range_empty_from(current_target, target_range, i as int),
+        share_mapping_4k_target_range_empty_from(current_target.mapping_4k(), target_range, i as int),
     ensures
         va_4k_valid(target_va),
         current_target.kernel_l4_end <= spec_v2l4index(target_va),
@@ -1200,18 +1268,14 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
         &&& spec_va_4k_valid(target_va)
         &&& target_range.start <= target_va
         &&& va_4k_valid(target_va)
-    }) by {
-        target_range.va_range_lemma();
-    };
+    }) by { target_range.va_range_lemma(); };
     spec_v2l4index_monotonic(target_range.start, target_va);
     assert({
         &&& pei_valid(spec_v2l4index(target_va))
         &&& pei_valid(spec_v2l3index(target_va))
         &&& pei_valid(spec_v2l2index(target_va))
         &&& pei_valid(spec_v2l1index(target_va))
-    }) by {
-        spec_va_4k_valid_imply_indices_valid();
-    };
+    }) by { spec_va_4k_valid_imply_indices_valid(); };
     assert(initial_target.spec_4k_entry_usable(
         spec_v2l4index(target_va),
         spec_v2l3index(target_va),
@@ -1228,9 +1292,7 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
                 spec_va2index(target_range.view().spec_index(i as int)).1,
                 spec_va2index(target_range.view().spec_index(i as int)).2,
                 spec_va2index(target_range.view().spec_index(i as int)).3,
-            ) is None) by {
-                seq_index_lemma::<VAddr>();
-            };
+            ) is None) by { seq_index_lemma::<VAddr>(); };
         }
     };
     assert({
@@ -1248,6 +1310,7 @@ proof fn prove_share_mapping_4k_build_target_slot_usable(
             spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
         ) is None
     }) by {
+        reveal(share_mapping_4k_target_range_empty_from);
         reveal(PageTable::wf_mapping_4k);
         spec_va_4k_index_roundtrip_at(
             target_va, spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va),
@@ -1278,32 +1341,32 @@ proof fn prove_share_mapping_4k_iteration_target_partition(
             == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, i as nat),
         current_target.mapping_4k()
             == previous_target.mapping_4k().insert(target_va, source.spec_index(source_va)),
-        share_mapping_4k_range_mapped_prefix(previous_target, target_range, i as int),
-        share_mapping_4k_target_range_empty_from(previous_target, target_range, i as int),
+        share_mapping_4k_range_mapped_prefix(previous_target.mapping_4k(), target_range, i as int),
+        share_mapping_4k_target_range_empty_from(previous_target.mapping_4k(), target_range, i as int),
     ensures
         current_target.mapping_4k()
             == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, (i + 1) as nat),
-        share_mapping_4k_range_mapped_prefix(current_target, target_range, (i + 1) as int),
-        share_mapping_4k_target_range_empty_from(current_target, target_range, (i + 1) as int),
+        share_mapping_4k_range_mapped_prefix(current_target.mapping_4k(), target_range, (i + 1) as int),
+        share_mapping_4k_target_range_empty_from(current_target.mapping_4k(), target_range, (i + 1) as int),
 {
     assert(current_target.mapping_4k()
-        == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, (i + 1) as nat)) by {
+        == share_mapping_4k_target_map_with_shared_prefix(source, initial_target, source_range, target_range, (i + 1) as nat)) by { reveal(share_mapping_4k_target_map_with_shared_prefix);
         source_range.va_range_lemma();
         target_range.va_range_lemma();
     };
     assert(share_mapping_4k_range_mapped_prefix(
-        current_target,
+        current_target.mapping_4k(),
         target_range,
         (i + 1) as int,
-    )) by {
+    )) by { reveal(share_mapping_4k_range_mapped_prefix);
         seq_index_lemma::<VAddr>();
         target_range.va_range_lemma();
     };
     assert(share_mapping_4k_target_range_empty_from(
-        current_target,
+        current_target.mapping_4k(),
         target_range,
         (i + 1) as int,
-    )) by {
+    )) by { reveal(share_mapping_4k_target_range_empty_from);
         seq_index_lemma::<VAddr>();
         target_range.va_range_lemma();
     };
@@ -1312,17 +1375,24 @@ proof fn prove_share_mapping_4k_iteration_target_partition(
 /// Build each missing target directory path and immediately share its 4K leaf.
 /// All fallible checks are completed by the caller before this function starts.
 #[verifier::spinoff_prover]
-pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRange4K, target_range: &VaRange4K, target_allocator: RwLockPageAllocatorPtr, source_thread: RwLockThreadPtr, quota_thread: RwLockThreadPtr, target_process: RwLockProcessPtr, target_container: RwLockContainerPtr, cpu_id: CpuId, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, Tracked(source_thread_lock_perm): Tracked<&LockPerm>, Tracked(quota_thread_lock_perm): Tracked<&LockPerm>, Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>)
+pub fn share_mapping_4k_build_and_share(
+    krnl: &mut KernelK, source_range: &VaRange4K, target_range: &VaRange4K, target_allocator: RwLockPageAllocatorPtr,
+    source_thread: RwLockThreadPtr, quota_thread: RwLockThreadPtr, target_process: RwLockProcessPtr, target_container: RwLockContainerPtr,
+    cpu_id: CpuId, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot,
+    transfer_source: Option<RwLockContainerPtr>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
+    Tracked(source_thread_lock_perm): Tracked<&LockPerm>, Tracked(quota_thread_lock_perm): Tracked<&LockPerm>,
+    Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(transfer_source_lock_perm): Tracked<Option<&LockPerm>>, Tracked(transfer_target_lock_perm): Tracked<Option<&LockPerm>>,
+)
     requires
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
-        old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).thread_lock_map().dom() == set![source_thread, quota_thread],
         old(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
-        source_pagetable != target_pagetable,
+        held_locks_order_below(old(krnl), old(lctx), MAPPED_PAGE_LOCK_MAJOR),
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(krnl).thr_mp.dom().contains(source_thread),
         old(krnl).thr_mp.dom().contains(quota_thread),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), source_thread, TypedLockMode::Write),
@@ -1331,7 +1401,26 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
         !old(krnl).thr_mp.spec_index(quota_thread).being_killed(),
         old(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         old(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-        old(krnl).thr_mp.spec_index(quota_thread).view().owning_container == target_container,
+        transfer_source is None ==> old(krnl).thr_mp.spec_index(quota_thread).view().owning_container == target_container,
+        transfer_source is Some ==> {
+            let source = transfer_source->Some_0;
+            &&& source == old(krnl).thr_mp.spec_index(quota_thread).view().owning_container
+            &&& source != target_container
+            &&& old(krnl).ctn_mp.dom().contains(source)
+            &&& old(krnl).ctn_mp.spec_index(target_container).view_rodata().view().parent == Some(source)
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), source, TypedLockMode::Write)
+            &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), target_container, TypedLockMode::Write)
+            &&& !old(krnl).ctn_mp.spec_index(source).being_killed()
+            &&& !old(krnl).ctn_mp.spec_index(target_container).being_killed()
+            &&& transfer_source_lock_perm is Some
+            &&& transfer_source_lock_perm->Some_0.state() is WriteLock
+            &&& transfer_source_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
+            &&& transfer_source_lock_perm->Some_0.lock_id() == old(krnl).ctn_mp.spec_index(source).locking_thread()->Write_lock_id
+            &&& transfer_target_lock_perm is Some
+            &&& transfer_target_lock_perm->Some_0.state() is WriteLock
+            &&& transfer_target_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
+            &&& transfer_target_lock_perm->Some_0.lock_id() == old(krnl).ctn_mp.spec_index(target_container).locking_thread()->Write_lock_id
+        },
         old(krnl).prc_mp.dom().contains(target_process),
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -1354,27 +1443,28 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
         target_pagetable_lock_perm.state() is WriteLock,
         target_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         target_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).ctn_mp.dom().contains(target_container),
         old(krnl).ctn_mp.spec_index(target_container).view_rodata().view().allocator_ptr_4k == target_allocator,
         old(krnl).allc_4k_mp.dom().contains(target_allocator),
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
-        old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-        old(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
         source_range.len > 0,
-        source_range.len <= usize::MAX / 3usize,
-        old(krnl).pt_mp.spec_index(source_pagetable).view().wf(),
-        old(krnl).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_v2l4index(source_range.start),
         share_mapping_4k_source_range_present(old(krnl), source_pagetable, source_range),
         share_mapping_4k_range_owner_compatible(old(krnl), source_pagetable, target_container, source_range),
-        old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_clean(),
+        old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_2m.view().len() == 0,
+        old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_1g.view().len() == 0,
+        old(krnl).thr_mp.spec_index(quota_thread).view().syscall_progress.view() is None,
         old(krnl).thr_mp.spec_index(quota_thread).view().free_quota_pending_clean(),
-        old(krnl).thr_mp.spec_index(quota_thread).view().quota_4k >= 3 * target_range.len,
+        thread_effective_quota_4k(old(krnl).thr_mp.spec_index(quota_thread)) >= 3 * target_range.len,
         old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= spec_v2l4index(target_range.start),
         old(krnl).pt_mp.spec_index(target_pagetable).view().spec_mapping_4k_va_range_empty(target_range.start, target_range.view().spec_index((target_range.len - 1) as int)),
         old(krnl).pt_mp.spec_index(target_pagetable).view().is_empty() || old(krnl).pt_mp.spec_index(target_pagetable).view().spec_mapping_4k_va_range_buildable(target_range),
@@ -1389,87 +1479,105 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
-        final(lctx).page_lock_map().dom().is_empty(),
-        final(lctx).thread_lock_map().dom() == set![source_thread, quota_thread],
-        final(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         final(krnl).thr_mp.dom().contains(source_thread),
         final(krnl).thr_mp.dom().contains(quota_thread),
-        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), source_thread, TypedLockMode::Write),
         !final(krnl).thr_mp.spec_index(source_thread).being_killed(),
-        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), quota_thread, TypedLockMode::Write),
-        !final(krnl).thr_mp.spec_index(quota_thread).being_killed(),
-        final(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
-        final(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-        final(krnl).thr_mp.spec_index(quota_thread).view().owning_container == target_container,
         final(krnl).prc_mp.dom().contains(target_process),
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
-        ((final(krnl).thr_mp.spec_index(quota_thread).view().owning_proc == target_process && final(krnl).thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr == target_pagetable) || typed_lock_map_contains_mode(final(lctx).process_lock_map(), target_process, TypedLockMode::Write)),
         source_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(source_thread).locking_thread()->Write_lock_id,
         quota_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(quota_thread).locking_thread()->Write_lock_id,
         final(krnl).pt_mp.dom().contains(source_pagetable),
         final(krnl).pt_mp.dom().contains(target_pagetable),
-        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Write),
-        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), target_pagetable, TypedLockMode::Write),
-        final(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr == final(krnl).thr_mp.spec_index(source_thread).view().owning_proc,
         final(krnl).pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process,
         source_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Write_lock_id,
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
-        final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
-        final(krnl).ctn_mp.dom().contains(target_container),
-        final(krnl).ctn_mp.spec_index(target_container).view_rodata().view().allocator_ptr_4k == target_allocator,
-        final(krnl).allc_4k_mp.dom().contains(target_allocator),
-        final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
-        final(lctx).held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        transfer_source is None ==> held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        transfer_source is Some ==> {
+            let source = transfer_source->Some_0;
+            let old_source_pages = old(krnl).ctn_mp.spec_index(source).view().owned_pages.view();
+            let new_source_pages = final(krnl).ctn_mp.spec_index(source).view().owned_pages.view();
+            &&& forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
+                c == source || c == target_container ==> {
+                    &&& final(krnl).ctn_mp.dom().contains(c)
+                    &&& final(krnl).ctn_mp.spec_index(c).is_init() == old(krnl).ctn_mp.spec_index(c).is_init()
+                    &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+                    &&& final(krnl).ctn_mp.spec_index(c).view_ghost() == old(krnl).ctn_mp.spec_index(c).view_ghost()
+                    &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+                    &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
+                    &&& final(krnl).ctn_mp.spec_index(c).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(c).view().owned_pages, ..old(krnl).ctn_mp.spec_index(c).view() })
+                }
+            &&& new_source_pages.subset_of(old_source_pages)
+            &&& final(krnl).ctn_mp.spec_index(target_container).view().owned_pages.view() =~= old(krnl).ctn_mp.spec_index(target_container).view().owned_pages.view().union(old_source_pages.difference(new_source_pages))
+        },
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
-        held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
-        held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
-        held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
-        final(steps).steps.len() == old(steps).steps.len() + source_range.len,
-        final(steps).steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps,
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
+        old(steps).nonlock_view().len() as int + source_range.len as int <= final(steps).nonlock_view().len() as int,
+        final(steps).nonlock_view().len() as int <= old(steps).nonlock_view().len() as int + 4 * source_range.len as int,
+        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
+        final(krnl).irt.owners() == final(steps).snapshot_k().irt.owners(),
+        final(krnl).irt.iommu_roots() == final(steps).snapshot_k().irt.iommu_roots(),
+        final(krnl).cpu_tlb.view() == final(steps).snapshot_k().cpu_tlb.view(),
+        final(krnl).iommu_tlb.view() == final(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         {
             let source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
-            &&& final(steps).steps.last().new_u.process_map.dom().contains(source_process)
-            &&& kernel_k_to_kernel_u(*final(krnl)).process_map.dom().contains(source_process)
-            &&& final(steps).steps.last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable
-            &&& final(steps).steps.last().new_u.process_map.dom().contains(target_process)
+            &&& final(steps).nonlock_view().last().new_u.process_map.dom().contains(source_process)
+            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.dom().contains(source_process)
+            &&& final(steps).nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.spec_index(source_process).pagetable
+            &&& final(steps).nonlock_view().last().new_u.process_map.dom().contains(target_process)
+            &&& final(steps).nonlock_view().last().new_u.thread_map.dom().contains(quota_thread)
+            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.dom().contains(quota_thread)
+            &&& final(steps).nonlock_view().last().new_u.thread_map.spec_index(quota_thread)
+                == kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.spec_index(quota_thread)
             &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), target_process, TypedLockMode::Write) && ({
                 let iommu_table = old(krnl).prc_mp.spec_index(target_process).view().iommu_table;
                 ||| iommu_table is None
                 ||| iommu_table is Some && old(lctx).iommu_table_lock_map().dom().contains(iommu_table.unwrap())
             }) ==> {
-                &&& kernel_k_to_kernel_u(*final(krnl)).process_map.dom().contains(target_process)
-                &&& final(steps).steps.last().new_u.process_map.spec_index(target_process) == kernel_k_to_kernel_u(*final(krnl)).process_map.spec_index(target_process)
+                &&& kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.dom().contains(target_process)
+                &&& final(steps).nonlock_view().last().new_u.process_map.spec_index(target_process) == kernel_k_to_nonlock_kernel_u(*final(krnl)).process_map.spec_index(target_process)
             }
         },
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
+        final(krnl).thr_mp.spec_index(quota_thread).view().caller == old(krnl).thr_mp.spec_index(quota_thread).view().caller,
+        final(krnl).thr_mp.spec_index(quota_thread).view().callee == old(krnl).thr_mp.spec_index(quota_thread).view().callee,
+        final(krnl).thr_mp.spec_index(quota_thread).view().owning_container == old(krnl).thr_mp.spec_index(quota_thread).view().owning_container,
+        final(krnl).thr_mp.spec_index(quota_thread).view().quota_2m == old(krnl).thr_mp.spec_index(quota_thread).view().quota_2m,
+        final(krnl).thr_mp.spec_index(quota_thread).view().quota_1g == old(krnl).thr_mp.spec_index(quota_thread).view().quota_1g,
+        final(krnl).thr_mp.spec_index(quota_thread).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(quota_thread).view().endpoint_descriptors.view(),
+        final(krnl).thr_mp.spec_index(quota_thread).view().ipc_payload == old(krnl).thr_mp.spec_index(quota_thread).view().ipc_payload,
+        final(krnl).thr_mp.spec_index(quota_thread).view().error_code == old(krnl).thr_mp.spec_index(quota_thread).view().error_code,
+        final(krnl).thr_mp.spec_index(quota_thread).view().trap_frame == old(krnl).thr_mp.spec_index(quota_thread).view().trap_frame,
+        final(krnl).thr_mp.spec_index(quota_thread).being_killed()
+            == old(krnl).thr_mp.spec_index(quota_thread).being_killed(),
         final(krnl).thr_mp.lock_id_by_key(quota_thread) == old(krnl).thr_mp.lock_id_by_key(quota_thread),
         final(krnl).pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
         source_thread != quota_thread ==> final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
-        final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_clean(),
+        final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_4k.view(),
+        final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_2m.view().len() == 0,
+        final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_1g.view().len() == 0,
         final(krnl).thr_mp.spec_index(quota_thread).view().free_quota_pending_clean(),
         final(krnl).thr_mp.spec_index(quota_thread).view().owning_proc == old(krnl).thr_mp.spec_index(quota_thread).view().owning_proc,
         final(krnl).thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr,
         final(krnl).thr_mp.spec_index(quota_thread).view().state == old(krnl).thr_mp.spec_index(quota_thread).view().state,
+        final(krnl).thr_mp.spec_index(quota_thread).view().syscall_progress.view() is None,
         final(krnl).thr_mp.spec_index(quota_thread).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(quota_thread).view().blocking_endpoint_ptr,
         final(krnl).thr_mp.spec_index(quota_thread).view().quota_4k <= old(krnl).thr_mp.spec_index(quota_thread).view().quota_4k,
         final(krnl).thr_mp.spec_index(quota_thread).view().quota_4k >= old(krnl).thr_mp.spec_index(quota_thread).view().quota_4k - 3 * target_range.len,
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(), old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), source_range, target_range, source_range.len as nat),
-        final(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().user_view().mapping_4k, old(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k, source_range, target_range, source_range.len as nat),
-        share_mapping_4k_range_mapped_prefix(final(krnl).pt_mp.spec_index(target_pagetable).view(), target_range, source_range.len as int),
+        final(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k, old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, source_range.len as nat),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_2m(),
         final(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_1g(),
-        final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
-        share_mapping_4k_reverse_mappings(final(krnl), target_pagetable, target_range),
 {
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+
     let target_range_start = target_range.start;
     proof {
         assert({
@@ -1481,22 +1589,25 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             &&& held_cpu_sets_unchanged(old(krnl).cpu_set_mp, krnl.cpu_set_mp, old(lctx))
             &&& held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx))
+            &&& held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx))
         }) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
-        assert({
-            &&& krnl.pt_mp.spec_index(source_pagetable).view().wf()
-            &&& krnl.pt_mp.spec_index(target_pagetable).view().wf()
-            &&& krnl.pt_mp.spec_index(target_pagetable).view().wf_mapping_1g()
-            &&& krnl.pt_mp.spec_index(target_pagetable).view().wf_mapping_2m()
-            &&& krnl.pt_mp.spec_index(target_pagetable).view().wf_mapping_4k()
-        }) by {
-            pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
-            pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
-        };
-        assert(share_mapping_4k_target_range_empty_from(krnl.pt_mp.spec_index(target_pagetable).view(), target_range, 0)) by {
+        assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
+        assert(share_mapping_4k_target_range_empty_from(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, 0)) by { reveal(share_mapping_4k_target_range_empty_from);
             reveal(PageTable::spec_mapping_4k_va_range_empty);
             target_range.va_range_lemma();
         };
     }
+    assert(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(
+        krnl.pt_mp.spec_index(source_pagetable).view().mapping_4k(),
+        krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(),
+        source_range, target_range, 0,
+    )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
+    assert(krnl.pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
+        old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k,
+        old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k,
+        source_range, target_range, 0,
+    )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
+    assert(share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, 0)) by { reveal(share_mapping_4k_range_mapped_prefix); };
     let mut i: usize = 0;
     while i < source_range.len
         invariant
@@ -1507,11 +1618,11 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             krnl.inv(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
-            lock_id_set_aligned(&*lctx),
-            lctx.page_lock_map().dom().is_empty(),
             lctx.thread_lock_map().dom() == set![source_thread, quota_thread],
             lctx.pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-            lctx.held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+            held_locks_order_below(krnl, lctx, MAPPED_PAGE_LOCK_MAJOR),
+            lctx.scheduler_lock_map().dom().is_empty(),
+            lctx.cpu_set_lock_map().dom().is_empty(),
             krnl.thr_mp.dom().contains(source_thread),
             krnl.thr_mp.dom().contains(quota_thread),
             typed_lock_map_contains_mode(lctx.thread_lock_map(), source_thread, TypedLockMode::Write),
@@ -1520,7 +1631,26 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             !krnl.thr_mp.spec_index(quota_thread).being_killed(),
             krnl.thr_mp.spec_index(source_thread).view().owning_proc != target_process,
             krnl.thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
-            krnl.thr_mp.spec_index(quota_thread).view().owning_container == target_container,
+            transfer_source is None ==> krnl.thr_mp.spec_index(quota_thread).view().owning_container == target_container,
+            transfer_source is Some ==> {
+                let source = transfer_source->Some_0;
+                &&& source == krnl.thr_mp.spec_index(quota_thread).view().owning_container
+                &&& source != target_container
+                &&& krnl.ctn_mp.dom().contains(source)
+                &&& krnl.ctn_mp.spec_index(target_container).view_rodata().view().parent == Some(source)
+                &&& typed_lock_map_contains_mode(lctx.container_lock_map(), source, TypedLockMode::Write)
+                &&& typed_lock_map_contains_mode(lctx.container_lock_map(), target_container, TypedLockMode::Write)
+                &&& !krnl.ctn_mp.spec_index(source).being_killed()
+                &&& !krnl.ctn_mp.spec_index(target_container).being_killed()
+                &&& transfer_source_lock_perm is Some
+                &&& transfer_source_lock_perm->Some_0.state() is WriteLock
+                &&& transfer_source_lock_perm->Some_0.thread_id() == lctx.thread_id()
+                &&& transfer_source_lock_perm->Some_0.lock_id() == krnl.ctn_mp.spec_index(source).locking_thread()->Write_lock_id
+                &&& transfer_target_lock_perm is Some
+                &&& transfer_target_lock_perm->Some_0.state() is WriteLock
+                &&& transfer_target_lock_perm->Some_0.thread_id() == lctx.thread_id()
+                &&& transfer_target_lock_perm->Some_0.lock_id() == krnl.ctn_mp.spec_index(target_container).locking_thread()->Write_lock_id
+            },
             krnl.prc_mp.dom().contains(target_process),
             krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
             krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
@@ -1548,10 +1678,32 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             krnl.ctn_mp.dom().contains(target_container),
             krnl.ctn_mp.spec_index(target_container).view_rodata().view().allocator_ptr_4k == target_allocator,
             krnl.allc_4k_mp.dom().contains(target_allocator),
-            steps.snap_shot == kernel_k_to_kernel_u(*krnl),
-            lctx.holds_no_allocator_locks(PageSize::SZ4k),
-            lctx.held_lock_majors_lt(ALLOCATOR_CACHE_MAJOR),
-            held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
+            steps.nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+            kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),
+            kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp),
+            krnl.irt.owners() == steps.snapshot_k().irt.owners(),
+            krnl.irt.iommu_roots() == steps.snapshot_k().irt.iommu_roots(),
+            krnl.cpu_tlb.view() == steps.snapshot_k().cpu_tlb.view(),
+            krnl.iommu_tlb.view() == steps.snapshot_k().iommu_tlb.view(),
+            kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
+            transfer_source is None ==> held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
+            transfer_source is Some ==> {
+                let source = transfer_source->Some_0;
+                let old_source_pages = old(krnl).ctn_mp.spec_index(source).view().owned_pages.view();
+                let new_source_pages = krnl.ctn_mp.spec_index(source).view().owned_pages.view();
+                &&& forall|c: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(c)]
+                    c == source || c == target_container ==> {
+                        &&& krnl.ctn_mp.dom().contains(c)
+                        &&& krnl.ctn_mp.spec_index(c).is_init() == old(krnl).ctn_mp.spec_index(c).is_init()
+                        &&& krnl.ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+                        &&& krnl.ctn_mp.spec_index(c).view_ghost() == old(krnl).ctn_mp.spec_index(c).view_ghost()
+                        &&& krnl.ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+                        &&& krnl.ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
+                        &&& krnl.ctn_mp.spec_index(c).view() == (Container { owned_pages: krnl.ctn_mp.spec_index(c).view().owned_pages, ..old(krnl).ctn_mp.spec_index(c).view() })
+                    }
+                &&& new_source_pages.subset_of(old_source_pages)
+                &&& krnl.ctn_mp.spec_index(target_container).view().owned_pages.view() =~= old(krnl).ctn_mp.spec_index(target_container).view().owned_pages.view().union(old_source_pages.difference(new_source_pages))
+            },
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
             held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, krnl.sched_mp, old(lctx)),
@@ -1564,22 +1716,27 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             source_range.len == target_range.len,
             target_range_start == target_range.start,
             0 <= i <= source_range.len,
-            steps.steps.len() == old(steps).steps.len() + i,
-            steps.steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps,
+            old(steps).nonlock_view().len() as int + i as int <= steps.nonlock_view().len() as int,
+            steps.nonlock_view().len() as int <= old(steps).nonlock_view().len() as int + 4 * i as int,
+            steps.nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
             i > 0 ==> {
                 let source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
-                &&& steps.steps.last().new_u.process_map.dom().contains(source_process)
-                &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(source_process)
-                &&& steps.steps.last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_kernel_u(*krnl).process_map.spec_index(source_process).pagetable
+                &&& steps.nonlock_view().last().new_u.process_map.dom().contains(source_process)
+                &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map.dom().contains(source_process)
+                &&& steps.nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable == kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(source_process).pagetable
                 &&& old(krnl).prc_mp.dom().contains(target_process)
-                &&& steps.steps.last().new_u.process_map.dom().contains(target_process)
+                &&& steps.nonlock_view().last().new_u.process_map.dom().contains(target_process)
+                &&& steps.nonlock_view().last().new_u.thread_map.dom().contains(quota_thread)
+                &&& kernel_k_to_nonlock_kernel_u(*krnl).thread_map.dom().contains(quota_thread)
+                &&& steps.nonlock_view().last().new_u.thread_map.spec_index(quota_thread)
+                    == kernel_k_to_nonlock_kernel_u(*krnl).thread_map.spec_index(quota_thread)
                 &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), target_process, TypedLockMode::Write) && ({
                     let iommu_table = old(krnl).prc_mp.spec_index(target_process).view().iommu_table;
                     ||| iommu_table is None
                     ||| iommu_table is Some && old(lctx).iommu_table_lock_map().dom().contains(iommu_table.unwrap())
                 }) ==> {
-                    &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(target_process)
-                    &&& steps.steps.last().new_u.process_map.spec_index(target_process) == kernel_k_to_kernel_u(*krnl).process_map.spec_index(target_process)
+                    &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map.dom().contains(target_process)
+                    &&& steps.nonlock_view().last().new_u.process_map.spec_index(target_process) == kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(target_process)
                 }
             },
             lctx.thread_id() == old(lctx).thread_id(),
@@ -1588,31 +1745,42 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             old(krnl).inv(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             typed_lock_maps_unchanged(old(lctx), lctx),
+            held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx)),
             old(lctx).thread_lock_map().dom().contains(quota_thread),
             old(krnl).prc_mp.dom().contains(target_process),
             old(krnl).pt_mp.dom().contains(source_pagetable),
+            krnl.thr_mp.spec_index(quota_thread).view().caller == old(krnl).thr_mp.spec_index(quota_thread).view().caller,
+            krnl.thr_mp.spec_index(quota_thread).view().callee == old(krnl).thr_mp.spec_index(quota_thread).view().callee,
+            krnl.thr_mp.spec_index(quota_thread).view().owning_container == old(krnl).thr_mp.spec_index(quota_thread).view().owning_container,
+            krnl.thr_mp.spec_index(quota_thread).view().quota_2m == old(krnl).thr_mp.spec_index(quota_thread).view().quota_2m,
+            krnl.thr_mp.spec_index(quota_thread).view().quota_1g == old(krnl).thr_mp.spec_index(quota_thread).view().quota_1g,
+            krnl.thr_mp.spec_index(quota_thread).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(quota_thread).view().endpoint_descriptors.view(),
+            krnl.thr_mp.spec_index(quota_thread).view().ipc_payload == old(krnl).thr_mp.spec_index(quota_thread).view().ipc_payload,
+            krnl.thr_mp.spec_index(quota_thread).view().error_code == old(krnl).thr_mp.spec_index(quota_thread).view().error_code,
+            krnl.thr_mp.spec_index(quota_thread).view().trap_frame == old(krnl).thr_mp.spec_index(quota_thread).view().trap_frame,
+            krnl.thr_mp.spec_index(quota_thread).being_killed()
+                == old(krnl).thr_mp.spec_index(quota_thread).being_killed(),
             krnl.thr_mp.lock_id_by_key(quota_thread) == old(krnl).thr_mp.lock_id_by_key(quota_thread),
             krnl.pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
             source_thread != quota_thread ==> krnl.thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
-            krnl.pt_mp.spec_index(source_pagetable).view().wf(),
-            krnl.pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_v2l4index(source_range.start),
             krnl.thr_mp.spec_index(quota_thread).view().upper_container_seq == old(krnl).thr_mp.spec_index(quota_thread).view().upper_container_seq,
             krnl.thr_mp.spec_index(quota_thread).view().owning_proc == old(krnl).thr_mp.spec_index(quota_thread).view().owning_proc,
             krnl.thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr,
             krnl.thr_mp.spec_index(quota_thread).view().state == old(krnl).thr_mp.spec_index(quota_thread).view().state,
+            krnl.thr_mp.spec_index(quota_thread).view().syscall_progress.view() is None,
             krnl.thr_mp.spec_index(quota_thread).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(quota_thread).view().blocking_endpoint_ptr,
             share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
             share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range),
-            krnl.thr_mp.spec_index(quota_thread).view().temp_alloc_clean(),
+            krnl.thr_mp.spec_index(quota_thread).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_4k.view(),
+            krnl.thr_mp.spec_index(quota_thread).view().temp_alloc_cache_2m.view().len() == 0,
+            krnl.thr_mp.spec_index(quota_thread).view().temp_alloc_cache_1g.view().len() == 0,
             krnl.thr_mp.spec_index(quota_thread).view().free_quota_pending_clean(),
-            krnl.thr_mp.spec_index(quota_thread).view().quota_4k
-                >= 3 * (target_range.len - i),
+            thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread)) >= 3 * (target_range.len - i),
             krnl.thr_mp.spec_index(quota_thread).view().quota_4k
                 >= old(krnl).thr_mp.spec_index(quota_thread).view().quota_4k
                     - 3 * i,
             krnl.thr_mp.spec_index(quota_thread).view().quota_4k
                 <= old(krnl).thr_mp.spec_index(quota_thread).view().quota_4k,
-            krnl.pt_mp.spec_index(target_pagetable).view().wf(),
             old(krnl).pt_mp.spec_index(target_pagetable).view().wf(),
             krnl.pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
             krnl.pt_mp.spec_index(target_pagetable).view().kernel_l4_end
@@ -1625,9 +1793,9 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
             old(krnl).pt_mp.spec_index(target_pagetable).view().is_empty()
                 || old(krnl).pt_mp.spec_index(target_pagetable).view().spec_mapping_4k_va_range_buildable(target_range),
             krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(), old(krnl).pt_mp.spec_index(target_pagetable).view().mapping_4k(), source_range, target_range, i as nat),
-            krnl.pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().user_view().mapping_4k, old(krnl).pt_mp.spec_index(target_pagetable).view().user_view().mapping_4k, source_range, target_range, i as nat),
-            share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view(), target_range, i as int),
-            share_mapping_4k_target_range_empty_from(krnl.pt_mp.spec_index(target_pagetable).view(), target_range, i as int),
+            krnl.pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k, old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, i as nat),
+            share_mapping_4k_range_mapped_prefix(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, i as int),
+            share_mapping_4k_target_range_empty_from(krnl.pt_mp.spec_index(target_pagetable).view().mapping_4k(), target_range, i as int),
         decreases source_range.len - i,
     {
         let source_va = source_range.index(i);
@@ -1639,9 +1807,12 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
                 target_va,
             );
         }
-        mmap_4k_build_one_structure(krnl, target_va, target_allocator, quota_thread, target_process, target_container, cpu_id, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(target_pagetable_lock_perm));
+        mmap_4k_build_one_structure(
+            krnl, target_va, target_allocator, quota_thread, target_process, target_container, cpu_id, target_pagetable, transfer_source,
+            Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(target_pagetable_lock_perm),
+            Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
+        );
         proof {
-            assert(krnl.thr_mp.lock_id_by_key(quota_thread) == old(krnl).thr_mp.lock_id_by_key(quota_thread)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), krnl, old(lctx), lctx, quota_thread); };
             assert(krnl.pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
             assert(share_mapping_4k_leaf_ready(krnl, source_pagetable, target_pagetable, target_container, source_va, target_va)) by {
                 assert(share_mapping_4k_leaf_structure_ready(krnl, source_pagetable, target_pagetable, source_va, target_va)) by { reveal(PageTable::wf_mapping_4k); };
@@ -1651,9 +1822,9 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
         let ghost target_before_share = krnl.pt_mp.spec_index(target_pagetable).view();
         share_one_mapping_4k(krnl, source_thread, quota_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, source_va, target_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(quota_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
         proof {
-            assert(steps.steps.subrange(0, old(steps).steps.len() as int) == old(steps).steps) by { vstd::seq::lemma_seq_subrange_composition(steps.steps, 0, (steps.steps.len() - 1) as int, 0, old(steps).steps.len() as int); };
+            assert(steps.nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view()) by { vstd::seq::lemma_seq_subrange_composition(steps.nonlock_view(), 0, (steps.nonlock_view().len() - 1) as int, 0, old(steps).nonlock_view().len() as int); };
             assert({
-                &&& held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx))
+                &&& transfer_source is None ==> held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx))
                 &&& held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx))
                 &&& held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx))
                 &&& held_schedulers_unchanged(old(krnl).sched_mp, krnl.sched_mp, old(lctx))
@@ -1666,7 +1837,11 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
                 reveal(mapped_4k_page_pagetable_wf);
                 page_ptr_valid_imply_page_index_valid();
             };
-            assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
+            if krnl.thr_mp.spec_index(quota_thread).view().owning_container == target_container {
+                assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_thread_wf); };
+            } else {
+                assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
+            }
             assert(krnl.pt_mp.spec_index(target_pagetable).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); };
             prove_share_mapping_4k_iteration_target_partition(
                 old(krnl).pt_mp.spec_index(source_pagetable).view().mapping_4k(),
@@ -1674,11 +1849,26 @@ pub fn share_mapping_4k_build_and_share(krnl: &mut KernelK, source_range: &VaRan
                 krnl.pt_mp.spec_index(target_pagetable).view(), source_range, target_range, i, source_va, target_va,
             );
         }
+        assert(krnl.pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
+            old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k,
+            old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k,
+            source_range, target_range, (i + 1) as nat,
+        )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
         assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { reveal(container_allocator_wf); };
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)
+                && kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)
+                && kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by {
+                broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_for_equal;
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+            };
+        }
         i = i + 1;
     }
     proof {
         assert(share_mapping_4k_reverse_mappings(krnl, target_pagetable, target_range)) by {
+            pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
+            reveal(share_mapping_4k_range_mapped_prefix);
             page_ptr_valid_imply_page_index_valid();
             reveal(mapped_4k_page_pagetable_wf);
         };

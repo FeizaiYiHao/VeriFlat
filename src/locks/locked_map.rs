@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_maps_equal_internal;
 use vstd::simple_pptr::*;
 use crate::define::*;
 use super::*;
@@ -151,6 +152,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             ret == old(self).spec_index(key).view(),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+
         let ret = take(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
@@ -176,6 +178,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             final(self).spec_index(key).wlocked_by(lctx),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+
         put(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
         proof{
             self.map.borrow_mut().tracked_insert(key, perm);
@@ -457,7 +460,9 @@ NO_KILL_STATE>{
         let ret = wlock(&PPtr::<RwLock<T, ROT, GhostT,
 NO_KILL_STATE>>::from_usize(key),
             Tracked(&mut perm), Tracked(lctx), obj_id);
-        proof { self.map.borrow_mut().tracked_insert(key, perm); }
+        proof {
+            self.map.borrow_mut().tracked_insert(key, perm);
+        }
         return ret;
     }
 
@@ -472,8 +477,8 @@ NO_KILL_STATE>>::from_usize(key),
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_id_set().contains((
-                old(self).lock_id_by_key(key), obj_id.view())),
+            old(lctx).lock_entry_contains(
+                old(self).lock_id_by_key(key), obj_id.view()),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -485,7 +490,9 @@ NO_KILL_STATE>>::from_usize(key),
             unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_key(key)),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        assert(perm.addr() == key);
+        assert(old(self).view().spec_index(key).is_init() && perm.addr() == key) by {
+            vstd::assert_maps_equal!(old(self).view(), self.view().insert(key, perm));
+        };
         let ret = wunlock(&PPtr::<RwLock<T, ROT, GhostT,
 NO_KILL_STATE>>::from_usize(key),
             Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
@@ -563,8 +570,8 @@ HAS_KILL_STATE>{
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread() -> Write_lock_id,
 
-            old(lctx).lock_id_set().contains((
-                old(self).lock_id_by_key(key), obj_id.view())),
+            old(lctx).lock_entry_contains(
+                old(self).lock_id_by_key(key), obj_id.view()),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -577,7 +584,9 @@ HAS_KILL_STATE>{
             unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_key(key)),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        assert(perm.addr() == key);
+        assert(old(self).view().spec_index(key).is_init() && perm.addr() == key) by {
+            vstd::assert_maps_equal!(old(self).view(), self.view().insert(key, perm));
+        };
         let ret = has_kill_state_wunlock(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;

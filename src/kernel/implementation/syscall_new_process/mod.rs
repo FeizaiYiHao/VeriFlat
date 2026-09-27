@@ -3,6 +3,7 @@ mod syscall_new_process_with_iommu_release;
 mod syscall_new_process_with_iommu_publish;
 mod syscall_new_process_publish;
 pub mod syscall_new_process_helpers;
+mod syscall_new_process_common;
 mod syscall_new_process_with_iommu_helpers;
 pub mod syscall_new_process;
 pub mod syscall_new_process_with_endpoint;

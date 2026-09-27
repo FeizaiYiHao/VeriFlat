@@ -19,11 +19,11 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).thread_lock_map().dom() =~= set![source_thread, target_thread],
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable],
-        old(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         source_thread != target_thread,
         source_pagetable != target_pagetable,
         old(krnl).thr_mp.dom().contains(source_thread),
@@ -32,10 +32,12 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         !old(krnl).thr_mp.spec_index(source_thread).being_killed(),
         old(krnl).thr_mp.spec_index(source_thread).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(source_thread).view().temp_alloc_clean(),
+        old(krnl).thr_mp.spec_index(source_thread).view().syscall_progress.view() is None,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), target_thread, TypedLockMode::Write),
         !old(krnl).thr_mp.spec_index(target_thread).being_killed(),
         old(krnl).thr_mp.spec_index(target_thread).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(target_thread).view().temp_alloc_clean(),
+        old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() is None,
         old(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         old(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
         old(krnl).thr_mp.spec_index(target_thread).view().owning_container == target_container,
@@ -67,7 +69,6 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), held_process, TypedLockMode::Write),
         old(krnl).ep_mp.dom().contains(held_endpoint),
         typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), held_endpoint, TypedLockMode::Write),
-        old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom() =~= set![held_process],
@@ -75,7 +76,6 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
-        old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable],
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
@@ -87,7 +87,13 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
@@ -97,14 +103,11 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
     ensures
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
-            old(lctx).pagetable_lock_map().dom().contains(pt)
-            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+            old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view()) ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -122,24 +125,31 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         final(krnl).thr_mp.spec_index(source_thread).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(source_thread).view().blocking_endpoint_ptr,
         final(krnl).thr_mp.spec_index(source_thread).view().free_quota_pending_clean(),
         final(krnl).thr_mp.spec_index(source_thread).view().temp_alloc_clean(),
+        final(krnl).thr_mp.spec_index(source_thread).view().syscall_progress.view() is None,
         final(krnl).thr_mp.spec_index(target_thread).being_killed() == old(krnl).thr_mp.spec_index(target_thread).being_killed(),
         final(krnl).thr_mp.spec_index(target_thread).view().state == old(krnl).thr_mp.spec_index(target_thread).view().state,
         final(krnl).thr_mp.spec_index(target_thread).view().owning_proc == old(krnl).thr_mp.spec_index(target_thread).view().owning_proc,
         final(krnl).thr_mp.spec_index(target_thread).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(target_thread).view().blocking_endpoint_ptr,
         final(krnl).thr_mp.spec_index(target_thread).view().free_quota_pending_clean(),
         final(krnl).thr_mp.spec_index(target_thread).view().temp_alloc_clean(),
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-        ret is Ready ==> final(steps).steps.len() == old(steps).steps.len() + source_range.len,
-        !(ret is Ready) ==> final(steps).steps.len() == old(steps).steps.len(),
+        final(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() is None,
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
+        final(krnl).irt.owners() == final(steps).snapshot_k().irt.owners(),
+        final(krnl).irt.iommu_roots() == final(steps).snapshot_k().irt.iommu_roots(),
+        final(krnl).cpu_tlb.view() == final(steps).snapshot_k().cpu_tlb.view(),
+        final(krnl).iommu_tlb.view() == final(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
+        ret is Ready ==> old(steps).nonlock_view().len() + source_range.len <= final(steps).nonlock_view().len()
+            <= old(steps).nonlock_view().len() + 4 * source_range.len,
+        !(ret is Ready) ==> final(steps).nonlock_view().len() == old(steps).nonlock_view().len(),
         final(lctx).page_lock_map().dom().is_empty(),
         final(lctx).thread_lock_map().dom() == set![source_thread, target_thread],
         final(lctx).pagetable_lock_map().dom() == set![source_pagetable, target_pagetable],
-        final(lctx).held_lock_majors_lt(MAPPED_PAGE_LOCK_MAJOR),
         final(krnl).thr_mp.dom().contains(source_thread),
         final(krnl).thr_mp.dom().contains(target_thread),
-        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), source_thread, TypedLockMode::Write),
         !final(krnl).thr_mp.spec_index(source_thread).being_killed(),
-        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), target_thread, TypedLockMode::Write),
         !final(krnl).thr_mp.spec_index(target_thread).being_killed(),
         final(krnl).thr_mp.spec_index(source_thread).view().owning_proc != target_process,
         final(krnl).thr_mp.spec_index(source_thread).view().proc_pagetable_ptr == source_pagetable,
@@ -164,6 +174,9 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
 {
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+
     let source_start_indices = va2index(source_range.start);
     proof {
         assert({
@@ -228,6 +241,7 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
         }
         true
     } else {
+        proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
         share_mapping_4k_source_owner_precheck(krnl, source_range, source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm))
     };
     proof {
@@ -252,17 +266,29 @@ fn ipc_share_pages_locked(krnl: &mut KernelK, source_range: &VaRange4K, target_r
     proof {
         assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { reveal(container_allocator_wf); };
     }
-    share_mapping_4k_build_and_share(krnl, source_range, target_range, target_allocator, source_thread, target_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
+    proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
+    share_mapping_4k_build_and_share(
+        krnl, source_range, target_range, target_allocator, source_thread, target_thread, target_process, target_container, cpu_id,
+        source_pagetable, target_pagetable, None, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm),
+        Tracked(target_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(None),
+        Tracked(None),
+    );
     IpcPagesMapping::Ready
 }
 
-pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K, target_range: &VaRange4K, source_thread: RwLockThreadPtr, target_thread: RwLockThreadPtr, cpu_id: CpuId, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<LockPerm>, peer_thread_lock_perm: Tracked<LockPerm>) -> (ret: RetValueType)
+pub(super) fn ipc_rendezvous_pages(
+    krnl: &mut KernelK, source_range: &VaRange4K, target_range: &VaRange4K, source_thread: RwLockThreadPtr, target_thread: RwLockThreadPtr,
+    cpu_id: CpuId, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_lock_perm: Tracked<LockPerm>,
+    process_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<LockPerm>,
+    peer_thread_lock_perm: Tracked<LockPerm>,
+) -> (ret: RetValueType)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
-        old(lctx).held_lock_majors_lt(SCHEDULER_LOCK_MAJOR),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -302,10 +328,12 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
         old(lctx).page_lock_map().dom().is_empty(),
@@ -329,7 +357,13 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        old(steps).snap_shot == kernel_k_to_kernel_u(*old(krnl)),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
+        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
+        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
+        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
+        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         source_range.wf(),
         target_range.wf(),
         source_range.len == target_range.len,
@@ -338,23 +372,21 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        ret is Success
-            || ret is ErrorIpcSameProcess
-            || ret is ErrorIpcSourceUnmapped
-            || ret is ErrorIpcPageOwnerMismatch
-            || ret is ErrorNoQuota
-            || ret is ErrorVaInUse
-            || ret is Error,
+        ret is Success || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse || ret is Error,
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(steps).snap_shot == kernel_k_to_kernel_u(*final(krnl)),
-        ret is Success ==> final(steps).steps.len() == old(steps).steps.len() + source_range.len,
-        !(ret is Success) ==> final(steps).steps.len() == old(steps).steps.len(),
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
+        final(steps).snapshot_k() == *final(krnl),
+        ret is Success ==> old(steps).nonlock_view().len() + source_range.len + 1 <= final(steps).nonlock_view().len()
+            <= old(steps).nonlock_view().len() + 4 * source_range.len + 1,
+        !(ret is Success) ==> final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
 {
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked process_lock_perm = process_lock_perm.get();
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
@@ -398,7 +430,12 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
     }
 
     if source_process == target_process {
-        return ipc_schedule_waiting_peer_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, RetValueType::ErrorIpcSameProcess, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+        proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+        return ipc_schedule_waiting_peer_and_finish(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(None), peer_thread_ptr,
+            RetValueType::ErrorIpcSameProcess, Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+            Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
+        );
     } else {
         proof {
             assert({
@@ -410,14 +447,14 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
                 &&& krnl.pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process
                 &&& source_pagetable != target_pagetable
             }) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
-            assert({
-                &&& krnl.pt_mp.lock_id_by_key(source_pagetable).major == PAGE_TABLE_LOCK_MAJOR
-                &&& krnl.pt_mp.lock_id_by_key(target_pagetable).major == PAGE_TABLE_LOCK_MAJOR
-            }) by { reveal(pagetable_perms_wf); };
         }
 
         let (Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm)) = krnl.wlock_pagetable_pair(source_pagetable, target_pagetable, Tracked(&mut *lctx));
         proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            steps.rebase_snapshot_k_if_unchanged(&*krnl);
+
             assert({
                 &&& krnl.thr_mp.dom().contains(source_thread)
                 &&& krnl.thr_mp.dom().contains(target_thread)
@@ -442,10 +479,7 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
                 }
                 &&& krnl.pt_mp.spec_index(source_pagetable).view().proc_ptr == krnl.thr_mp.spec_index(source_thread).view().owning_proc
                 &&& krnl.pt_mp.spec_index(target_pagetable).view().proc_ptr == target_process
-            }) by {
-                reveal(process_thread_wf);
-                reveal(process_pagetable_match);
-            };
+            }) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
             assert({
                 &&& krnl.pt_mp.dom().contains(source_pagetable)
                 &&& krnl.pt_mp.dom().contains(target_pagetable)
@@ -459,12 +493,10 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
                 &&& (&target_pagetable_lock_perm).state() is WriteLock
                 &&& (&target_pagetable_lock_perm).thread_id() == lctx.thread_id()
                 &&& (&target_pagetable_lock_perm).lock_id() == krnl.pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id
-            }) by {
-                reveal(process_pagetable_match);
-            };
+            }) by { reveal(process_pagetable_match); };
         }
         proof {
-            assert(lctx.holds_no_allocator_locks(PageSize::SZ4k)) by { reveal(LocalContext::holds_no_allocator_locks); };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         }
         let pages_result = ipc_share_pages_locked(
             krnl, source_range, target_range, source_thread, target_thread, target_process,
@@ -481,7 +513,15 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
             krnl.wunlock_pagetable(source_pagetable, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
             krnl.wunlock_pagetable(target_pagetable, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
         }
-        proof { krnl.kernel_step_boundary(&mut *lctx, &mut *steps); }
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by {
+                broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+                reveal(kernel_pagetable_nonlock_fields_unchanged);
+            };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
+        }
         let result = match pages_result {
             IpcPagesMapping::Ready => RetValueType::Success,
             IpcPagesMapping::SourceUnmapped => RetValueType::ErrorIpcSourceUnmapped,
@@ -490,7 +530,14 @@ pub(super) fn ipc_rendezvous_pages(krnl: &mut KernelK, source_range: &VaRange4K,
             IpcPagesMapping::InUse => RetValueType::ErrorVaInUse,
             _ => RetValueType::Error,
         };
-        return ipc_schedule_waiting_peer_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, result, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+        proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
+        return ipc_schedule_waiting_peer_and_finish(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(None), peer_thread_ptr,
+            result, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm),
+            Tracked(peer_thread_lock_perm),
+        );
     }
 }
 } // verus!

@@ -64,7 +64,9 @@ pub fn remove_last_4k_io_mapping(page: &mut Page, pagetable_ptr: RwLockPageTable
         final(page).perm_4k.view() is None,
         *final(page) == (Page { state: PageState::Unavailable, mappings: final(page).mappings, ref_count: 0, perm_4k: final(page).perm_4k, ..*old(page) }),
 {
-    proof { let tracked _retired_perm = page.perm_4k.borrow_mut().tracked_take(); }
+    proof {
+        let tracked _retired_perm = page.perm_4k.borrow_mut().tracked_take();
+    }
     page.mappings = Ghost(Set::empty());
     page.ref_count = 0;
     page.state = PageState::Unavailable;

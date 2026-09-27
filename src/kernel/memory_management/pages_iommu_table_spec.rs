@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+// Proof dependency (confirmed for free-page state updates): page_array_wf.
 #[verifier::opaque]
 pub open spec fn iommu_table_pages_wf(
     iommu_table_map: IommuTableLockedMap,

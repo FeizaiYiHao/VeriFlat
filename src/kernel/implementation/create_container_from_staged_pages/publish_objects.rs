@@ -8,6 +8,7 @@ pub const STAGED_4K_PAGE_CHAIN_END: PagePtr = usize::MAX;
 pub open spec fn staged_4k_page_chain(pages: PageLockedArray, page_ptrs: Seq<PagePtr>) -> bool {
     forall|i: int|
         #![trigger pages.spec_index(page_ptr2page_index(page_ptrs.spec_index(i))).view().view().free_list]
+        #![trigger page_ptr_valid(page_ptrs.spec_index(i))]
         0 <= i < page_ptrs.len() ==> {
             &&& page_ptr_valid(page_ptrs.spec_index(i))
             &&& pages.spec_index(page_ptr2page_index(
@@ -28,18 +29,7 @@ pub(super) proof fn staged_4k_page_chain_page_ptrs_valid(pages: PageLockedArray,
             #![trigger page_ptr_valid(page_ptrs.spec_index(i))]
             0 <= i < page_ptrs.len() ==> page_ptr_valid(page_ptrs.spec_index(i)),
 {
-    assert forall|i: int|
-        #![trigger page_ptr_valid(page_ptrs.spec_index(i))]
-        0 <= i < page_ptrs.len()
-            implies page_ptr_valid(page_ptrs.spec_index(i)) by {
-        assert(pages.spec_index(page_ptr2page_index(
-            page_ptrs.spec_index(i),
-        )).view().view().free_list == if i == 0 {
-            STAGED_4K_PAGE_CHAIN_END
-        } else {
-            page_ptrs.spec_index(i - 1)
-        });
-    };
+
 }
 
 pub open spec fn staged_4k_page_chain_head(page_ptrs: Seq<PagePtr>) -> PagePtr {
@@ -61,7 +51,6 @@ pub(super) fn build_staged_4k_global_pool(
         old(pages).inv(),
         page_array_wf(*old(pages)),
         old(pages).typed_lock_map_aligned(old(lctx).page_lock_map(), old(lctx).thread_id(),),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         page_ptrs.len() == count,
         page_ptrs.no_duplicates(),
@@ -121,7 +110,6 @@ pub(super) fn build_staged_4k_global_pool(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         final(pages).typed_lock_map_aligned(final(lctx).page_lock_map(), final(lctx).thread_id(),),
-        lock_id_set_aligned(final(lctx)),
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index).view().view().mappings()]
             #![trigger old(pages).spec_index(index).view().view().mappings()]
@@ -162,7 +150,6 @@ pub(super) fn build_staged_4k_global_pool(
                 #![trigger pages.spec_index(index).view().view().mappings()]
                 index_valid(NUM_PAGES, index) ==> pages.spec_index(index).view().view().mappings() == old(pages).spec_index(index).view().view().mappings(),
             pages.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
-            lock_id_set_aligned(lctx),
             lctx.kernel_view_locking_state() is Release,
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.cpu_id() == old(lctx).cpu_id(),
@@ -310,7 +297,7 @@ pub(super) fn build_staged_4k_global_pool(
                 index_valid(NUM_PAGES, index) implies
                     pages.spec_index(index).view().view().mappings() == old(pages).spec_index(index).view().view().mappings() by {
                 if index == page_index {
-                    assert(pages.spec_index(index).view().view().mappings() == pages_before_step.spec_index(index).view().view().mappings());
+                    assert(pages.spec_index(index).view().view().mappings() == pages_before_step.spec_index(index).view().view().mappings()) by { vstd::set::axiom_set_ext_equal(pages.spec_index(index).view().view().mappings(), pages_before_step.spec_index(index).view().view().mappings()); };
                 }
             };
         }
@@ -560,7 +547,6 @@ pub(super) fn retype_new_container_owned_2m_pages(
         old(pages).inv(),
         page_array_wf(*old(pages)),
         old(pages).typed_lock_map_aligned(old(lctx).page_lock_map(), old(lctx).thread_id()),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
@@ -579,7 +565,6 @@ pub(super) fn retype_new_container_owned_2m_pages(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         final(pages).inv(),
         page_array_wf(*final(pages)),
         final(pages).typed_lock_map_aligned(final(lctx).page_lock_map(), final(lctx).thread_id()),
@@ -656,7 +641,6 @@ pub(super) fn prepare_new_container_backing_pages(
         old(pages).inv(),
         page_array_wf(*old(pages)),
         old(pages).typed_lock_map_aligned(old(lctx).page_lock_map(), old(lctx).thread_id()),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         page_ptr_2m_valid(container_page),
         page_ptr_2m_valid(pcid_allocator_page),
@@ -724,7 +708,6 @@ pub(super) fn prepare_new_container_backing_pages(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         final(pages).inv(),
         page_array_wf(*final(pages)),
         final(pages).typed_lock_map_aligned(final(lctx).page_lock_map(), final(lctx).thread_id()),
@@ -852,18 +835,7 @@ pub(super) fn prepare_new_container_backing_pages(
         Ghost(funding_indices), Tracked(&*lctx), Tracked(funding_page_lock_perms), Tracked(container_tail_lock_perms),
         Tracked(pcid_allocator_tail_lock_perms),
     );
-    proof {
-        assert forall|page_ptr: PagePtr|
-            #![trigger funding_page_lock_perms.dom().contains(page_ptr)]
-            funding_page_lock_perms.dom().contains(page_ptr) implies {
-                &&& page_ptr_valid(page_ptr)
-                &&& pages.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Owned4k
-                &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write)
-                &&& funding_page_lock_perms.spec_index(page_ptr).state() is WriteLock
-                &&& funding_page_lock_perms.spec_index(page_ptr).thread_id() == lctx.thread_id()
-                &&& funding_page_lock_perms.spec_index(page_ptr).lock_id() == pages.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id
-            } by { assert(pages.spec_index(page_ptr2page_index(page_ptr)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr))); };
-    }
+
     let global_pool = build_staged_4k_global_pool(
         pages, funding_page_count, funding_page_head, Ghost(funding_pages), Ghost(funding_indices), child_allocator_4k_ptr,
         child_container_ptr, child_depth, Tracked(&mut *lctx), Tracked(funding_page_lock_perms),
@@ -940,7 +912,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
         old(krnl).dflt_pt.view().wf(),
         pei_valid(old(krnl).dflt_pt.view().kernel_l4_end),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         pcid_valid(root_pcid),
         root_pcid != KERNEL_DEFAULT_PCID,
@@ -981,7 +952,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)), *final(krnl) == (KernelK {
             pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp,
             ..*old(krnl)
@@ -1166,20 +1136,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let Tracked(child_process_lock_perm) =
         krnl.retype_page_to_process_and_insert(child_process_ptr, process_value, process_rodata, process_ghost, Tracked(process_perm), Tracked(&mut *lctx),);
     proof {
-        assert({
-            &&& lctx.cpu_lock_map() == lctx_before_publish.cpu_lock_map()
-            &&& lctx.pcid_needflush_lock_map() == lctx_before_publish.pcid_needflush_lock_map()
-            &&& lctx.container_lock_map() == lctx_before_publish.container_lock_map()
-            &&& lctx.thread_lock_map() == lctx_before_publish.thread_lock_map()
-            &&& lctx.endpoint_lock_map() == lctx_before_publish.endpoint_lock_map()
-            &&& lctx.scheduler_lock_map() == lctx_before_publish.scheduler_lock_map()
-            &&& lctx.pcid_allocator_lock_map() == lctx_before_publish.pcid_allocator_lock_map()
-            &&& lctx.cpu_set_lock_map() == lctx_before_publish.cpu_set_lock_map()
-            &&& lctx.iommu_table_lock_map() == lctx_before_publish.iommu_table_lock_map()
-            &&& lctx.allocator_4k_lock_maps() == lctx_before_publish.allocator_4k_lock_maps()
-            &&& lctx.allocator_2m_lock_maps() == lctx_before_publish.allocator_2m_lock_maps()
-            &&& lctx.allocator_1g_lock_maps() == lctx_before_publish.allocator_1g_lock_maps()
-        });
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().page_closure() == set![l4_page]) by { vstd::set::axiom_set_ext_equal(krnl.pt_mp.spec_index(child_pagetable_ptr).view().page_closure(), set![l4_page],); };
         assert(!old(lctx).process_lock_map().dom().contains(child_process_ptr,)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx),)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -1205,7 +1161,6 @@ pub(super) fn publish_new_container_allocator(
         old(allocator_map).typed_quota_lock_map_aligned(quota_lock_map, old(lctx).thread_id(),),
         old(allocator_map).typed_cache_lock_map_aligned(cache_lock_map, old(lctx).thread_id(),),
         old(allocator_map).typed_global_pool_lock_map_aligned(global_pool_lock_map, old(lctx).thread_id(),),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         allocator_value.inv(),
         allocator_state is As4KAllocator || allocator_state is As2MAllocator || allocator_state is As1GAllocator,
@@ -1228,7 +1183,6 @@ pub(super) fn publish_new_container_allocator(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         final(pages).inv(),
         page_array_wf(*final(pages)),
         final(allocator_map).perms_wf(),
@@ -1292,7 +1246,6 @@ pub(super) fn publish_new_container_allocators(
         allocator_perms_wf(old(krnl).allc_2m_mp),
         allocator_perms_wf(old(krnl).allc_1g_mp),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         allocator_4k_value.inv(),
         allocator_2m_value.inv(),
@@ -1348,7 +1301,6 @@ pub(super) fn publish_new_container_allocators(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         *final(krnl) == (KernelK {
             pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp,
@@ -1444,18 +1396,6 @@ pub(super) fn publish_new_container_allocators(
             &&& krnl.allc_2m_mp.perms_wf()
             &&& krnl.allc_1g_mp.perms_wf()
         }) by { reveal(allocator_perms_wf); };
-        assert({
-            &&& krnl.pg_arr.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id())
-            &&& krnl.allc_4k_mp.typed_quota_lock_map_aligned(allocator_4k_quota_lock_map, lctx.thread_id())
-            &&& krnl.allc_4k_mp.typed_cache_lock_map_aligned(allocator_4k_cache_lock_map, lctx.thread_id())
-            &&& krnl.allc_4k_mp.typed_global_pool_lock_map_aligned(allocator_4k_global_pool_lock_map, lctx.thread_id())
-            &&& krnl.allc_2m_mp.typed_quota_lock_map_aligned(allocator_2m_quota_lock_map, lctx.thread_id())
-            &&& krnl.allc_2m_mp.typed_cache_lock_map_aligned(allocator_2m_cache_lock_map, lctx.thread_id())
-            &&& krnl.allc_2m_mp.typed_global_pool_lock_map_aligned(allocator_2m_global_pool_lock_map, lctx.thread_id())
-            &&& krnl.allc_1g_mp.typed_quota_lock_map_aligned(allocator_1g_quota_lock_map, lctx.thread_id())
-            &&& krnl.allc_1g_mp.typed_cache_lock_map_aligned(allocator_1g_cache_lock_map, lctx.thread_id())
-            &&& krnl.allc_1g_mp.typed_global_pool_lock_map_aligned(allocator_1g_global_pool_lock_map, lctx.thread_id())
-        });
     }
     publish_new_container_allocator(
         &mut krnl.pg_arr, &mut krnl.allc_4k_mp, child_container_ptr, allocator_4k_page, Allocated4KPageState::As4KAllocator, allocator_4k_value,
@@ -1472,24 +1412,7 @@ pub(super) fn publish_new_container_allocators(
         Ghost(allocator_1g_quota_lock_map), Ghost(allocator_1g_cache_lock_map), Ghost(allocator_1g_global_pool_lock_map),
         Tracked(&mut *lctx), Tracked(allocator_1g_page_lock_perm),
     );
-    proof {
-        assert({
-            &&& lctx.cpu_lock_map() == lctx_before.cpu_lock_map()
-            &&& lctx.pcid_needflush_lock_map() == lctx_before.pcid_needflush_lock_map()
-            &&& lctx.container_lock_map() == lctx_before.container_lock_map()
-            &&& lctx.process_lock_map() == lctx_before.process_lock_map()
-            &&& lctx.thread_lock_map() == lctx_before.thread_lock_map()
-            &&& lctx.endpoint_lock_map() == lctx_before.endpoint_lock_map()
-            &&& lctx.scheduler_lock_map() == lctx_before.scheduler_lock_map()
-            &&& lctx.pcid_allocator_lock_map() == lctx_before.pcid_allocator_lock_map()
-            &&& lctx.cpu_set_lock_map() == lctx_before.cpu_set_lock_map()
-            &&& lctx.pagetable_lock_map() == lctx_before.pagetable_lock_map()
-            &&& lctx.iommu_table_lock_map() == lctx_before.iommu_table_lock_map()
-            &&& lctx.allocator_4k_lock_maps() == lctx_before.allocator_4k_lock_maps()
-            &&& lctx.allocator_2m_lock_maps() == lctx_before.allocator_2m_lock_maps()
-            &&& lctx.allocator_1g_lock_maps() == lctx_before.allocator_1g_lock_maps()
-        });
-    }
+
 }
 
 pub(super) fn publish_new_container_scheduler(
@@ -1504,7 +1427,6 @@ pub(super) fn publish_new_container_scheduler(
         page_array_wf(old(krnl).pg_arr),
         old(krnl).sched_mp.perms_wf(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         scheduler_value.inv(),
         child_scheduler_ptr == scheduler_page,
@@ -1527,7 +1449,6 @@ pub(super) fn publish_new_container_scheduler(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)), *final(krnl) == (KernelK {
             pg_arr: final(krnl).pg_arr, sched_mp: final(krnl).sched_mp,
             ..*old(krnl)
@@ -1599,13 +1520,12 @@ pub(super) fn publish_new_container_cpu_set(
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(cpu_set_page_lock_perm): Tracked<&LockPerm>,
     Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
     Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
-)
+) -> (ret: Tracked<LockPerm>)
     requires
         old(krnl).pg_arr.inv(),
         page_array_wf(old(krnl).pg_arr),
         old(krnl).cpu_set_mp.perms_wf(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         cpu_set_value.inv(),
         child_cpu_set_ptr == cpu_set_page,
@@ -1625,7 +1545,6 @@ pub(super) fn publish_new_container_cpu_set(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)), *final(krnl) == (KernelK {
             pg_arr: final(krnl).pg_arr, cpu_set_mp: final(krnl).cpu_set_mp,
             ..*old(krnl)
@@ -1652,7 +1571,11 @@ pub(super) fn publish_new_container_cpu_set(
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
-        final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
+        final(lctx).cpu_set_lock_map().dom() == old(lctx).cpu_set_lock_map().dom().insert(child_cpu_set_ptr),
+        typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), child_cpu_set_ptr, TypedLockMode::Write),
+        forall|ptr: RwLockCpuSetPtr|
+            #![trigger final(lctx).cpu_set_lock_map().get(ptr)]
+            ptr != child_cpu_set_ptr ==> final(lctx).cpu_set_lock_map().get(ptr) == old(lctx).cpu_set_lock_map().get(ptr),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -1669,19 +1592,21 @@ pub(super) fn publish_new_container_cpu_set(
         final(krnl).cpu_set_mp.dom()
             =~= old(krnl).cpu_set_mp.dom().insert(child_cpu_set_ptr),
         final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).view() == cpu_set_value,
-        !final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).locked(),
         forall|ptr: RwLockCpuSetPtr|
             #![trigger final(krnl).cpu_set_mp.spec_index(ptr)]
             old(krnl).cpu_set_mp.dom().contains(ptr) ==> final(krnl).cpu_set_mp.spec_index(ptr) == old(krnl).cpu_set_mp.spec_index(ptr),
         owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, final(krnl).pg_arr, final(lctx), container_head,),
         owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, final(krnl).pg_arr, final(lctx), pcid_allocator_head,),
+        ret.view().state() is WriteLock,
+        ret.view().thread_id() == final(lctx).thread_id(),
+        ret.view().lock_id() == final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).locking_thread()->Write_lock_id,
 {
     let Tracked(cpu_set_perm) =
         page_array_retype_owned_4k_for_container(
             &mut krnl.pg_arr, child_container_ptr, cpu_set_page, Allocated4KPageState::AsCpuSet,
             Tracked(&mut *lctx), Tracked(cpu_set_page_lock_perm),
         );
-    cpu_set_map_insert_new_4k_unlocked(&mut krnl.cpu_set_mp, child_cpu_set_ptr, cpu_set_value, Tracked(cpu_set_perm), Tracked(&mut *lctx));
+    cpu_set_map_insert_new_4k(&mut krnl.cpu_set_mp, child_cpu_set_ptr, cpu_set_value, Tracked(cpu_set_perm), Tracked(&mut *lctx))
 }
 
 pub(super) fn publish_new_container_pcid_allocator_and_container(
@@ -1694,7 +1619,6 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
         old(krnl).pcid_allc_mp.perms_wf(),
         old(krnl).ctn_mp.perms_wf(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         pcid_allocator_value.inv(),
         container_value.inv(),
@@ -1710,7 +1634,6 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        lock_id_set_aligned(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)), *final(krnl) == (KernelK {
             pcid_allc_mp: final(krnl).pcid_allc_mp, ctn_mp: final(krnl).ctn_mp,
             ..*old(krnl)

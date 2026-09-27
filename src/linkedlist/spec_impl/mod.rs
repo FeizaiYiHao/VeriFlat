@@ -139,18 +139,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         reveal(LinkedList::wf_value_list);
     }
 
-    /// Address ↔ value uniqueness: in a wf list whose VALUES have no
-    /// duplicates, the address holding a given value is unique. Concretely,
-    /// any two in-domain addresses mapping to the same value are equal.
+    /// Address ↔ value uniqueness: in a wf list the address holding a given
+    /// value is unique. Concretely, any two in-domain addresses mapping to the
+    /// same value are equal.
     ///
     /// Proof idiom (per remove_helper): materialize each address's position in
     /// `addr_list`, push the value equality through `wf_value_list` so both
-    /// positions hold the same `view()` element, then `no_duplicates` on the
-    /// values forces the positions — hence the addresses — equal.
+    /// positions hold the same `view()` element, then `value_list_unique`
+    /// forces the positions — hence the addresses — equal.
     pub proof fn lemma_value_addr_unique(&self, a: usize, b: usize)
         requires
             self.wf(),
-            self.view().no_duplicates(),
             self.map().dom().contains(a),
             self.map().dom().contains(b),
             self.map().spec_index(a) == self.map().spec_index(b),
@@ -175,13 +174,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             && self.map().spec_index(a) == self.perms.view().spec_index(a).value().view()
             && self.map().spec_index(b) == self.perms.view().spec_index(b).value().view()
         ) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); };
-        assert(ia == ib) by {
-            if ia != ib {
-                assert(
-                    self.view().spec_index(ia) != self.view().spec_index(ib)
-                );
-            }
-        };
+        assert(ia == ib) by { reveal(LinkedList::value_list_unique); };
     }
 
     #[verifier::opaque]

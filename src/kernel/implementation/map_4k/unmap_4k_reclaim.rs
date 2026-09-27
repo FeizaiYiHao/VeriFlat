@@ -8,7 +8,6 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(krnl).pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
@@ -50,9 +49,7 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write }),
-        final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr)))).insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), KernelObjId::Page(page_ptr2page_index(page_ptr)))) ,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -99,12 +96,8 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         let allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
         assert(allocator.global_pool.view().len() <= NUM_PAGES * 4096) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); allocator.global_pool.view().lemma_len_view(); seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize); };
         assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
-            if !(forall|i: int| #![trigger allocator.cpu_caches.view().spec_index(i)] 0 <= i < NUM_CPUS ==> allocator.cpu_caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK) {
-                let i = choose|i: int| #![trigger allocator.cpu_caches.view().spec_index(i)] 0 <= i < NUM_CPUS && allocator.cpu_caches.view().spec_index(i).view().linked_list.len() > ALLOCATOR_MAX_WATERMARK;
-                assert(index_valid(NUM_CPUS, i as usize));
-                assert(allocator.cpu_caches.view().spec_index(i).view().linked_list.len() <= ALLOCATOR_MAX_WATERMARK) by { allocator.cpu_caches.lemma_view_index(i as usize); allocator.cpu_caches.spec_index(i as usize).view().view().linked_list.lemma_len_view(); };
-            }
-            seq_fold_upper_bound(allocator.cpu_caches.view(), |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
+
+            lemma_cache_len_fold_upper_bound(allocator.cpu_caches);
         };
     };
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view()) by {

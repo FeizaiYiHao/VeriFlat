@@ -62,6 +62,7 @@ verus! {
                     page_array.spec_index(page_ptr2page_index(pt_p_ptr)).view().view().state->Allocated4k_state->PageTable_pagetable_root == pt_ptr
         }
 
+        // Proof dependency (confirmed for free-page state updates): page_array_wf.
         #[verifier::opaque]
         pub open spec fn pagetable_pages_wf(
             pagetable_map: PageTableLockedMap,

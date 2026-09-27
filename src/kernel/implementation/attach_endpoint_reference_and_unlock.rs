@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_maps_equal;
 use crate::*;
 
 verus! {
@@ -14,6 +15,7 @@ verus! {
             old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
             old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) is None,
             old(krnl).ep_mp.dom().contains(endpoint_ptr),
             old(krnl).ep_mp.spec_index(endpoint_ptr).is_init(),
@@ -32,24 +34,37 @@ verus! {
             endpoint_lock_perm.lock_id() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
-            lock_id_set_aligned(old(lctx)),
             old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, thread_ptr],
             old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
-            final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((thread_ptr, 0)),
+            final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().update(0, Some(endpoint_ptr)),
+            final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
+                endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
+                ..old(krnl).thr_mp.spec_index(thread_ptr).view()
+            }),
+            final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view() == old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().insert((thread_ptr, 0usize)),
+            final(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view() == old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view(),
+            final(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state == old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state,
+            final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container == old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container,
+            final(krnl).ep_mp.spec_index(endpoint_ptr).being_killed() == old(krnl).ep_mp.spec_index(endpoint_ptr).being_killed(),
             final(krnl).ep_mp.spec_index(endpoint_ptr).view().rf_counter == old(krnl).ep_mp.spec_index(endpoint_ptr).view().rf_counter + 1,
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+            final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
             final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is None,
             final(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
             final(krnl).ep_mp.lock_id_by_key(endpoint_ptr) == old(krnl).ep_mp.lock_id_by_key(endpoint_ptr),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
+            kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.dom().contains(thread_ptr),
+            kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map == kernel_k_to_nonlock_kernel_u(*old(krnl)).thread_map.insert(
+                thread_ptr, kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.spec_index(thread_ptr),
+            ),
             final(krnl).thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr),
             final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, endpoint_ptr),
             *final(krnl) == (KernelK {
@@ -60,7 +75,6 @@ verus! {
             final(krnl).thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set().remove((old(krnl).thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr))).remove((old(krnl).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr))),
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),
             final(lctx).thread_lock_map() == old(lctx).thread_lock_map().remove(thread_ptr),
             final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map().remove(endpoint_ptr),
@@ -77,8 +91,6 @@ verus! {
             final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
-            lock_id_set_aligned(final(lctx)),
-            kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
     {
         proof {
             assert({
@@ -112,7 +124,7 @@ verus! {
 
         proof {
             assert(krnl.subsystems_inv()) by {
-                assert(thread_perms_wf(krnl.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
+                assert(thread_perms_wf(krnl.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
                 assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
                 reveal(KernelK::default_pagetable_wf);
             };
@@ -120,7 +132,7 @@ verus! {
             assert(krnl.process_management_inv()) by {
                 assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
                 assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
-                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(thread_perms_wf); };
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(old(krnl).thr_mp, krnl.thr_mp, old(krnl).ep_mp, krnl.ep_mp); };
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
                 assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_scheduler_wf); };
@@ -142,9 +154,14 @@ verus! {
             }) by {
                 lock_id_fields_eq_imply_eq();
             };
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                kernel_no_change_to_user_view_fields_imply_kernel_u_eq(old(krnl), krnl);
-            };
+            let old_u = kernel_k_to_nonlock_kernel_u(*old(krnl));
+            let final_u = kernel_k_to_nonlock_kernel_u(*krnl);
+            assert(final_u.thread_map.dom() == old_u.thread_map.dom()) by { reveal(kernel_k_to_nonlock_kernel_u); };
+            assert_maps_equal!(
+                final_u.thread_map,
+                old_u.thread_map.insert(thread_ptr, final_u.thread_map.spec_index(thread_ptr)),
+                t => { reveal(kernel_k_to_nonlock_kernel_u); }
+            );
         }
     }
 }

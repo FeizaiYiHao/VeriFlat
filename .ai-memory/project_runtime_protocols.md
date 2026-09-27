@@ -10,13 +10,21 @@ metadata:
 
 ## User-visible steps
 
-- Syscall semantic postconditions describe `KernelU` transitions, normally
-  through an operation-specific `kernel_u_*_changed` predicate. They should not
-  expose lock state, allocator caches, or other `KernelK` implementation detail.
-- `KernelSteps` carries a `KernelU` snapshot and a sequence of user steps.
-  `end_kernel_step` and `kernel_step_boundary` compare the final projection with
-  that snapshot; kernel-only work is a stuttering step, while a changed
-  projection appends a `KernelStep` and refreshes the snapshot.
+- `KernelU` includes `LockStateU::{Unlocked, ReadLocked, WriteLocked}` on
+  containers, processes, threads, endpoints, CPUs, and both ordinary and IOMMU
+  page-table views. Modes come from the outer physical RwLock; owners and reader
+  counts remain kernel-only. Allocator and other internal lock families are not
+  projected.
+- `KernelSteps` retains exact K and U snapshots and records complete U changes
+  only at existing kernel boundaries and syscall finish. A mode-only change is
+  a real step; acquiring and releasing within one section can still stutter.
+- `kernel_u_nonlock_fields` resets only represented lock modes, including both
+  nested page-table views. The derived `KernelSteps::nonlock_view` filters
+  lock-only steps and normalizes the remaining transitions for syscall business
+  contracts. Actual snapshots and recording never use this projection.
+- Rebasing refreshes K only when the complete stored U still matches the current
+  projection. Pending lock changes remain in the snapshot comparison. The strict
+  stuttering wrapper requires nonlock fields and observable lock modes to agree.
 
 ## Staged page allocation and thread creation
 

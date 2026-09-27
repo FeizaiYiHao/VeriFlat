@@ -875,6 +875,55 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
     };
 }
 
+pub proof fn lemma_thread_pending_4k_folds_change_by_forall(mod_t: RwLockThreadPtr, direct_delta: int, changed_depth: int, indirect_delta: int)
+    ensures
+        forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap|
+            #![trigger thread_direct_pending_4k_fold_sum(s, post), thread_direct_pending_4k_fold_sum(s, pre)]
+            (forall|t: RwLockThreadPtr| #![trigger pre.spec_index(t).view().direct_free_quota_pending_4k.view()]
+                s.contains(t) ==> post.spec_index(t).view().direct_free_quota_pending_4k.view() == pre.spec_index(t).view().direct_free_quota_pending_4k.view() + if t == mod_t { direct_delta } else { 0int })
+            ==> thread_direct_pending_4k_fold_sum(s, post) == thread_direct_pending_4k_fold_sum(s, pre) + if s.contains(mod_t) { direct_delta } else { 0int },
+        forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int|
+            #![trigger thread_indirect_pending_4k_fold_sum_at_depth(s, post, depth), thread_indirect_pending_4k_fold_sum_at_depth(s, pre, depth)]
+            (forall|t: RwLockThreadPtr| #![trigger pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth)]
+                s.contains(t) ==> post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) == pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) + if t == mod_t && depth == changed_depth { indirect_delta } else { 0int })
+            ==> thread_indirect_pending_4k_fold_sum_at_depth(s, post, depth) == thread_indirect_pending_4k_fold_sum_at_depth(s, pre, depth) + if s.contains(mod_t) && depth == changed_depth { indirect_delta } else { 0int },
+{
+    assert forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap| #![auto]
+        (forall|t: RwLockThreadPtr| #![trigger pre.spec_index(t).view().direct_free_quota_pending_4k.view()]
+                s.contains(t) ==> post.spec_index(t).view().direct_free_quota_pending_4k.view() == pre.spec_index(t).view().direct_free_quota_pending_4k.view() + if t == mod_t { direct_delta } else { 0int })
+        implies thread_direct_pending_4k_fold_sum(s, post) == thread_direct_pending_4k_fold_sum(s, pre) + if s.contains(mod_t) { direct_delta } else { 0int }
+    by {
+        let pre_value = |t: RwLockThreadPtr| pre.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
+        let post_value = |t: RwLockThreadPtr| post.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
+        let delta = direct_delta;
+        assert({
+            &&& (|sum: int, t: RwLockThreadPtr| sum + pre_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().direct_free_quota_pending_4k.view())
+            &&& (|sum: int, t: RwLockThreadPtr| sum + post_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().direct_free_quota_pending_4k.view())
+            &&& s.fold(0int, |sum: int, t: RwLockThreadPtr| sum + post_value(t)) == s.fold(0int, |sum: int, t: RwLockThreadPtr| sum + pre_value(t)) + if s.contains(mod_t) { delta } else { 0int }
+        }) by {
+            if s.contains(mod_t) { lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_t, delta); }
+            else { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); }
+        };
+    };
+    assert forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, depth: int| #![auto]
+        (forall|t: RwLockThreadPtr| #![trigger pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth)]
+                s.contains(t) ==> post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) == pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) + if t == mod_t && depth == changed_depth { indirect_delta } else { 0int })
+        implies thread_indirect_pending_4k_fold_sum_at_depth(s, post, depth) == thread_indirect_pending_4k_fold_sum_at_depth(s, pre, depth) + if s.contains(mod_t) && depth == changed_depth { indirect_delta } else { 0int }
+    by {
+        let pre_value = |t: RwLockThreadPtr| pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
+        let post_value = |t: RwLockThreadPtr| post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth) as int;
+        let delta = if depth == changed_depth { indirect_delta } else { 0int };
+        assert({
+            &&& (|sum: int, t: RwLockThreadPtr| sum + pre_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + pre.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth))
+            &&& (|sum: int, t: RwLockThreadPtr| sum + post_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + post.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth))
+            &&& s.fold(0int, |sum: int, t: RwLockThreadPtr| sum + post_value(t)) == s.fold(0int, |sum: int, t: RwLockThreadPtr| sum + pre_value(t)) + if s.contains(mod_t) { delta } else { 0int }
+        }) by {
+            if s.contains(mod_t) { lemma_set_fold_int_sum_change_by(s, pre_value, post_value, mod_t, delta); }
+            else { lemma_set_fold_int_sum_congruence(s, post_value, pre_value); }
+        };
+    };
+}
+
 pub proof fn lemma_thread_pending_4k_folds_eq_forall(
     container_map: ContainerLockedMap,
     pre: ThreadLockedMap,
@@ -990,6 +1039,65 @@ pub proof fn lemma_thread_pending_2m_folds_eq_forall(
         assert(indirect.subset_of(pre.dom())) by { reveal(container_thread_wf); };
         lemma_thread_direct_pending_2m_fold_eq(direct, pre, post);
         lemma_thread_indirect_pending_2m_fold_eq_at_depth(indirect, pre, post, depth);
+    };
+}
+
+pub proof fn lemma_thread_effective_quota_1g_fold_sum_eq_forall()
+    ensures
+        forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap|
+            #![trigger thread_effective_quota_1g_fold_sum(s, post), thread_effective_quota_1g_fold_sum(s, pre)]
+            (forall|t: RwLockThreadPtr|
+                #![trigger thread_effective_quota_1g(pre.spec_index(t))]
+                s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t))) ==> thread_effective_quota_1g_fold_sum(s, post) == thread_effective_quota_1g_fold_sum(s, pre),
+{
+    assert forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap| #![auto]
+        (forall|t: RwLockThreadPtr| #![auto]
+            s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)))
+        implies thread_effective_quota_1g_fold_sum(s, post) == thread_effective_quota_1g_fold_sum(s, pre)
+    by {
+        lemma_thread_effective_quota_1g_fold_eq(s, pre, post);
+    };
+}
+
+pub proof fn lemma_thread_pending_1g_folds_eq_forall(
+    container_map: ContainerLockedMap, pre: ThreadLockedMap, post: ThreadLockedMap,
+)
+    requires
+        container_thread_wf(container_map, pre),
+        post.dom() =~= pre.dom(),
+        forall|t: RwLockThreadPtr|
+            #![trigger pre.spec_index(t)]
+            pre.dom().contains(t) ==>
+                post.spec_index(t).view().direct_free_quota_pending_1g == pre.spec_index(t).view().direct_free_quota_pending_1g
+                && post.spec_index(t).view().indirect_free_quota_pending_1g == pre.spec_index(t).view().indirect_free_quota_pending_1g,
+    ensures
+        forall|c_ptr: RwLockContainerPtr|
+            #![trigger container_map.dom().contains(c_ptr)]
+            container_map.dom().contains(c_ptr) ==> {
+                let direct = container_map.spec_index(c_ptr).view_ghost().owned_threads.view();
+                let indirect = container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view();
+                let depth = container_map.spec_index(c_ptr).view_rodata().view().depth as int;
+                &&& thread_direct_pending_1g_fold_sum(direct, post) == thread_direct_pending_1g_fold_sum(direct, pre)
+                &&& thread_indirect_pending_1g_fold_sum_at_depth(indirect, post, depth) == thread_indirect_pending_1g_fold_sum_at_depth(indirect, pre, depth)
+            },
+{
+    assert forall|c_ptr: RwLockContainerPtr|
+        #![trigger container_map.dom().contains(c_ptr)]
+        container_map.dom().contains(c_ptr) implies {
+            let direct = container_map.spec_index(c_ptr).view_ghost().owned_threads.view();
+            let indirect = container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view();
+            let depth = container_map.spec_index(c_ptr).view_rodata().view().depth as int;
+            &&& thread_direct_pending_1g_fold_sum(direct, post) == thread_direct_pending_1g_fold_sum(direct, pre)
+            &&& thread_indirect_pending_1g_fold_sum_at_depth(indirect, post, depth) == thread_indirect_pending_1g_fold_sum_at_depth(indirect, pre, depth)
+        }
+    by {
+        let direct = container_map.spec_index(c_ptr).view_ghost().owned_threads.view();
+        let indirect = container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view();
+        let depth = container_map.spec_index(c_ptr).view_rodata().view().depth as int;
+        assert(direct.subset_of(pre.dom())) by { reveal(container_thread_wf); };
+        assert(indirect.subset_of(pre.dom())) by { reveal(container_thread_wf); };
+        lemma_thread_direct_pending_1g_fold_eq(direct, pre, post);
+        lemma_thread_indirect_pending_1g_fold_eq_at_depth(indirect, pre, post, depth);
     };
 }
 

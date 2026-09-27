@@ -54,9 +54,7 @@ impl CpuCr3Pcid {
             final(self).pcid() == pcid,
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
-            final(lctx).lock_id_set() == old(lctx).lock_id_set(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            lock_id_set_aligned(old(lctx)) ==> lock_id_set_aligned(final(lctx)),
             final(tlb).inv(),
             !flush ==> *final(tlb) == *old(tlb),
             forall|other_cpu: CpuId, other_pcid: Pcid|

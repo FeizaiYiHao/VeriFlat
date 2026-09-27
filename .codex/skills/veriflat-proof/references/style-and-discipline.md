@@ -17,6 +17,12 @@
   before each `.view()`, operator, or operand.
 - Keep short obligations on one line:
   `assert(goal) by { reveal(predicate); };`. No blank padding in braces.
+- Blocks with local `let` bindings are always multiline, across the entire
+  repository's spec, contract, proof, and exec code. Put the opening brace,
+  each `let` statement, each `&&&`/`|||` clause, and the closing brace on
+  separate lines. Keep each binding's expression compact; do not compress
+  multiple bindings or the following conditions onto one line. This takes
+  precedence over the short-block rule above.
 - Rely on NLL through ordinary exec flow; do not add a `{}` scope merely to
   close each mutable borrow immediately. Before an invariant-closing proof,
   or when a real alias/callee conflict requires it, end any live mutable

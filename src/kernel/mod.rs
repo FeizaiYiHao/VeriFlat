@@ -1,6 +1,8 @@
 pub mod kernel_k_define_spec;
 pub mod kernel_u_define_spec;
 pub mod kernel_total_define_spec;
+pub mod kernel_step_wrappers;
+pub mod kernel_step_spec;
 pub mod held_objects_unchanged_spec;
 pub mod process_management;
 pub mod memory_management;
@@ -16,6 +18,8 @@ pub mod implementation;
 pub use kernel_k_define_spec::*;
 pub use kernel_u_define_spec::*;
 pub use kernel_total_define_spec::*;
+pub use kernel_step_wrappers::*;
+pub use kernel_step_spec::*;
 pub use held_objects_unchanged_spec::*;
 pub use process_management::*;
 pub use memory_management::*;

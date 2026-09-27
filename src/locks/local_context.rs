@@ -36,11 +36,12 @@ pub open spec fn typed_lock_map_contains_mode<K>(
     map.dom().contains(key) && map.index(key).mode == mode
 }
 
-/// Per-thread ledger of held locks.
+/// Per-thread record of held locks, one typed map per kernel object kind.
 ///
-/// Every entry records the exact ordering id and object used by the physical
-/// lock. If a held object's dynamic ordering id changes during Release, the
-/// corresponding pair is replaced explicitly by `update_lock_id`.
+/// Every entry records the exact ordering id and mode used by the physical
+/// lock; deadlock freedom is checked directly on these maps by
+/// `lock_id_acyclic`. If a held object's dynamic ordering id changes during
+/// Release, the entry is replaced explicitly by `update_lock_id`.
 pub tracked struct LocalContext {
     ghost thread_id: LockThreadId,
     ghost cpu_id: CpuId,
@@ -59,7 +60,6 @@ pub tracked struct LocalContext {
     ghost allocator_4k_lock_maps: AllocatorLockMaps,
     ghost allocator_2m_lock_maps: AllocatorLockMaps,
     ghost allocator_1g_lock_maps: AllocatorLockMaps,
-    ghost lock_id_set: Set<HeldLock>,
     state: LCtxtState,
 }
 
@@ -72,8 +72,6 @@ impl LocalContext {
             ret.thread_id() == thread_id,
             ret.kernel_view_locking_state() is Acquire,
             ret.no_locks_held(),
-            ret.lock_id_set() =~= Set::<HeldLock>::empty(),
-            lock_id_set_aligned(&ret),
     {
         let tracked state = LCtxtState {
             kernel_view_locking_state: LCtxtLockState::Acquire,
@@ -108,12 +106,8 @@ impl LocalContext {
                 cache: Map::empty(),
                 global_pool: Map::empty(),
             },
-            lock_id_set: Set::empty(),
             state,
         };
-        assert(lock_id_set_aligned(&ret)) by {
-            reveal(lock_id_set_aligned);
-        }
         ret
     }
 
@@ -234,10 +228,6 @@ impl LocalContext {
         self.allocator_1g_lock_maps().global_pool
     }
 
-    pub closed spec fn lock_id_set(&self) -> Set<HeldLock> {
-        self.lock_id_set
-    }
-
     pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState {
         self.state.kernel_view_locking_state
     }
@@ -351,25 +341,56 @@ impl LocalContext {
     }
 
     /// `lock_id` is strictly greater than every held id.
-    pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
-        forall|held: HeldLock|
-            #![trigger self.lock_id_set().contains(held)]
-            self.lock_id_set().contains(held) ==> lock_id.spec_gt(held.0)
-    }
-
-    pub open spec fn held_lock_majors_lt(&self, major: LockMajorId) -> bool {
-        forall|held: HeldLock|
-            #![trigger self.lock_id_set().contains(held)]
-            self.lock_id_set().contains(held) ==> held.0.major < major
-    }
-
-    pub open spec fn held_lock_majors_le(&self, major: LockMajorId) -> bool {
-        forall|held: HeldLock|
-            #![trigger self.lock_id_set().contains(held)]
-            self.lock_id_set().contains(held) ==> held.0.major <= major
-    }
-
     #[verifier::opaque]
+    pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
+        &&& typed_lock_map_ids_lt(self.page_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.cpu_lock_map(), lock_id)
+        &&& typed_lock_map_2d_ids_lt(self.pcid_needflush_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.container_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.process_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.thread_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.endpoint_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.scheduler_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.pcid_allocator_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.cpu_set_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.pagetable_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.iommu_table_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.allocator_quota_4k_lock_map(), lock_id)
+        &&& typed_lock_map_2d_ids_lt(self.allocator_cache_4k_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.allocator_global_pool_4k_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.allocator_quota_2m_lock_map(), lock_id)
+        &&& typed_lock_map_2d_ids_lt(self.allocator_cache_2m_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.allocator_global_pool_2m_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.allocator_quota_1g_lock_map(), lock_id)
+        &&& typed_lock_map_2d_ids_lt(self.allocator_cache_1g_lock_map(), lock_id)
+        &&& typed_lock_map_ids_lt(self.allocator_global_pool_1g_lock_map(), lock_id)
+    }
+
+    /// Every held lock has a major strictly below `major`.
+    pub open spec fn held_lock_majors_lt(&self, major: LockMajorId) -> bool {
+        &&& typed_lock_map_majors_lt(self.page_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.cpu_lock_map(), major)
+        &&& typed_lock_map_2d_majors_lt(self.pcid_needflush_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.container_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.process_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.thread_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.endpoint_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.scheduler_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.pcid_allocator_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.cpu_set_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.pagetable_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.iommu_table_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.allocator_quota_4k_lock_map(), major)
+        &&& typed_lock_map_2d_majors_lt(self.allocator_cache_4k_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.allocator_global_pool_4k_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.allocator_quota_2m_lock_map(), major)
+        &&& typed_lock_map_2d_majors_lt(self.allocator_cache_2m_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.allocator_global_pool_2m_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.allocator_quota_1g_lock_map(), major)
+        &&& typed_lock_map_2d_majors_lt(self.allocator_cache_1g_lock_map(), major)
+        &&& typed_lock_map_majors_lt(self.allocator_global_pool_1g_lock_map(), major)
+    }
+
     pub open spec fn holds_no_allocator_locks(&self, page_size: PageSize) -> bool {
         match page_size {
             PageSize::SZ4k => {
@@ -403,6 +424,7 @@ impl LocalContext {
                 ==>
                 self.lock_id_acyclic(lock_id1) == self.lock_id_acyclic(lock_id2)
     {
+        reveal(LocalContext::lock_id_acyclic);
     }
 
     /// TCB: close the Acquire phase without changing either held-lock representation.
@@ -414,9 +436,7 @@ impl LocalContext {
             final(self).cpu_id() == old(self).cpu_id(),
             final(self).thread_id() == old(self).thread_id(),
             final(self).kernel_view_locking_state() is Release,
-            final(self).lock_id_set() == old(self).lock_id_set(),
             typed_lock_maps_unchanged(old(self), final(self)),
-            lock_id_set_aligned(old(self)) ==> lock_id_set_aligned(final(self)),
     {
         unimplemented!()
     }
@@ -432,10 +452,8 @@ impl LocalContext {
         requires
             old(self).kernel_view_locking_state() is Release,
             old(self).lock_entry_contains(old_lock_id, obj_id),
-            lock_id_set_aligned(old(self)),
         ensures
             final(self).cpu_id() == old(self).cpu_id(),
-            final(self).lock_id_set() == old(self).lock_id_set().remove((old_lock_id, obj_id)).insert((new_lock_id, obj_id)),
             typed_lock_maps_inserted(old(self), final(self), obj_id, TypedHeldLock {
                 lock_id: new_lock_id,
                 mode: match old(self).typed_lock_entry(obj_id) {
@@ -462,29 +480,31 @@ impl LocalContext {
             }),
             final(self).lock_entry_contains(new_lock_id, obj_id),
             final(self).thread_id() == old(self).thread_id(),
-            final(self).lock_id_set().contains((new_lock_id, obj_id)),
-            old_lock_id != new_lock_id ==> !final(self).lock_id_set().contains((old_lock_id, obj_id)),
-            forall|held: HeldLock|
-                #![trigger final(self).lock_id_set().contains((held.0, held.1))]
-                held.1 != obj_id ==> final(self).lock_id_set().contains((held.0, held.1)) == old(self).lock_id_set().contains((held.0, held.1)),
+            old_lock_id != new_lock_id ==> !final(self).lock_entry_contains(old_lock_id, obj_id),
             final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
-            lock_id_set_aligned(final(self)),
     {
         unimplemented!()
     }
 }
 
-#[verifier::opaque]
-pub open spec fn lock_id_set_aligned(lctx: &LocalContext) -> bool {
-    &&& forall|held: HeldLock|
-        #![trigger lctx.lock_id_set().contains(held)]
-        lctx.lock_id_set().contains(held) ==> lctx.lock_entry_contains(held.0, held.1)
-    &&& forall|obj_id: KernelObjId|
-        #![trigger lctx.typed_lock_entry(obj_id)]
-        match lctx.typed_lock_entry(obj_id) {
-            Some(entry) => lctx.lock_id_set().contains((entry.lock_id, obj_id)),
-            None => true,
-        }
+/// Every entry of one typed lock map has a lock major strictly below `major`.
+pub open spec fn typed_lock_map_majors_lt<K>(held_locks: Map<K, TypedHeldLock>, major: LockMajorId) -> bool {
+    forall|key: K| #![trigger held_locks.dom().contains(key)] held_locks.dom().contains(key) ==> held_locks.index(key).lock_id.major < major
+}
+
+/// Two-key variant of `typed_lock_map_majors_lt`.
+pub open spec fn typed_lock_map_2d_majors_lt<K1, K2>(held_locks: Map<(K1, K2), TypedHeldLock>, major: LockMajorId) -> bool {
+    forall|k1: K1, k2: K2| #![trigger held_locks.dom().contains((k1, k2))] held_locks.dom().contains((k1, k2)) ==> held_locks.index((k1, k2)).lock_id.major < major
+}
+
+/// Every entry of one typed lock map has a lock id strictly below `lock_id`.
+pub open spec fn typed_lock_map_ids_lt<K>(held_locks: Map<K, TypedHeldLock>, lock_id: LockId) -> bool {
+    forall|key: K| #![trigger held_locks.dom().contains(key)] held_locks.dom().contains(key) ==> lock_id.spec_gt(held_locks.index(key).lock_id)
+}
+
+/// Two-key variant of `typed_lock_map_ids_lt`, triggered on the tuple key like the tuple-keyed alignment predicates.
+pub open spec fn typed_lock_map_2d_ids_lt<K1, K2>(held_locks: Map<(K1, K2), TypedHeldLock>, lock_id: LockId) -> bool {
+    forall|k1: K1, k2: K2| #![trigger held_locks.dom().contains((k1, k2))] held_locks.dom().contains((k1, k2)) ==> lock_id.spec_gt(held_locks.index((k1, k2)).lock_id)
 }
 
 pub open spec fn typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContext) -> bool {
@@ -611,74 +631,6 @@ pub open spec fn typed_lock_maps_inserted(
     }
 }
 
-pub proof fn held_lock_majors_lt_preserved_for_fresh_typed_insert(
-    old: &LocalContext,
-    new: &LocalContext,
-    obj_id: KernelObjId,
-    entry: TypedHeldLock,
-    major: LockMajorId,
-)
-    requires
-        old.held_lock_majors_lt(major),
-        old.typed_lock_entry(obj_id) is None,
-        typed_lock_maps_inserted(old, new, obj_id, entry),
-        lock_id_set_aligned(old),
-        lock_id_set_aligned(new),
-        entry.lock_id.major < major,
-    ensures
-        new.held_lock_majors_lt(major),
-{
-    let inserted = old.lock_id_set().insert((entry.lock_id, obj_id));
-    assert(new.lock_id_set() =~= inserted) by {
-        assert_sets_equal!(
-            new.lock_id_set() == inserted,
-            held => {
-                reveal(lock_id_set_aligned);
-                if held.1 == obj_id {
-                    match old.typed_lock_entry(held.1) {
-                        Some(_) => {},
-                        None => {},
-                    }
-                } else {
-                    match old.typed_lock_entry(held.1) {
-                        Some(_) => {},
-                        None => {},
-                    }
-                }
-            }
-        );
-    };
-}
-
-pub broadcast proof fn held_lock_major_lt_preserved_for_typed_maps_unchanged(
-    old: &LocalContext,
-    new: &LocalContext,
-    major: LockMajorId,
-    held: HeldLock,
-)
-    requires
-        #[trigger] old.held_lock_majors_lt(major),
-        #[trigger] typed_lock_maps_unchanged(old, new),
-        #[trigger] lock_id_set_aligned(old),
-        #[trigger] lock_id_set_aligned(new),
-    ensures
-        #[trigger] new.lock_id_set().contains(held) ==> held.0.major < major,
-{
-    if new.lock_id_set().contains(held) {
-        let obj_id = held.1;
-        let entry = new.typed_lock_entry(obj_id)->0;
-        assert({
-            &&& new.lock_entry_contains(held.0, obj_id)
-            &&& entry.lock_id == held.0
-            &&& old.typed_lock_entry(obj_id) == Some(entry)
-            &&& old.lock_id_set().contains((entry.lock_id, obj_id))
-            &&& held.0.major < major
-        }) by {
-            reveal(lock_id_set_aligned);
-        };
-    }
-}
-
 pub open spec fn typed_lock_maps_removed(
     old: &LocalContext,
     new: &LocalContext,
@@ -791,12 +743,10 @@ pub open spec fn lock_ensures(
     &&& new.cpu_id() == old.cpu_id()
     &&& new.thread_id() == old.thread_id()
     &&& new.kernel_view_locking_state() is Acquire
-    &&& new.lock_id_set() == old.lock_id_set().insert((lock_id, obj_id))
     &&& typed_lock_maps_inserted(old, new, obj_id, TypedHeldLock {
         lock_id,
         mode: TypedLockMode::Write,
     })
-    &&& lock_id_set_aligned(old) ==> lock_id_set_aligned(new)
 }
 
 pub open spec fn unlock_ensures(
@@ -809,8 +759,6 @@ pub open spec fn unlock_ensures(
     &&& new.thread_id() == old.thread_id()
     &&& old.kernel_view_locking_state() is Acquire ==> new.kernel_view_locking_state() is Release
     &&& old.kernel_view_locking_state() is Release ==> new.kernel_view_locking_state() is Release
-    &&& new.lock_id_set() == old.lock_id_set().remove((lock_id, obj_id))
     &&& typed_lock_maps_removed(old, new, obj_id)
-    &&& lock_id_set_aligned(old) ==> lock_id_set_aligned(new)
 }
 }

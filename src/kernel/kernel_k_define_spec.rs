@@ -304,7 +304,7 @@ verus! {
         ///     next atomic section.
         ///
         /// Before interleaving, the boundary compares the completed krnl
-        /// section's user projection with `steps.snap_shot`.  A changed
+        /// section's user projection with `steps.snapshot_u()`.  A changed
         /// projection is appended as one user step; an unchanged projection is
         /// an internal stuttering step and is omitted.  Only then may other
         /// threads interleave, after which the snapshot is refreshed.
@@ -313,14 +313,13 @@ verus! {
         ///   - `inv()` holds (we entered the boundary in a wf state),
         ///   - `kernel_view_locking_state is Release` (the current section
         ///     is done),
-        ///   - `typed_lock_maps_aligned(self, lctx)` and
-        ///     `lock_id_set_aligned(lctx)` (physical locks, typed entries, and
-        ///     exact ordering pairs agree),
+        ///   - `typed_lock_maps_aligned(self, lctx)` (physical locks and typed
+        ///     entries agree),
         /// TCB maintenance rule: do not change this function's signature,
         /// contract, triggers, or body without the user's explicit approval.
         ///
         #[verifier::external_body]
-        pub proof fn kernel_step_boundary(
+        pub(super) proof fn kernel_step_boundary_raw(
             tracked &mut self,
             tracked lctx: &mut LocalContext,
             tracked steps: &mut KernelSteps,
@@ -329,7 +328,6 @@ verus! {
                 old(self).inv(),
                 old(lctx).kernel_view_locking_state() is Release,
                 typed_lock_maps_aligned(old(self), old(lctx)),
-                lock_id_set_aligned(old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> {
@@ -342,7 +340,6 @@ verus! {
                 // LocalContext is thread-local: the phase flips to Acquire,
                 // while its identity and exact held-lock set stay put.
                 final(lctx).thread_id() == old(lctx).thread_id(),
-                final(lctx).lock_id_set() == old(lctx).lock_id_set(),
                 typed_lock_maps_unchanged(old(lctx), final(lctx)),
                 forall|pt: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(pt)]
                     old(lctx).pagetable_lock_map().dom().contains(pt)
@@ -420,15 +417,15 @@ verus! {
                             == old(self).pt_mp.spec_index(pagetable_ptr)
                     },
                 typed_lock_maps_aligned(final(self), final(lctx)),
-                lock_id_set_aligned(final(lctx)),
                 // Record this thread's completed section before refreshing the
                 // snapshot to the post-interleaving projection.
-                final(steps).steps == record_user_view_change(
-                    old(steps).steps,
-                    old(steps).snap_shot,
+                final(steps).view() == record_user_view_change(
+                    old(steps).view(),
+                    old(steps).snapshot_u(),
                     kernel_k_to_kernel_u(*old(self)),
                 ),
-                final(steps).snap_shot == kernel_k_to_kernel_u(*final(self)),
+                final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
+                final(steps).snapshot_k() == *final(self),
                 final(self).dflt_pt == old(self).dflt_pt,
                 containers_rodata_unchanged(
                     old(self).ctn_mp, final(self).ctn_mp,
@@ -494,6 +491,19 @@ verus! {
 
     // ---- Held-lock / krnl-state alignment ----
 
+    /// Every lock this context holds orders below a locker whose held pages must stay under
+    /// `page_bound`: no dirty-PCID records, no Off cpus, no scheduled threads, and no
+    /// allocator quota, cache, or pool locks.
+    pub open spec fn held_locks_order_below(k: &KernelK, lctx: &LocalContext, page_bound: LockMajorId) -> bool {
+        &&& lctx.pcid_needflush_lock_map().dom().is_empty()
+        &&& forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(k.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
+        &&& forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> k.pg_arr.lock_id_by_index(held_page).major < page_bound
+        &&& forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> !(k.thr_mp.spec_index(held_thread).view().state is SCHEDULED)
+        &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
+        &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
+        &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
+    }
+
     pub open spec fn typed_lock_maps_aligned(k: &KernelK, lctx: &LocalContext) -> bool {
         &&& k.pg_arr.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id())
         &&& k.cpu_arr.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())
@@ -529,15 +539,12 @@ pub proof fn enter_kernel_view_release_preserving_lock_alignments(
     requires
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(krnl, old(lctx)),
-        lock_id_set_aligned(old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         typed_lock_maps_aligned(krnl, final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         krnl.all_objects_unlocked(final(lctx)) == krnl.all_objects_unlocked(old(lctx)),
 {
     lctx.enter_kernel_view_release();

@@ -1,5 +1,18 @@
 use vstd::prelude::*;
 verus! {
+pub proof fn seq_filter_map_push_lemma<A, B>(s: Seq<A>, value: A, f: spec_fn(A) -> Option<B>)
+    ensures
+        s.push(value).filter_map(f) == match f(value) {
+            Some(v) => s.filter_map(f).push(v),
+            None => s.filter_map(f),
+        },
+{
+    vstd::assert_seqs_equal!(s.push(value).drop_last() == s);
+    if let Some(v) = f(value) {
+        vstd::assert_seqs_equal!(s.filter_map(f) + seq![v] == s.filter_map(f).push(v));
+    }
+}
+
 pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
     requires
         !m.dom().contains(key),
@@ -109,14 +122,14 @@ pub proof fn seq_update_lemma<A>()
 pub proof fn seq_skip_lemma<A>()
     ensures
         forall|s: Seq<A>, v: A|
-            s.len() > 0 && s.spec_index(0) != v && s.no_duplicates() ==> (s.skip(1).contains(v) == s.contains(v)),
+            s.len() > 0 && s.spec_index(0) != v ==> (s.skip(1).contains(v) == s.contains(v)),
         forall|s: Seq<A>| #![trigger s.spec_index(0)] s.len() > 0 ==> s.contains(s.spec_index(0)),
         forall|s: Seq<A>| #![trigger s.spec_index(0)] s.len() > 0 && s.no_duplicates() ==> !s.skip(1).contains(s.spec_index(0)),
         forall|s: Seq<A>, v: A| s.len() > 0 && s.spec_index(0) == v && s.no_duplicates() ==> s.skip(1) =~= s.remove_value(v),
         forall|s: Seq<A>, i: int| 0 <= i < s.len() - 1 ==> s.skip(1).spec_index(i) == s.spec_index(i + 1),
 {
     assert forall|s: Seq<A>, v: A|
-        s.len() > 0 && s.spec_index(0) != v && s.no_duplicates() implies
+        s.len() > 0 && s.spec_index(0) != v implies
         (s.skip(1).contains(v) == s.contains(v)) by {
         if s.contains(v) {
             assert(s.skip(1).contains(v)) by { vstd::seq_lib::lemma_seq_skip_index2(s, 1, s.index_of(v)); };

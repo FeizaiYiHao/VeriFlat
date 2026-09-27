@@ -25,7 +25,12 @@
   the closed slot together, and update the CPU's owning container and depth.
   It stays Off. Off CPUs have no non-default PCID dirty records, and existing
   TLB invariants imply no non-default translations remain.
-- Successful Cpu transfer records one kernel step. The sender receives
+- Successful Cpu transfer records one nonlock business step. The sender receives
   `Success`; the receiver receives `SuccessUsize { value: cpu_id }`, through
   the queued thread's `error_code` when it was already blocked. Rendezvous
-  errors leave CPU ownership unchanged and record no kernel step.
+  errors leave CPU ownership unchanged. A live queued peer is dequeued and
+  scheduled with its error result, recording one nonlock business step even
+  when transfer fails (payload mismatch, same container, wrong owner, or a CPU
+  that is not Off).
+  The complete U trace may additionally record lock-mode changes at existing
+  kernel boundaries and syscall finish.

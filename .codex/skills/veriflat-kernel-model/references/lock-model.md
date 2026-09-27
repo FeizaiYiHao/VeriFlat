@@ -4,8 +4,9 @@
   `Set<(LockId, KernelObjId)>`. Do not add object-only sets, scalar lock-id
   sets, or another pair ledger.
 - `typed_lock_maps_aligned(k, lctx)` aligns each physical object family with
-  its typed map. `lock_id_set_aligned(lctx)` aligns typed entries with exact
-  `(id, object)` pairs; lock mode is represented only in the typed maps.
+  its typed map. The typed maps are the only held-lock ledger; lock mode and
+  the exact dynamic id are both represented there. `lock_id_acyclic` and
+  `held_lock_majors_lt` quantify directly over every typed map.
 - Acquire inserts the exact typed entry and current pair; unlock removes both;
   a dynamic-id change overwrites the typed entry and replaces the pair during
   the transition. Producers close both alignments at their wrapper boundary.
@@ -58,3 +59,11 @@
   unchanged fields directly.
 - At a kernel-step boundary, frame held objects explicitly. Preserve
   `all_objects_unlocked` directly rather than deriving it from an empty ledger.
+- `KernelU` projects the outer physical lock mode as
+  `LockStateU::{Unlocked, ReadLocked, WriteLocked}` on containers, processes,
+  threads, endpoints, CPUs, and both page-table views. Complete snapshots and
+  traces retain these modes; record changes only at existing kernel boundaries
+  and syscall finish. `kernel_u_nonlock_fields` normalizes only these modes,
+  and `KernelSteps::nonlock_view` filters lock-only transitions for business
+  contracts. Never use the normalized projection for actual snapshots or
+  recording. The strict no-step wrapper also requires equal observable modes.

@@ -29,7 +29,6 @@ impl PageAllocator{
     ) -> (ret: Self)
         requires
             linked_list.wf(),
-            linked_list.view().no_duplicates(),
             linked_list.container_depth == Some(container_depth),
             linked_list.minor == Some(owning_container),
         ensures
@@ -261,9 +260,7 @@ impl PageAllocator{
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).quota.locking_thread()->Write_lock_id,
 
-            old(lctx).lock_id_set().contains((
-                old(self).quota.lock_id(),
-                KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()))),
+            old(lctx).lock_entry_contains(old(self).quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
@@ -339,9 +336,7 @@ impl PageAllocator{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set().contains((
-                old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-                KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id))),
+            old(lctx).lock_entry_contains(old(self).cpu_caches.spec_index(cpu_id).lock_id(), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
@@ -420,9 +415,7 @@ impl PageAllocator{
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
-            old(lctx).lock_id_set().contains((
-                old(self).global_pool.lock_id(),
-                KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()))),
+            old(lctx).lock_entry_contains(old(self).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
@@ -502,6 +495,7 @@ impl PageAllocator{
             old(self).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(ret.0),
             old(self).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(ret.0) == ret.1.view().value().view(),
             final(self).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
+            !final(self).cpu_caches.spec_index(cpu_id).view().view().view().contains(ret.1.view().value().view()),
             final(self).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).cpu_caches.spec_index(cpu_id).view().view().map().remove(ret.0),
             final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
             final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
@@ -521,7 +515,6 @@ impl PageAllocator{
         let (node_addr, node_perm) = {
             let cache_mut = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = cache_mut.linked_list.pop_head();
-            assert(old(self).cpu_caches.spec_index(cpu_id).view().view().linked_list.map().dom().contains(node_addr));
             (node_addr, Tracked(node_perm))
         };
         self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
@@ -606,7 +599,6 @@ impl PageAllocator{
         let (node_addr, node_perm) = {
             let poll_mut = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = poll_mut.linked_list.pop_head();
-            assert(old(self).global_pool.view().map().dom().contains(node_addr));
             (node_addr, Tracked(node_perm))
         };
         self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);

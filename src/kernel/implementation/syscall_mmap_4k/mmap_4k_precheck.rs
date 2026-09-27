@@ -27,9 +27,18 @@ pub(super) enum Mmap4kPrecheck {
             pagetable_lock_perm.thread_id() == lctx.thread_id(),
             pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         ensures
-            ret is Ready ==> { let end_va = range.view().spec_index((range.len - 1) as int); &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start) &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, end_va) &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range) },
+            ret is Ready ==> {
+                let end_va = range.view().spec_index((range.len - 1) as int);
+                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start)
+                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, end_va)
+                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range)
+            },
             ret is Invalid ==> spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
-            ret is InUse ==> { let end_va = range.view().spec_index((range.len - 1) as int); &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(range.start).0 &&& (!krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va)) || !krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range)) },
+            ret is InUse ==> {
+                let end_va = range.view().spec_index((range.len - 1) as int);
+                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(range.start).0
+                &&& (!krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va)) || !krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range))
+            },
     {
         let range_len = range.len;
         let range_start = range.start;

@@ -4,11 +4,21 @@ use super::*;
 
 verus! {
 /// User-view change predicate for publishing a process with an empty page table.
+#[verifier::opaque]
 pub open spec fn kernel_u_create_process_changed(
     old_u: KernelU, new_u: KernelU, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr,
+    staging_thread_ptr: RwLockThreadPtr,
 ) -> bool {
     let child = new_u.process_map.spec_index(child_ptr);
+    let old_staging = old_u.thread_map.spec_index(staging_thread_ptr);
+    &&& new_u.endpoint_map == old_u.endpoint_map
+    &&& new_u.iommu_root_table == old_u.iommu_root_table
     &&& new_u.cpu_array == old_u.cpu_array
+    &&& old_u.thread_map.dom().contains(staging_thread_ptr)
+    &&& old_staging.quota_4k >= 3
+    &&& new_u.thread_map == old_u.thread_map.insert(staging_thread_ptr, ThreadU {
+        quota_4k: (old_staging.quota_4k as int - 3) as usize, ..old_staging
+    })
     &&& old_u.process_map.dom().contains(parent_ptr)
     &&& !old_u.process_map.dom().contains(child_ptr)
     &&& new_u.process_map.dom() == old_u.process_map.dom().insert(child_ptr)
@@ -18,6 +28,7 @@ pub open spec fn kernel_u_create_process_changed(
     &&& child.pagetable.unwrap().mapping_2m.is_empty()
     &&& child.pagetable.unwrap().mapping_1g.is_empty()
     &&& child.iommu_table is None
+    &&& child.owned_pci_functions.is_empty()
     &&& child.quota_4k == 0
     &&& child.quota_2m == 0
     &&& child.quota_1g == 0
@@ -33,6 +44,7 @@ pub open spec fn kernel_u_create_process_changed(
         old_u.process_map.dom().contains(p) ==> {
             &&& new_u.process_map.spec_index(p).pagetable == old_u.process_map.spec_index(p).pagetable
             &&& new_u.process_map.spec_index(p).iommu_table == old_u.process_map.spec_index(p).iommu_table
+            &&& new_u.process_map.spec_index(p).owned_pci_functions == old_u.process_map.spec_index(p).owned_pci_functions
             &&& new_u.process_map.spec_index(p).quota_4k == old_u.process_map.spec_index(p).quota_4k
             &&& new_u.process_map.spec_index(p).quota_2m == old_u.process_map.spec_index(p).quota_2m
             &&& new_u.process_map.spec_index(p).quota_1g == old_u.process_map.spec_index(p).quota_1g
@@ -49,6 +61,7 @@ pub open spec fn kernel_u_create_process_changed(
         }
 }
 
+#[verifier::opaque]
 pub open spec fn create_process_from_staged_pages_kernel_state_framing(
     pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
     parent_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
@@ -301,7 +314,6 @@ pub fn create_process_from_staged_pages(
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        lock_id_set_aligned(old(lctx)),
         page_ptr_valid(process_page_ptr),
         page_ptr_valid(pagetable_page_ptr),
         page_ptr_valid(l4_page_ptr),
@@ -365,11 +377,42 @@ pub fn create_process_from_staged_pages(
         l4_page_lock_perm.thread_id() == old(lctx).thread_id(),
         l4_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().locking_thread()->Write_lock_id,
     ensures
+        *final(krnl) == (KernelK {
+            pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp,
+            ctn_mp: final(krnl).ctn_mp, thr_mp: final(krnl).thr_mp, pcid_allc_mp: final(krnl).pcid_allc_mp, ..*old(krnl)
+        }),
+        final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom().insert(process_page_ptr),
+        final(krnl).prc_mp.spec_index(parent_ptr).view().owned_threads == old(krnl).prc_mp.spec_index(parent_ptr).view().owned_threads,
+        final(krnl).prc_mp.spec_index(parent_ptr).being_killed() == old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
+        !final(krnl).prc_mp.spec_index(process_page_ptr).being_killed(),
+        !final(krnl).prc_mp.spec_index(process_page_ptr).view().zombie,
+        final(krnl).prc_mp.spec_index(process_page_ptr).view_rodata().view().owning_container == container_ptr,
+        final(krnl).prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr,
+        final(krnl).prc_mp.spec_index(process_page_ptr).view().iommu_table == None,
+        final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom().insert(pagetable_page_ptr),
+        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            old(krnl).pt_mp.dom().contains(pt) ==> final(krnl).pt_mp.spec_index(pt) == old(krnl).pt_mp.spec_index(pt),
+        final(krnl).pt_mp.spec_index(pagetable_page_ptr).view().is_empty(),
+        final(krnl).pt_mp.spec_index(pagetable_page_ptr).view().proc_ptr == process_page_ptr,
+        final(krnl).prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
+        final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
+        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
+        final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
+        final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).view() == (Thread {
+            quota_4k: (old(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 3) as usize,
+            temp_alloc_cache_4k: Ghost(Set::empty()), ..old(krnl).thr_mp.spec_index(staging_thread_ptr).view()
+        }),
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed(),
+        final(krnl).pcid_allc_mp.dom() == old(krnl).pcid_allc_mp.dom(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_u_create_process_changed(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), parent_ptr, process_page_ptr),
-        kernel_k_to_kernel_u(*final(krnl))
-            != kernel_k_to_kernel_u(*old(krnl)),
+        kernel_u_create_process_changed(
+            kernel_k_to_nonlock_kernel_u(*old(krnl)), kernel_k_to_nonlock_kernel_u(*final(krnl)),
+            parent_ptr, process_page_ptr, staging_thread_ptr,
+        ),
+        kernel_k_to_nonlock_kernel_u(*final(krnl))
+            != kernel_k_to_nonlock_kernel_u(*old(krnl)),
         ret.0 == process_page_ptr,
         ret.1 == pagetable_page_ptr,
         create_process_from_staged_pages_kernel_state_framing(
@@ -416,7 +459,6 @@ pub fn create_process_from_staged_pages(
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        lock_id_set_aligned(final(lctx)),
         final(lctx).process_lock_map() == old(lctx).process_lock_map().insert(process_page_ptr, TypedHeldLock { lock_id: final(krnl).prc_mp.lock_id_by_key(process_page_ptr), mode: TypedLockMode::Write }),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map().insert(pagetable_page_ptr, TypedHeldLock { lock_id: final(krnl).pt_mp.lock_id_by_key(pagetable_page_ptr), mode: TypedLockMode::Write }),
         final(lctx).page_lock_map() == old(lctx).page_lock_map()
@@ -434,15 +476,6 @@ pub fn create_process_from_staged_pages(
         final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(l4_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
         final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(pagetable_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
         final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(process_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
-        final(lctx).lock_id_set() == old(lctx).lock_id_set()
-            .remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(l4_page_ptr)), KernelObjId::Page(page_ptr2page_index(l4_page_ptr))))
-            .insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(l4_page_ptr)), KernelObjId::Page(page_ptr2page_index(l4_page_ptr))))
-            .remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(pagetable_page_ptr)), KernelObjId::Page(page_ptr2page_index(pagetable_page_ptr))))
-            .insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(pagetable_page_ptr)), KernelObjId::Page(page_ptr2page_index(pagetable_page_ptr))))
-            .insert((final(krnl).pt_mp.lock_id_by_key(pagetable_page_ptr), KernelObjId::PageTable(pagetable_page_ptr)))
-            .remove((old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(process_page_ptr)), KernelObjId::Page(page_ptr2page_index(process_page_ptr))))
-            .insert((final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(process_page_ptr)), KernelObjId::Page(page_ptr2page_index(process_page_ptr))))
-            .insert((final(krnl).prc_mp.lock_id_by_key(process_page_ptr), KernelObjId::Process(process_page_ptr))),
 {
     let process_page_index = page_ptr2page_index(process_page_ptr);
     let pagetable_page_index = page_ptr2page_index(pagetable_page_ptr);
@@ -624,19 +657,9 @@ pub fn create_process_from_staged_pages(
 
     proof {
         assert(create_process_from_staged_pages_kernel_state_framing(
-            *old(krnl),
-            *krnl,
-            process_page_ptr,
-            pagetable_page_ptr,
-            l4_page_ptr,
-            parent_ptr,
-            staging_thread_ptr,
-            container_ptr,
-            pcid_allocator_ptr,
-            pcid,
-        )) by {
-            ancestors.to_set_ensures();
-        };
+            *old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr,
+            parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
+        )) by { reveal(create_process_from_staged_pages_kernel_state_framing); ancestors.to_set_ensures(); };
         eof_inv(
             *old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr,
             pcid_allocator_ptr, pcid,

@@ -13,6 +13,7 @@ pub open spec fn allocator_invariant_fields_unchanged(
     &&& forall|a_ptr: RwLockPageAllocatorPtr|
         #![trigger pre.spec_index(a_ptr).owning_container]
         #![trigger post.spec_index(a_ptr).owning_container]
+        #![trigger post.spec_index(a_ptr).quota.view()]
         pre.dom().contains(a_ptr) ==>
         {
             &&& post.spec_index(a_ptr).owning_container

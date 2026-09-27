@@ -6,16 +6,25 @@ use veriflat_map_4k::share_mapping_4k_target_map_with_shared_prefix;
 use crate::kernel::implementation::map_4k::share_mapping_4k::share_mapping_4k_target_map_with_shared_prefix;
 
 verus! {
+#[verifier::opaque]
 pub open spec fn kernel_u_new_process_shared(
-    created_u: KernelU, shared_u: KernelU, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, range: &VaRange4K,
+    created_u: KernelU, shared_u: KernelU, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr,
+    quota_thread_ptr: RwLockThreadPtr, range: &VaRange4K,
 ) -> bool {
     let created_child = created_u.process_map.spec_index(child_ptr);
     let child = shared_u.process_map.spec_index(child_ptr);
+    let created_thread = created_u.thread_map.spec_index(quota_thread_ptr);
+    let shared_thread = shared_u.thread_map.spec_index(quota_thread_ptr);
     &&& created_u.process_map.dom().contains(parent_ptr)
     &&& created_u.process_map.dom().contains(child_ptr)
     &&& shared_u.process_map.dom().contains(child_ptr)
     &&& range.wf()
     &&& range.len > 0
+    &&& created_u.thread_map.dom().contains(quota_thread_ptr)
+    &&& shared_u.thread_map.dom().contains(quota_thread_ptr)
+    &&& shared_thread == (ThreadU { quota_4k: shared_thread.quota_4k, ..created_thread })
+    &&& shared_thread.quota_4k <= created_thread.quota_4k
+    &&& shared_thread.quota_4k as int >= created_thread.quota_4k as int - 3 * range.len as int
     &&& !child.zombie
     &&& child.zombie == created_child.zombie
     &&& child.pagetable is Some
@@ -25,6 +34,7 @@ pub open spec fn kernel_u_new_process_shared(
     &&& child.pagetable.unwrap().mapping_2m == created_child.pagetable.unwrap().mapping_2m
     &&& child.pagetable.unwrap().mapping_1g == created_child.pagetable.unwrap().mapping_1g
     &&& child.iommu_table == created_child.iommu_table
+    &&& child.owned_pci_functions == created_child.owned_pci_functions
     &&& child.quota_4k == created_child.quota_4k
     &&& child.quota_2m == created_child.quota_2m
     &&& child.quota_1g == created_child.quota_1g

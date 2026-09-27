@@ -3,6 +3,27 @@ use crate::*;
 use super::syscall_schedule_spec::scheduler_context_switch_transition;
 
 verus! {
+proof fn scheduler_context_switch_eof_container_thread_scheduler(
+    pre: KernelK, post: KernelK, cpu_id: CpuId,
+    scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
+    entry_regs: Registers,
+)
+    requires
+        pre.inv(),
+        scheduler_context_switch_transition(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
+        post.subsystems_inv(),
+    ensures container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp),
+{
+    reveal(scheduler_context_switch_transition);
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
+        let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+        assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by { reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
+        assert(pre.sched_mp.spec_index(scheduler_ptr).view().queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
+        reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
+        seq_push_lemma::<RwLockThreadPtr>(); seq_skip_lemma::<RwLockThreadPtr>();
+    };
+}
+
 #[verifier::spinoff_prover]
 proof fn scheduler_context_switch_eof_process_management_inv(
     pre: KernelK, post: KernelK, cpu_id: CpuId,
@@ -17,19 +38,13 @@ proof fn scheduler_context_switch_eof_process_management_inv(
 {
     reveal(scheduler_context_switch_transition);
     assert(post.process_management_inv()) by {
+        scheduler_context_switch_eof_container_thread_scheduler(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
-        assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
-            assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by { reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
-            assert(pre.sched_mp.spec_index(scheduler_ptr).view().queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
-            reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
-            seq_push_lemma::<RwLockThreadPtr>(); seq_skip_lemma::<RwLockThreadPtr>();
-        };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(container_thread_endpoint_wf); };
@@ -50,12 +65,30 @@ pub(super) proof fn scheduler_context_switch_eof(
         post.cpu_published[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         post.sched_mp.spec_index(scheduler_ptr).view().queue.wf(),
-    ensures post.inv(),
+    ensures
+        post.inv(),
+        post.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        post.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(next_thread).view().owning_proc),
+        post.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(next_thread),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread != Some(next_thread),
+        post.thr_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
+        post.thr_mp.spec_index(next_thread).view().error_code is None,
+        post.sched_mp.spec_index(scheduler_ptr).view().queue.view() == match pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread {
+            Some(previous) => pre.sched_mp.spec_index(scheduler_ptr).view().queue.view().skip(1).push(previous),
+            None => pre.sched_mp.spec_index(scheduler_ptr).view().queue.view().skip(1),
+        },
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some ==> {
+            let previous = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap();
+            &&& post.thr_mp.spec_index(previous).view().state is SCHEDULED
+            &&& *post.thr_mp.spec_index(previous).view().trap_frame.get_some_0() == entry_regs
+        },
+        forall|other_cpu: CpuId| #![trigger post.cpu_arr.spec_index(other_cpu)]
+            index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> post.cpu_arr.spec_index(other_cpu) == pre.cpu_arr.spec_index(other_cpu),
 {
     reveal(scheduler_context_switch_transition);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
-        assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); };
+        assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
         assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTable::table_pages_wf); reveal(cpu_published_wf); };
