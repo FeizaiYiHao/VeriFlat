@@ -127,7 +127,7 @@ impl KernelK {
                 old(self).inv(),
                 old(self).ctn_mp.dom().contains(container_ptr),
                 old(self).ctn_mp.spec_index(container_ptr).being_killed() == false,
-                !old(self).ctn_mp.spec_index(container_ptr).view().owned_processes.view().is_empty(),
+                !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),
                 lock_perm.view().lock_id() == old(self).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,

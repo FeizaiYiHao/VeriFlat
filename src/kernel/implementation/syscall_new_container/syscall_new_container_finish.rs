@@ -5,18 +5,17 @@ use super::*;
 verus! {
 #[verifier::spinoff_prover]
 pub(super) fn finish_staged_container_publish(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pages_4k: &ArrayVec<PagePtr, 9>,
-    container_page: PagePtr, pcid_allocator_page: PagePtr,
-    Tracked(container_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>,
-    Tracked(pcid_allocator_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>,
-    Tracked(container_page_lock_perm): Tracked<LockPerm>, Tracked(pcid_allocator_page_lock_perm): Tracked<LockPerm>,
-    Tracked(allocator_4k_page_lock_perm): Tracked<LockPerm>, Tracked(allocator_2m_page_lock_perm): Tracked<LockPerm>,
-    Tracked(allocator_1g_page_lock_perm): Tracked<LockPerm>, Tracked(scheduler_page_lock_perm): Tracked<LockPerm>,
-    Tracked(cpu_set_page_lock_perm): Tracked<LockPerm>, Tracked(process_page_lock_perm): Tracked<LockPerm>,
-    Tracked(pagetable_page_lock_perm): Tracked<LockPerm>, Tracked(l4_page_lock_perm): Tracked<LockPerm>,
-    Tracked(thread_page_lock_perm): Tracked<LockPerm>, Tracked(child_container_lock_perm): Tracked<LockPerm>,
-    Tracked(child_process_lock_perm): Tracked<LockPerm>, Tracked(child_pagetable_lock_perm): Tracked<LockPerm>,
-    Tracked(child_scheduler_lock_perm): Tracked<LockPerm>, Tracked(child_pcid_allocator_lock_perm): Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pages_4k: &ArrayVec<PagePtr, 9>, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, Tracked(container_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>,
+    Tracked(pcid_allocator_tail_lock_perms): Tracked<Map<PageIndex, LockPerm>>, Tracked(container_page_lock_perm): Tracked<LockPerm>,
+    Tracked(pcid_allocator_page_lock_perm): Tracked<LockPerm>, Tracked(allocator_4k_page_lock_perm): Tracked<LockPerm>,
+    Tracked(allocator_2m_page_lock_perm): Tracked<LockPerm>, Tracked(allocator_1g_page_lock_perm): Tracked<LockPerm>,
+    Tracked(scheduler_page_lock_perm): Tracked<LockPerm>, Tracked(cpu_set_page_lock_perm): Tracked<LockPerm>,
+    Tracked(process_page_lock_perm): Tracked<LockPerm>, Tracked(pagetable_page_lock_perm): Tracked<LockPerm>,
+    Tracked(l4_page_lock_perm): Tracked<LockPerm>, Tracked(thread_page_lock_perm): Tracked<LockPerm>,
+    Tracked(child_container_lock_perm): Tracked<LockPerm>, Tracked(child_process_lock_perm): Tracked<LockPerm>,
+    Tracked(child_pagetable_lock_perm): Tracked<LockPerm>, Tracked(child_scheduler_lock_perm): Tracked<LockPerm>,
+    Tracked(child_pcid_allocator_lock_perm): Tracked<LockPerm>,
 ) -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         old(krnl).inv(),
@@ -134,6 +133,7 @@ pub(super) fn finish_staged_container_publish(
         thread_page_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
     ensures
+        kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
@@ -207,10 +207,7 @@ pub(super) fn finish_staged_container_publish(
             page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head,
             pcid_allocator_head,
         ].contains(page_ptr2page_index(thread_page))
-    }) by {
-        page_ptr_roundtrip(); page_ptr2page_index_injective();
-        page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head);
-    };
+    }) by { page_ptr_roundtrip(); page_ptr2page_index_injective(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); };
     release_container_backing_page_locks(
         &mut krnl.pg_arr, Tracked(&mut *lctx),
         (page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
@@ -226,14 +223,18 @@ pub(super) fn finish_staged_container_publish(
         assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
         assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_page_invariant_fields(*old(krnl), *krnl); };
         assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-            reveal(kernel_endpoint_nonlock_fields_unchanged);
-            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-            reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+            reveal(kernel_endpoint_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl);
         };
     }
     krnl.wunlock_pcid_allocator(pcid_allocator_page, Tracked(&mut *lctx), Tracked(child_pcid_allocator_lock_perm));
+    proof {
+        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+            reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
+        };
+    }
 
     (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm),
         Tracked(child_scheduler_lock_perm), Tracked(thread_page_lock_perm))
@@ -243,10 +244,8 @@ pub(super) fn finish_staged_container_publish(
 fn release_container_backing_page_locks(
     pages: &mut PageLockedArray, Tracked(lctx): Tracked<&mut LocalContext>,
     indices: (PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex),
-    Tracked(perm0): Tracked<LockPerm>, Tracked(perm1): Tracked<LockPerm>,
-    Tracked(perm2): Tracked<LockPerm>, Tracked(perm3): Tracked<LockPerm>,
-    Tracked(perm4): Tracked<LockPerm>, Tracked(perm5): Tracked<LockPerm>,
-    Tracked(perm6): Tracked<LockPerm>, Tracked(perm7): Tracked<LockPerm>,
+    Tracked(perm0): Tracked<LockPerm>, Tracked(perm1): Tracked<LockPerm>, Tracked(perm2): Tracked<LockPerm>, Tracked(perm3): Tracked<LockPerm>,
+    Tracked(perm4): Tracked<LockPerm>, Tracked(perm5): Tracked<LockPerm>, Tracked(perm6): Tracked<LockPerm>, Tracked(perm7): Tracked<LockPerm>,
     Tracked(perm8): Tracked<LockPerm>, Tracked(perm9): Tracked<LockPerm>,
 )
     requires

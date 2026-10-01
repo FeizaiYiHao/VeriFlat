@@ -18,7 +18,7 @@ impl KernelK {
                 let container_ptr = old(self).pcid_allc_mp.spec_index(allocator_ptr).view().owning_container.view();
                 &&& !cpus.is_empty()
                 &&& old(lctx).page_lock_map().dom().is_empty()
-                &&& old(lctx).container_lock_map().dom() =~= set![container_ptr]
+                &&& old(lctx).container_lock_map().dom().subset_of(set![container_ptr])
                 &&& old(lctx).process_lock_map().dom().is_empty()
                 &&& old(lctx).thread_lock_map().dom().is_empty()
                 &&& old(lctx).endpoint_lock_map().dom().is_empty()

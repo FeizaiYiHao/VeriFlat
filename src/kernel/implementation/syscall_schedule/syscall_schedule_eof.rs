@@ -4,9 +4,7 @@ use super::syscall_schedule_spec::scheduler_context_switch_transition;
 
 verus! {
 proof fn scheduler_context_switch_eof_container_thread_scheduler(
-    pre: KernelK, post: KernelK, cpu_id: CpuId,
-    scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
-    entry_regs: Registers,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers,
 )
     requires
         pre.inv(),
@@ -26,9 +24,7 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(
 
 #[verifier::spinoff_prover]
 proof fn scheduler_context_switch_eof_process_management_inv(
-    pre: KernelK, post: KernelK, cpu_id: CpuId,
-    scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
-    entry_regs: Registers,
+    pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers,
 )
     requires
         pre.inv(),
@@ -52,11 +48,7 @@ proof fn scheduler_context_switch_eof_process_management_inv(
     };
 }
 
-pub(super) proof fn scheduler_context_switch_eof(
-    pre: KernelK, post: KernelK, cpu_id: CpuId,
-    scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr,
-    entry_regs: Registers,
-)
+pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
         scheduler_context_switch_transition(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
@@ -85,6 +77,7 @@ pub(super) proof fn scheduler_context_switch_eof(
         forall|other_cpu: CpuId| #![trigger post.cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> post.cpu_arr.spec_index(other_cpu) == pre.cpu_arr.spec_index(other_cpu),
 {
+    hide(Seq::contains);
     reveal(scheduler_context_switch_transition);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };

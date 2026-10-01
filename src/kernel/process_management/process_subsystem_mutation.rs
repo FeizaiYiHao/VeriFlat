@@ -291,60 +291,42 @@ pub fn scheduler_map_enqueue_scheduled_thread(
     }
 }
 
-pub fn container_map_add_owned_process(
-    container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr,
-    process_ptr: RwLockProcessPtr, Tracked(lctx): Tracked<&LocalContext>,
-    Tracked(container_lock_perm): Tracked<&LockPerm>,
+pub proof fn container_map_add_owned_process(
+    tracked container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr,
+    held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId,
 )
     requires
         container_perms_wf(*old(container_map)),
         old(container_map).dom().contains(container_ptr),
-        old(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
-        container_lock_perm.state() is WriteLock,
-        container_lock_perm.thread_id() == lctx.thread_id(),
-        container_lock_perm.lock_id() == old(container_map).spec_index(container_ptr).locking_thread()->Write_lock_id,
-        old(container_map).spec_index(container_ptr).view().root_process_in_processes(),
     ensures
         container_perms_wf(*final(container_map)),
         final(container_map).perms_wf(),
         final(container_map).unchanged_except(old(container_map), container_ptr),
         final(container_map).dom() == old(container_map).dom(),
-        final(container_map).typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
-        final(container_map).spec_index(container_ptr).view() == (Container {
-            owned_processes: final(container_map).spec_index(container_ptr).view().owned_processes,
-            ..old(container_map).spec_index(container_ptr).view()
+        old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> final(container_map).typed_lock_map_aligned(held_locks, thread_id),
+        final(container_map).spec_index(container_ptr).view() == old(container_map).spec_index(container_ptr).view(),
+        final(container_map).spec_index(container_ptr).view_ghost() == (ContainerGhost {
+            owned_processes: final(container_map).spec_index(container_ptr).view_ghost().owned_processes,
+            ..old(container_map).spec_index(container_ptr).view_ghost()
         }),
-        final(container_map).spec_index(container_ptr).view().owned_processes.view()
-            == old(container_map).spec_index(container_ptr).view().owned_processes.view().insert(process_ptr),
-        final(container_map).spec_index(container_ptr).view_rodata()
-            == old(container_map).spec_index(container_ptr).view_rodata(),
-        final(container_map).spec_index(container_ptr).view_ghost()
-            == old(container_map).spec_index(container_ptr).view_ghost(),
-        final(container_map).spec_index(container_ptr).locking_thread()
-            == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed()
-            == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).view_ghost().owned_processes.view()
+            == old(container_map).spec_index(container_ptr).view_ghost().owned_processes.view().insert(process_ptr),
+        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
+        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
+        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
         final(container_map).spec_index(container_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
             old(container_map).dom().contains(ptr) ==> {
-                &&& final(container_map).view().spec_index(ptr).is_init()
-                    == old(container_map).view().spec_index(ptr).is_init()
-                &&& final(container_map).view().spec_index(ptr).addr()
-                    == old(container_map).view().spec_index(ptr).addr()
+                &&& final(container_map).view().spec_index(ptr).is_init() == old(container_map).view().spec_index(ptr).is_init()
+                &&& final(container_map).view().spec_index(ptr).addr() == old(container_map).view().spec_index(ptr).addr()
             },
 {
-    assert(container_map.perms_wf() && container_map.spec_index(container_ptr).is_init()
-        && container_map.spec_index(container_ptr).inv()) by { container_perms_wf_at(*container_map, container_ptr); };
-    let container = container_map.borrow_mut_typed(
-        container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm),
-    );
-    container.add_owned_process(process_ptr);
-    proof {
-        assert(container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-    }
+    assert(container_map.perms_wf() && container_map.spec_index(container_ptr).inv()) by { container_perms_wf_at(*container_map, container_ptr); };
+    let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
+    container_map.update_ghost(container_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().insert(process_ptr)), ..pre_ghost });
+    assert(container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 
 pub fn pcid_allocator_map_alloc(
@@ -559,6 +541,7 @@ pub proof fn add_thread_to_container_sets(
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq,
                     subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
+                    owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
                     owned_threads: if c == direct_container_ptr {
                         Ghost(old(container_map).spec_index(c).view_ghost().owned_threads.view().insert(t_ptr))
                     } else {
@@ -593,6 +576,7 @@ pub proof fn add_thread_to_container_sets(
         container_map.update_ghost(c0, ContainerGhost {
             uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq,
             subtree_set: container_map.spec_index(c0).view_ghost().subtree_set,
+            owned_processes: container_map.spec_index(c0).view_ghost().owned_processes,
             owned_threads: container_map.spec_index(c0).view_ghost().owned_threads,
             owned_indirect_threads: Ghost(container_map.spec_index(c0).view_ghost().owned_indirect_threads.view().insert(t_ptr)),
         });
@@ -605,6 +589,7 @@ pub proof fn add_thread_to_container_sets(
         container_map.update_ghost(direct_container_ptr, ContainerGhost {
             uppertree_seq: container_map.spec_index(direct_container_ptr).view_ghost().uppertree_seq,
             subtree_set: container_map.spec_index(direct_container_ptr).view_ghost().subtree_set,
+            owned_processes: container_map.spec_index(direct_container_ptr).view_ghost().owned_processes,
             owned_threads: Ghost(container_map.spec_index(direct_container_ptr).view_ghost().owned_threads.view().insert(t_ptr)),
             owned_indirect_threads: container_map.spec_index(direct_container_ptr).view_ghost().owned_indirect_threads,
         });

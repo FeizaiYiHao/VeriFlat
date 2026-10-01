@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_map_one_leaf::map_one_mmap_4k_page;
 use super::syscall_mmap_4k_spec::mmap_4k_range_step;
+use super::syscall_mmap_4k_trace::{mmap_4k_range_steps_from_directory, mmap_4k_range_steps_from_leaf};
 
 verus! {
 /// Every not-yet-processed VA is still absent from the 4K mapping.
@@ -43,6 +44,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
             old(krnl).ctn_mp.dom().contains(container_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             old(krnl).prc_mp.dom().contains(process_ptr),
@@ -97,9 +99,10 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, range.view().spec_index((range.len - 1) as int)),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range),
+            old(krnl).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap4k { range: *range, mapped: 0, directory: Mmap4kDirectory::None }),
         ensures
-            forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt)
                 && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -141,12 +144,13 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
             mmap_4k_leaf_range_mapped_prefix(final(krnl).pt_mp.spec_index(pagetable_ptr).view(), range, range.len as int),
             final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap4k { range: *range, mapped: range.len, directory: Mmap4kDirectory::None }),
             old(steps).view().len() + range.len <= final(steps).view().len() <= old(steps).view().len() + 4 * range.len,
             forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
-            forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id, thread_ptr),
+            forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
     {
         let range_start = range.start;
         proof {
@@ -158,7 +162,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
         let mut i: usize = 0;
         while i < range.len
             invariant
-                forall|pt: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(pt)]
+                forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view())]
                     old(lctx).pagetable_lock_map().dom().contains(pt)
                     && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                     ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
@@ -225,6 +229,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 old(krnl).thr_mp.dom().contains(thread_ptr),
                 old(krnl).prc_mp.dom().contains(process_ptr),
                 old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
                 !krnl.prc_mp.spec_index(process_ptr).view().zombie,
                 old(krnl).ctn_mp.dom().contains(container_ptr),
                 old(krnl).pt_mp.dom().contains(pagetable_ptr),
@@ -240,6 +245,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
                 krnl.pt_mp.spec_index(pagetable_ptr).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
                 krnl.pt_mp.spec_index(pagetable_ptr).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
+                krnl.pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
                 krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
                 krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start),
                 krnl.pt_mp.spec_index(pagetable_ptr).view().wf(),
@@ -252,7 +258,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap4k { range: *range, mapped: i, directory: Mmap4kDirectory::None }),
                 old(steps).view().len() + i <= steps.view().len() <= old(steps).view().len() + 4 * i,
                 forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
-                forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id, thread_ptr),
+                forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id),
             decreases range.len - i,
         {
             let current_va = range.index(i);
@@ -290,12 +296,19 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
+            let ghost build_before = steps.view();
             mmap_4k_build_one_structure(
-                krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, None, Tracked(&mut *lctx),
-                Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None),
+                krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, None, Ghost(thread_ptr),
+                Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None),
             );
-            proof { assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_cpu_wf); }; }
+            proof {
+                assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_cpu_wf); };
+                assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id)) by {
+                    mmap_4k_range_steps_from_directory(&*steps, build_before, old(steps).view().len() as int, cpu_id);
+                };
+            }
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            let ghost leaf_before = steps.view();
             map_one_mmap_4k_page(
                 krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, current_va, Tracked(&mut *lctx), Tracked(&mut *steps),
                 Tracked(thread_lock_perm), Tracked(pagetable_lock_perm),
@@ -307,6 +320,9 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     );
                 };
                 assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_cpu_wf); };
+                assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id)) by {
+                    mmap_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id);
+                };
             }
             i = i + 1;
         }

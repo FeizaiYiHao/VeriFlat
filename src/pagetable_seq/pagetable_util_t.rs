@@ -86,12 +86,7 @@ impl KernelK {
         );
         self.pt_mp.insert_with_perm(page_ptr, Tracked(pagetable_rwlock_perm));
         proof {
-            assert(
-                pagetable_perms_wf(old(self).pt_mp)
-                    ==> pagetable_perms_wf(self.pt_mp)
-            ) by {
-                reveal(pagetable_perms_wf);
-            };
+            assert(pagetable_perms_wf(old(self).pt_mp) ==> pagetable_perms_wf(self.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
             assert(
                 page_pagetable_wf(old(self).pt_mp, old(self).pg_arr)
                     && pagetable_value.is_empty()

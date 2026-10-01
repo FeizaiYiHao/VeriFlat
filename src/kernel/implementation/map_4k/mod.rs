@@ -3,6 +3,8 @@ mod mmap_4k_install_one;
 pub mod mmap_4k_build_structure;
 pub mod mmap_4k_build_structure_spec;
 pub mod share_mapping_4k;
+pub mod share_mapping_4k_spec;
+mod share_mapping_4k_trace;
 
 pub mod unmap_4k_present;
 pub mod unmap_4k_remove;
@@ -13,3 +15,5 @@ mod unmap_4k_reclaim_spec;
 pub mod unmap_4k_flush_all;
 pub mod unmap_4k_reclaim_one;
 pub mod unmap_4k_range;
+pub mod unmap_4k_spec;
+mod unmap_4k_trace;

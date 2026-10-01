@@ -39,6 +39,10 @@ pub(super) open spec fn pop_stage_2m_page_transition_framing(
     &&& post.pg_arr.spec_index(index).view().being_killed() == pre.pg_arr.spec_index(index).view().being_killed()
     &&& post.pg_arr.spec_index(index).view().locking_thread() is Write
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) ==>
+        post.thr_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k
+        && post.thr_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(t).view().temp_alloc_cache_1g
+        && (t != thread ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m)
     &&& new_thread.view() == (Thread {
         temp_alloc_cache_2m: Ghost(old_thread.view().temp_alloc_cache_2m.view().insert(page)), ..old_thread.view()
     })
@@ -310,11 +314,11 @@ proof fn eof_pop_2m_global_pool(
         post.subsystems_inv(),
     ensures container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
+    hide(Seq::contains);
     reveal(pop_stage_2m_page_transition_framing);
     if source is Some {
         assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by {
-            reveal(allocator_perms_wf);
-            reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
+            reveal(allocator_perms_wf); reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
             page_ptr_valid_imply_page_index_valid();
         };
     } else {
@@ -337,6 +341,7 @@ proof fn eof_pop_2m_cpu_cache(
         post.subsystems_inv(),
     ensures container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
+    hide(Seq::contains);
     reveal(pop_stage_2m_page_transition_framing);
     if source is Some {
         assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by {

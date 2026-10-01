@@ -24,7 +24,6 @@ pub(super) fn allocate_new_process_pages(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 3,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
         !old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
@@ -35,7 +34,9 @@ pub(super) fn allocate_new_process_pages(
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
-        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
+        forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
             old(lctx).pagetable_lock_map().dom().contains(pt)
             && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
             ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -95,6 +96,8 @@ pub(super) fn allocate_new_process_pages(
         ret.4.view().state() is WriteLock && ret.4.view().thread_id() == final(lctx).thread_id() && ret.4.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.1)).view().locking_thread()->Write_lock_id,
         ret.5.view().state() is WriteLock && ret.5.view().thread_id() == final(lctx).thread_id() && ret.5.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.2)).view().locking_thread()->Write_lock_id,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        final(krnl).ctn_mp.dom().contains(container_ptr),
+        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),

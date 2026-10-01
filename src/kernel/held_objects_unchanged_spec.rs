@@ -200,8 +200,6 @@ pub open spec fn held_pages_unchanged(
 ) -> bool {
     forall|i: PageIndex|
         #![trigger lctx.page_lock_map().dom().contains(i)]
-        #![trigger pre.spec_index(i)]
-        #![trigger post.spec_index(i)]
         lctx.page_lock_map().dom().contains(i) ==> {
             &&& index_valid(NUM_PAGES, i)
             &&& post.spec_index(i).view() == pre.spec_index(i).view()

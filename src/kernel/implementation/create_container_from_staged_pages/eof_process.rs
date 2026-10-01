@@ -57,8 +57,7 @@ pub(super) proof fn eof_container_tree_wf(
     assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by {
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
         let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
-        reveal(container_children_depth_wf);
-        reveal(container_tree_fields_wf);
+        reveal(container_children_depth_wf); reveal(container_tree_fields_wf);
         seq_push_lemma::<RwLockContainerPtr>();
     };
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
@@ -71,12 +70,31 @@ pub(super) proof fn eof_container_tree_wf(
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_subtree_set_exclusive(post.rt_ctn, post.ctn_mp)) by {
-        reveal(container_subtree_set_wf);
-        reveal(container_uppertree_seq_wf);
-        reveal(container_subtree_set_exclusive);
+        reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
         seq_push_lemma::<RwLockContainerPtr>();
         seq_push_unique_lemma::<RwLockContainerPtr>();
     };
+}
+
+#[verifier::spinoff_prover]
+pub(super) proof fn eof_container_cpu_wf(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        container_cpu_set_wf(pre.ctn_mp, pre.cpu_set_mp),
+        container_cpu_wf(pre.ctn_mp, pre.cpu_set_mp, pre.cpu_arr),
+        publish_staged_container_root_kernel_state_framing(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
+{
+    reveal(publish_staged_container_root_kernel_state_framing); reveal(container_cpu_set_wf); reveal(container_cpu_wf);
 }
 
 #[verifier::spinoff_prover]
@@ -116,17 +134,16 @@ pub(super) proof fn eof_container_relations_wf(
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(process_tree_wf(process_page, set![process_page], post.prc_mp,)) by {
-        reveal(process_root_wf);
-        reveal(process_children_parent_wf);
-        reveal(process_linkedlist_wf);
-        reveal(process_children_depth_wf);
-        reveal(process_subtree_set_wf);
-        reveal(process_uppertree_seq_wf);
-        reveal(process_subtree_set_exclusive);
+        reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf);
+        reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
     };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall(); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
-    assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_set_wf); reveal(container_cpu_wf); };
+    eof_container_cpu_wf(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { pcid_allocator_perms_wf_at(post.pcid_allc_mp, pcid_allocator_page); reveal(process_pcid_allocator_wf); };
@@ -168,7 +185,7 @@ pub(super) proof fn eof_process_management_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()) by { reveal(container_root_wf); };
+    assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
@@ -203,9 +220,7 @@ pub(super) proof fn eof_direct_invariants(
     assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(container_cpu_wf); reveal(cpu_dirty_map_contains_container_processes); };
     assert(cpu_dirty_map_proc_pcid_match(post.prc_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,)) by { reveal(cpu_dirty_map_proc_pcid_match); };
     assert(cpu_not_in_dirty_map_imply_not_in_tlb(post.cpu_arr, post.cpu_tlb)) by { reveal(cpu_not_in_dirty_map_imply_not_in_tlb); };
-    assert(cpu_dirty_map_contains_pagetable_pcid_match(
-        post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb,
-    )) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+    assert(cpu_dirty_map_contains_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     assert(iommu_root_table_process_wf(&post.irt, post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(&post.irt, post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, &post.irt, post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); };
@@ -214,11 +229,10 @@ pub(super) proof fn eof_direct_invariants(
 
 #[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_container_page_owner_forward(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr,
-    container_page: PagePtr, pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr,
-    allocator_1g_page: PagePtr, scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr,
-    l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
-    c_ptr: RwLockContainerPtr, page_ptr: PagePtr,
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
+    cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
+    allocator_quota_4k: usize, process_quota_4k: usize, c_ptr: RwLockContainerPtr, page_ptr: PagePtr,
 )
     requires
         container_page_owner_forward_wf(pre.ctn_mp, pre.pg_arr),
@@ -305,11 +319,10 @@ pub(super) broadcast proof fn eof_container_page_owner_forward(
 
 #[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_container_page_owner_backward(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr,
-    container_page: PagePtr, pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr,
-    allocator_1g_page: PagePtr, scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr,
-    l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
-    page_index: PageIndex,
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
+    cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
+    allocator_quota_4k: usize, process_quota_4k: usize, page_index: PageIndex,
 )
     requires
         container_page_owner_backward_wf(pre.ctn_mp, pre.pg_arr),
@@ -493,6 +506,7 @@ pub(super) proof fn eof_memory_management_inv(
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         post.memory_management_inv(),
 {
+    hide(Seq::contains);
     reveal(publish_staged_container_root_kernel_state_framing);
     eof_container_page_owner_wf(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,

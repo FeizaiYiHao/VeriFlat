@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_alloc_quota_spec::*;
+use super::syscall_alloc_quota_trace::*;
 verus! {
     pub(super) fn commit_alloc_quota_4k(
         krnl: &mut KernelK,
@@ -18,6 +19,13 @@ verus! {
     )
         requires
             old(krnl).inv(),
+            *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp, allc_4k_mp: old(krnl).allc_4k_mp, ..old(steps).snapshot_k() }),
+            old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+            old(krnl).ctn_mp.unchanged_except(&old(steps).snapshot_k().ctn_mp, container_ptr),
+            old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, process_ptr),
+            old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+            old(steps).snapshot_k().ctn_mp.spec_index(container_ptr).locking_thread() is None,
+            old(steps).snapshot_k().prc_mp.spec_index(process_ptr).locking_thread() is None,
             index_valid(NUM_CPUS, cpu_id),
             old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -76,24 +84,28 @@ verus! {
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-            old(krnl).ctn_mp.spec_index(container_ptr).view().owned_processes.view().contains(process_ptr),
+            old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             alloc_amount <= usize::MAX - old(krnl).prc_mp.spec_index(process_ptr).view().quota_4k,
             old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).quota.view().value >= alloc_amount,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            final(steps).view() == if alloc_amount > 0 { old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }) } else { old(steps).view() },
+            alloc_amount > 0 ==> alloc_quota_4k_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
             final(steps).nonlock_view() == if alloc_amount > 0 {
                 old(steps).nonlock_view().push(KernelStep {
                     old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 })
             } else { old(steps).nonlock_view() },
             alloc_amount == 0 ==> final(steps).nonlock_view() == old(steps).nonlock_view(),
+            alloc_amount == 0 ==> kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             alloc_amount > 0 ==> alloc_quota_4k_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, alloc_amount),
             alloc_amount > 0 ==> alloc_quota_4k_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, alloc_amount),
     {
@@ -155,6 +167,7 @@ verus! {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
         proof {
             if alloc_amount > 0 {
+                let quota_before = steps.view();
                 assert(kernel_process_quota_4k_changed(&steps.snapshot_k(), &*krnl, cpu_id, process_ptr, container_ptr, alloc_amount as int)) by {
                     reveal(kernel_process_quota_4k_changed);
                     reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
@@ -165,6 +178,13 @@ verus! {
                     reveal(KernelK::inv); reveal(container_allocator_wf);
                 };
                 steps.end_kernel_step_process_quota_4k_changed(&*krnl, &*lctx, cpu_id, process_ptr, container_ptr, alloc_amount as int);
+                assert(alloc_quota_4k_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)
+                    && alloc_quota_4k_step_pre(steps.nonlock_view().last().old_u, cpu_id, alloc_amount)
+                    && alloc_quota_4k_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, alloc_amount)) by {
+                    alloc_quota_4k_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, container_ptr, alloc_amount);
+                    alloc_quota_4k_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, process_ptr, container_ptr, alloc_amount);
+                    alloc_quota_4k_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
+                };
             }
             if alloc_amount == 0 {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by {
@@ -174,7 +194,7 @@ verus! {
                 };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+                steps.end_kernel_step_unchanged(&*krnl, &*lctx);
             }
         }
     }

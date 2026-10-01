@@ -8,10 +8,9 @@ verus! {
 /// then releases that CPU and both CPU sets.
 #[verifier::spinoff_prover]
 pub(super) fn transfer_new_container_cpu(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, parent_container_ptr: RwLockContainerPtr,
-    child_container_ptr: RwLockContainerPtr, parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId,
-    Tracked(transfer_cpu_lock_perm): Tracked<LockPerm>, Tracked(parent_cpu_set_lock_perm): Tracked<LockPerm>,
-    Tracked(child_cpu_set_lock_perm): Tracked<LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, parent_container_ptr: RwLockContainerPtr, child_container_ptr: RwLockContainerPtr,
+    parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, Tracked(transfer_cpu_lock_perm): Tracked<LockPerm>,
+    Tracked(parent_cpu_set_lock_perm): Tracked<LockPerm>, Tracked(child_cpu_set_lock_perm): Tracked<LockPerm>,
 )
     requires
         old(krnl).inv(),
@@ -37,6 +36,11 @@ pub(super) fn transfer_new_container_cpu(
         child_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
         child_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(child_cpu_set).locking_thread()->Write_lock_id,
     ensures
+        final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view() == (CpuView {
+            owning_container: child_container_ptr, container_depth: old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().depth,
+            ..old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view()
+        }),
+        final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread() is None,
         final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -57,9 +61,13 @@ pub(super) fn transfer_new_container_cpu(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_set_mp: final(krnl).cpu_set_mp, ..*old(krnl) }),
+        final(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread() is None,
+        final(krnl).cpu_set_mp.spec_index(child_cpu_set).locking_thread() is None,
+        forall|p: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(p)] old(krnl).cpu_set_mp.dom().contains(p) && p != parent_cpu_set && p != child_cpu_set ==>
+            final(krnl).cpu_set_mp.spec_index(p) == old(krnl).cpu_set_mp.spec_index(p),
         forall|cpu_id: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu_id)]
             index_valid(NUM_CPUS, cpu_id) && cpu_id != transfer_cpu_id ==> final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+        forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
             pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
             ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
 {
@@ -105,5 +113,6 @@ pub(super) fn transfer_new_container_cpu(
     krnl.wunlock_cpu(transfer_cpu_id, Tracked(&mut *lctx), Tracked(transfer_cpu_lock_perm));
     krnl.wunlock_cpu_set(child_cpu_set, Tracked(&mut *lctx), Tracked(child_cpu_set_lock_perm));
     krnl.wunlock_cpu_set(parent_cpu_set, Tracked(&mut *lctx), Tracked(parent_cpu_set_lock_perm));
+
 }
 }

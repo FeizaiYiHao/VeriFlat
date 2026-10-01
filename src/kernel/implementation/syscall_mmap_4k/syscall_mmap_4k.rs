@@ -5,6 +5,7 @@ use crate::*;
 use super::mmap_4k_map_range::mmap_4k_map_leaf_range;
 use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
 use super::syscall_mmap_4k_spec::*;
+use super::syscall_mmap_4k_trace::*;
 
 verus! {
     /// Map writable, executable anonymous 4K pages into the running process.
@@ -38,7 +39,7 @@ verus! {
             ret is Success ==> range + 2 <= final(steps).nonlock_view().len() <= 4 * range + 2,
             !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
             !(ret is Success) ==> final(steps).view().len() == 0,
-            ret is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0, va, range),
+            ret is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range),
             ret is Success ==> mmap_4k_syscall_success_mapped(old(krnl), final(krnl), cpu_id, va, range),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
@@ -69,7 +70,7 @@ verus! {
             &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
             &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().owning_container == cpu.owning_container()
             &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
-            &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view().owned_processes.view().contains(cpu.current_process().unwrap())
+            &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_ghost().owned_processes.view().contains(cpu.current_process().unwrap())
             &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
             &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
             &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
@@ -116,16 +117,28 @@ verus! {
                 Mmap4kPrecheck::Ready => {
                     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Mmap4k { range: va_range, mapped: 0, directory: Mmap4kDirectory::None })), Tracked(&*lctx), Tracked(&thread_lock_perm));
                     proof {
-                        kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&*old(krnl), &*krnl, old(lctx), cpu_id, thread_ptr, process_ptr, pagetable_ptr);
+                        use_type_invariant(&*steps);
+                        let ghost entered_k = *krnl;
                         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
                         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+                        assert(mmap_4k_trace_after_enter(steps.view(), cpu_id, va_range)) by {
+                            reveal(PageTable::spec_mapping_4k_va_range_empty); va_range.va_range_lemma();
+                            kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&*old(krnl), &entered_k, old(lctx), cpu_id, thread_ptr, process_ptr, pagetable_ptr);
+                            kernel_l4_end_projection_at(&*old(krnl), pagetable_ptr);
+                            kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None);
+                            mmap_4k_enter_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, process_ptr, thread_ptr, va_range);
+                            mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, va_range);
+                        };
                         assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr) && !krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(container_thread_wf); reveal(process_cpu_wf); };
                         assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
                     }
+                    let ghost entered = steps.view();
                     mmap_4k_map_leaf_range(krnl, &va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
+                    let ghost range_steps = steps.view();
                     let ghost exit_start = *krnl;
                     let ghost exit_lctx = *lctx;
                     proof {
+                        assert(mmap_4k_trace_after_range(range_steps, cpu_id, va_range)) by { mmap_4k_trace_range_steps(&*steps, entered, cpu_id, va_range); };
                         assert(mmap_4k_syscall_range_mapped(krnl.pt_mp.spec_index(pagetable_ptr).view(), va, range)) by { va_range.va_range_lemma(); };
                     }
                     krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_lock_perm));
@@ -133,8 +146,17 @@ verus! {
                     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
                     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
                     proof {
-                        kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&exit_start, &*krnl, &exit_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
+                        assert(mmap_4k_exit_step_pre(kernel_k_to_kernel_u(exit_start), cpu_id)
+                            && mmap_4k_exit_step(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
+                            kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&exit_start, &*krnl, &exit_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
+                            mmap_4k_exit_step_from_u(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr);
+                        };
+                        use_type_invariant(&*steps);
                         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
+                        assert(mmap_4k_syscall_trace(steps.view(), cpu_id, va, range)) by {
+                            va_range.va_range_lemma();
+                            mmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(*krnl), cpu_id, va, range);
+                        };
                     }
                     return RetValueType::Success;
                 },

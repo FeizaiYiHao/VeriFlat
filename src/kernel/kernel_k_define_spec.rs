@@ -146,7 +146,7 @@ verus! {
             &&&
             container_tree_wf(self.rt_ctn, self.ctn_mp)
             &&&
-            self.ctn_mp.spec_index(self.rt_ctn).view().root_process_in_processes()
+            self.ctn_mp.spec_index(self.rt_ctn).view_ghost().owned_processes.view().contains(self.ctn_mp.spec_index(self.rt_ctn).view().root_process)
             &&&
             container_process_wf(self.ctn_mp, self.prc_mp)
             &&&
@@ -341,7 +341,7 @@ verus! {
                 // while its identity and exact held-lock set stay put.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 typed_lock_maps_unchanged(old(lctx), final(lctx)),
-                forall|pt: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(pt)]
+                forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pt, final(self).pt_mp.spec_index(pt).view())]
                     old(lctx).pagetable_lock_map().dom().contains(pt)
                     && pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pt, old(self).pt_mp.spec_index(pt).view())
                     ==> pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pt, final(self).pt_mp.spec_index(pt).view()),

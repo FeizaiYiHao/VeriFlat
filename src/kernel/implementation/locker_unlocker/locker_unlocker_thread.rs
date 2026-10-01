@@ -55,7 +55,6 @@ impl KernelK {
                             &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                             &&& containers.subset_of(set![thread.owning_container])
                             &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(thread.owning_container).view_rodata().view().pcid_allocator])
-                            &&& (!pcid_allocators.is_empty() ==> containers.contains(thread.owning_container))
                         },
                         ThreadState::SCHEDULED => {
                             let cpu_id = old(lctx).cpu_id();

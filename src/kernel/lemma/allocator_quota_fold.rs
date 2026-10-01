@@ -368,18 +368,18 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fi
         #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
         container_map.dom().contains(c_ptr)
     implies
-        container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(new_process_map.spec_index(p_ptr))})
+        container_map.spec_index(c_ptr).view_ghost().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_2m(new_process_map.spec_index(p_ptr))})
             + thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
             + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_2m.view()})
             + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_2m.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
             + allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).quota.view().view()
             == allocator_2m_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m).total_free_pages.view()
     by {
-        assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_processes.view().subset_of(old_process_map.dom())) by {
             reveal(container_process_wf);
         };
         lemma_process_effective_quota_2m_fold_eq(
-            container_map.spec_index(c_ptr).view().owned_processes.view(),
+            container_map.spec_index(c_ptr).view_ghost().owned_processes.view(),
             old_process_map, new_process_map);
     };
 }
@@ -411,18 +411,18 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fi
         #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
         container_map.dom().contains(c_ptr)
     implies
-        container_map.spec_index(c_ptr).view().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(new_process_map.spec_index(p_ptr))})
+        container_map.spec_index(c_ptr).view_ghost().owned_processes.view().fold(0, |sum: int, p_ptr: RwLockProcessPtr| {sum + process_effective_quota_1g(new_process_map.spec_index(p_ptr))})
             + thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
             + container_map.spec_index(c_ptr).view_ghost().owned_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().direct_free_quota_pending_1g.view()})
             + container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().fold(0, |sum: int, t_ptr: RwLockThreadPtr| {sum + thread_map.spec_index(t_ptr).view().indirect_free_quota_pending_1g.view().spec_index(container_map.spec_index(c_ptr).view_rodata().view().depth as int)})
             + allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).quota.view().view()
             == allocator_1g_map.spec_index(container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g).total_free_pages.view()
     by {
-        assert(container_map.spec_index(c_ptr).view().owned_processes.view().subset_of(old_process_map.dom())) by {
+        assert(container_map.spec_index(c_ptr).view_ghost().owned_processes.view().subset_of(old_process_map.dom())) by {
             reveal(container_process_wf);
         };
         lemma_process_effective_quota_1g_fold_eq(
-            container_map.spec_index(c_ptr).view().owned_processes.view(),
+            container_map.spec_index(c_ptr).view_ghost().owned_processes.view(),
             old_process_map, new_process_map);
     };
 }
@@ -654,6 +654,8 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                             .view_ghost().uppertree_seq,
                         subtree_set: pre_ctn.spec_index(c)
                             .view_ghost().subtree_set,
+                        owned_processes: pre_ctn.spec_index(c)
+                            .view_ghost().owned_processes,
                         owned_threads: if c == dc {
                             Ghost(
                                 pre_ctn.spec_index(c).view_ghost()
@@ -711,9 +713,9 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
             #![trigger post_ctn.spec_index(c).view_rodata().view()
                 .allocator_ptr_4k]
             post_ctn.dom().contains(c) ==> {
-                let pre_processes = pre_ctn.spec_index(c).view()
+                let pre_processes = pre_ctn.spec_index(c).view_ghost()
                     .owned_processes.view();
-                let post_processes = post_ctn.spec_index(c).view()
+                let post_processes = post_ctn.spec_index(c).view_ghost()
                     .owned_processes.view();
                 let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
                 let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
@@ -732,9 +734,9 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
             #![trigger post_ctn.spec_index(c).view_rodata().view()
                 .allocator_ptr_2m]
             post_ctn.dom().contains(c) ==> {
-                let pre_processes = pre_ctn.spec_index(c).view()
+                let pre_processes = pre_ctn.spec_index(c).view_ghost()
                     .owned_processes.view();
-                let post_processes = post_ctn.spec_index(c).view()
+                let post_processes = post_ctn.spec_index(c).view_ghost()
                     .owned_processes.view();
                 let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
                 let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
@@ -753,9 +755,9 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
             #![trigger post_ctn.spec_index(c).view_rodata().view()
                 .allocator_ptr_1g]
             post_ctn.dom().contains(c) ==> {
-                let pre_processes = pre_ctn.spec_index(c).view()
+                let pre_processes = pre_ctn.spec_index(c).view_ghost()
                     .owned_processes.view();
-                let post_processes = post_ctn.spec_index(c).view()
+                let post_processes = post_ctn.spec_index(c).view_ghost()
                     .owned_processes.view();
                 let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
                 let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
@@ -776,9 +778,9 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
     assert forall|c: RwLockContainerPtr|
         #![trigger post_ctn.dom().contains(c)]
         post_ctn.dom().contains(c) implies {
-            let pre_processes = pre_ctn.spec_index(c).view()
+            let pre_processes = pre_ctn.spec_index(c).view_ghost()
                 .owned_processes.view();
-            let post_processes = post_ctn.spec_index(c).view()
+            let post_processes = post_ctn.spec_index(c).view_ghost()
                 .owned_processes.view();
             let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
             let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();
@@ -810,9 +812,9 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
     by {
         reveal(container_process_wf);
         reveal(container_thread_wf);
-        let pre_processes = pre_ctn.spec_index(c).view()
+        let pre_processes = pre_ctn.spec_index(c).view_ghost()
             .owned_processes.view();
-        let post_processes = post_ctn.spec_index(c).view()
+        let post_processes = post_ctn.spec_index(c).view_ghost()
             .owned_processes.view();
         let pre_direct = pre_ctn.spec_index(c).view_ghost().owned_threads.view();
         let post_direct = post_ctn.spec_index(c).view_ghost().owned_threads.view();

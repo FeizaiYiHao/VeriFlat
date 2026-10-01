@@ -18,7 +18,6 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
     ensures
         final(krnl).inv(),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) != kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -65,11 +64,6 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         };
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
-        assert(kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
-            && !kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(old(krnl).pt_mp.spec_index(pagetable).view().proc_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)) by {
-                reveal(kernel_k_to_nonlock_kernel_u);
-                reveal(process_pagetable_match);
-            };
     }
 }
 }

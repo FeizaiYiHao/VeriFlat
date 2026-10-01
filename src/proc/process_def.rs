@@ -34,6 +34,7 @@ pub ghost struct ProcessU {
     pub zombie: bool,
     pub pagetable: Option<PageTableU>,
     pub iommu_table: Option<PageTableU>,
+    pub pcid: Pcid,
     pub owned_pci_functions: Set<PciBdf>,
     pub quota_4k: usize,
     pub quota_2m: usize,

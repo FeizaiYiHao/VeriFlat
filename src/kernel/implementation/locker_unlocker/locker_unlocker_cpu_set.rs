@@ -34,7 +34,6 @@ impl KernelK {
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
-            kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
             final(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init() == old(self).cpu_set_mp.spec_index(cpu_set_ptr).is_init(),
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
@@ -64,7 +63,6 @@ impl KernelK {
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }
         ret
     }
@@ -87,7 +85,6 @@ impl KernelK {
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
-            kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
@@ -114,7 +111,6 @@ impl KernelK {
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::*;
 verus! {
     /// Container owned Cpu only runs processes and threads of the container
     /// Container cpu bidirectionally points to each other
+    // Proof dependencies (confirmed for container creation): container_cpu_set_wf.
     #[verifier::opaque]
     pub open spec fn container_cpu_wf(container_perms: ContainerLockedMap, cpu_set_map: CpuSetLockedMap, cpu_array:CpuLockedArray) -> bool {
         &&&
@@ -23,7 +24,7 @@ verus! {
                 )
                 &&& (
                     cpu_array.spec_index(cpu_i).view().view().view().current_process is Some
-                    ==> container_perms.spec_index(c_ptr).view().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap())
+                    ==> container_perms.spec_index(c_ptr).view_ghost().owned_processes.contains(cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap())
                 )
                 &&& (
                     cpu_array.spec_index(cpu_i).view().view().view().current_thread is Some

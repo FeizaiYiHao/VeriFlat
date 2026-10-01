@@ -3,11 +3,20 @@ use crate::*;
 use super::*;
 verus! {
     #[verifier::opaque]
-    pub open spec fn pagetable_perms_wf(pagetable_perms: PageTableLockedMap) -> bool{
-        &&&
-        pagetable_perms.perms_wf()
-        &&&
-        pagetables_inv(pagetable_perms)
+    pub open spec fn pagetable_perms_wf(pagetable_perms: PageTableLockedMap) -> bool {
+        &&& pagetable_perms.perms_wf()
+        &&& pagetables_inv(pagetable_perms)
+        &&& pagetable_hidden_leaves_only_when_wlocked(pagetable_perms)
+    }
+
+    /// A pagetable with a leaf the user cannot see is write-locked: unmap clears present bits and reclaims
+    /// those leaves before it releases the table.
+    #[verifier::opaque]
+    pub open spec fn pagetable_hidden_leaves_only_when_wlocked(pagetable_perms: PageTableLockedMap) -> bool {
+        forall|pagetable_p: RwLockPageTableRoot|
+            #![trigger pagetable_perms.spec_index(pagetable_p).locking_thread()]
+            pagetable_perms.dom().contains(pagetable_p) && !pagetable_perms.spec_index(pagetable_p).view().leaves_present()
+            ==> pagetable_perms.spec_index(pagetable_p).locking_thread() is Write
     }
 
     pub proof fn pagetable_perms_wf_map(pagetable_perms: PageTableLockedMap) requires pagetable_perms_wf(pagetable_perms) ensures pagetable_perms.perms_wf() { reveal(pagetable_perms_wf); }

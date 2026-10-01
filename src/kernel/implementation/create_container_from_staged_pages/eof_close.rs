@@ -56,7 +56,7 @@ pub(super) proof fn eof_subsystems_inv(
         post.subsystems_inv(),
 {
     reveal(publish_staged_container_root_kernel_state_framing);
-    assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
+    assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
     assert(containers_inv(post.ctn_mp)) by {
         reveal(container_perms_wf);
     };

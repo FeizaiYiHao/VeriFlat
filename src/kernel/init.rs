@@ -489,13 +489,9 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
 )
     requires
         krnl.ctn_mp.dom() =~= set![layout.root_container],
-        krnl.ctn_mp.spec_index(layout.root_container).view()
-            .owned_processes.view() =~= set![layout.root_process],
-        krnl.ctn_mp.spec_index(layout.root_container).view_ghost()
-            .owned_threads.view() =~= set![layout.root_thread],
-        krnl.ctn_mp.spec_index(layout.root_container).view_ghost()
-            .owned_indirect_threads.view()
-            =~= Set::<RwLockThreadPtr>::empty(),
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view() =~= set![layout.root_process],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view() =~= set![layout.root_thread],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata()
             .view().depth == 0,
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata()
@@ -515,15 +511,9 @@ proof fn prove_boot_container_process_allocator_quota_4k_wf(
     ensures
         container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp),
 {
-    let ghost owned_processes = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view().owned_processes.view();
-    let ghost owned_threads = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view_ghost().owned_threads.view();
-    let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view_ghost().owned_indirect_threads.view();
+    let ghost owned_processes = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view();
+    let ghost owned_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view();
+    let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view();
     let process_value_4k = |process_ptr: RwLockProcessPtr|
         process_effective_quota_4k(
             krnl.prc_mp.spec_index(process_ptr),
@@ -595,13 +585,9 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
 )
     requires
         krnl.ctn_mp.dom() =~= set![layout.root_container],
-        krnl.ctn_mp.spec_index(layout.root_container).view()
-            .owned_processes.view() =~= set![layout.root_process],
-        krnl.ctn_mp.spec_index(layout.root_container).view_ghost()
-            .owned_threads.view() =~= set![layout.root_thread],
-        krnl.ctn_mp.spec_index(layout.root_container).view_ghost()
-            .owned_indirect_threads.view()
-            =~= Set::<RwLockThreadPtr>::empty(),
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view() =~= set![layout.root_process],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view() =~= set![layout.root_thread],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata()
             .view().depth == 0,
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata()
@@ -621,15 +607,9 @@ proof fn prove_boot_container_process_allocator_quota_2m_wf(
     ensures
         container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_2m_mp),
 {
-    let ghost owned_processes = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view().owned_processes.view();
-    let ghost owned_threads = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view_ghost().owned_threads.view();
-    let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view_ghost().owned_indirect_threads.view();
+    let ghost owned_processes = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view();
+    let ghost owned_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view();
+    let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view();
     let process_value_2m = |process_ptr: RwLockProcessPtr|
         process_effective_quota_2m(
             krnl.prc_mp.spec_index(process_ptr),
@@ -701,13 +681,9 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
 )
     requires
         krnl.ctn_mp.dom() =~= set![layout.root_container],
-        krnl.ctn_mp.spec_index(layout.root_container).view()
-            .owned_processes.view() =~= set![layout.root_process],
-        krnl.ctn_mp.spec_index(layout.root_container).view_ghost()
-            .owned_threads.view() =~= set![layout.root_thread],
-        krnl.ctn_mp.spec_index(layout.root_container).view_ghost()
-            .owned_indirect_threads.view()
-            =~= Set::<RwLockThreadPtr>::empty(),
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view() =~= set![layout.root_process],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view() =~= set![layout.root_thread],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view() =~= Set::<RwLockThreadPtr>::empty(),
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata()
             .view().depth == 0,
         krnl.ctn_mp.spec_index(layout.root_container).view_rodata()
@@ -727,15 +703,9 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(
     ensures
         container_process_allocator_quota_1g_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_1g_mp),
 {
-    let ghost owned_processes = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view().owned_processes.view();
-    let ghost owned_threads = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view_ghost().owned_threads.view();
-    let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(
-        layout.root_container,
-    ).view_ghost().owned_indirect_threads.view();
+    let ghost owned_processes = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_processes.view();
+    let ghost owned_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view();
+    let ghost owned_indirect_threads = krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_indirect_threads.view();
     let process_value_1g = |process_ptr: RwLockProcessPtr|
         process_effective_quota_1g(
             krnl.prc_mp.spec_index(process_ptr),
@@ -1013,7 +983,7 @@ proof fn prove_boot_process_thread_wf(
     };
 }
 
-#[verifier::rlimit(15)]
+#[verifier::rlimit(20)]
 #[verifier::spinoff_prover]
 pub fn finish_init_from_boot(
     layout: BootKernelLayout,
@@ -1246,6 +1216,7 @@ pub fn finish_init_from_boot(
     let container_ghost = ContainerGhost {
         uppertree_seq: Ghost(Seq::empty()),
         subtree_set: Ghost(Set::empty()),
+        owned_processes: Ghost(Set::empty().insert(layout.root_process)),
         owned_threads: Ghost(root_threads),
         owned_indirect_threads: Ghost(Set::empty()),
     };
@@ -1331,7 +1302,7 @@ pub fn finish_init_from_boot(
         // intrinsic invariant before any cross-object relation is used.
         assert(krnl.subsystems_inv()) by {
         assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-        assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
+        assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
         assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); };
         assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
         assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };

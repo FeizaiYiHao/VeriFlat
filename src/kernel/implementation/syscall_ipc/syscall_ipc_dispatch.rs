@@ -5,37 +5,30 @@ use super::syscall_ipc_endpoint::ipc_rendezvous_endpoint;
 use super::syscall_ipc_pages::ipc_rendezvous_pages;
 use super::syscall_ipc_cpu::ipc_rendezvous_cpu;
 use super::syscall_ipc_spec::*;
+use super::syscall_ipc_trace::*;
 
 verus! {
-    pub(super) proof fn running_thread_not_in_endpoint_queue(
-    krnl: &KernelK, endpoint_ptr: RwLockEndpointPtr, thread_ptr: RwLockThreadPtr,
-    )
+    pub(super) proof fn running_thread_not_in_endpoint_queue(krnl: &KernelK, endpoint_ptr: RwLockEndpointPtr, thread_ptr: RwLockThreadPtr)
         requires
             krnl.inv(),
             krnl.ep_mp.dom().contains(endpoint_ptr),
             krnl.thr_mp.dom().contains(thread_ptr),
             krnl.thr_mp.spec_index(thread_ptr).view().state is RUNNING,
         ensures
-            !krnl.ep_mp.spec_index(endpoint_ptr).view()
-                .queue.view().contains(thread_ptr),
+            !krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(thread_ptr),
     {
         reveal(thread_endpoint_queue_wf);
     }
 
-    proof fn endpoint_queue_member_thread_facts(
-    krnl: &KernelK, endpoint_ptr: RwLockEndpointPtr, thread_ptr: RwLockThreadPtr,
-    )
+    proof fn endpoint_queue_member_thread_facts(krnl: &KernelK, endpoint_ptr: RwLockEndpointPtr, thread_ptr: RwLockThreadPtr)
         requires
             krnl.inv(),
             krnl.ep_mp.dom().contains(endpoint_ptr),
-            krnl.ep_mp.spec_index(endpoint_ptr).view()
-                .queue.view().contains(thread_ptr),
+            krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(thread_ptr),
         ensures
             krnl.thr_mp.dom().contains(thread_ptr),
-            krnl.thr_mp.spec_index(thread_ptr).view()
-                .state.is_endpoint_waiting(),
-            krnl.thr_mp.spec_index(thread_ptr).view()
-                .blocking_endpoint_ptr == Some(endpoint_ptr),
+            krnl.thr_mp.spec_index(thread_ptr).view().state.is_endpoint_waiting(),
+            krnl.thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
     {
         reveal(thread_endpoint_queue_wf);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
@@ -69,6 +62,7 @@ verus! {
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
+            old(steps).snapshot_k() == *old(krnl),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
             old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
@@ -78,12 +72,23 @@ verus! {
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            payload is Pages ==> ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                waiting_state, payload->Pages_va_range, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+            payload is Endpoint ==> ipc_endpoint_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                waiting_state, payload->Endpoint_endpoint_index, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            (payload is Empty || payload is Cpu || payload is ReceiveCpu) ==> ipc_ordinary_syscall_trace(
+                final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
+                kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
@@ -109,13 +114,19 @@ verus! {
             payload is Cpu && ret is Success ==> final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().state is Off && final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is SuccessUsize ==> final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().state is Off && final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             ret is Success ==> match payload {
-                IPCPayLoad::Pages { va_range } => va_range.len + 1 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 1,
+                IPCPayLoad::Pages { va_range } => va_range.len + 5 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 5,
                 IPCPayLoad::Endpoint { .. } => final(steps).nonlock_view().len() == 2,
                 _ => final(steps).nonlock_view().len() == 1,
             },
             ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value) && final(steps).nonlock_view().len() == 1,
-            !(ret is CpuIdle) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
+            !(payload is Pages) && !(ret is CpuIdle) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
             payload is Empty || payload is Cpu || payload is ReceiveCpu ==> final(steps).nonlock_view().len() <= 1,
             ret is CpuIdle ==> {
                 let step = final(steps).nonlock_view()[0];
@@ -123,23 +134,18 @@ verus! {
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
                 &&& ipc_block_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state)
-                &&& ipc_block_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload, *old(pt_regs),
-                    ipc_block_flushes_default_pcid(*old(krnl), cpu_id),
-                )
+                &&& ipc_block_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
             },
             (payload is Empty || payload is Cpu || payload is ReceiveCpu) && ipc_rendezvous_ret(ret) ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(payload, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, payload, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload)
             },
-            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 1,
+            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             payload is Empty ==> (ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection),
             payload is Pages ==> (ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse),
             payload is Cpu || payload is ReceiveCpu ==> (ret is Success || ret is SuccessUsize || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff),
@@ -158,7 +164,6 @@ verus! {
             assert({
                 &&& krnl.prc_mp.dom().contains(process_ptr)
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
-                &&& krnl.prc_mp.lock_id_by_key(process_ptr).spec_gt(krnl.cpu_arr.lock_id_by_index(cpu_id))
             }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); };
         }
         let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
@@ -167,6 +172,15 @@ verus! {
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
             proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
             release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
+            proof {
+                assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
+                    kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, Some(process_ptr), None, None, None);
+                };
+            }
+            proof {
+                ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index,
+                    waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorProcessKilled);
+            }
             return RetValueType::ErrorProcessKilled;
         }
         let Tracked(process_lock_perm) = process_res.unwrap();
@@ -182,7 +196,6 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
-                &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr).spec_gt(krnl.prc_mp.lock_id_by_key(process_ptr))
                 &&& krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
             }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
         }
@@ -192,6 +205,15 @@ verus! {
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
             proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
             release_cpu_and_process_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm));
+            proof {
+                assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
+                    kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, Some(process_ptr), Some(current_thread_ptr), None, None);
+                };
+            }
+            proof {
+                ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index,
+                    waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorThreadKilled);
+            }
             return RetValueType::ErrorThreadKilled;
         }
         let Tracked(current_thread_lock_perm) = current_thread_res.unwrap();
@@ -206,30 +228,34 @@ verus! {
                     assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
                 }
                 release_cpu_and_process_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));
+                proof {
+                    assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
+                        kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, Some(process_ptr), Some(current_thread_ptr), None, None);
+                    };
+                }
+                proof {
+                    ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index,
+                        waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorInvalidEndpoint);
+                }
                 return RetValueType::ErrorInvalidEndpoint;
             },
         };
 
         proof {
             assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { reveal(thread_endpoint_ref_counter_wf); };
-            thread_perms_wf_at(krnl.thr_mp, current_thread_ptr);
-            endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
             assert({
                 &&& krnl.ep_mp.dom().contains(endpoint_ptr)
                 &&& current_thread_lock_perm.ordering_lock_id().major == THREAD_LOCK_MAJOR
                 &&& krnl.ep_mp.lock_id_by_key(endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
                 &&& !typed_lock_map_contains_mode(lctx.endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write)
-            }) by {
-            };
+            }) by { thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
         }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
         proof {
             assert({
                 &&& krnl.ep_mp.perms_wf()
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            }) by {
-                endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
-            };
+            }) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
         }
         let endpoint_ref = krnl.ep_mp.borrow_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));
         let queue_len = endpoint_ref.queue.len();
@@ -256,6 +282,15 @@ verus! {
                     krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr,
                     Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm),
                 );
+                proof {
+                    assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
+                        kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, Some(process_ptr), Some(current_thread_ptr), Some(endpoint_ptr), None);
+                    };
+                }
+                proof {
+                    ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index,
+                        waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), result);
+                }
                 return result;
             }
             proof {
@@ -263,7 +298,15 @@ verus! {
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             }
-            return ipc_block_current(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, &*pt_regs, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm));
+            let ret = ipc_block_current(
+                krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, &*pt_regs,
+                Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm),
+            );
+            proof {
+                ipc_syscall_trace_from_block(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state,
+                    payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id));
+            }
+            return ret;
         }
 
         proof {
@@ -271,22 +314,54 @@ verus! {
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         }
-        ipc_rendezvous_from_queue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr,
+        let ret = ipc_rendezvous_from_queue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr,
             current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, waiting_is_send,
-            Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm))
+            Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm));
+        proof {
+            ipc_syscall_trace_from_rendezvous(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state,
+                payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret);
+        }
+        ret
     }
 
     #[verifier::spinoff_prover]
     fn ipc_rendezvous_from_queue(
-        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr,
-        endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState,
-        payload: IPCPayLoad, waiting_is_send: bool, Tracked(cpu_lock_perm): Tracked<LockPerm>,
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+        process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+        waiting_state: ThreadState, payload: IPCPayLoad, waiting_is_send: bool, Tracked(cpu_lock_perm): Tracked<LockPerm>,
         Tracked(process_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>,
         Tracked(endpoint_lock_perm): Tracked<LockPerm>,
     ) -> (ret: RetValueType)
         requires
             old(krnl).inv(),
+            forall|p: RwLockContainerPtr| #![trigger old(krnl).ctn_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ctn_mp.spec_index(p)]
+                old(steps).snapshot_k().ctn_mp.dom().contains(p) && old(krnl).ctn_mp.dom().contains(p) ==> if old(lctx).container_lock_map().dom().contains(p) {
+                    old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() is None
+                } else { old(krnl).ctn_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)] #![trigger old(steps).snapshot_k().prc_mp.spec_index(p)]
+                old(steps).snapshot_k().prc_mp.dom().contains(p) && old(krnl).prc_mp.dom().contains(p) ==> if old(lctx).process_lock_map().dom().contains(p) {
+                    old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() is None
+                } else { old(krnl).prc_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(p)] #![trigger old(steps).snapshot_k().thr_mp.spec_index(p)]
+                old(steps).snapshot_k().thr_mp.dom().contains(p) && old(krnl).thr_mp.dom().contains(p) ==> if old(lctx).thread_lock_map().dom().contains(p) {
+                    old(steps).snapshot_k().thr_mp.spec_index(p).locking_thread() is None
+                } else { old(krnl).thr_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().thr_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockEndpointPtr| #![trigger old(krnl).ep_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ep_mp.spec_index(p)]
+                old(steps).snapshot_k().ep_mp.dom().contains(p) && old(krnl).ep_mp.dom().contains(p) ==> if old(lctx).endpoint_lock_map().dom().contains(p) {
+                    old(steps).snapshot_k().ep_mp.spec_index(p).locking_thread() is None
+                } else { old(krnl).ep_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ep_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockPageTableRoot| #![trigger old(krnl).pt_mp.spec_index(p)] #![trigger old(steps).snapshot_k().pt_mp.spec_index(p)]
+                old(steps).snapshot_k().pt_mp.dom().contains(p) && old(krnl).pt_mp.dom().contains(p) ==> if old(lctx).pagetable_lock_map().dom().contains(p) {
+                    old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() is None
+                } else { old(krnl).pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(p)] #![trigger old(steps).snapshot_k().it_mp.spec_index(p)]
+                old(steps).snapshot_k().it_mp.dom().contains(p) && old(krnl).it_mp.dom().contains(p) ==> if old(lctx).iommu_table_lock_map().dom().contains(p) {
+                    old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() is None
+                } else { old(krnl).it_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() },
+            forall|i: CpuId| #![trigger old(krnl).cpu_arr.spec_index(i)] #![trigger old(steps).snapshot_k().cpu_arr.spec_index(i)]
+                index_valid(NUM_CPUS, i) ==> if old(lctx).cpu_lock_map().dom().contains(i) {
+                    old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() is None
+                } else { old(krnl).cpu_arr.spec_index(i).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() },
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
@@ -298,6 +373,7 @@ verus! {
             old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
             old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
+            old(krnl).cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             cpu_lock_perm.state() is WriteLock,
             cpu_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -368,11 +444,30 @@ verus! {
                 _ => false,
             },
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            payload is Pages ==> ipc_pages_rendezvous_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                waiting_state, payload->Pages_va_range, ret),
+            payload is Endpoint ==> ipc_endpoint_rendezvous_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                waiting_state, payload->Endpoint_endpoint_index, ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).snapshot_k() == *final(krnl),
+            (payload is Empty || payload is Cpu || payload is ReceiveCpu) ==> {
+                &&& if ipc_rendezvous_ret(ret) {
+                    &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                    &&& ret == ipc_rendezvous_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state, payload)
+                    &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state, payload)
+                    &&& ipc_rendezvous_step(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, waiting_state, payload)
+                } else {
+                    &&& final(steps).view() == old(steps).view()
+                    &&& kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(old(steps).snapshot_k())
+                }
+            },
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             payload is Empty ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -380,25 +475,23 @@ verus! {
             payload is Cpu && ret is Success ==> final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().state is Off && final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is SuccessUsize ==> final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().state is Off && final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is Success ==> match payload {
-                IPCPayLoad::Pages { va_range } => va_range.len + 1 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 1,
+                IPCPayLoad::Pages { va_range } => va_range.len + 5 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 5,
                 IPCPayLoad::Endpoint { .. } => final(steps).nonlock_view().len() == 2,
                 _ => final(steps).nonlock_view().len() == 1,
             },
             ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value) && final(steps).nonlock_view().len() == 1,
-            !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
+            !(payload is Pages) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
             payload is Empty || payload is Cpu || payload is ReceiveCpu ==> final(steps).nonlock_view().len() <= 1,
             (payload is Empty || payload is Cpu || payload is ReceiveCpu) && ipc_rendezvous_ret(ret) ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(payload, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, payload, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload)
             },
-            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 1,
+            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             payload is Empty ==> (ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch),
             payload is Pages ==> (ret is Success || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse),
             payload is Cpu || payload is ReceiveCpu ==> (ret is Success || ret is SuccessUsize || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff),
@@ -416,9 +509,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
                 &&& peer_thread_ptr != current_thread_ptr
                 &&& !typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_thread_ptr, TypedLockMode::Write)
-            }) by {
-                endpoint_queue_member_thread_facts(krnl, endpoint_ptr, peer_thread_ptr);
-            };
+            }) by { endpoint_queue_member_thread_facts(krnl, endpoint_ptr, peer_thread_ptr); };
         }
         let peer_thread_res = krnl.wlock_thread_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));
 
@@ -434,6 +525,13 @@ verus! {
                 krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm),
                 Tracked(process_lock_perm), Tracked(cpu_lock_perm),
             );
+            proof {
+                assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
+                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, group_kernel_endpoint_nonlock_fields_unchanged_transitive;
+                    kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);
+                };
+                ipc_rendezvous_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state, payload, RetValueType::ErrorIpcPeerKilled);
+            }
             return RetValueType::ErrorIpcPeerKilled;
         }
         let Tracked(peer_thread_lock_perm) = peer_thread_res.unwrap();
@@ -441,58 +539,91 @@ verus! {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
+        proof {
+            use_type_invariant(&*steps);
+            assert({
+                let pre = kernel_k_to_kernel_u(steps.snapshot_k());
+                &&& pre.cpu_array[cpu_id as int].current_process == Some(process_ptr)
+                &&& pre.cpu_array[cpu_id as int].current_thread == Some(current_thread_ptr)
+                &&& pre.thread_map[current_thread_ptr].endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
+                &&& pre.endpoint_map[endpoint_ptr].queue[0] == peer_thread_ptr
+                &&& pre.thread_map[peer_thread_ptr].ipc_payload == krnl.thr_mp.spec_index(peer_thread_ptr).view().ipc_payload
+                &&& pre.thread_map[peer_thread_ptr].state == krnl.thr_mp.spec_index(peer_thread_ptr).view().state
+            }) by {
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
+                reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
+                kernel_cpu_thread_projection_at(&steps.snapshot_k(), cpu_id, process_ptr, current_thread_ptr, None);
+                kernel_cpu_thread_projection_at(&steps.snapshot_k(), cpu_id, process_ptr, peer_thread_ptr, None);
+                kernel_endpoint_queue_projection_at(&steps.snapshot_k(), endpoint_ptr);
+            };
+        }
         let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
         let rendezvous_result = match (waiting_state, payload, peer_thread_ref.state, peer_thread_ref.ipc_payload) {
             (ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu) => {
-                return ipc_rendezvous_cpu(krnl, Tracked(&mut *lctx), Tracked(&mut *steps),
-                    cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(endpoint_index), Ghost(waiting_state), peer_thread_ptr, waiting_is_send,
-                    transfer_cpu_id,
-                    Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+                let step_result = ipc_rendezvous_cpu(
+                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(endpoint_index),
+                    Ghost(waiting_state), peer_thread_ptr, waiting_is_send, transfer_cpu_id, Ghost(payload), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
+                );
+                return step_result;
             },
             (ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu, ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }) => {
-                return ipc_rendezvous_cpu(krnl, Tracked(&mut *lctx), Tracked(&mut *steps),
-                    cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(endpoint_index), Ghost(waiting_state), peer_thread_ptr, waiting_is_send,
-                    transfer_cpu_id,
-                    Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+                let step_result = ipc_rendezvous_cpu(
+                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(endpoint_index),
+                    Ghost(waiting_state), peer_thread_ptr, waiting_is_send, transfer_cpu_id, Ghost(payload), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
+                );
+                return step_result;
             },
             (ThreadState::SENDING, IPCPayLoad::Endpoint { endpoint_index: source_endpoint_index },
                 ThreadState::RECEIVING, IPCPayLoad::Endpoint { endpoint_index: target_endpoint_index }) => {
-                return ipc_rendezvous_endpoint(krnl, Tracked(&mut *lctx), Tracked(&mut *steps),
-                    cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, current_thread_ptr, peer_thread_ptr, source_endpoint_index, target_endpoint_index,
-                    Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+                let step_result = ipc_rendezvous_endpoint(
+                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr,
+                    current_thread_ptr, peer_thread_ptr, source_endpoint_index, target_endpoint_index, Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Ghost(endpoint_index), Ghost(waiting_state), Tracked(peer_thread_lock_perm),
+                );
+                return step_result;
             },
             (ThreadState::RECEIVING, IPCPayLoad::Endpoint { endpoint_index: target_endpoint_index },
                 ThreadState::SENDING, IPCPayLoad::Endpoint { endpoint_index: source_endpoint_index }) => {
-                return ipc_rendezvous_endpoint(krnl, Tracked(&mut *lctx), Tracked(&mut *steps),
-                    cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, peer_thread_ptr, current_thread_ptr, source_endpoint_index, target_endpoint_index,
-                    Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+                let step_result = ipc_rendezvous_endpoint(
+                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr,
+                    peer_thread_ptr, current_thread_ptr, source_endpoint_index, target_endpoint_index, Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Ghost(endpoint_index), Ghost(waiting_state), Tracked(peer_thread_lock_perm),
+                );
+                return step_result;
             },
             (ThreadState::SENDING, IPCPayLoad::Pages { va_range: source_range },
                 ThreadState::RECEIVING, IPCPayLoad::Pages { va_range: target_range }) if source_range.len == target_range.len => {
-                return ipc_rendezvous_pages(krnl, &source_range, &target_range, current_thread_ptr, peer_thread_ptr,
-                    cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps),
-                    Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+                let step_result = ipc_rendezvous_pages(
+                    krnl, &source_range, &target_range, current_thread_ptr, peer_thread_ptr, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
+                    peer_thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Ghost(endpoint_index), Ghost(waiting_state),
+                );
+                return step_result;
             },
             (ThreadState::RECEIVING, IPCPayLoad::Pages { va_range: target_range },
                 ThreadState::SENDING, IPCPayLoad::Pages { va_range: source_range }) if source_range.len == target_range.len => {
-                return ipc_rendezvous_pages(krnl, &source_range, &target_range, peer_thread_ptr, current_thread_ptr,
-                    cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps),
-                    Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm));
+                let step_result = ipc_rendezvous_pages(
+                    krnl, &source_range, &target_range, peer_thread_ptr, current_thread_ptr, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
+                    peer_thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+                    Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Ghost(endpoint_index), Ghost(waiting_state),
+                );
+                return step_result;
             },
             (ThreadState::SENDING, IPCPayLoad::Empty, ThreadState::RECEIVING, IPCPayLoad::Empty) => RetValueType::Success,
             (ThreadState::RECEIVING, IPCPayLoad::Empty, ThreadState::SENDING, IPCPayLoad::Empty) => RetValueType::Success,
             _ => RetValueType::ErrorIpcTypeMismatch,
         };
 
-        ipc_schedule_waiting_peer_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps),
-            cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((endpoint_index, waiting_state))), peer_thread_ptr, rendezvous_result,
-            Tracked(cpu_lock_perm), Tracked(process_lock_perm),
-            Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm))
+        let step_result = ipc_schedule_waiting_peer_and_finish(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((endpoint_index, waiting_state, payload))),
+            peer_thread_ptr, rendezvous_result, Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm),
+            Tracked(peer_thread_lock_perm),
+        );
+        proof {
+            ipc_rendezvous_trace_error_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, payload, step_result);
+        }
+        step_result
     }
 } // verus!

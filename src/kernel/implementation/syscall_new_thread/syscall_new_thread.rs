@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_new_thread_helpers::add_new_thread_to_proc_container_and_scheduler;
 use super::syscall_new_thread_spec::*;
+use super::syscall_new_thread_trace::*;
 
 verus! {
         /// Create a thread in the process running on `cpu_id`.
@@ -23,20 +24,17 @@ verus! {
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
+                old(steps).view().len() <= final(steps).view().len(),
+                forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+                new_thread_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, None, ret is Success),
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
                 !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-                ret is Success ==> {
-                    let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
-                    let step = final(steps).nonlock_view()[0];
-                    &&& final(steps).nonlock_view().len() == 1
-                    &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                    &&& new_thread_step_pre(step.old_u, cpu_id)
-                    &&& new_thread_step(step.old_u, step.new_u, cpu_id, step.new_u.process_map.spec_index(process_ptr).owned_threads.last(), *initial_regs, None)
-                },
+                ret is Success ==> final(steps).nonlock_view().len() == 2,
                 ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
         {
             proof {
+                use_type_invariant(&*steps);
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
                 assert({
                     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
@@ -69,7 +67,10 @@ verus! {
                 proof {
                     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                }
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
@@ -88,7 +89,10 @@ verus! {
                 proof {
                     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                }
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
                 }
                 return RetValueType::ErrorThreadKilled;
             }
@@ -104,7 +108,10 @@ verus! {
                 proof {
                     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                }
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
                 }
                 return RetValueType::ErrorNoQuota;
             }

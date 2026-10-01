@@ -1,9 +1,11 @@
 use vstd::prelude::*;
-use vstd::assert_maps_equal;
 use crate::*;
 
 verus! {
-    pub fn attach_endpoint_reference_and_unlock(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, current_thread_ptr: RwLockThreadPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>)
+    pub fn attach_endpoint_reference_and_unlock(
+        krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, current_thread_ptr: RwLockThreadPtr,
+        Tracked(lctx): Tracked<&mut LocalContext>, Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
+    )
         requires
             old(krnl).inv(),
             old(krnl).thr_mp.dom().contains(current_thread_ptr),
@@ -104,10 +106,7 @@ verus! {
             assert({
                 &&& !krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((thread_ptr, 0))
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).view().rf_counter < usize::MAX
-            }) by {
-                reveal(thread_endpoint_ref_counter_wf);
-                endpoint_ref_counter_bounded(&*krnl, endpoint_ptr);
-            };
+            }) by { reveal(thread_endpoint_ref_counter_wf); endpoint_ref_counter_bounded(&*krnl, endpoint_ptr); };
         }
         proof {
             assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); };
@@ -151,17 +150,8 @@ verus! {
             assert({
                 &&& krnl.thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr)
                 &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr)
-            }) by {
-                lock_id_fields_eq_imply_eq();
-            };
-            let old_u = kernel_k_to_nonlock_kernel_u(*old(krnl));
-            let final_u = kernel_k_to_nonlock_kernel_u(*krnl);
-            assert(final_u.thread_map.dom() == old_u.thread_map.dom()) by { reveal(kernel_k_to_nonlock_kernel_u); };
-            assert_maps_equal!(
-                final_u.thread_map,
-                old_u.thread_map.insert(thread_ptr, final_u.thread_map.spec_index(thread_ptr)),
-                t => { reveal(kernel_k_to_nonlock_kernel_u); }
-            );
+            }) by { lock_id_fields_eq_imply_eq(); };
+            kernel_thread_unchanged_except_implies_nonlock_u_thread_map_insert(old(krnl), &*krnl, thread_ptr);
         }
     }
 }

@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_map_owned::map_owned_4k_page;
 use super::syscall_mmap_4k_spec::*;
+use super::syscall_mmap_4k_trace::mmap_4k_leaf_step_from_u;
 
 verus! {
     /// Allocate and publish one 4K leaf after its directory walk is prepared.
@@ -16,6 +17,7 @@ verus! {
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
             old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
             old(krnl).ctn_mp.dom().contains(container_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
             old(krnl).prc_mp.dom().contains(process_ptr),
@@ -52,10 +54,11 @@ verus! {
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va) == false,
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is Some,
+            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0 is Mmap4k,
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped < old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.len,
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range.view()[old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_mapped as int] == va,
         ensures
-            forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt)
                 && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -96,8 +99,8 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 1,
             final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == mmap_4k_progress_after_leaf(old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()),
             final(steps).view() == old(steps).view().push(final(steps).view().last()),
-            mmap_4k_leaf_step_pre(final(steps).view().last().old_u, cpu_id, thread_ptr),
-            mmap_4k_leaf_step(final(steps).view().last().old_u, final(steps).view().last().new_u, thread_ptr),
+            mmap_4k_leaf_step_pre(final(steps).view().last().old_u, cpu_id),
+            mmap_4k_leaf_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
@@ -151,7 +154,11 @@ verus! {
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr
             }) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
-            kernel_thread_quota_4k_progress_and_4k_mapping_added_implies_u_step(&section_start, &*krnl, &*lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr, va);
+            assert(mmap_4k_leaf_step_pre(kernel_k_to_kernel_u(section_start), cpu_id)
+                && mmap_4k_leaf_step(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
+                kernel_thread_quota_4k_progress_and_4k_mapping_added_implies_u_step(&section_start, &*krnl, &*lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr, va);
+                mmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, va);
+            };
             krnl.kernel_step_boundary_process_4k_mapping_changed(
                 &mut *lctx, &mut *steps, process_ptr, pagetable_ptr, va, process_ptr, pagetable_ptr, thread_ptr,
             );

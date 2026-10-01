@@ -543,6 +543,8 @@ impl PageTable<PT_TYPE> {
             self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
             ret == self.spec_mapping_4k_va_range_present(range),
+            ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len
+                ==> self.mapping_4k().dom().contains(range.view().spec_index(j)) && self.mapping_4k().spec_index(range.view().spec_index(j)).present,
     {
         let range_start = range.start;
         let range_len = range.len;
@@ -612,7 +614,9 @@ impl PageTable<PT_TYPE> {
             );
             if resolved.2.is_none() {
                 proof {
-                    assert(!self.spec_mapping_4k_va_range_present(range)) by { range.va_range_lemma(); };
+                    assert(!self.mapping_4k().dom().contains(range.view().spec_index(i as int))) by {
+                        range.va_range_lemma(); reveal(PageTable::wf_mapping_4k); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
+                    };
                 }
                 return false;
             }
@@ -626,6 +630,9 @@ impl PageTable<PT_TYPE> {
                                 va, l4i, l3i, l2i, l1i,
                             );
                         };
+                    };
+                    assert(!self.mapping_4k().spec_index(range.view().spec_index(i as int)).present) by {
+                        range.va_range_lemma(); reveal(PageTable::wf_mapping_4k); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
                     };
                 }
                 return false;
@@ -700,6 +707,12 @@ impl PageTable<PT_TYPE> {
             self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
             ret == self.spec_mapping_4k_va_range_buildable(range),
+            ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+                let indices = spec_va2index(range.view().spec_index(j));
+                &&& !self.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
+                &&& !self.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
+                &&& !self.mapping_4k().dom().contains(range.view().spec_index(j))
+            },
     {
         let range_start = range.start;
         let range_len = range.len;
@@ -722,6 +735,9 @@ impl PageTable<PT_TYPE> {
                         &&& pei_valid(indices.1)
                         &&& pei_valid(indices.2)
                         &&& pei_valid(indices.3)
+                        &&& !self.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
+                        &&& !self.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
+                        &&& !self.mapping_4k().dom().contains(range.view().spec_index(j))
                     },
                 forall|j: int|
                     #![trigger self.spec_resolve_mapping_4k_l1(
@@ -773,6 +789,15 @@ impl PageTable<PT_TYPE> {
                             spec_va_4k_valid_imply_indices_valid();
                         };
                         assert(!self.spec_mapping_4k_va_range_buildable(range)) by { range.va_range_lemma(); };
+                        assert({
+                            let indices = spec_va2index(range.view().spec_index(i as int));
+                            ||| self.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
+                            ||| self.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
+                            ||| self.mapping_4k().dom().contains(range.view().spec_index(i as int))
+                        }) by {
+                            range.va_range_lemma(); spec_va_4k_valid_imply_indices_valid(); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
+                            reveal(PageTable::wf_mapping_1g); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_4k);
+                        };
                     }
                     return false;
                 },
@@ -797,6 +822,9 @@ impl PageTable<PT_TYPE> {
                     &&& pei_valid(checked_indices.2)
                     &&& pei_valid(checked_indices.3)
                     &&& self.spec_4k_entry_usable(checked_indices.0, checked_indices.1, checked_indices.2, checked_indices.3)
+                    &&& !self.mapping_1g().dom().contains(spec_index2va((checked_indices.0, checked_indices.1, 0, 0)))
+                    &&& !self.mapping_2m().dom().contains(spec_index2va((checked_indices.0, checked_indices.1, checked_indices.2, 0)))
+                    &&& !self.mapping_4k().dom().contains(range.view().spec_index(i as int))
                 }) by {
                     range.va_range_lemma();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by {
@@ -804,6 +832,7 @@ impl PageTable<PT_TYPE> {
                             va, l4i, l3i, l2i, l1i,
                         );
                     };
+                    reveal(PageTable::wf_mapping_1g); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_4k);
                 };
             }
             i = i + 1;

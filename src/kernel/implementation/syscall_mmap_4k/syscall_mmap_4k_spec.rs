@@ -24,26 +24,47 @@ pub open spec fn mmap_4k_syscall_va_range(va: VAddr, len: usize) -> VaRange4K {
 pub open spec fn mmap_4k_progress_after_leaf(progress: Option<SyscallProgress>) -> Option<SyscallProgress> {
     match progress {
         Some(SyscallProgress::Mmap4k { range, mapped, directory: _ }) => Some(SyscallProgress::Mmap4k { range, mapped: (mapped + 1) as usize, directory: Mmap4kDirectory::None }),
-        None => None,
+        _ => progress,
     }
 }
 
-/// The cpu, the running thread, and its process's pagetable are all unlocked, and the thread has
-/// no multi-step syscall in progress.
-pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
-    let process_ptr = old_u.thread_map.spec_index(thread_ptr).owning_proc;
+/// The cpu runs a live thread of an existing container with no multi-step syscall in progress; the
+/// cpu, the thread, and its process's pagetable are unlocked; and the thread has four 4K quota per
+/// page of a valid, non-empty user range none of whose VAs is covered by a 4K, 2M, or 1G leaf.
+#[verifier::opaque]
+pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
+    let pagetable = old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0;
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& old_u.cpu_array[cpu_id as int].lock_state is Unlocked
-    &&& old_u.thread_map.dom().contains(thread_ptr)
-    &&& old_u.thread_map.spec_index(thread_ptr).lock_state is Unlocked
-    &&& old_u.thread_map.spec_index(thread_ptr).syscall_progress is None
-    &&& old_u.process_map.dom().contains(process_ptr)
-    &&& old_u.process_map.spec_index(process_ptr).pagetable is Some
-    &&& old_u.process_map.spec_index(process_ptr).pagetable->Some_0.lock_state is Unlocked
+    &&& cpu.lock_state is Unlocked
+    &&& cpu.state is Running
+    &&& cpu.current_thread is Some
+    &&& old_u.thread_map.dom().contains(cpu.current_thread->Some_0)
+    &&& thread.lock_state is Unlocked
+    &&& thread.syscall_progress is None
+    &&& !thread.killed
+    &&& old_u.process_map.dom().contains(thread.owning_proc)
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable is Some
+    &&& pagetable.lock_state is Unlocked
+    &&& range.wf()
+    &&& range.len > 0
+    &&& user_va_range(old_u, range)
+    &&& thread.quota_4k >= 4 * range.len
+    &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len ==> !pagetable.mapping_4k.dom().contains(range.view()[i])
+    &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> {
+        let idx = spec_va2index(range.view()[i]);
+        &&& !pagetable.mapping_2m.dom().contains(spec_index2va((idx.0, idx.1, idx.2, 0)))
+        &&& !pagetable.mapping_1g.dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
+    }
 }
 
-/// Entering write-locks the cpu, thread, and pagetable and starts progress at the first page.
-pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, range: VaRange4K) -> bool {
+/// Entering write-locks the cpu, its running thread, and the thread's pagetable and starts progress
+/// at the first page.
+#[verifier::opaque]
+pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None };
@@ -59,19 +80,23 @@ pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
 }
 
 /// A leaf step maps the next unmapped VA of the recorded range under the three mmap locks.
-pub open spec fn mmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
-    let thread = old_u.thread_map.spec_index(thread_ptr);
+#[verifier::opaque]
+pub open spec fn mmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
     let va = progress->Mmap4k_range.view()[progress->Mmap4k_mapped as int];
-    &&& mmap_4k_locked(old_u, cpu_id, thread_ptr)
+    &&& mmap_4k_locked(old_u, cpu_id)
     &&& thread.syscall_progress is Some
+    &&& progress is Mmap4k
     &&& progress->Mmap4k_mapped < progress->Mmap4k_range.len
     &&& thread.quota_4k >= 1
     &&& !old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k.dom().contains(va)
 }
 
 /// A leaf page consumes one 4K quota and publishes a present, writable, executable mapping.
-pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, thread_ptr: RwLockThreadPtr) -> bool {
+#[verifier::opaque]
+pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let pagetable = process.pagetable->Some_0;
@@ -93,16 +118,21 @@ pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, thread_ptr: R
 }
 
 /// Exiting happens after every page of the recorded range has been mapped.
-pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
-    let progress = old_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0;
-    &&& mmap_4k_locked(old_u, cpu_id, thread_ptr)
-    &&& old_u.thread_map.spec_index(thread_ptr).syscall_progress is Some
+#[verifier::opaque]
+pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    &&& mmap_4k_locked(old_u, cpu_id)
+    &&& thread.syscall_progress is Some
+    &&& progress is Mmap4k
     &&& progress->Mmap4k_mapped == progress->Mmap4k_range.len
     &&& progress->Mmap4k_directory is None
 }
 
-/// Exiting clears mmap progress and unlocks the cpu, thread, and pagetable.
-pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
+/// Exiting clears mmap progress and unlocks the cpu, its running thread, and the thread's pagetable.
+#[verifier::opaque]
+pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     new_u == (KernelU {
@@ -117,20 +147,40 @@ pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
 }
 
 /// A step inside the mmap loop installs one directory page or publishes one leaf.
-pub open spec fn mmap_4k_range_step(step: KernelStep, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
-    ||| mmap_4k_directory_step_pre(step.old_u, cpu_id, thread_ptr) && mmap_4k_directory_step(step.old_u, step.new_u, thread_ptr)
-    ||| mmap_4k_leaf_step_pre(step.old_u, cpu_id, thread_ptr) && mmap_4k_leaf_step(step.old_u, step.new_u, thread_ptr)
+#[verifier::opaque]
+pub open spec fn mmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
+    ||| mmap_4k_directory_step_pre(step.old_u, cpu_id) && mmap_4k_directory_step(step.old_u, step.new_u, cpu_id)
+    ||| mmap_4k_leaf_step_pre(step.old_u, cpu_id) && mmap_4k_leaf_step(step.old_u, step.new_u, cpu_id)
+}
+
+/// The partial trace after entering: the single enter step.
+#[verifier::opaque]
+pub open spec fn mmap_4k_trace_after_enter(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K) -> bool {
+    &&& trace.len() == 1
+    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range)
+    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range)
+}
+
+/// The partial trace after mapping the range: the enter step followed by one directory or leaf step
+/// per recorded mutation.
+#[verifier::opaque]
+pub open spec fn mmap_4k_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K) -> bool {
+    &&& range.len + 1 <= trace.len() <= 4 * range.len + 1
+    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range)
+    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range)
+    &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() ==> mmap_4k_range_step(trace[j], cpu_id)
 }
 
 /// The full trace of a successful mmap: one enter step, one directory or leaf step per recorded
 /// mutation, and one exit step.
-pub open spec fn mmap_4k_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, va: VAddr, range: usize) -> bool {
+#[verifier::opaque]
+pub open spec fn mmap_4k_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
     &&& range + 2 <= trace.len() <= 4 * range + 2
-    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, thread_ptr)
-    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, thread_ptr, mmap_4k_syscall_va_range(va, range))
-    &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> mmap_4k_range_step(trace[j], cpu_id, thread_ptr)
-    &&& mmap_4k_exit_step_pre(trace.last().old_u, cpu_id, thread_ptr)
-    &&& mmap_4k_exit_step(trace.last().old_u, trace.last().new_u, cpu_id, thread_ptr)
+    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, mmap_4k_syscall_va_range(va, range))
+    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, mmap_4k_syscall_va_range(va, range))
+    &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> mmap_4k_range_step(trace[j], cpu_id)
+    &&& mmap_4k_exit_step_pre(trace.last().old_u, cpu_id)
+    &&& mmap_4k_exit_step(trace.last().old_u, trace.last().new_u, cpu_id)
 }
 
 /// A successful mmap maps every page of the requested range in the current process's pagetable.

@@ -34,7 +34,11 @@ verus! {
         pub iommu_root_table: IommuRootTableU,
         pub cpu_tlb: Map<(CpuId, Pcid), SingleTLB>,
         pub iommu_tlb: Map<VtdDomainId, SingleIotlb>,
+        pub kernel_l4_end: usize,
     }
+
+    /// The range starts at or above the first user L4 index, compared as the implementation's prechecks do.
+    pub open spec fn user_va_range(u: KernelU, range: VaRange4K) -> bool { spec_v2l4index(range.start) >= u.kernel_l4_end }
 
     /// Business-field projection used only to classify steps and state business contracts.
     /// Stored snapshots and step recording always use the complete `KernelU`.
@@ -43,7 +47,7 @@ verus! {
         KernelU {
             cpu_array: u.cpu_array.map_values(|c: CpuU| CpuU { lock_state: LockStateU::Unlocked, ..c }),
             container_map: Map::new(u.container_map.dom(), |k: RwLockContainerPtr|
-                ContainerU { lock_state: LockStateU::Unlocked, ..u.container_map.spec_index(k) }),
+                ContainerU { lock_state: LockStateU::Unlocked, cpu_set_lock: LockStateU::Unlocked, ..u.container_map.spec_index(k) }),
             process_map: Map::new(u.process_map.dom(), |k: RwLockProcessPtr| {
                 let p = u.process_map.spec_index(k);
                 ProcessU {
@@ -83,6 +87,7 @@ verus! {
             iommu_root_table: krnl.irt.user_view(),
             cpu_tlb: krnl.cpu_tlb.view(),
             iommu_tlb: krnl.iommu_tlb.view(),
+            kernel_l4_end: krnl.dflt_pt.view().kernel_l4_end,
             endpoint_map: Map::new(krnl.ep_mp.dom(), |ptr: RwLockEndpointPtr| {
                 let e = krnl.ep_mp.spec_index(ptr);
                 EndpointU {
@@ -114,9 +119,10 @@ verus! {
                     ContainerU {
                         lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
                         children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
-                        root_process: c.root_process, owned_processes: c.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
+                        root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
                         owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
                         parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
+                        cpu_set_lock: if include_lock_state { krnl.cpu_set_mp.spec_index(c_ro.cpu_set).lock_state_u() } else { LockStateU::Unlocked },
                         scheduler: krnl.sched_mp.spec_index(c_ro.scheduler).view().queue.view(),
                         free_pcids: PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(c_ro.pcid_allocator).view().ref_counters.view()),
                         quota_4k: krnl.allc_4k_mp.spec_index(c_ro.allocator_ptr_4k).quota.view().view(),
@@ -146,6 +152,7 @@ verus! {
                             },
                             _ => None,
                         },
+                        pcid: p_ro.pcid,
                         owned_pci_functions: p.owned_pci_functions.view(),
                         quota_4k: p.quota_4k,
                         quota_2m: p.quota_2m,
@@ -196,6 +203,7 @@ verus! {
             post.irt.iommu_roots() == pre.irt.iommu_roots(),
             post.cpu_tlb.view() == pre.cpu_tlb.view(),
             post.iommu_tlb.view() == pre.iommu_tlb.view(),
+            post.dflt_pt == pre.dflt_pt,
             kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
             // This connects each process's projected pagetable pointer to the
             // domain on which the per-entry framing premise below applies.

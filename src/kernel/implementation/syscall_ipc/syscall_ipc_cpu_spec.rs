@@ -107,12 +107,15 @@ pub open spec fn ipc_cpu_rendezvous_transition(
         #![trigger post.thr_mp.spec_index(key)]
         #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
         #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
+        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
+        #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
         pre.thr_mp.dom().contains(key) ==> {
             let before = pre.thr_mp.spec_index(key);
             let after = post.thr_mp.spec_index(key);
             &&& post.thr_mp.view().spec_index(key).is_init() == pre.thr_mp.view().spec_index(key).is_init()
             &&& post.thr_mp.view().spec_index(key).addr() == pre.thr_mp.view().spec_index(key).addr()
             &&& after.view().temp_alloc_cache_2m == before.view().temp_alloc_cache_2m
+            &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
             &&& !(key == peer_thread_ptr) ==> after == before
         }
     &&& {
