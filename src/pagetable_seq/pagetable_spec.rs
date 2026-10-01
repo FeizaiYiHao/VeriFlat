@@ -74,6 +74,13 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
         }
     }
 
+    /// Every 4K, 2M, and 1G leaf is user-present, so the user view shows the whole mapping.
+    pub open spec fn leaves_present(&self) -> bool {
+        &&& forall|va: VAddr| #![trigger self.mapping_4k().dom().contains(va)] self.mapping_4k().dom().contains(va) ==> self.mapping_4k().spec_index(va).present
+        &&& forall|va: VAddr| #![trigger self.mapping_2m().dom().contains(va)] self.mapping_2m().dom().contains(va) ==> self.mapping_2m().spec_index(va).present
+        &&& forall|va: VAddr| #![trigger self.mapping_1g().dom().contains(va)] self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
+    }
+
     pub fn new(
         pcid: Option<Pcid>,
         kernel_entries_ghost: Ghost<Seq<PageEntry>>,

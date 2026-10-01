@@ -31,7 +31,8 @@ verus! {
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
         ensures
-            forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt)
                 && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -59,6 +60,7 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
             final(steps).nonlock_view() == old(steps).nonlock_view(),
+            final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
             old(steps).snapshot_k() == *old(krnl) ==> final(steps).view() == old(steps).view(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),

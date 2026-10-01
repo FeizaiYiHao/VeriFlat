@@ -51,6 +51,10 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
+            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
+                old(lctx).pagetable_lock_map().dom().contains(pt)
+                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write, }),
@@ -179,7 +183,7 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index));
             assert(krnl.subsystems_inv()) by {
                 assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-                assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
+                assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
                 assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
                 assert(thread_perms_wf(krnl.thr_mp)) by {
                     reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
@@ -203,8 +207,8 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
                 };
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
-                assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
-                assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(iommu_table_pages_wf); };
+                assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr); };
+                assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(old(krnl).it_mp, krnl.it_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(old(krnl).sched_mp, krnl.sched_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).pcid_allc_mp, krnl.pcid_allc_mp); };
@@ -239,15 +243,17 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr, va, krnl.pcid_needflush); };
+            held_pagetables_unchanged_except_for_unchanged_except(old(krnl).pt_mp, krnl.pt_mp, old(lctx), pagetable_ptr);
             assert({
                 let process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
                 &&& kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map.dom().contains(process_ptr)
                 &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map.dom().contains(process_ptr)
-                &&& !kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map .spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
-                &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map .spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
+                &&& !kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map.spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
+                &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
             }) by {
-                reveal(kernel_k_to_nonlock_kernel_u);
                 reveal(process_thread_wf);
+                kernel_process_nonlock_projection_at(old(krnl), krnl.thr_mp.spec_index(thread_ptr).view().owning_proc);
+                kernel_process_nonlock_projection_at(&*krnl, krnl.thr_mp.spec_index(thread_ptr).view().owning_proc);
             };
         }
     }

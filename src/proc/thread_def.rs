@@ -7,9 +7,45 @@ use crate::*;
 /// Deepest page-table level installed so far for the 4K page being mapped.
 pub ghost enum Mmap4kDirectory { None, L4, L3, L2 }
 
+/// Process creation: the shared `range`, the child's initial registers and endpoint, whether it
+/// gets an IOMMU table, and the child once it is published.
+pub ghost struct NewProcessProgress {
+    pub range: VaRange4K, pub regs: Registers, pub endpoint_index: Option<EndpointIdx>, pub with_iommu: bool,
+    pub child: Option<RwLockProcessPtr>,
+}
+
+/// Container creation: the shared `range`, the quotas, the donated cpu, the root process's initial
+/// registers, and the child container once it is published.
+pub ghost struct NewContainerProgress {
+    pub range: VaRange4K, pub funding: usize, pub process_quota: usize, pub transfer_cpu: CpuId, pub regs: Registers,
+    pub child_container: Option<RwLockContainerPtr>,
+}
+
+/// The syscall a share belongs to, with the objects and arguments its later steps need.
+pub ghost enum Share4kOrigin {
+    NewProcess(NewProcessProgress),
+    NewContainer(NewContainerProgress),
+    IpcPages { peer: RwLockThreadPtr },
+}
+
 /// Progress of a multi-step syscall owned by the write-locked thread.
 pub ghost enum SyscallProgress {
     Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
+    Unmap4k { range: VaRange4K, unmapped: usize, flushed: bool },
+    /// Process creation before its range is shared into the child.
+    NewProcess(NewProcessProgress),
+    /// Container creation before its range is shared into the child container's root process.
+    NewContainer(NewContainerProgress),
+    /// Sharing the first `shared` pages of `source_range` into `target_range` for `origin`.
+    Share4k { source_range: VaRange4K, target_range: VaRange4K, shared: usize, origin: Share4kOrigin },
+    /// A pages rendezvous with `peer` before its checks, with both page tables write-locked when `locked`, or
+    /// after its page tables are released with the recorded result.
+    IpcPages { source_range: VaRange4K, target_range: VaRange4K, peer: RwLockThreadPtr, locked: bool, released: Option<RetValueType> },
+    /// An endpoint rendezvous whose `peer` is in transit; the caller sends when `caller_sends`, and its
+    /// own payload names descriptor `payload_index`.
+    IpcEndpoint { peer: RwLockThreadPtr, caller_sends: bool, payload_index: EndpointIdx },
+    /// Thread creation that starts the new thread with `regs` and the optional endpoint at `endpoint_index`.
+    NewThread { regs: Registers, endpoint_index: Option<EndpointIdx> },
 }
 
 pub struct Thread {

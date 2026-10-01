@@ -16,9 +16,12 @@
 - Upper-layer contracts, assertions, and loop invariants express thread-held
   ownership through typed-map membership and `typed_lock_map_contains_mode`.
   This includes `locked_by`, `rlocked_by`, `wlocked_by`, and their `_thread`
-  variants. Locker/unlocker implementations derive physical ownership from
-  alignment locally; their callers do not supply `wlock_requires` or physical
-  ownership facts. Preserve the distinction between absence and non-Write mode.
+  variants. Alignment and lock-order (acyclic) reasoning belongs in lock
+  (locker/unlocker) and update wrappers: they derive physical ownership from
+  alignment locally and may export physical `locking_thread()` facts, and
+  callers may pass such physical facts on instead of re-deriving them. Callers
+  do not re-prove lock order that a lock wrapper already checks. Preserve the
+  distinction between absence and non-Write mode.
   Physical predicates remain in the lock model, alignment definitions, and
   low-level operation proofs, including `all_objects_unlocked` below.
   Permission-token matching remains separate from typed ordering-lock ids.
@@ -61,7 +64,8 @@
   `all_objects_unlocked` directly rather than deriving it from an empty ledger.
 - `KernelU` projects the outer physical lock mode as
   `LockStateU::{Unlocked, ReadLocked, WriteLocked}` on containers, processes,
-  threads, endpoints, CPUs, and both page-table views. Complete snapshots and
+  threads, endpoints, CPUs, and both page-table views, and each container's
+  CPU-set lock as `ContainerU.cpu_set_lock`. Complete snapshots and
   traces retain these modes; record changes only at existing kernel boundaries
   and syscall finish. `kernel_u_nonlock_fields` normalizes only these modes,
   and `KernelSteps::nonlock_view` filters lock-only transitions for business

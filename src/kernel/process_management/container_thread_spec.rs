@@ -35,4 +35,18 @@ verus! {
                 &&& container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().contains(t_ptr)
             }
     }
+
+    pub proof fn container_thread_wf_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+        requires
+            container_thread_wf(container_map, thread_map),
+            thread_map.dom().contains(thread_ptr),
+        ensures
+            ({
+                let container_ptr = thread_map.spec_index(thread_ptr).view().owning_container;
+                &&& container_map.dom().contains(container_ptr)
+                &&& container_map.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
+            }),
+    {
+        reveal(container_thread_wf);
+    }
 }

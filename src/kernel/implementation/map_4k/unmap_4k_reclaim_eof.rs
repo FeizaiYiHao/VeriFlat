@@ -210,6 +210,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         kernel_k_to_nonlock_kernel_u(post) == kernel_k_to_nonlock_kernel_u(pre),
 {
     reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
+    assert(pagetable_hidden_leaves_only_when_wlocked(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
     assert(post.subsystems_inv()) by { reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };
     reclaim_last_4k_mapping_to_cpu_cache_eof_memory_management_inv(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_4k_mapping_to_cpu_cache_eof_process_management_inv(pre, post, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);

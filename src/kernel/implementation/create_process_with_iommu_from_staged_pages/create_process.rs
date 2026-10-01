@@ -265,15 +265,16 @@ pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framin
     &&& post.prc_mp.spec_index(process_page_ptr).view_ghost().uppertree_seq.view() == ancestors
     &&& post.prc_mp.spec_index(process_page_ptr).view_ghost().subtree_set.view() == Set::<RwLockProcessPtr>::empty()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr)
-    &&& post.ctn_mp.spec_index(container_ptr).view() == (Container {
-        owned_processes: post.ctn_mp.spec_index(container_ptr).view().owned_processes,
-        ..pre.ctn_mp.spec_index(container_ptr).view()
-    })
-    &&& post.ctn_mp.spec_index(container_ptr).view().owned_processes.view() == pre.ctn_mp.spec_index(container_ptr).view().owned_processes.view().insert(process_page_ptr)
+    &&& post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view()
+    &&& post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view() == pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().insert(process_page_ptr)
     &&& post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata()
-    &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost()
+    &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
+        owned_processes: post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes, ..pre.ctn_mp.spec_index(container_ptr).view_ghost()
+    })
     &&& post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread()
     &&& post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> post.ctn_mp.spec_index(c).view_ghost().owned_threads == pre.ctn_mp.spec_index(c).view_ghost().owned_threads
     &&& forall|c_ptr: RwLockContainerPtr|
         #![trigger post.ctn_mp.view().spec_index(c_ptr).is_init()]
         pre.ctn_mp.dom().contains(c_ptr) ==> {
@@ -309,32 +310,6 @@ pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framin
 }
 
 #[verifier::spinoff_prover]
-fn consume_new_iommu_process_staged_pages(thread: &mut Thread, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, iommu_table_page_ptr: PagePtr, iommu_l4_page_ptr: PagePtr)
-    requires
-        old(thread).inv(),
-        old(thread).quota_4k >= 5,
-        old(thread).temp_alloc_cache_4k.view() =~= set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr],
-        process_page_ptr != pagetable_page_ptr && process_page_ptr != l4_page_ptr && process_page_ptr != iommu_table_page_ptr && process_page_ptr != iommu_l4_page_ptr,
-        pagetable_page_ptr != l4_page_ptr && pagetable_page_ptr != iommu_table_page_ptr && pagetable_page_ptr != iommu_l4_page_ptr,
-        l4_page_ptr != iommu_table_page_ptr && l4_page_ptr != iommu_l4_page_ptr,
-        iommu_table_page_ptr != iommu_l4_page_ptr,
-    ensures
-        final(thread).inv(),
-        *final(thread) == (Thread { quota_4k: final(thread).quota_4k, temp_alloc_cache_4k: final(thread).temp_alloc_cache_4k, ..*old(thread) }),
-        final(thread).quota_4k == old(thread).quota_4k - 5,
-        final(thread).temp_alloc_cache_4k.view().is_empty(),
-{
-    proof {
-        assert(thread.temp_alloc_cache_4k.view().len() == 5) by { vstd::set::axiom_set_ext_equal(thread.temp_alloc_cache_4k.view(), set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr]); };
-    }
-    thread.consume_staged_4k(process_page_ptr);
-    thread.consume_staged_4k(pagetable_page_ptr);
-    thread.consume_staged_4k(l4_page_ptr);
-    thread.consume_staged_4k(iommu_table_page_ptr);
-    thread.consume_staged_4k(iommu_l4_page_ptr);
-}
-
-#[verifier::spinoff_prover]
 pub fn create_process_with_iommu_from_staged_pages(
     krnl: &mut KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
     iommu_table_page_ptr: PagePtr, iommu_l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
@@ -342,9 +317,8 @@ pub fn create_process_with_iommu_from_staged_pages(
     pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(process_page_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_page_lock_perm): Tracked<&LockPerm>,
     Tracked(l4_page_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_page_lock_perm): Tracked<&LockPerm>,
-    Tracked(iommu_l4_page_lock_perm): Tracked<&LockPerm>, Tracked(container_lock_perm): Tracked<&LockPerm>,
-    Tracked(parent_lock_perm): Tracked<&LockPerm>, Tracked(staging_thread_lock_perm): Tracked<&LockPerm>,
-    Tracked(pcid_allocator_lock_perm): Tracked<&LockPerm>,
+    Tracked(iommu_l4_page_lock_perm): Tracked<&LockPerm>, Tracked(parent_lock_perm): Tracked<&LockPerm>,
+    Tracked(staging_thread_lock_perm): Tracked<&LockPerm>, Tracked(pcid_allocator_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (RwLockProcessPtr, RwLockPageTableRoot, RwLockPageTableRoot, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         old(krnl).inv(),
@@ -374,11 +348,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         l4_page_ptr != iommu_l4_page_ptr,
         iommu_table_page_ptr != iommu_l4_page_ptr,
         old(krnl).ctn_mp.dom().contains(container_ptr),
-        typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
-        !old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
-        container_lock_perm.state() is WriteLock,
-        container_lock_perm.thread_id() == old(lctx).thread_id(),
-        container_lock_perm.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
         old(krnl).prc_mp.dom().contains(parent_ptr),
         old(krnl).prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
         old(krnl).prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX,
@@ -492,8 +461,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         ret.5.view().lock_id() == final(krnl).it_mp.spec_index(iommu_table_page_ptr).locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
         staging_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(staging_thread_ptr).locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(final(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
-        container_lock_perm.lock_id() == final(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), parent_ptr, TypedLockMode::Write),
         parent_lock_perm.lock_id() == final(krnl).prc_mp.spec_index(parent_ptr).locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(final(lctx).pcid_allocator_lock_map(), pcid_allocator_ptr, TypedLockMode::Write),
@@ -596,7 +563,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         krnl.prc_mp.spec_index(parent_ptr).view().children.view();
     proof {
         let process_tree_dom =
-            krnl.ctn_mp.spec_index(container_ptr).view().owned_processes.view();
+            krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
         let root_process =
             krnl.ctn_mp.spec_index(container_ptr).view().root_process;
         assert(process_tree_dom.contains(parent_ptr)) by { reveal(container_process_wf); };
@@ -617,63 +584,33 @@ pub fn create_process_with_iommu_from_staged_pages(
         };
         assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().process_is_unallocated(process_page_ptr)) by { reveal(process_pcid_allocator_wf); };
     }
-    let ghost old_l4_page_lock_id = krnl.pg_arr.lock_id_by_index(l4_page_index);
-    let l4_page_mut = krnl.pg_arr.borrow_mut_typed(l4_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(l4_page_lock_perm));
-    let Tracked(l4_page_perm) = retype_owned_4k_to_kernel_object(
-        l4_page_mut,
-        PageState::Allocated4k {
-            state: Allocated4KPageState::PageTable {
-                pagetable_root: pagetable_page_ptr,
-            },
-        },
+    let Tracked(l4_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, l4_page_index, PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: pagetable_page_ptr } },
+        Tracked(&mut *lctx), Tracked(l4_page_lock_perm),
     );
-    proof {
-        lctx.update_lock_id(KernelObjId::Page(l4_page_index), old_l4_page_lock_id, krnl.pg_arr.lock_id_by_index(l4_page_index));
-    }
     let (l4_ptr, Tracked(mut l4_perm)) = page_perm_to_page_map(l4_page_ptr, Tracked(l4_page_perm));
     let default_pt = krnl.dflt_pt.borrow();
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
     proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { reveal(PageTable::kernel_entries_wf); }; }
     let pagetable_value = PageTable::<PT_TYPE>::new(Some(pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, process_page_ptr);
 
-    let ghost old_pagetable_page_lock_id = krnl.pg_arr.lock_id_by_index(pagetable_page_index);
-    let pagetable_page_mut = krnl.pg_arr.borrow_mut_typed(pagetable_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
-    let Tracked(pagetable_page_perm) = retype_owned_4k_to_kernel_object(
-        pagetable_page_mut,
-        PageState::Allocated4k {
-            state: Allocated4KPageState::AsPageTableRoot,
-        },
+    let Tracked(pagetable_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, pagetable_page_index, PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot },
+        Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm),
     );
-    proof {
-        lctx.update_lock_id(KernelObjId::Page(pagetable_page_index), old_pagetable_page_lock_id, krnl.pg_arr.lock_id_by_index(pagetable_page_index),);
-    }
     let Tracked(pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(pagetable_page_ptr, pagetable_value, Tracked(pagetable_page_perm), Tracked(&mut *lctx));
 
-    let ghost old_iommu_l4_page_lock_id = krnl.pg_arr.lock_id_by_index(iommu_l4_page_index);
-    let iommu_l4_page_mut = krnl.pg_arr.borrow_mut_typed(iommu_l4_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(iommu_l4_page_lock_perm));
-    let Tracked(iommu_l4_page_perm) = retype_owned_4k_to_kernel_object(
-        iommu_l4_page_mut,
-        PageState::IOMMUTable {
-            iommu_table_root: iommu_table_page_ptr,
-        },
+    let Tracked(iommu_l4_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, iommu_l4_page_index, PageState::IOMMUTable { iommu_table_root: iommu_table_page_ptr },
+        Tracked(&mut *lctx), Tracked(iommu_l4_page_lock_perm),
     );
-    proof {
-        lctx.update_lock_id(KernelObjId::Page(iommu_l4_page_index), old_iommu_l4_page_lock_id, krnl.pg_arr.lock_id_by_index(iommu_l4_page_index),);
-    }
     let (iommu_l4_ptr, Tracked(iommu_l4_perm)) = page_perm_to_page_map(iommu_l4_page_ptr, Tracked(iommu_l4_page_perm));
     let iommu_table_value = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4_ptr, Tracked(iommu_l4_perm), 0, process_page_ptr);
 
-    let ghost old_iommu_table_page_lock_id = krnl.pg_arr.lock_id_by_index(iommu_table_page_index);
-    let iommu_table_page_mut = krnl.pg_arr.borrow_mut_typed(iommu_table_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(iommu_table_page_lock_perm));
-    let Tracked(iommu_table_page_perm) = retype_owned_4k_to_kernel_object(
-        iommu_table_page_mut,
-        PageState::Allocated4k {
-            state: Allocated4KPageState::AsIommuTableRoot,
-        },
+    let Tracked(iommu_table_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, iommu_table_page_index, PageState::Allocated4k { state: Allocated4KPageState::AsIommuTableRoot },
+        Tracked(&mut *lctx), Tracked(iommu_table_page_lock_perm),
     );
-    proof {
-        lctx.update_lock_id(KernelObjId::Page(iommu_table_page_index), old_iommu_table_page_lock_id, krnl.pg_arr.lock_id_by_index(iommu_table_page_index),);
-    }
     let Tracked(iommu_table_lock_perm) = krnl.retype_page_to_iommu_table_and_insert(iommu_table_page_ptr, iommu_table_value, Tracked(iommu_table_page_perm), Tracked(&mut *lctx));
 
     let parent_depth = krnl.prc_mp.borrow_rodata(parent_ptr).borrow().depth;
@@ -686,33 +623,20 @@ pub fn create_process_with_iommu_from_staged_pages(
         assert(parent_ancestors.len() == parent_depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
         assert(ancestors.len() == process_rodata.view().depth) by { seq_push_lemma::<RwLockProcessPtr>(); };
     }
-    let ghost old_process_page_lock_id = krnl.pg_arr.lock_id_by_index(process_page_index);
-    let process_page_mut = krnl.pg_arr.borrow_mut_typed(process_page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(process_page_lock_perm));
-    let Tracked(process_page_perm) = retype_owned_4k_to_kernel_object(
-        process_page_mut,
-        PageState::Allocated4k {
-            state: Allocated4KPageState::AsProcess,
-        },
+    let Tracked(process_page_perm) = page_array_retype_owned_4k(
+        &mut krnl.pg_arr, process_page_index, PageState::Allocated4k { state: Allocated4KPageState::AsProcess },
+        Tracked(&mut *lctx), Tracked(process_page_lock_perm),
     );
-    proof {
-        lctx.update_lock_id(KernelObjId::Page(process_page_index), old_process_page_lock_id, krnl.pg_arr.lock_id_by_index(process_page_index),);
-    }
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_page_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
 
-    let child_mut = krnl.prc_mp.borrow_mut_typed(process_page_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm));
-    let (child_node_addr, child_node_perm) = child_mut.parent_linkedlist_node.take();
-    let parent_mut = krnl.prc_mp.borrow_mut_typed(parent_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(parent_lock_perm));
-    parent_mut.add_child(process_page_ptr, child_node_addr, child_node_perm);
-    proof {
-        assert(ancestors.to_set().subset_of(krnl.prc_mp.dom())) by { ancestors.to_set_ensures(); };
-        process_insert_child_into_ancestor_subtree_sets(&mut krnl.prc_mp, ancestors, process_page_ptr, lctx.process_lock_map(), lctx.thread_id(),);
-    }
-    let container_mut = krnl.ctn_mp.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(container_lock_perm));
-    container_mut.add_owned_process(process_page_ptr);
-    let pcid_allocator_mut = krnl.pcid_allc_mp.borrow_mut_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(pcid_allocator_lock_perm));
-    pcid_allocator_mut.alloc(pcid, process_page_ptr);
-    let staging_thread_mut = krnl.thr_mp.borrow_mut_typed(staging_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    consume_new_iommu_process_staged_pages(staging_thread_mut, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr);
+    process_map_link_new_child(&mut krnl.prc_mp, parent_ptr, process_page_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_lock_perm), Tracked(&process_lock_perm));
+    proof { container_map_add_owned_process(&mut krnl.ctn_mp, container_ptr, process_page_ptr, lctx.container_lock_map(), lctx.thread_id()); }
+    pcid_allocator_map_alloc(&mut krnl.pcid_allc_mp, pcid_allocator_ptr, process_page_ptr, pcid, Tracked(&*lctx), Tracked(pcid_allocator_lock_perm));
+    thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, process_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
+    thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, pagetable_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
+    thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, l4_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
+    thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, iommu_table_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
+    thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, iommu_l4_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
 
     proof {
         assert(create_process_with_iommu_from_staged_pages_kernel_state_framing(

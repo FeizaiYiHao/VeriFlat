@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_new_thread::syscall_new_thread_spec::*;
+use super::super::syscall_new_thread::syscall_new_thread_trace::*;
 use super::syscall_new_thread_with_endpoint_helpers::add_new_thread_with_endpoint;
 
 verus! {
@@ -24,24 +25,16 @@ verus! {
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
+                old(steps).view().len() <= final(steps).view().len(),
+                forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+                new_thread_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, Some(endpoint_index), ret is Success),
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
                 !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-                ret is Success ==> {
-                    let process_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
-                    let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
-                    let step = final(steps).nonlock_view()[0];
-                    &&& final(steps).nonlock_view().len() == 1
-                    &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                    &&& new_thread_with_endpoint_step_pre(step.old_u, cpu_id, endpoint_index)
-                    &&& new_thread_step(
-                        step.old_u, step.new_u, cpu_id, step.new_u.process_map.spec_index(process_ptr).owned_threads.last(), *initial_regs,
-                        old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index),
-                    )
-                },
+                ret is Success ==> final(steps).nonlock_view().len() == 2,
                 ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota || ret is Error,
         {
-            proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+            proof { use_type_invariant(&*steps); kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof {
                 assert({
                     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
@@ -75,6 +68,12 @@ verus! {
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
                 release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
+                proof {
+                    assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); };
+                }
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
+                }
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
@@ -92,16 +91,22 @@ verus! {
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
                 release_cpu_and_process_and_finish_syscall(
-                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr,
-                    Tracked(process_lock_perm), Tracked(cpu_lock_perm),
+                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm),
                 );
+                proof {
+                    assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+                        broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
+                        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
+                    };
+                }
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
+                }
                 return RetValueType::ErrorThreadKilled;
             }
             let Tracked(current_thread_lock_perm) = thread_res.unwrap();
 
-            let thread_ref = krnl.thr_mp.borrow_typed(
-                current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm),
-            );
+            let thread_ref = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
             if thread_ref.quota_4k == 0 {
                 proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -111,6 +116,15 @@ verus! {
                     krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr,
                     Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm),
                 );
+                proof {
+                    assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+                        broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
+                        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
+                    };
+                }
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
+                }
                 return RetValueType::ErrorNoQuota;
             }
 
@@ -125,6 +139,15 @@ verus! {
                         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr,
                         Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm),
                     );
+                    proof {
+                        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+                            broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
+                            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
+                        };
+                    }
+                    proof {
+                        new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
+                    }
                     return RetValueType::Error;
                 },
             };

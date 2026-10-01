@@ -44,9 +44,10 @@ pub proof fn lemma_pagetable_perms_wf_preserved_for_lock_op_forall()
             && post.perms_wf()
             && post.unchanged_except(&pre, changed)
             && post.spec_index(changed).inv()
+            && (post.spec_index(changed).locking_thread() is Write || post.spec_index(changed).view().leaves_present())
             ==> pagetable_perms_wf(post),
 {
-    reveal(pagetable_perms_wf);
+    reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked);
 }
 
 pub proof fn lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall()

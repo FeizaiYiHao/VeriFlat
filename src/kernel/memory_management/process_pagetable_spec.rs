@@ -5,7 +5,7 @@ verus! {
 pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap) -> bool {
     &&&
     forall|proc_ptr:RwLockProcessPtr|
-        #![trigger process_map.spec_index(proc_ptr).view().pagetable]
+        #![trigger process_map.spec_index(proc_ptr).view()]
         process_map.dom().contains(proc_ptr)
         && !process_map.spec_index(proc_ptr).view().zombie
         ==>

@@ -84,6 +84,7 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     &&& forall|t: RwLockThreadPtr|
         #![trigger pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k]
         #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_4k]
+        #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_1g]
         pre.thr_mp.dom().contains(t) ==> {
             &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k
             &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m

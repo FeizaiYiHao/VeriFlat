@@ -1,4 +1,5 @@
 pub mod syscall_new_process_spec;
+mod syscall_new_process_trace;
 mod syscall_new_process_with_iommu_release;
 mod syscall_new_process_with_iommu_publish;
 mod syscall_new_process_publish;

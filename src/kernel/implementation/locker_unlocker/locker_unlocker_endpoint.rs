@@ -60,7 +60,7 @@ impl KernelK {
                                     &&& cpu.current_process() is Some
                                     &&& old(lctx).page_lock_map().dom().is_empty()
                                     &&& old(lctx).cpu_lock_map().dom() =~= set![cpu_id]
-                                    &&& old(lctx).container_lock_map().dom() =~= set![cpu.owning_container()]
+                                    &&& old(lctx).container_lock_map().dom().is_empty()
                                     &&& old(lctx).process_lock_map().dom() =~= set![cpu.current_process()->Some_0]
                                     &&& old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr]
                                     &&& old(lctx).endpoint_lock_map().dom().is_empty()

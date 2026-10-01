@@ -83,6 +83,7 @@ pub open spec fn scheduler_context_switch_transition(
             &&& post.thr_mp.view().spec_index(ptr).is_init() == pre.thr_mp.view().spec_index(ptr).is_init()
             &&& post.thr_mp.view().spec_index(ptr).addr() == pre.thr_mp.view().spec_index(ptr).addr()
             &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
+            &&& after.view().endpoint_descriptors == before.view().endpoint_descriptors
             &&& (ptr != next_thread && previous != Some(ptr) ==> after == before)
             &&& (ptr == next_thread || previous == Some(ptr) ==> {
                 &&& after.is_init() == before.is_init()
@@ -170,17 +171,21 @@ pub open spec fn schedule_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_thread:
     } else { None }
 }
 
-/// User-visible precondition of the scheduler switch step on `cpu_id`.
+/// User-visible precondition of the scheduler switch step on `cpu_id`; the cpu, the next thread, and
+/// any current thread and process are unlocked.
+#[verifier::opaque]
 pub open spec fn schedule_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let container = old_u.container_map.spec_index(cpu.owning_container);
     let next_thread = container.scheduler[0];
     let next = old_u.thread_map.spec_index(next_thread);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu.lock_state is Unlocked
     &&& !(cpu.state is Off)
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& container.scheduler.len() > 0
     &&& old_u.thread_map.dom().contains(next_thread)
+    &&& next.lock_state is Unlocked
     &&& !next.killed
     &&& next.state is SCHEDULED
     &&& next.owning_container == cpu.owning_container
@@ -190,10 +195,12 @@ pub open spec fn schedule_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
         let prev = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
         &&& cpu.current_thread.unwrap() != next_thread
         &&& old_u.thread_map.dom().contains(cpu.current_thread.unwrap())
+        &&& prev.lock_state is Unlocked
         &&& !prev.killed
         &&& prev.state == (ThreadState::RUNNING { cpu_id })
         &&& prev.owning_proc == cpu.current_process.unwrap()
         &&& old_u.process_map.dom().contains(cpu.current_process.unwrap())
+        &&& old_u.process_map.spec_index(cpu.current_process.unwrap()).lock_state is Unlocked
         &&& !old_u.process_map.spec_index(cpu.current_process.unwrap()).killed
     })
 }
@@ -202,29 +209,21 @@ pub open spec fn schedule_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
 /// the previous thread is requeued at the tail, and at most one PCID TLB entry is flushed.
 pub open spec fn schedule_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, entry_regs: Registers, flushed_pcid: Option<Pcid>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
-    let container = old_u.container_map.spec_index(cpu.owning_container);
-    let next_thread = container.scheduler[0];
-    let next = old_u.thread_map.spec_index(next_thread);
-    let requeued = match cpu.current_thread {
-        Some(prev) => old_u.thread_map.insert(prev, ThreadU {
-            state: ThreadState::SCHEDULED, error_code: None, trap_frame: Some(entry_regs), ..old_u.thread_map.spec_index(prev)
-        }),
-        None => old_u.thread_map,
-    };
-    new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
-            state: CpuState::Running, current_process: Some(next.owning_proc), current_thread: Some(next_thread), ..cpu
-        }),
-        container_map: old_u.container_map.insert(cpu.owning_container, ContainerU {
-            scheduler: match cpu.current_thread { Some(prev) => container.scheduler.skip(1).push(prev), None => container.scheduler.skip(1) },
-            ..container
-        }),
-        thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, error_code: None, trap_frame: None, ..next }),
-        cpu_tlb: match flushed_pcid {
-            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-            None => old_u.cpu_tlb,
-        },
-        ..old_u
-    })
+    kernel_u_context_switch_changed(old_u, new_u, cpu_id, old_u.container_map.spec_index(cpu.owning_container).scheduler[0], entry_regs, flushed_pcid)
+}
+
+/// Complete trace of one scheduling call, including its unchanged lock modes.
+#[verifier::opaque]
+pub open spec fn schedule_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, switched: bool, flushed_pcid: Option<Pcid>) -> bool {
+    if switched {
+        &&& trace.len() == 1
+        &&& trace[0].old_u == pre
+        &&& trace[0].new_u == post
+        &&& schedule_step_pre(pre, cpu_id)
+        &&& schedule_step(pre, post, cpu_id, regs, flushed_pcid)
+    } else {
+        &&& trace.len() == 0
+        &&& post == pre
+    }
 }
 }

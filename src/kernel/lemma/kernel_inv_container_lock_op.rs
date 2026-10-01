@@ -98,8 +98,8 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     assert({
         &&& pre.ctn_mp.dom().contains(pre.rt_ctn)
         &&& post.ctn_mp.dom().contains(post.rt_ctn)
-        &&& pre.ctn_mp.spec_index(pre.rt_ctn).view().root_process_in_processes()
-        &&& post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()
+        &&& pre.ctn_mp.spec_index(pre.rt_ctn).view_ghost().owned_processes.view().contains(pre.ctn_mp.spec_index(pre.rt_ctn).view().root_process)
+        &&& post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)
     }) by { reveal(container_root_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };

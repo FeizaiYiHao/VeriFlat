@@ -193,7 +193,7 @@ pub fn pagetable_map_insert_4k(
         indices.0, indices.1, indices.2, indices.3, target_l1_ptr, target_entry, Tracked(&mut *lctx),
     );
     proof {
-        assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); };
+        assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
         assert(pagetable_map.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
@@ -249,7 +249,7 @@ pub fn pagetable_map_clear_4k_present(
     );
     pagetable.unmap_4k_page_user_view(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof {
-        assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); };
+        assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
         assert(pagetable_map.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
@@ -306,7 +306,7 @@ pub fn pagetable_map_unmap_4k_kernel(
     );
     pagetable.unmap_4k_page_kernel(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof {
-        assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); };
+        assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
         assert(pagetable_map.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }

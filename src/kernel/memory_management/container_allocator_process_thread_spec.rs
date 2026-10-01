@@ -137,7 +137,7 @@ verus! {
                 #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k]
                 container_map.dom().contains(c_ptr)
                 ==>
-                process_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
+                process_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_processes.view(), process_map)
                     +
                     thread_effective_quota_4k_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
@@ -167,7 +167,7 @@ verus! {
                 #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
                 container_map.dom().contains(c_ptr)
                 ==>
-                process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
+                process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_processes.view(), process_map)
                     +
                     thread_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +
@@ -194,7 +194,7 @@ verus! {
                 #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
                 container_map.dom().contains(c_ptr)
                 ==>
-                process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view().owned_processes.view(), process_map)
+                process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_processes.view(), process_map)
                     +
                     thread_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_threads.view(), thread_map)
                     +

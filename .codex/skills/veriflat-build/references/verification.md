@@ -18,6 +18,14 @@
   `VERUS_PIPELINE_SMT=1 verus/source/target-verus/release/cargo-verus verify --workspace --exclude VeriFlat -- --num-threads 32 --time`.
   Use Cargo's default concurrency. Label vstd and every VeriFlat artifact
   independently hot/cold; a fully cached no-op is not a benchmark.
+- Batch edits between runs. During implementation, finish a coherent batch
+  (contract edits plus every caller update they force) before launching
+  verification, and fix all reported errors together in the next batch.
+  Repeated runs belong only to the final cleanup/optimization stage; even there,
+  batch deletion candidates across independent functions into one run.
+- During development, never rerun a green verification for timing. Use the
+  rlimit already reported by that run to judge cost and move on. Wall-time
+  measurement and interleaved A/B runs happen only once, for the final report.
 - Typecheck first, then verify the smallest function/module/package. Completed
   cross-crate work requires full workspace and 32-thread monolith checks.
 - Use `--time-expanded` to inspect equation-level cost. A structurally large

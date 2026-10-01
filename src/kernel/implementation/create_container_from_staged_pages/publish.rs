@@ -191,6 +191,7 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
             &&& post.ctn_mp.spec_index(ptr).being_killed() == pre.ctn_mp.spec_index(ptr).being_killed()
             &&& post.ctn_mp.spec_index(ptr).view().parent_linkedlist_node == pre.ctn_mp.spec_index(ptr).view().parent_linkedlist_node
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_threads
+            &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_processes == pre.ctn_mp.spec_index(ptr).view_ghost().owned_processes
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads
             &&& ptr != parent_container_ptr ==> post.ctn_mp.spec_index(ptr).view() == pre.ctn_mp.spec_index(ptr).view()
         }
@@ -221,7 +222,7 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view() == pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().difference(moved_pages)
     &&& post.ctn_mp.spec_index(container_page).view().root_process == process_page
     &&& !post.ctn_mp.spec_index(container_page).being_killed()
-    &&& post.ctn_mp.spec_index(container_page).view().owned_processes.view() == set![process_page]
+    &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page]
     &&& post.ctn_mp.spec_index(container_page).view().owned_endpoints.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view().owned_pages.view() == moved_pages
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().parent == Some(parent_container_ptr)
@@ -824,7 +825,6 @@ pub(super) fn publish_staged_container_root_mutation(
         Tracked(&mut *lctx), Tracked(cpu_set_page_lock_perm), Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),
     );
     let mut container_value = Container::new_staged(child_container_ptr, child_process_ptr, child_depth);
-    container_value.owned_processes = Ghost(Set::empty().insert(child_process_ptr));
     container_value.owned_pages = Ghost(moved_pages);
     let container_rodata = ReadOnlyNode::new(
         ContainerRO {
@@ -835,8 +835,8 @@ pub(super) fn publish_staged_container_root_mutation(
         Ghost(child_container_ptr),
     );
     let container_ghost = ContainerGhost {
-        uppertree_seq: Ghost(child_uppers), subtree_set: Ghost(Set::empty()), owned_threads: Ghost(Set::empty()),
-        owned_indirect_threads: Ghost(Set::empty()),
+        uppertree_seq: Ghost(child_uppers), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(child_process_ptr)),
+        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()),
     };
     let (Tracked(child_pcid_allocator_lock_perm), Tracked(child_container_lock_perm)) = publish_new_container_pcid_allocator_and_container(
         krnl, child_pcid_allocator_ptr, pcid_allocator_value, child_container_ptr, container_value, container_rodata, container_ghost,
@@ -1050,6 +1050,14 @@ pub fn publish_staged_container_root(
         l4_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(l4_page)).view().locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(l4_page), TypedLockMode::Write),
     ensures
+        final(krnl).ctn_mp.spec_index(container_page).locking_thread() is Write,
+        final(krnl).pt_mp.spec_index(pagetable_page).locking_thread() is Write,
+        final(krnl).cpu_set_mp.spec_index(cpu_set_page).locking_thread() is Write,
+        publish_staged_container_root_kernel_state_framing(
+            *old(krnl), *final(krnl), parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
+            allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
+            funding_pages, allocator_quota_4k, process_quota_4k,
+        ),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -1081,7 +1089,7 @@ pub fn publish_staged_container_root(
         final(krnl).ctn_mp.spec_index(container_page).view_rodata().view().parent == Some(parent_container_ptr),
         final(krnl).ctn_mp.spec_index(container_page).view_rodata().view().scheduler == scheduler_page,
         final(krnl).ctn_mp.spec_index(container_page).view_rodata().view().allocator_ptr_4k == allocator_4k_page,
-        final(krnl).ctn_mp.spec_index(container_page).view().owned_processes.view() == set![process_page],
+        final(krnl).ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page],
         !final(krnl).prc_mp.spec_index(process_page).being_killed(),
         !final(krnl).prc_mp.spec_index(process_page).view().zombie,
         final(krnl).prc_mp.spec_index(process_page).view_rodata().view().owning_container == container_page,
@@ -1128,7 +1136,7 @@ pub fn publish_staged_container_root(
         final(krnl).ctn_mp.dom().contains(parent_container_ptr),
         !final(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
         final(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().contains(thread_page),
-        final(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_processes == old(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_processes,
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(parent_container_ptr).view_ghost().owned_processes,
         !final(krnl).ctn_mp.spec_index(container_page).view().owned_pages.view().contains(thread_page),
         parent_container_lock_perm.lock_id() == final(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
         current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
@@ -1273,6 +1281,17 @@ pub fn publish_staged_container_root(
             allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
             funding_pages, allocator_quota_4k, process_quota_4k,
         );
+    }
+    proof {
+        assert(krnl.ctn_mp.spec_index(container_page).locking_thread() is Write) by {
+            krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container_page);
+        };
+        assert(krnl.pt_mp.spec_index(pagetable_page).locking_thread() is Write) by {
+            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_page);
+        };
+        assert(krnl.cpu_set_mp.spec_index(cpu_set_page).locking_thread() is Write) by {
+            krnl.cpu_set_mp.typed_lock_map_aligned_write_at(lctx.cpu_set_lock_map(), lctx.thread_id(), cpu_set_page);
+        };
     }
     ret
 }

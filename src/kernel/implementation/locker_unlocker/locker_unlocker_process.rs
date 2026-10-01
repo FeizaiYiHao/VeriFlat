@@ -59,7 +59,6 @@ impl KernelK {
                             &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                             &&& containers.subset_of(set![container_ptr])
                             &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator])
-                            &&& (!pcid_allocators.is_empty() ==> containers.contains(container_ptr))
                     }
                 },
                 typed_lock_maps_aligned(old(self), old(lctx)),

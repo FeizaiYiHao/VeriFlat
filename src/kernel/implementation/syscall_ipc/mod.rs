@@ -7,4 +7,5 @@ mod syscall_ipc_endpoint;
 mod syscall_ipc_pages;
 mod syscall_ipc_queue;
 pub mod syscall_ipc_spec;
+mod syscall_ipc_trace;
 mod syscall_ipc_transition;

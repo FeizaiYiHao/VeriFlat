@@ -6,6 +6,8 @@ mod syscall_new_container_publish;
 mod syscall_new_container_finish;
 mod syscall_new_container_commit;
 mod syscall_new_container_share;
+pub mod syscall_new_container_spec;
+mod syscall_new_container_trace;
 pub mod syscall_new_container_cpu_spec;
 mod syscall_new_container_cpu_eof;
 mod syscall_new_container_cpu;

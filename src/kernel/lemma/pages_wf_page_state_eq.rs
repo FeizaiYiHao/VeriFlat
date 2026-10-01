@@ -123,6 +123,52 @@ pub proof fn endpoint_pages_wf_preserved_for_page_state_eq(
     reveal(endpoint_pages_wf);
 }
 
+// pagetable_pages_wf: Allocated4k{AsPageTableRoot} and Allocated4k{PageTable} <-> pagetable_map roots and page closures.
+pub proof fn pagetable_pages_wf_preserved_for_page_state_eq(
+    old_pagetable_map: PageTableLockedMap, new_pagetable_map: PageTableLockedMap, old_page_array: PageLockedArray, new_page_array: PageLockedArray,
+)
+    requires
+        pagetable_pages_wf(old_pagetable_map, old_page_array),
+        new_pagetable_map.dom() == old_pagetable_map.dom(),
+        forall|p: RwLockPageTableRoot| #![trigger new_pagetable_map.spec_index(p).view().page_closure()]
+            new_pagetable_map.dom().contains(p) ==> new_pagetable_map.spec_index(p).view().page_closure() == old_pagetable_map.spec_index(p).view().page_closure(),
+        forall|p_i: PageIndex|
+            #![trigger new_page_array.spec_index(p_i).view().view().state]
+            index_valid(NUM_PAGES, p_i)
+            && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot })
+                || (old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::PageTable { .. } })
+                || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot })
+                || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::PageTable { .. } }))
+            ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
+    ensures
+        pagetable_pages_wf(new_pagetable_map, new_page_array),
+{
+    reveal(pagetable_pages_wf);
+}
+
+// iommu_table_pages_wf: Allocated4k{AsIommuTableRoot} and IOMMUTable <-> iommu_table_map roots and page closures.
+pub proof fn iommu_table_pages_wf_preserved_for_page_state_eq(
+    old_iommu_table_map: IommuTableLockedMap, new_iommu_table_map: IommuTableLockedMap, old_page_array: PageLockedArray, new_page_array: PageLockedArray,
+)
+    requires
+        iommu_table_pages_wf(old_iommu_table_map, old_page_array),
+        new_iommu_table_map.dom() == old_iommu_table_map.dom(),
+        forall|p: RwLockPageTableRoot| #![trigger new_iommu_table_map.spec_index(p).view().page_closure()]
+            new_iommu_table_map.dom().contains(p) ==> new_iommu_table_map.spec_index(p).view().page_closure() == old_iommu_table_map.spec_index(p).view().page_closure(),
+        forall|p_i: PageIndex|
+            #![trigger new_page_array.spec_index(p_i).view().view().state]
+            index_valid(NUM_PAGES, p_i)
+            && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsIommuTableRoot })
+                || (old_page_array.spec_index(p_i).view().view().state matches PageState::IOMMUTable { .. })
+                || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsIommuTableRoot })
+                || (new_page_array.spec_index(p_i).view().view().state matches PageState::IOMMUTable { .. }))
+            ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
+    ensures
+        iommu_table_pages_wf(new_iommu_table_map, new_page_array),
+{
+    reveal(iommu_table_pages_wf);
+}
+
 // allocator_4k_pages_wf: Allocated4k{As4KAllocator} <-> allocator_4k_map.dom().
 pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(
     old_page_array: PageLockedArray,

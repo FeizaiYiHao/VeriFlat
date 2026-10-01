@@ -6,11 +6,10 @@ use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 verus! {
 #[verifier::spinoff_prover]
 proof fn ipc_cpu_rendezvous_eof_process_management_inv(
-    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
-    endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
-    source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
-    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,
-    transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
+    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_scheduler_ptr: RwLockSchedulerPtr, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
+    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType,
+    thread_id: LockThreadId,
 )
     requires
         ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
@@ -43,17 +42,17 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
 }
 
 proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
-    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
-    endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
-    source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
-    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,
-    transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
+    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_scheduler_ptr: RwLockSchedulerPtr, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
+    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType,
+    thread_id: LockThreadId,
 )
     requires
         ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
+    hide(Seq::contains);
     reveal(ipc_cpu_rendezvous_transition);
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
@@ -82,12 +81,11 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
 }
 
 pub(super) proof fn ipc_cpu_rendezvous_eof(
-    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
-    endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
-    source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
-    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,
-    transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId, snapshot: KernelK, cpu_id: CpuId,
-    process_ptr: RwLockProcessPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState, cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
+    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_scheduler_ptr: RwLockSchedulerPtr, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
+    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType,
+    thread_id: LockThreadId, snapshot: KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState,
+    cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
 )
     requires
         ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
@@ -103,6 +101,13 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         pre.irt.iommu_roots() == snapshot.irt.iommu_roots(),
         pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
         pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
+        snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        snapshot.prc_mp.dom().contains(process_ptr) ==> snapshot.prc_mp.spec_index(process_ptr).locking_thread() is None,
+        snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
+        snapshot.ep_mp.dom().contains(endpoint_ptr) ==> snapshot.ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
+        snapshot.thr_mp.dom().contains(peer_thread_ptr) ==> snapshot.thr_mp.spec_index(peer_thread_ptr).locking_thread() is None,
+        transferred ==> snapshot.cpu_arr.spec_index(transfer_cpu_id).value.locking_thread() is None,
+        pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
@@ -113,6 +118,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         pre.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
         pre.thr_mp.spec_index(peer_thread_ptr).being_killed() == false,
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(current_thread_ptr).view().owning_container),
         pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container),
         edp_idx_valid(endpoint_index),
         pre.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int] == Some(endpoint_ptr),
@@ -126,9 +132,11 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         },
     ensures
         post.inv(),
-        kernel_ipc_rendezvous_fields(
-            &snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer,
-        ),
+        forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
+            pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread(),
+        forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
+            index_valid(NUM_CPUS, i) && (!transferred || i != transfer_cpu_id) ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i),
+        kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer),
 {
     reveal(ipc_cpu_rendezvous_transition);
     assert(post.subsystems_inv()) by {
@@ -142,9 +150,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
     ipc_cpu_rendezvous_eof_memory_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
     ipc_cpu_rendezvous_eof_process_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
     assert(post.inv()) by { reveal(cpu_array_wf); reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
-    assert(kernel_ipc_rendezvous_fields(
-        &snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer,
-    )) by {
+    assert(kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer)) by {
         running_thread_not_in_endpoint_queue(&pre, endpoint_ptr, current_thread_ptr);
         reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf);
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);

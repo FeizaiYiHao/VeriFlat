@@ -25,7 +25,7 @@ pub(super) open spec fn mmap_4k_installed_directory(level: MissingPageTableLevel
 pub(super) open spec fn mmap_4k_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
     match progress {
         Some(SyscallProgress::Mmap4k { range, mapped, directory: _ }) => Some(SyscallProgress::Mmap4k { range, mapped, directory: mmap_4k_installed_directory(level) }),
-        None => None,
+        _ => progress,
     }
 }
 
@@ -41,11 +41,13 @@ pub open spec fn mmap_4k_quota_thread_container_compatible(k: &KernelK, lctx: &L
     }
 }
 
-/// The cpu, the thread, and the pagetable of the thread's process are write-locked.
-pub open spec fn mmap_4k_locked(u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
+/// The cpu's running thread, the cpu, and the pagetable of the thread's process are write-locked.
+pub open spec fn mmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
+    let thread_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
     let process_ptr = u.thread_map.spec_index(thread_ptr).owning_proc;
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& u.cpu_array[cpu_id as int].lock_state is WriteLocked
+    &&& u.cpu_array[cpu_id as int].current_thread is Some
     &&& u.thread_map.dom().contains(thread_ptr)
     &&& u.thread_map.spec_index(thread_ptr).lock_state is WriteLocked
     &&& u.process_map.dom().contains(process_ptr)
@@ -53,19 +55,28 @@ pub open spec fn mmap_4k_locked(u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThr
     &&& u.process_map.spec_index(process_ptr).pagetable->Some_0.lock_state is WriteLocked
 }
 
-/// A directory step starts under the three mmap locks with quota for one directory page.
-pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
-    &&& mmap_4k_locked(old_u, cpu_id, thread_ptr)
-    &&& old_u.thread_map.spec_index(thread_ptr).syscall_progress is Some
-    &&& old_u.thread_map.spec_index(thread_ptr).quota_4k >= 1
+/// A directory step starts under the three mmap locks, before the recorded range is fully mapped,
+/// with quota for one directory page.
+#[verifier::opaque]
+pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    &&& mmap_4k_locked(old_u, cpu_id)
+    &&& thread.syscall_progress is Some
+    &&& progress is Mmap4k
+    &&& progress->Mmap4k_mapped < progress->Mmap4k_range.len
+    &&& thread.quota_4k >= 1
 }
 
 /// A directory page consumes one 4K quota and records a deeper installed level.
-pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, thread_ptr: RwLockThreadPtr) -> bool {
+#[verifier::opaque]
+pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let progress = thread.syscall_progress->Some_0;
     let new_progress = new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0;
     &&& new_u.thread_map.spec_index(thread_ptr).syscall_progress is Some
+    &&& new_progress is Mmap4k
     &&& new_progress->Mmap4k_range == progress->Mmap4k_range
     &&& new_progress->Mmap4k_mapped == progress->Mmap4k_mapped
     &&& mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(new_progress->Mmap4k_directory)

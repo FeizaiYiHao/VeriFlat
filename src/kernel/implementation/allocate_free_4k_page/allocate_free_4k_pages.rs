@@ -9,11 +9,7 @@ pub open spec fn page_ptrs_to_indices(pages: Seq<PagePtr>) -> Set<PageIndex> {
 }
 
 pub open spec fn allocated_4k_page_lock_perms_wf(
-    perms: Map<PagePtr, LockPerm>,
-    krnl: &KernelK,
-    lctx: &LocalContext,
-    thread_ptr: RwLockThreadPtr,
-    container_ptr: RwLockContainerPtr,
+    perms: Map<PagePtr, LockPerm>, krnl: &KernelK, lctx: &LocalContext, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
 ) -> bool {
     forall|page_ptr: PagePtr|
         #![trigger perms.dom().contains(page_ptr)]
@@ -29,13 +25,8 @@ pub open spec fn allocated_4k_page_lock_perms_wf(
 }
 
 pub fn allocate_free_4k_pages<const N: usize>(
-    krnl: &mut KernelK,
-    thread_ptr: RwLockThreadPtr,
-    container_ptr: RwLockContainerPtr,
-    cpu_id: CpuId,
-    Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>,
-    Tracked(thread_lock_perm): Tracked<&LockPerm>,
+    krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>,
+    Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (ArrayVec<PagePtr, N>, Tracked<Map<PagePtr, LockPerm>>))
     requires
         old(krnl).inv(),
@@ -59,7 +50,10 @@ pub fn allocate_free_4k_pages<const N: usize>(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
     ensures
-        forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        final(steps).view() == if N == 0 { old(steps).view() }
+            else { record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))) },
+        forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
             old(lctx).pagetable_lock_map().dom().contains(pt)
             && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
             ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -125,6 +119,8 @@ pub fn allocate_free_4k_pages<const N: usize>(
         final(krnl).iommu_tlb.view() == final(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        final(krnl).ctn_mp.dom().contains(container_ptr),
+        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
@@ -144,9 +140,13 @@ pub fn allocate_free_4k_pages<const N: usize>(
         assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())) by { vstd::set::axiom_set_ext_equal(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())); };
     }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+    assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
     while i < N
         invariant
-            forall|pt: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(pt)]
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
+            i == 0 ==> *krnl == *old(krnl) && steps.view() == old(steps).view() && steps.snapshot_u() == old(steps).snapshot_u(),
+            i > 0 ==> steps.view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
+            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt)
                 && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
@@ -218,6 +218,8 @@ pub fn allocate_free_4k_pages<const N: usize>(
             krnl.iommu_tlb.view() == steps.snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
             held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
+            krnl.ctn_mp.dom().contains(container_ptr),
+            krnl.ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
             held_endpoints_unchanged(old(krnl).ep_mp, krnl.ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, krnl.sched_mp, old(lctx)),
@@ -237,7 +239,11 @@ pub fn allocate_free_4k_pages<const N: usize>(
         proof {
             assert(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr)))) by {
                 seq_push_lemma::<PagePtr>();
-                assert_sets_equal!(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr))), page_index => {  broadcast use Seq::lemma_push_map_commute; pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set_ensures(); pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).push(page_ptr2page_index(page_ptr)).to_set_ensures(); });
+                assert_sets_equal!(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(pages.view().push(page_ptr))), page_index => {
+                    broadcast use Seq::lemma_push_map_commute;
+                    pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set_ensures();
+                    pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).push(page_ptr2page_index(page_ptr)).to_set_ensures();
+                });
             };
             assert(!pages.view().contains(page_ptr)) by { pages.view().to_set_ensures(); };
             assert(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == pages.view().push(page_ptr).to_set()) by {

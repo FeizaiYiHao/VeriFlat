@@ -205,6 +205,8 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         endpoint_node_perm.view().addr() == old(thread_map).spec_index(thread_ptr).view().endpoint_linkedlist_node.addr(),
         endpoint_node_perm.view().value().view() == thread_ptr,
     ensures
+        final(thread_map).spec_index(thread_ptr).view().error_code == old(thread_map).spec_index(thread_ptr).view().error_code,
+        final(thread_map).spec_index(thread_ptr).view().trap_frame == old(thread_map).spec_index(thread_ptr).view().trap_frame,
         thread_perms_wf(*final(thread_map)),
         final(thread_map).typed_lock_map_aligned(
             lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
@@ -254,6 +256,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
     ensures
+        final(thread_map).spec_index(thread_ptr).view().trap_frame == old(thread_map).spec_index(thread_ptr).view().trap_frame,
         thread_perms_wf(*final(thread_map)),
         final(thread_map).typed_lock_map_aligned(
             lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {

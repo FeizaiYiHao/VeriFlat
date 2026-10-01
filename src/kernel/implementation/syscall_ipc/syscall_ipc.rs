@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_dispatch::syscall_ipc_ordinary;
 use super::syscall_ipc_spec::*;
+use super::syscall_ipc_trace::*;
 verus! {
     pub fn syscall_send_empty(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
@@ -25,6 +26,17 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::SENDING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::SENDING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
@@ -44,11 +56,9 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(IPCPayLoad::Empty, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, IPCPayLoad::Empty, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
             },
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
     {
@@ -78,6 +88,11 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::SENDING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success ==> final(steps).nonlock_view().len() == 1,
@@ -105,11 +120,9 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(IPCPayLoad::Empty, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, IPCPayLoad::Empty, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
             },
             ret is Success || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
     {
@@ -143,6 +156,17 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::RECEIVING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::RECEIVING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
@@ -162,11 +186,9 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(IPCPayLoad::Empty, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, IPCPayLoad::Empty, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
             },
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
     {
@@ -196,6 +218,11 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::RECEIVING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success ==> final(steps).nonlock_view().len() == 1,
@@ -223,11 +250,9 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(IPCPayLoad::Empty, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, IPCPayLoad::Empty, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
             },
             ret is Success || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
     {
@@ -262,6 +287,17 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success ==> final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off && final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
@@ -282,11 +318,9 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id })
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id })
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id })
             },
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff,
     {
@@ -318,6 +352,17 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle || ret is SuccessUsize ==> final(steps).nonlock_view().len() == 1,
@@ -337,11 +382,9 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING)
-                &&& ipc_rendezvous_step(
-                    step.old_u, step.new_u, cpu_id, endpoint_index, ipc_peer_result(IPCPayLoad::ReceiveCpu, ret),
-                    ipc_cpu_transfer(step.old_u, cpu_id, endpoint_index, IPCPayLoad::ReceiveCpu, ret),
-                )
+                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu)
+                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu)
+                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu)
             },
             ret is SuccessUsize || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff,
     {
@@ -366,12 +409,23 @@ verus! {
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_endpoint_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::SENDING, source_endpoint_index, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::SENDING, IPCPayLoad::Endpoint { endpoint_index: source_endpoint_index }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
@@ -403,12 +457,23 @@ verus! {
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_endpoint_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::RECEIVING, target_endpoint_index, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::RECEIVING, IPCPayLoad::Endpoint { endpoint_index: target_endpoint_index }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
@@ -439,17 +504,29 @@ verus! {
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::SENDING, VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) },
+                *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::SENDING, IPCPayLoad::Pages { va_range: VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) } }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
-            ret is Success ==> range + 1 <= final(steps).nonlock_view().len() <= 4 * range + 1,
-            !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 1,
+            ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
+            !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
     {
         syscall_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, va, range, pt_regs)
@@ -471,17 +548,29 @@ verus! {
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                ThreadState::RECEIVING, VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) },
+                *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    ThreadState::RECEIVING, IPCPayLoad::Pages { va_range: VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) } }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
-            ret is Success ==> range + 1 <= final(steps).nonlock_view().len() <= 4 * range + 1,
-            !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 1,
+            ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
+            !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
     {
         syscall_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING, va, range, pt_regs)
@@ -504,17 +593,29 @@ verus! {
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
+            old(steps).view().len() <= final(steps).view().len(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+            ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                waiting_state, VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) },
+                *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
+            ret is CpuIdle ==> {
+                &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
+                &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state)
+                &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
+                    waiting_state, IPCPayLoad::Pages { va_range: VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) } }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
+            },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
-            ret is Success ==> range + 1 <= final(steps).nonlock_view().len() <= 4 * range + 1,
-            !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 1,
+            ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
+            !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
@@ -527,7 +628,10 @@ verus! {
                 enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+                steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                ipc_pages_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state,
+                    VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }, *old(pt_regs),
+                    ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::Error);
             }
             return RetValueType::Error;
         }
@@ -537,7 +641,10 @@ verus! {
                 enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+                steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                ipc_pages_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state,
+                    VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }, *old(pt_regs),
+                    ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::Error);
             }
             return RetValueType::Error;
         }

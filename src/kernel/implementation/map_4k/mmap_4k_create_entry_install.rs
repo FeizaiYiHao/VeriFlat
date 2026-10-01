@@ -74,6 +74,10 @@ pub(super) enum MissingPageTableLevel {
             },
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
+            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
+                old(lctx).pagetable_lock_map().dom().contains(pt)
+                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write, }),
@@ -212,7 +216,7 @@ pub(super) enum MissingPageTableLevel {
             lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index));
             assert(krnl.subsystems_inv()) by {
                 assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-                assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
+                assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
                 assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
                 assert(thread_perms_wf(krnl.thr_mp)) by {
                     reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);

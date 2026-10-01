@@ -26,6 +26,7 @@ impl KernelK {
                 typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
                 pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, final(self).pt_mp.spec_index(pagetable_ptr).view()),
+                final(self).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -61,6 +62,7 @@ impl KernelK {
             let ret = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
             proof {
                 assert(pagetable_tlb_entries_present(self.cpu_tlb, self.cpu_arr, self.pcid_needflush, pagetable_ptr, self.pt_mp.spec_index(pagetable_ptr).view())) by { reveal(tlb_wf_spec); };
+                assert(self.pt_mp.spec_index(pagetable_ptr).view().leaves_present()) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
                 assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp)) by { pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, pagetable_ptr); };
                 assert(self.subsystems_inv()) by {
                     lemma_pagetable_perms_wf_preserved_for_lock_op_forall();
@@ -112,8 +114,15 @@ impl KernelK {
                 forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < source_pagetable && held_pagetable < target_pagetable,
                 typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
+                old(self).pt_mp.spec_index(source_pagetable).locking_thread() is None,
+                old(self).pt_mp.spec_index(target_pagetable).locking_thread() is None,
+                final(self).pt_mp.spec_index(source_pagetable).view() == old(self).pt_mp.spec_index(source_pagetable).view(),
+                final(self).pt_mp.spec_index(target_pagetable).view() == old(self).pt_mp.spec_index(target_pagetable).view(),
+                forall|p: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(p)] old(self).pt_mp.dom().contains(p) && p != source_pagetable && p != target_pagetable ==> final(self).pt_mp.spec_index(p) == old(self).pt_mp.spec_index(p),
                 pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, source_pagetable, final(self).pt_mp.spec_index(source_pagetable).view()),
                 pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, target_pagetable, final(self).pt_mp.spec_index(target_pagetable).view()),
+                final(self).pt_mp.spec_index(source_pagetable).view().leaves_present(),
+                final(self).pt_mp.spec_index(target_pagetable).view().leaves_present(),
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 final(self).inv(),
                 kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -184,6 +193,7 @@ impl KernelK {
                 old(self).inv(),
                 old(self).pt_mp.dom().contains(pagetable_ptr),
                 pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pagetable_ptr, old(self).pt_mp.spec_index(pagetable_ptr).view()),
+                old(self).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
                 typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
                 lock_perm.view().state() is WriteLock,
                 lock_perm.view().thread_id() == old(lctx).thread_id(),

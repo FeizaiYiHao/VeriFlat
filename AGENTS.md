@@ -89,6 +89,15 @@ they must point to these canonical sources instead of redefining their rules.
 - Delete dead private helpers after checking callers. Public syscalls and
   intended public primitives are not dead merely because they lack in-tree
   callers.
+- Speed matters. Outside the final cleanup/optimization stage (deletion tests,
+  style pass, performance A/B), do not run verification repeatedly: accumulate
+  a large batch of related edits before each run, fix every reported error
+  together before the next run, and verify the smallest package set covering
+  the batch.
+- Development speed is critical. Except for the final report, do not rerun
+  verification to measure time: once a run is green, continue, and judge cost
+  from the rlimit that run already reported. Timing runs and interleaved A/B
+  comparisons happen only once, for the final report.
 - There is no fixed acceptable wall-time regression. Follow the build skill's
   measurement rules and bring a persistent slowdown beyond observed variation
   to the user with the concrete simplification and measurements.

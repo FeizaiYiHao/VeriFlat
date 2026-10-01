@@ -10,7 +10,6 @@ pub struct Container {
     pub children: LinkedList<RwLockContainerPtr, 233>,
 
     pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed
-    pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
 }
@@ -29,6 +28,7 @@ pub struct ContainerRO {
 pub struct ContainerGhost {
     pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,
+    pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
 }
@@ -47,6 +47,7 @@ pub ghost struct ContainerU {
     pub depth: usize,
     pub scheduler: Seq<RwLockThreadPtr>,
     pub cpu_set: RwLockCpuSetPtr,
+    pub cpu_set_lock: LockStateU,
     pub free_pcids: Set<Pcid>,
     pub quota_4k: usize,
     pub quota_2m: usize,
@@ -77,16 +78,11 @@ impl Container{
             ret.children.map()
                 == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
-            ret.owned_processes.view()
-                =~= set![root_process],
             ret.owned_endpoints.view()
                 =~= set![root_endpoint],
             ret.owned_pages == owned_pages,
     {
         let mut ret = Self::new_staged(container_ptr, root_process, 0);
-        ret.owned_processes = Ghost(
-            Set::empty().insert(root_process),
-        );
         ret.owned_endpoints = Ghost(
             Set::empty().insert(root_endpoint),
         );
@@ -101,7 +97,6 @@ impl Container{
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
-            ret.owned_processes.view() == Set::<RwLockProcessPtr>::empty(),
             ret.owned_endpoints.view() == Set::<RwLockEndpointPtr>::empty(),
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
@@ -109,39 +104,13 @@ impl Container{
             parent_linkedlist_node: ExternalNode::new(container_ptr),
             children: LinkedList::new(Some(depth), Some(container_ptr)),
             root_process,
-            owned_processes: Ghost(Set::empty()),
             owned_endpoints: Ghost(Set::empty()),
             owned_pages: Ghost(Set::empty()),
         }
     }
 
-    pub fn add_owned_process(&mut self, process_ptr: RwLockProcessPtr)
-        requires
-            old(self).inv(),
-            old(self).root_process_in_processes(),
-        ensures
-            final(self).inv(),
-            *final(self) == (Container {
-                owned_processes: final(self).owned_processes,
-                ..*old(self)
-            }),
-            final(self).owned_processes.view()
-                == old(self).owned_processes.view().insert(process_ptr),
-    {
-        self.owned_processes =
-            Ghost(self.owned_processes.view().insert(process_ptr));
-    }
-
     pub open spec fn wf(&self) -> bool {
-        &&&
         self.children.inv()
-        &&&
-        (self.owned_processes.view().is_empty() || self.root_process_in_processes())
-    }
-
-    pub open spec fn root_process_in_processes(&self) -> bool {
-        &&&
-        self.owned_processes.view().contains(self.root_process)
     }
 }
 

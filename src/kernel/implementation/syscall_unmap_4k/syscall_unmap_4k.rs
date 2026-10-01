@@ -1,7 +1,13 @@
 use vstd::prelude::*;
 use crate::*;
+use super::syscall_unmap_4k_spec::*;
+use super::syscall_unmap_4k_trace::*;
 
 verus! {
+/// Unmap 4K pages from the running process. Success records an entering step that write-locks the
+/// cpu, container, process, pagetable, and thread; one step per cleared leaf, flushed cpu TLB,
+/// recorded flush, or quota refund; and an exiting step that unlocks all five. Failure records no
+/// step.
 pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -13,6 +19,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
+        old(steps).view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
         final(krnl).inv(),
@@ -25,8 +32,10 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         ret is Success || ret is Error || ret is ErrorContainerKilled || ret is ErrorProcessKilled || ret is ErrorThreadKilled,
-        ret is Success ==> range <= final(steps).nonlock_view().len() <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 1,
+        ret is Success ==> range + 3 <= final(steps).nonlock_view().len() <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4,
         !(ret is Success) ==> final(steps).nonlock_view().len() == 0 && kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
+        !(ret is Success) ==> final(steps).view().len() == 0,
+        ret is Success ==> unmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range),
         ret is Success ==> {
             let process = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap();
             let pt = old(krnl).prc_mp.spec_index(process).view().pagetable;
@@ -39,13 +48,12 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         },
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     if range == 0 || range > usize::MAX / 4096usize || !va_4k_valid(va) {
         proof {
             enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
         }
         return RetValueType::Error;
     }
@@ -55,7 +63,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
         }
         return RetValueType::Error;
     }
@@ -68,7 +76,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
         &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().owning_container == cpu.owning_container()
-        &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view().owned_processes.view().contains(cpu.current_process().unwrap())
+        &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_ghost().owned_processes.view().contains(cpu.current_process().unwrap())
         &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
         &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
         &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
@@ -85,7 +93,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
         }
         return RetValueType::ErrorContainerKilled;
     }
@@ -97,7 +105,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
         }
         return RetValueType::ErrorProcessKilled;
     }
@@ -110,7 +118,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
         }
         return RetValueType::ErrorThreadKilled;
     }
@@ -132,32 +140,60 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     }) by { reveal(process_thread_wf); reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_pcid_allocator_wf); reveal(pagetable_perms_wf); reveal(PageTable::table_pages_wf); };
     assert(old(krnl).pt_mp.dom().contains(pagetable) && pagetable == old(krnl).prc_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view().pagetable) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
-    assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); };
+    assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
-    let result = if pt.kernel_l4_end <= indices.0 && share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    proof { assert(va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })) by { va_range.va_range_lemma(); }; }
+    if pt.kernel_l4_end <= indices.0 && share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+        krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Unmap4k { range: va_range, unmapped: 0, flushed: false })), Tracked(&*lctx), Tracked(&thread_perm));
+        proof {
+            use_type_invariant(&*steps);
+            let ghost entered_k = *krnl;
+            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+            krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+            assert(unmap_4k_trace_after_enter(steps.view(), cpu_id, va_range)) by {
+                kernel_thread_context_lock_states_and_progress_changed_implies_u_step(&*old(krnl), &entered_k, old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
+                kernel_l4_end_projection_at(&*old(krnl), pagetable);
+                unmap_4k_enter_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, container_ptr, process_ptr, thread_ptr, va_range);
+                unmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, va_range);
+            };
+        }
+        let ghost entered = steps.view();
         unmap_4k_range(krnl, &va_range, pagetable, thread_ptr, cpu_id, cr3, pcid, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&thread_perm), Tracked(&pagetable_perm));
+        let ghost range_steps = steps.view();
+        let ghost exit_start = *krnl;
+        let ghost exit_lctx = *lctx;
+        proof { assert(unmap_4k_trace_after_range(range_steps, cpu_id, va_range)) by { unmap_4k_trace_range_steps(&*steps, entered, cpu_id, va_range); }; }
         assert(va_range.view() =~= Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) by { va_range.va_range_lemma(); };
-        RetValueType::Success
-    } else {
-        RetValueType::Error
-    };
+        krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
+        krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
+        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
+        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
+        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+        proof {
+            assert(unmap_4k_exit_step_pre(kernel_k_to_kernel_u(exit_start), cpu_id) && unmap_4k_exit_step(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
+                kernel_thread_context_lock_states_and_progress_changed_implies_u_step(&exit_start, &*krnl, &exit_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
+                unmap_4k_exit_step_from_u(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, process_ptr, thread_ptr);
+            };
+            use_type_invariant(&*steps);
+            steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
+            assert(unmap_4k_syscall_trace(steps.view(), cpu_id, va, range)) by {
+                unmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(*krnl), cpu_id, va, range);
+            };
+        }
+        return RetValueType::Success;
+    }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by {
-            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-            reveal(kernel_pagetable_nonlock_fields_unchanged);
-        };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+        steps.end_kernel_step_unchanged(&*krnl, &*lctx);
     }
-    result
+    RetValueType::Error
 }
 }

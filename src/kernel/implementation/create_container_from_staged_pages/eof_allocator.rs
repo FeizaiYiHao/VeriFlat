@@ -221,7 +221,7 @@ pub(super) proof fn eof_allocator_quota_wf(
         container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
 {
     reveal(publish_staged_container_root_kernel_state_framing);
-    let child_processes = post.ctn_mp.spec_index(container_page).view().owned_processes.view();
+    let child_processes = post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view();
     let child_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view();
     let child_indirect_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view();
     let child_depth = post.ctn_mp.spec_index(container_page).view_rodata().view().depth as int;

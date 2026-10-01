@@ -39,6 +39,13 @@
 
 # Contracts and concrete results
 
+- Step-wrapper preconditions accept only concrete K-layer facts: kernel state,
+  local context, typed lock maps, and K-layer operation relations. Do not require
+  U projections, U field facts, or U step/trace predicates, directly or through
+  a helper. Wrapper bodies and postconditions may derive generic K-to-U facts
+  and record traces, but must not depend on syscall-specific step predicates.
+  Keep generic K-to-U lemmas in `kernel_step_wrappers.rs`; derive each syscall's
+  step predicates in its own layer.
 - Describe an operation through its concrete inputs and results. Constructors
   may expose the exact value they already construct, including a deterministic
   ghost sequence, so consumers can use that fact across crate boundaries.

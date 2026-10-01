@@ -6,9 +6,7 @@ verus! {
 /// Transfers one staged 4K page from the parent container's ownership set to
 /// the child container's. Only that page entry and the two containers change.
 pub open spec fn staged_4k_page_container_transfer_transition(
-    pre: KernelK, post: KernelK, page_ptr: PagePtr,
-    staging_thread_ptr: RwLockThreadPtr,
-    parent: RwLockContainerPtr, child: RwLockContainerPtr,
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr,
 ) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
     let old_page = pre.pg_arr.spec_index(page_index).view();
@@ -69,9 +67,7 @@ pub open spec fn staged_4k_page_container_transfer_transition(
 
 #[verifier::spinoff_prover]
 proof fn staged_4k_page_container_transfer_eof_process_management_inv(
-    pre: KernelK, post: KernelK, page_ptr: PagePtr,
-    staging_thread_ptr: RwLockThreadPtr,
-    parent: RwLockContainerPtr, child: RwLockContainerPtr,
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr,
 )
     requires
         pre.inv(),
@@ -79,15 +75,14 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
+    hide(Seq::contains);
     reveal(staged_4k_page_container_transfer_transition);
     assert(post.process_management_inv()) by {
         assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by {
-            reveal(container_perms_wf); reveal(LinkedList::wf_value_list);
-            reveal(container_root_wf); reveal(container_children_parent_wf); reveal(containers_linkedlist_wf);
-            reveal(container_children_depth_wf); reveal(container_subtree_set_wf);
-            reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
+            reveal(container_perms_wf); reveal(LinkedList::wf_value_list); reveal(container_root_wf); reveal(container_children_parent_wf); reveal(containers_linkedlist_wf);
+            reveal(container_children_depth_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
         };
-        assert(post.ctn_mp.spec_index(post.rt_ctn).view().root_process_in_processes()) by { reveal(container_root_wf); };
+        assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
         assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
         assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
@@ -103,9 +98,7 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(
 }
 
 proof fn staged_4k_page_container_transfer_eof(
-    pre: KernelK, post: KernelK, page_ptr: PagePtr,
-    staging_thread_ptr: RwLockThreadPtr,
-    parent: RwLockContainerPtr, child: RwLockContainerPtr,
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr,
 )
     requires
         pre.inv(),
@@ -133,8 +126,8 @@ proof fn staged_4k_page_container_transfer_eof(
             },
         post.ctn_mp.spec_index(parent).view().owned_pages.view() == pre.ctn_mp.spec_index(parent).view().owned_pages.view().remove(page_ptr),
         post.ctn_mp.spec_index(child).view().owned_pages.view() == pre.ctn_mp.spec_index(child).view().owned_pages.view().insert(page_ptr),
-        post.ctn_mp.spec_index(parent).view().owned_processes == pre.ctn_mp.spec_index(parent).view().owned_processes,
-        post.ctn_mp.spec_index(child).view().owned_processes == pre.ctn_mp.spec_index(child).view().owned_processes,
+        post.ctn_mp.spec_index(parent).view_ghost().owned_processes == pre.ctn_mp.spec_index(parent).view_ghost().owned_processes,
+        post.ctn_mp.spec_index(child).view_ghost().owned_processes == pre.ctn_mp.spec_index(child).view_ghost().owned_processes,
         post.ctn_mp.spec_index(child).view_rodata() == pre.ctn_mp.spec_index(child).view_rodata(),
         post.ctn_mp.spec_index(child).view_rodata().view().parent == Some(parent),
         post.ctn_mp.spec_index(parent).being_killed() == pre.ctn_mp.spec_index(parent).being_killed(),
@@ -161,8 +154,7 @@ proof fn staged_4k_page_container_transfer_eof(
         };
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by {
             reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(container_page_owner_wf);
-            reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf);
-            reveal(mapped_1g_page_pagetable_wf); reveal(process_pagetable_match);
+            reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(process_pagetable_match);
         };
         assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
         assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
@@ -193,8 +185,7 @@ proof fn staged_4k_page_container_transfer_eof(
     staged_4k_page_container_transfer_eof_process_management_inv(pre, post, page_ptr, staging_thread_ptr, parent, child);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match);
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        reveal(container_cpu_wf);
+        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf);
     };
     assert(iommu_root_table_process_wf(&post.irt, post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(&post.irt, post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
@@ -204,9 +195,8 @@ proof fn staged_4k_page_container_transfer_eof(
 /// container. Only the page owner and the two `owned_pages` sets change.
 #[verifier::spinoff_prover]
 pub fn transfer_staged_4k_page_to_child_container(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, page_ptr: PagePtr,
-    staging_thread_ptr: RwLockThreadPtr, parent_container_ptr: RwLockContainerPtr,
-    child_container_ptr: RwLockContainerPtr, Tracked(page_lock_perm): Tracked<&LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr,
+    parent_container_ptr: RwLockContainerPtr, child_container_ptr: RwLockContainerPtr, Tracked(page_lock_perm): Tracked<&LockPerm>,
     Tracked(parent_container_lock_perm): Tracked<&LockPerm>, Tracked(child_container_lock_perm): Tracked<&LockPerm>,
 )
     requires
@@ -251,21 +241,20 @@ pub fn transfer_staged_4k_page_to_child_container(
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
         forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
             old(krnl).ctn_mp.dom().contains(c) && c != parent_container_ptr && c != child_container_ptr ==> final(krnl).ctn_mp.spec_index(c) == old(krnl).ctn_mp.spec_index(c),
-        forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
-            c == parent_container_ptr || c == child_container_ptr ==> {
-                &&& final(krnl).ctn_mp.spec_index(c).is_init() == old(krnl).ctn_mp.spec_index(c).is_init()
-                &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-                &&& final(krnl).ctn_mp.spec_index(c).view_ghost() == old(krnl).ctn_mp.spec_index(c).view_ghost()
-                &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
-                &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
-                &&& final(krnl).ctn_mp.spec_index(c).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(c).view().owned_pages, ..old(krnl).ctn_mp.spec_index(c).view() })
-            },
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).is_init() == old(krnl).ctn_mp.spec_index(parent_container_ptr).is_init(),
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata(),
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(parent_container_ptr).view_ghost(),
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread(),
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
+        final(krnl).ctn_mp.spec_index(parent_container_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(parent_container_ptr).view() }),
+        final(krnl).ctn_mp.spec_index(child_container_ptr).is_init() == old(krnl).ctn_mp.spec_index(child_container_ptr).is_init(),
+        final(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata(),
+        final(krnl).ctn_mp.spec_index(child_container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(child_container_ptr).view_ghost(),
+        final(krnl).ctn_mp.spec_index(child_container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(child_container_ptr).locking_thread(),
+        final(krnl).ctn_mp.spec_index(child_container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(child_container_ptr).being_killed(),
+        final(krnl).ctn_mp.spec_index(child_container_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(child_container_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(child_container_ptr).view() }),
         final(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view() =~= old(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().remove(page_ptr),
-        final(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_processes == old(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_processes,
         final(krnl).ctn_mp.spec_index(child_container_ptr).view().owned_pages.view() =~= old(krnl).ctn_mp.spec_index(child_container_ptr).view().owned_pages.view().insert(page_ptr),
-        final(krnl).ctn_mp.spec_index(child_container_ptr).view().owned_processes == old(krnl).ctn_mp.spec_index(child_container_ptr).view().owned_processes,
-        final(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().scheduler == old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().scheduler,
-        final(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().allocator_ptr_4k == old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().allocator_ptr_4k,
         typed_lock_map_contains_mode(final(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !final(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
         parent_container_lock_perm.lock_id() == final(krnl).ctn_mp.spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
