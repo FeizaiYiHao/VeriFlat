@@ -11,7 +11,8 @@ verus! {
     /// Map writable, executable anonymous 4K pages into the running process.
     /// Success records an entering step that write-locks the cpu, thread, and
     /// pagetable, one step per installed directory page or published leaf, and
-    /// an exiting step that unlocks all three. Failure records no step.
+    /// an exiting step that unlocks all three. Failure records no step. The result is
+    /// `mmap_4k_syscall_result` of the state at entry.
     #[verifier::spinoff_prover]
     pub fn syscall_mmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: RetValueType)
         requires
@@ -35,7 +36,7 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
-            ret is Success || ret is Error || ret is ErrorVaInUse || ret is ErrorNoQuota || ret is ErrorThreadKilled,
+            ret == mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range),
             ret is Success ==> range + 2 <= final(steps).nonlock_view().len() <= 4 * range + 2,
             !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
             !(ret is Success) ==> final(steps).view().len() == 0,
@@ -69,6 +70,7 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(cpu.owning_container())
             &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
             &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().owning_container == cpu.owning_container()
+            &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
             &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
             &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_ghost().owned_processes.view().contains(cpu.current_process().unwrap())
             &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
@@ -89,6 +91,7 @@ verus! {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                assert(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorThreadKilled) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); };
             }
             return RetValueType::ErrorThreadKilled;
         }
@@ -109,12 +112,19 @@ verus! {
         }) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
 
         let result = if quota_4k < 4 * range {
+            proof { assert(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorNoQuota) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); }; }
             RetValueType::ErrorNoQuota
         } else {
             let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
             let precheck = mmap_4k_precheck(krnl, &va_range, pagetable_ptr, Tracked(&*lctx), Tracked(&pagetable_lock_perm));
             let result = match precheck {
                 Mmap4kPrecheck::Ready => {
+                    proof {
+                        assert(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is Success) by {
+                            kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_l4_end_projection_at(&*old(krnl), pagetable_ptr);
+                            kernel_pagetable_mappings_projection_at(&*old(krnl), process_ptr);
+                        };
+                    }
                     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Mmap4k { range: va_range, mapped: 0, directory: Mmap4kDirectory::None })), Tracked(&*lctx), Tracked(&thread_lock_perm));
                     proof {
                         use_type_invariant(&*steps);
@@ -160,8 +170,23 @@ verus! {
                     }
                     return RetValueType::Success;
                 },
-                Mmap4kPrecheck::Invalid => RetValueType::Error,
-                Mmap4kPrecheck::InUse => RetValueType::ErrorVaInUse,
+                Mmap4kPrecheck::Invalid => {
+                    proof {
+                        assert(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is Error) by {
+                            kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_l4_end_projection_at(&*old(krnl), pagetable_ptr);
+                        };
+                    }
+                    RetValueType::Error
+                },
+                Mmap4kPrecheck::InUse => {
+                    proof {
+                        assert(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorVaInUse) by {
+                            kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_l4_end_projection_at(&*old(krnl), pagetable_ptr);
+                            kernel_pagetable_mappings_projection_at(&*old(krnl), process_ptr);
+                        };
+                    }
+                    RetValueType::ErrorVaInUse
+                },
             };
             krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
             result

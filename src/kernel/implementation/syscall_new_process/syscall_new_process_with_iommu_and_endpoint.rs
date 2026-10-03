@@ -66,7 +66,8 @@ pub fn syscall_new_process_with_iommu_and_endpoint(
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index)
         },
-        ret is SuccessThreeUsize || ret is Error || ret is ErrorNoPcid || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
+        (ret is SuccessThreeUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), true) is Success),
+        !(ret is SuccessThreeUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), true),
 {
     syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, Some(endpoint_index), true, initial_regs)
 }

@@ -108,7 +108,7 @@ pub fn remove_4k_mapping_without_free(krnl: &mut KernelK, pagetable: RwLockPageT
                 thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
             };
             assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(old(krnl).ep_mp, krnl.ep_mp, old(krnl).pg_arr, krnl.pg_arr); };
-            assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
+            assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr); };
             assert(mapped_4k_page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(page_array_wf); reveal(pagetable_perms_wf); page_ptr_valid_imply_page_index_valid(); };
             assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(page_array_wf); };
             assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };

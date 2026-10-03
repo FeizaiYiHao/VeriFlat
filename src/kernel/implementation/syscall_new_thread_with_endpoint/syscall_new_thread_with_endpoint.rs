@@ -5,7 +5,8 @@ use super::super::syscall_new_thread::syscall_new_thread_trace::*;
 use super::syscall_new_thread_with_endpoint_helpers::add_new_thread_with_endpoint;
 
 verus! {
-        /// Create a thread sharing the running thread's `endpoint_index`.
+        /// Create a thread sharing the running thread's `endpoint_index`. The result is
+        /// `new_thread_syscall_result` of the state at entry.
         pub fn syscall_new_thread_with_endpoint(
             krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId, endpoint_index: EndpointIdx, initial_regs: &Registers,
@@ -32,7 +33,7 @@ verus! {
                 final(lctx).no_locks_held(),
                 !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
                 ret is Success ==> final(steps).nonlock_view().len() == 2,
-                ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota || ret is Error,
+                ret == new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)),
         {
             proof { use_type_invariant(&*steps); kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof {
@@ -74,6 +75,11 @@ verus! {
                 proof {
                     new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
                 }
+                proof {
+                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorProcessKilled) by {
+                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
+                    };
+                }
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
@@ -102,6 +108,11 @@ verus! {
                 proof {
                     new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
                 }
+                proof {
+                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorThreadKilled) by {
+                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
+                    };
+                }
                 return RetValueType::ErrorThreadKilled;
             }
             let Tracked(current_thread_lock_perm) = thread_res.unwrap();
@@ -124,6 +135,11 @@ verus! {
                 }
                 proof {
                     new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
+                }
+                proof {
+                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorNoQuota) by {
+                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
+                    };
                 }
                 return RetValueType::ErrorNoQuota;
             }
@@ -148,11 +164,21 @@ verus! {
                     proof {
                         new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
                     }
+                    proof {
+                        assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Error) by {
+                            kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
+                        };
+                    }
                     return RetValueType::Error;
                 },
             };
 
             proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { reveal(thread_endpoint_ref_counter_wf); }; }
+            proof {
+                assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Success) by {
+                    kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
+                };
+            }
             let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
 
             assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); };

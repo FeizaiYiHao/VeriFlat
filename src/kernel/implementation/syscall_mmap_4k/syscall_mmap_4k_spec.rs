@@ -20,6 +20,32 @@ pub open spec fn mmap_4k_syscall_va_range(va: VAddr, len: usize) -> VaRange4K {
     VaRange4K { start: va, len, view: Ghost(Seq::new(len as nat, |i: int| spec_va_add_range(va, i as usize))) }
 }
 
+/// The result of `syscall_mmap_4k` from the state at entry, in the implementation's check order:
+/// malformed arguments, a killed caller, less than four 4K quota per page, a range below the first user
+/// L4 index, and then either a 4K leaf in the range's index interval or a range page covered by a 4K,
+/// 2M, or 1G leaf.
+pub open spec fn mmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
+    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let pagetable = pre.process_map[thread.owning_proc].pagetable->Some_0;
+    let va_range = mmap_4k_syscall_va_range(va, range);
+    let start = spec_va2index(va);
+    let end = spec_va2index(va_range.view()[range - 1]);
+    if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) { RetValueType::Error }
+    else if thread.killed { RetValueType::ErrorThreadKilled }
+    else if thread.quota_4k < 4 * range { RetValueType::ErrorNoQuota }
+    else if !user_va_range(pre, va_range) { RetValueType::Error }
+    else if (forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger pagetable.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+        pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(start, (l4i, l3i, l2i, l1i)) && spec_l4_index_path_le((l4i, l3i, l2i, l1i), end)
+        ==> !pagetable.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))))
+        && (forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> {
+            let idx = spec_va2index(va_range.view()[j]);
+            &&& !pagetable.mapping_1g.dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
+            &&& !pagetable.mapping_2m.dom().contains(spec_index2va((idx.0, idx.1, idx.2, 0)))
+            &&& !pagetable.mapping_4k.dom().contains(va_range.view()[j])
+        }) { RetValueType::Success }
+    else { RetValueType::ErrorVaInUse }
+}
+
 /// Publishing a leaf moves mmap progress to the next page with no directory installed.
 pub open spec fn mmap_4k_progress_after_leaf(progress: Option<SyscallProgress>) -> Option<SyscallProgress> {
     match progress {
@@ -107,6 +133,9 @@ pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     &&& entry.write
     &&& !entry.execute_disable
     &&& entry.owning_container.view() == thread.owning_container
+    &&& forall|p: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[p].pagetable->Some_0.mapping_4k[v]]
+        old_u.process_map.dom().contains(p) && old_u.process_map[p].pagetable is Some && old_u.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
+        ==> old_u.process_map[p].pagetable->Some_0.mapping_4k[v].addr != entry.addr
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_4k_progress_after_leaf(thread.syscall_progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {

@@ -13,7 +13,7 @@ members = [
     "crates/veriflat_syscall_ipc",
     "crates/veriflat_syscall_schedule",
 ]
-exclude = ["verus"]
+exclude = ["verus", "noninterference"]
 
 [package]
 name = "VeriFlat"

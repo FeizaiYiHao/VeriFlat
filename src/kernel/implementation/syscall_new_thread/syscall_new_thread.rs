@@ -5,7 +5,8 @@ use super::syscall_new_thread_spec::*;
 use super::syscall_new_thread_trace::*;
 
 verus! {
-        /// Create a thread in the process running on `cpu_id`.
+        /// Create a thread in the process running on `cpu_id`. The result is `new_thread_syscall_result`
+        /// of the state at entry.
         pub fn syscall_new_thread(
             krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
             cpu_id: CpuId, initial_regs: &Registers,
@@ -31,7 +32,7 @@ verus! {
                 final(lctx).no_locks_held(),
                 !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
                 ret is Success ==> final(steps).nonlock_view().len() == 2,
-                ret is Success || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
+                ret == new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, None),
         {
             proof {
                 use_type_invariant(&*steps);
@@ -72,6 +73,11 @@ verus! {
                 proof {
                     new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
                 }
+                proof {
+                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, None) is ErrorProcessKilled) by {
+                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
+                    };
+                }
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
@@ -94,6 +100,7 @@ verus! {
                 proof {
                     new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
                 }
+                proof { assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, None) is ErrorThreadKilled) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); }; }
                 return RetValueType::ErrorThreadKilled;
             }
             let Tracked(current_thread_lock_perm) = thread_res.unwrap();
@@ -113,10 +120,12 @@ verus! {
                 proof {
                     new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
                 }
+                proof { assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, None) is ErrorNoQuota) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); }; }
                 return RetValueType::ErrorNoQuota;
             }
 
             assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); };
+            assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, None) is Success) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); };
             let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

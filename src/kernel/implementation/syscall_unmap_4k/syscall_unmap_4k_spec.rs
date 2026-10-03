@@ -2,6 +2,22 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// The result of `syscall_unmap_4k` from the state at entry, in the implementation's check order:
+/// malformed arguments, a killed container, process, or caller, and then a range below the first user
+/// L4 index or with a page that has no present 4K leaf.
+pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
+    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
+    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+    if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) { RetValueType::Error }
+    else if pre.container_map[thread.owning_container].killed { RetValueType::ErrorContainerKilled }
+    else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
+    else if thread.killed { RetValueType::ErrorThreadKilled }
+    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present {
+        RetValueType::Success
+    } else { RetValueType::Error }
+}
+
 /// The cpu runs a live thread of a live process and container with no multi-step syscall in
 /// progress; the cpu, the thread, its process, pagetable, and container are unlocked; and every VA
 /// of the valid, non-empty user range is mapped.

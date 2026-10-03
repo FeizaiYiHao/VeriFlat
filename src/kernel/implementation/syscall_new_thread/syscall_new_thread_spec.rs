@@ -6,6 +6,19 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
+/// The result of `syscall_new_thread` and `syscall_new_thread_with_endpoint` from the state at entry,
+/// in the implementation's check order: a killed process or caller, a caller without 4K quota, and an
+/// empty shared descriptor.
+pub open spec fn new_thread_syscall_result(pre: KernelU, cpu_id: CpuId, endpoint_index: Option<EndpointIdx>) -> RetValueType {
+    let cpu = pre.cpu_array[cpu_id as int];
+    let thread = pre.thread_map[cpu.current_thread->Some_0];
+    if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
+    else if thread.killed { RetValueType::ErrorThreadKilled }
+    else if thread.quota_4k == 0 { RetValueType::ErrorNoQuota }
+    else if endpoint_index is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] is None { RetValueType::Error }
+    else { RetValueType::Success }
+}
+
 /// The cpu runs a live thread of a live process inside its container; the thread has no syscall in
 /// progress and one 4K quota to fund the new thread's page, and a present `endpoint_index` names a
 /// live descriptor. The cpu, the process, the thread, and that endpoint are unlocked.
@@ -66,8 +79,8 @@ pub open spec fn new_thread_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: C
     })
 }
 
-/// Finishing runs while the running thread records a thread creation and holds the cpu, its
-/// process, itself, and the recorded endpoint.
+/// Finishing runs while the running thread records a thread creation with a valid endpoint index and
+/// holds the cpu, its process, itself, and the recorded endpoint.
 #[verifier::opaque]
 pub open spec fn new_thread_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -85,7 +98,11 @@ pub open spec fn new_thread_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& thread.lock_state is WriteLocked
     &&& thread.syscall_progress is Some
     &&& thread.syscall_progress->Some_0 is NewThread
-    &&& (endpoint_index is Some ==> old_u.endpoint_map.dom().contains(endpoint_ptr) && old_u.endpoint_map.spec_index(endpoint_ptr).lock_state is WriteLocked)
+    &&& (endpoint_index is Some ==> {
+        &&& edp_idx_valid(endpoint_index->Some_0)
+        &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+        &&& old_u.endpoint_map.spec_index(endpoint_ptr).lock_state is WriteLocked
+    })
 }
 
 /// One 4K quota of the running thread funds a new scheduled thread of its process with the recorded

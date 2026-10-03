@@ -96,6 +96,7 @@ pub open spec fn kernel_process_nonlock_fields_unchanged(pre: ProcessLockedMap, 
             &&& post.spec_index(p).view_rodata().view().parent == pre.spec_index(p).view_rodata().view().parent
             &&& post.spec_index(p).view_rodata().view().depth == pre.spec_index(p).view_rodata().view().depth
             &&& post.spec_index(p).view_rodata().view().pcid == pre.spec_index(p).view_rodata().view().pcid
+            &&& post.spec_index(p).view_rodata().view().owning_container == pre.spec_index(p).view_rodata().view().owning_container
             &&& post.spec_index(p).view_ghost().uppertree_seq.view() == pre.spec_index(p).view_ghost().uppertree_seq.view()
             &&& post.spec_index(p).view_ghost().subtree_set.view() == pre.spec_index(p).view_ghost().subtree_set.view()
             &&& post.spec_index(p).being_killed() == pre.spec_index(p).being_killed()
@@ -322,6 +323,7 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.prc_mp.spec_index(p).view_rodata().view().parent == pre.prc_mp.spec_index(p).view_rodata().view().parent
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
+            &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
             &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
@@ -1070,6 +1072,7 @@ pub open spec fn kernel_process_quota_4k_changed(
             &&& post.prc_mp.spec_index(p).view_rodata().view().parent == pre.prc_mp.spec_index(p).view_rodata().view().parent
             &&& post.prc_mp.spec_index(p).view_rodata().view().depth == pre.prc_mp.spec_index(p).view_rodata().view().depth
             &&& post.prc_mp.spec_index(p).view_rodata().view().pcid == pre.prc_mp.spec_index(p).view_rodata().view().pcid
+            &&& post.prc_mp.spec_index(p).view_rodata().view().owning_container == pre.prc_mp.spec_index(p).view_rodata().view().owning_container
             &&& post.prc_mp.spec_index(p).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(p).view_ghost().uppertree_seq.view()
             &&& post.prc_mp.spec_index(p).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(p).view_ghost().subtree_set.view()
             &&& post.prc_mp.spec_index(p).being_killed() == pre.prc_mp.spec_index(p).being_killed()
@@ -1138,7 +1141,7 @@ pub open spec fn kernel_u_container_quota_4k_increased(pre: KernelU, post: Kerne
     &&& post.container_map != pre.container_map
     &&& post.container_map.dom() == pre.container_map.dom()
     &&& changed.len() == 1
-    &&& forall|c: RwLockContainerPtr| #![trigger changed.contains(c)] changed.contains(c) ==> {
+    &&& forall|c: RwLockContainerPtr| #![trigger changed.contains(c)] #![trigger post.container_map[c]] changed.contains(c) ==> {
         &&& c == container || pre.container_map[container].uppertree_seq.contains(c)
         &&& post.container_map[c].quota_4k > pre.container_map[c].quota_4k
         &&& post.container_map[c] == (ContainerU { quota_4k: post.container_map[c].quota_4k, ..pre.container_map[c] })
@@ -1189,7 +1192,7 @@ pub open spec fn kernel_u_container_root_published(
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false,
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
-            iommu_table: None, pcid: post.process_map[process].pcid, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+            iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
         thread_map: pre.thread_map.insert(thread, ThreadU {
@@ -1254,7 +1257,7 @@ pub open spec fn kernel_u_container_root_created(
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false,
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
-            iommu_table: None, pcid: post.process_map[process].pcid, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+            iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
         thread_map: pre.thread_map.insert(thread, ThreadU {

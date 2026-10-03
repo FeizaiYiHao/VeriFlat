@@ -356,6 +356,7 @@ pub fn syscall_schedule(
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *old(pt_regs), ret is Switched,
             if ret is Switched { schedule_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr) } else { None }),
         final(steps).nonlock_view().len() == if ret is Switched { 1nat } else { 0nat },
+        ret == schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
         (ret is Off) == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off),
         (ret is Switched) == {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
@@ -423,6 +424,7 @@ pub fn syscall_schedule(
         }
         proof {
             schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+            assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Off) by { kernel_cpu_projection_at(old(krnl), cpu_id); };
         }
         return ScheduleResult::Off;
     }
@@ -444,6 +446,7 @@ pub fn syscall_schedule(
             }
             proof {
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+                assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Continue) by { kernel_cpu_projection_at(old(krnl), cpu_id); kernel_process_projection_at(old(krnl), process_ptr); };
             }
             return ScheduleResult::Continue;
         }
@@ -462,6 +465,9 @@ pub fn syscall_schedule(
             }
             proof {
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+                assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Continue) by {
+                    kernel_cpu_projection_at(old(krnl), cpu_id); kernel_process_projection_at(old(krnl), process_ptr); kernel_thread_projection_at(old(krnl), thread_ptr);
+                };
             }
             return ScheduleResult::Continue;
         }
@@ -492,7 +498,18 @@ pub fn syscall_schedule(
                 krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, scheduler_ptr, next_thread, current_process, current_thread,
                 process_lock_perm, current_thread_lock_perm, Tracked(scheduler_lock_perm), next_perm, Tracked(cpu_lock_perm),
             );
+            proof {
+                assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == (ScheduleResult::Switched { thread_ptr: next_thread, syscall_return })) by {
+                    kernel_cpu_projection_at(old(krnl), cpu_id); kernel_container_projection_at(old(krnl), container_ptr); kernel_thread_projection_at(old(krnl), next_thread);
+                    if current_process is Some { kernel_process_projection_at(old(krnl), current_process->Some_0); kernel_thread_projection_at(old(krnl), current_thread->Some_0); }
+                };
+            }
             return ScheduleResult::Switched { thread_ptr: next_thread, syscall_return };
+        }
+        proof {
+            assert(kernel_k_to_kernel_u(*old(krnl)).thread_map[next_thread].killed && kernel_k_to_kernel_u(*old(krnl)).container_map[container_ptr].scheduler[0] == next_thread) by {
+                kernel_container_projection_at(old(krnl), container_ptr); kernel_thread_projection_at(old(krnl), next_thread);
+            };
         }
     }
     let ret = if let CpuState::Idle = state { ScheduleResult::Idle } else { ScheduleResult::Continue };
@@ -509,6 +526,10 @@ pub fn syscall_schedule(
         }
         proof {
             schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+            assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == ret) by {
+                kernel_cpu_projection_at(old(krnl), cpu_id); kernel_container_projection_at(old(krnl), container_ptr);
+                if current_process is Some { kernel_process_projection_at(old(krnl), current_process->Some_0); kernel_thread_projection_at(old(krnl), current_thread->Some_0); }
+            };
         }
         return ret;
     }
@@ -523,6 +544,7 @@ pub fn syscall_schedule(
     }
     proof {
         schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+        assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == ret) by { kernel_cpu_projection_at(old(krnl), cpu_id); kernel_container_projection_at(old(krnl), container_ptr); };
     }
     ret
 }

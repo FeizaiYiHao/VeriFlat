@@ -6,6 +6,36 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
+/// The result of `syscall_new_container` from the state at entry, in the implementation's check order:
+/// malformed arguments or funding, a killed parent container, a parent at the maximum tree depth, a
+/// killed process or caller, too little caller 4K or 2M quota, a source range below the first user L4
+/// index or with a page that has no present 4K leaf, and a transfer cpu that the parent container does
+/// not own or that is not Off. `Success` stands for `SuccessThreeUsize`, whose fresh container, process,
+/// and thread pointers the state does not determine.
+pub open spec fn new_container_syscall_result(
+    pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: CpuId,
+) -> RetValueType {
+    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let parent = pre.container_map[thread.owning_container];
+    let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
+    let transfer = pre.cpu_array[transfer_cpu_id as int];
+    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+    if range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS
+        || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota_4k > funding_page_count
+        || funding_page_count > usize::MAX - 9 - 3 * range {
+        RetValueType::Error
+    } else if parent.killed { RetValueType::ErrorContainerKilled }
+    else if parent.depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
+    else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
+    else if thread.killed { RetValueType::ErrorThreadKilled }
+    else if thread.quota_4k < 9 + funding_page_count + 3 * range || thread.quota_2m < 2 { RetValueType::ErrorNoQuota }
+    else if !(user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present) {
+        RetValueType::Error
+    } else if transfer.owning_container != thread.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
+    else if !(transfer.state is Off) { RetValueType::ErrorIpcCpuNotOff }
+    else { RetValueType::Success }
+}
+
 /// The cpu runs a live thread of a live process inside its live container, which is below the
 /// maximum container depth; the thread has no syscall in progress; `range` is a nonempty well-formed user
 /// range whose every page the process maps; `process_quota <= funding`, and the thread's quotas pay
@@ -122,9 +152,9 @@ pub open spec fn new_container_publish_step(old_u: KernelU, new_u: KernelU, cpu_
         progress->NewContainer_0.transfer_cpu, progress->NewContainer_0.funding, progress->NewContainer_0.process_quota, Some(sharing))
 }
 
-/// Finishing runs after the whole recorded range has been shared into the recorded child container's
-/// root process, while the running thread holds the cpu, its container and the child container, its
-/// process and the root process with their page tables, and itself.
+/// Finishing runs after the whole recorded range has been shared into the root process of the recorded
+/// child of the thread's container, while the running thread holds the cpu, its container and the child
+/// container, its process and the root process with their page tables, and itself.
 #[verifier::opaque]
 pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -146,6 +176,7 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& old_u.container_map[thread.owning_container].lock_state is WriteLocked
     &&& old_u.container_map.dom().contains(child)
     &&& old_u.container_map[child].lock_state is WriteLocked
+    &&& old_u.container_map[child].parent == Some(thread.owning_container)
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& parent.lock_state is WriteLocked
     &&& parent.pagetable is Some
@@ -154,6 +185,7 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& root.lock_state is WriteLocked
     &&& root.pagetable is Some
     &&& root.pagetable->Some_0.lock_state is WriteLocked
+    &&& root.owning_container == child
 }
 
 /// The last step creates the root process's first thread with the recorded registers, clears the

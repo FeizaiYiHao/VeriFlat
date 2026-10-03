@@ -61,7 +61,8 @@ pub fn syscall_new_process_with_endpoint(
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.wf()
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index)
         },
-        ret is SuccessPairUsize || ret is Error || ret is ErrorNoPcid || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
+        (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), false) is Success),
+        !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), false),
 {
     syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, Some(endpoint_index), false, initial_regs)
 }
