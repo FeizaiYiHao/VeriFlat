@@ -61,6 +61,7 @@ verus! {
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
             },
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty, true, pt_regs)
@@ -125,6 +126,7 @@ verus! {
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
             },
             ret is Success || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING, false),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let ret = syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty, false, pt_regs);
@@ -191,6 +193,7 @@ verus! {
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
             },
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty, true, pt_regs)
@@ -255,6 +258,7 @@ verus! {
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
             },
             ret is Success || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING, false),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let ret = syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty, false, pt_regs);
@@ -323,6 +327,7 @@ verus! {
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id })
             },
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, true, pt_regs)
@@ -387,6 +392,7 @@ verus! {
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu)
             },
             ret is SuccessUsize || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameContainer || ret is ErrorIpcCpuOwnerMismatch || ret is ErrorIpcCpuNotOff,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu, true, pt_regs)
@@ -432,6 +438,7 @@ verus! {
             ret is Success ==> final(steps).nonlock_view().len() == 2,
             final(steps).nonlock_view().len() <= 2,
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         syscall_ipc_ordinary(
@@ -480,6 +487,7 @@ verus! {
             ret is Success ==> final(steps).nonlock_view().len() == 2,
             final(steps).nonlock_view().len() <= 2,
             ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch,
+            ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         syscall_ipc_ordinary(
@@ -528,6 +536,8 @@ verus! {
             ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
+            ipc_pages_args_invalid(va, range) ==> ret is Error,
+            !ipc_pages_args_invalid(va, range) ==> ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING, true),
     {
         syscall_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, va, range, pt_regs)
     }
@@ -572,6 +582,8 @@ verus! {
             ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
+            ipc_pages_args_invalid(va, range) ==> ret is Error,
+            !ipc_pages_args_invalid(va, range) ==> ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING, true),
     {
         syscall_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING, va, range, pt_regs)
     }
@@ -617,6 +629,8 @@ verus! {
             ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse,
+            ipc_pages_args_invalid(va, range) ==> ret is Error,
+            !ipc_pages_args_invalid(va, range) ==> ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state, true),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 

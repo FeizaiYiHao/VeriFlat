@@ -26,7 +26,7 @@ verus! {
                 final(krnl).all_objects_unlocked(final(lctx)),
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
-                ret is Success || ret is ErrorContainerKilled || ret is ErrorContainerQuotaInsufficient || ret is ErrorProcessKilled || ret is ErrorProcessQuotaOverflow,
+                ret == alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount),
                 !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
                 ret is Success && alloc_amount == 0 ==> final(steps).nonlock_view().len() == 0,
                 ret is Success && alloc_amount > 0 ==> {
@@ -64,6 +64,9 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
+                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerKilled) by {
+                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr);
+                    };
                 }
                 return RetValueType::ErrorContainerKilled;
             }
@@ -81,6 +84,9 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
+                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessKilled) by {
+                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
+                    };
                 }
                 return RetValueType::ErrorProcessKilled;
             }
@@ -100,6 +106,9 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerQuotaInsufficient);
+                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerQuotaInsufficient) by {
+                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
+                    };
                 }
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
@@ -116,6 +125,9 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessQuotaOverflow);
+                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessQuotaOverflow) by {
+                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
+                    };
                 }
                 return RetValueType::ErrorProcessQuotaOverflow;
             }
@@ -123,6 +135,9 @@ verus! {
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+                assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is Success) by {
+                    kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
+                };
             }
             commit_alloc_quota_4k(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
             assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };

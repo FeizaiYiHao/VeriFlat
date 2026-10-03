@@ -38,11 +38,17 @@ pub(super) enum Mmap4kPrecheck {
                     &&& !krnl.pt_mp.spec_index(pagetable_ptr).view().mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                 }
             },
-            ret is Invalid ==> spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
-            ret is InUse ==> {
+            (ret is Invalid) == (spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end),
+            !(ret is Invalid) ==> {
+                let pagetable = krnl.pt_mp.spec_index(pagetable_ptr).view();
                 let end_va = range.view().spec_index((range.len - 1) as int);
-                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(range.start).0
-                &&& (!krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va)) || !krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range))
+                (ret is InUse) == !(pagetable.spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va))
+                    && forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+                        let indices = spec_va2index(range.view().spec_index(j));
+                        &&& !pagetable.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
+                        &&& !pagetable.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
+                        &&& !pagetable.mapping_4k().dom().contains(range.view().spec_index(j))
+                    })
             },
     {
         let range_len = range.len;

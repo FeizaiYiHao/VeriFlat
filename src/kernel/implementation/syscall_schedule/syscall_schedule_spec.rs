@@ -1,7 +1,23 @@
 use vstd::prelude::*;
 use crate::*;
+use super::syscall_schedule::ScheduleResult;
 
 verus! {
+/// The result of `syscall_schedule` from the state at entry: an Off cpu stays Off; a cpu whose running
+/// process and thread, if any, are alive switches to the live head of its container's scheduler queue
+/// and carries that thread's pending IPC result; otherwise an Idle cpu stays Idle and a running cpu
+/// continues.
+pub open spec fn schedule_syscall_result(pre: KernelU, cpu_id: CpuId) -> ScheduleResult {
+    let cpu = pre.cpu_array[cpu_id as int];
+    let queue = pre.container_map[cpu.owning_container].scheduler;
+    if cpu.state is Off { ScheduleResult::Off }
+    else if (cpu.current_process is Some ==> !pre.process_map[cpu.current_process->Some_0].killed && !pre.thread_map[cpu.current_thread->Some_0].killed)
+        && queue.len() > 0 && !pre.thread_map[queue[0]].killed {
+        ScheduleResult::Switched { thread_ptr: queue[0], syscall_return: pre.thread_map[queue[0]].error_code }
+    } else if cpu.state is Idle { ScheduleResult::Idle }
+    else { ScheduleResult::Continue }
+}
+
 #[verifier::opaque]
 /// Switches the CPU to the scheduler queue head, optionally requeues the
 /// previous thread, and updates the affected PCID publication and TLB state.

@@ -19,6 +19,9 @@ pub proof fn share_4k_leaf_step_from_u(
             &&& pre.cpu_array[cpu_id as int].current_thread == Some(progress_thread)
             &&& share_4k_objects(pre, cpu_id).source_thread == source_thread
             &&& share_4k_objects(pre, cpu_id).target == target
+            &&& pre.process_map.spec_index(target).owning_container == share_4k_objects(pre, cpu_id).target_container
+            &&& share_4k_objects(pre, cpu_id).transfer_source matches Some(s) ==> pre.container_map.dom().contains(share_4k_objects(pre, cpu_id).target_container)
+                && pre.container_map[share_4k_objects(pre, cpu_id).target_container].parent == Some(s)
             &&& pre.thread_map.dom().contains(source_thread)
             &&& pre.thread_map.spec_index(source_thread).owning_proc == source
             &&& pre.thread_map.dom().contains(progress_thread)

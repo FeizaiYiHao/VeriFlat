@@ -178,7 +178,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         assert(new_process_finish_step_pre(steps.snapshot_u(), cpu_id)) by {
             reveal(process_thread_wf); reveal(process_pagetable_match);
             kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, child_ptr, current_thread_ptr, endpoint);
-            kernel_cpu_thread_projection_at(&steps.snapshot_k(), cpu_id, child_ptr, current_thread_ptr, None);
+            kernel_cpu_thread_projection_at(&steps.snapshot_k(), cpu_id, child_ptr, current_thread_ptr, None); kernel_process_projection_at(&steps.snapshot_k(), child_ptr);
             new_process_finish_step_pre_from_u(steps.snapshot_u(), cpu_id, old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc, child_ptr, current_thread_ptr, endpoint);
         };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);

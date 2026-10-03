@@ -54,7 +54,8 @@ pub fn syscall_new_process(
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
         },
-        ret is SuccessPairUsize || ret is Error || ret is ErrorNoPcid || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoQuota,
+        (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false) is Success),
+        !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false),
 {
     syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, None, false, initial_regs)
 }

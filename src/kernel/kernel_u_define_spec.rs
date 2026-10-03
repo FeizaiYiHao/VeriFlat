@@ -153,6 +153,7 @@ verus! {
                             _ => None,
                         },
                         pcid: p_ro.pcid,
+                        owning_container: p_ro.owning_container,
                         owned_pci_functions: p.owned_pci_functions.view(),
                         quota_4k: p.quota_4k,
                         quota_2m: p.quota_2m,

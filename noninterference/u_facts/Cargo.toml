@@ -1,0 +1,17 @@
+# User-level facts about the kernel's user projection, proved from the kernel
+# invariants. Proofs over the user step specifications import this crate; the
+# kernel workspace and the monolith never verify it. Run `../verify-ni.sh`.
+[package]
+name = "veriflat_u_facts"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+vstd = { path = "../../verus/source/vstd" }
+veriflat_kernel_core = { path = "../../crates/veriflat_kernel_core" }
+
+[package.metadata.verus]
+verify = true

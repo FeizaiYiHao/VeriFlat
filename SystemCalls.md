@@ -640,8 +640,7 @@ ThreadKilled, InvalidEndpoint, and PeerKilled.
 
 ## 15. Approved representation changes
 
-These changes were approved on 2026-09-29. Each is applied when its syscall is
-converted.
+These changes were approved on 2026-09-29 and are all applied.
 
 | Variant | Current | Approved | Needed by |
 |---|---|---|---|
@@ -649,12 +648,11 @@ converted.
 | `NewProcess` | applied | `NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: Option })` | publish, finish |
 | `NewContainer` | applied | `NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, child_container: Option })` | publish, finish |
 | `Share4k` | applied | adds `origin: NewProcess(NewProcessProgress) \| NewContainer(NewContainerProgress) \| IpcPages { peer }` | share steps, finish, IPC pages unlock tables |
-| `IpcPages` | applied | `{ source_range, target_range, peer, locked: bool, released: Option<RetValueType> }` | lock tables, check, finish |
+| `IpcEndpoint` | applied | `{ peer, caller_sends, payload_index }` | finish |
+| `IpcPages` | applied | `{ source_range, target_range, peer, locked: bool, released: Option<RetValueType> }` (`locked` approved 2026-09-30) | lock tables, check, unlock tables, finish |
 
 `ContainerU.cpu_set_lock` (approved 2026-09-30) projects the container's
 CPU-set lock mode; new_container (§10) and IPC Cpu (§11) state it.
-| `IpcEndpoint` | applied | `{ peer, caller_sends, payload_index }` | finish |
-| `IpcPages` | applied | `{ source_range, target_range, peer, locked: bool, released: Option<RetValueType> }` (`locked` approved 2026-09-30) | lock tables, check, unlock tables, finish |
 
 Kernel representation change (applied): `Container.owned_processes` moved to
 the lock-free `ContainerGhost`, so new_process publishes a child without the

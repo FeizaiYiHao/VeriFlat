@@ -17,6 +17,33 @@ pub open spec fn ipc_rendezvous_ret(ret: RetValueType) -> bool {
     ||| ret is ErrorIpcCpuNotOff
 }
 
+/// The rejection decided before any rendezvous from the state at entry: a killed process or caller, a missing
+/// descriptor, an empty or same-direction queue (where a blocking caller waits instead), or a killed queue head.
+#[verifier::opaque]
+pub open spec fn ipc_entry_result(pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, blocking: bool) -> Option<RetValueType> {
+    let cpu = pre.cpu_array[cpu_id as int];
+    let thread = pre.thread_map[cpu.current_thread->Some_0];
+    let endpoint = pre.endpoint_map[thread.endpoint_descriptors[endpoint_index as int]->Some_0];
+    if pre.process_map[cpu.current_process->Some_0].killed { Some(RetValueType::ErrorProcessKilled) }
+    else if thread.killed { Some(RetValueType::ErrorThreadKilled) }
+    else if thread.endpoint_descriptors[endpoint_index as int] is None { Some(RetValueType::ErrorInvalidEndpoint) }
+    else if endpoint.queue.len() == 0 || (endpoint.queue_state is SEND) == (waiting_state is SENDING) {
+        if blocking { Some(RetValueType::CpuIdle) } else if endpoint.queue.len() == 0 { Some(RetValueType::ErrorIpcNoPeer) } else { Some(RetValueType::ErrorIpcSameDirection) }
+    } else if pre.thread_map[endpoint.queue[0]].killed { Some(RetValueType::ErrorIpcPeerKilled) }
+    else { None }
+}
+
+/// The entry rejection that `ret` reports, or None when `ret` comes from a rendezvous.
+pub open spec fn ipc_rejection(ret: RetValueType) -> Option<RetValueType> {
+    if ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcNoPeer
+        || ret is ErrorIpcSameDirection || ret is ErrorIpcPeerKilled { Some(ret) } else { None }
+}
+
+/// A Pages call with an empty, overflowing, or invalid user range fails with Error before entering IPC.
+pub open spec fn ipc_pages_args_invalid(va: VAddr, range: usize) -> bool {
+    range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)
+}
+
 /// The result written into the scheduled peer for the caller's `payload` and return value `ret`.
 pub open spec fn ipc_peer_result(payload: IPCPayLoad, ret: RetValueType) -> RetValueType {
     if ret is Success {
@@ -212,7 +239,8 @@ pub open spec fn ipc_endpoint_finish_result(old_u: KernelU, cpu_id: CpuId) -> Re
 }
 
 /// Finishing runs while the running thread records an endpoint transfer and holds the cpu, its process,
-/// itself, and the peer; both threads' containers are live and the sender's payload endpoint is unlocked.
+/// itself, and the peer; both threads' containers are live and the sender's payload endpoint, at a valid
+/// descriptor index, is unlocked.
 #[verifier::opaque]
 pub open spec fn ipc_endpoint_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -239,6 +267,7 @@ pub open spec fn ipc_endpoint_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     &&& old_u.thread_map[peer_ptr].lock_state is WriteLocked
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& old_u.container_map.dom().contains(old_u.thread_map[peer_ptr].owning_container)
+    &&& edp_idx_valid(source_index)
     &&& payload is Some
     &&& old_u.endpoint_map.dom().contains(payload.unwrap())
     &&& old_u.endpoint_map[payload.unwrap()].lock_state is Unlocked

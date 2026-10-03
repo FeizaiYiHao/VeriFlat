@@ -294,6 +294,7 @@ fn share_one_mapping_4k(
         share_4k_objects_k(*old(krnl), cpu_id).source_thread == source_thread && share_4k_objects_k(*old(krnl), cpu_id).quota_thread == target_thread,
         share_4k_objects_k(*old(krnl), cpu_id).target == target_process && share_4k_objects_k(*old(krnl), cpu_id).target_container == target_container,
         share_4k_objects_k(*old(krnl), cpu_id).transfer_source is Some ==> old(lctx).container_lock_map().dom().contains(target_container),
+        share_4k_objects_k(*old(krnl), cpu_id).transfer_source matches Some(source) ==> old(krnl).ctn_mp.spec_index(target_container).view_rodata().view().parent == Some(source),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view() == old(steps).view().push(final(steps).view().last()),
@@ -997,6 +998,7 @@ pub fn share_mapping_4k(
         share_4k_objects_k(*old(krnl), cpu_id).source_thread == source_thread && share_4k_objects_k(*old(krnl), cpu_id).quota_thread == target_thread,
         share_4k_objects_k(*old(krnl), cpu_id).target == target_process && share_4k_objects_k(*old(krnl), cpu_id).target_container == target_container,
         share_4k_objects_k(*old(krnl), cpu_id).transfer_source is Some ==> old(lctx).container_lock_map().dom().contains(target_container),
+        share_4k_objects_k(*old(krnl), cpu_id).transfer_source matches Some(source) ==> old(krnl).ctn_mp.spec_index(target_container).view_rodata().view().parent == Some(source),
     ensures
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
             old(lctx).pagetable_lock_map().dom().contains(pt)
@@ -1141,6 +1143,7 @@ pub fn share_mapping_4k(
             share_4k_objects_k(*krnl, cpu_id).source_thread == source_thread && share_4k_objects_k(*krnl, cpu_id).quota_thread == target_thread,
             share_4k_objects_k(*krnl, cpu_id).target == target_process && share_4k_objects_k(*krnl, cpu_id).target_container == target_container,
             share_4k_objects_k(*krnl, cpu_id).transfer_source is Some ==> lctx.container_lock_map().dom().contains(target_container),
+            share_4k_objects_k(*krnl, cpu_id).transfer_source matches Some(source) ==> krnl.ctn_mp.spec_index(target_container).view_rodata().view().parent == Some(source),
             progress_thread != source_thread ==> krnl.thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
             share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
             share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range),
@@ -1797,7 +1800,7 @@ pub fn share_mapping_4k_build_and_share(
                 page_ptr_valid_imply_page_index_valid();
             };
             if krnl.thr_mp.spec_index(quota_thread).view().owning_container == target_container {
-                assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_thread_wf); };
+                assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(container_thread_wf); };
             } else {
                 assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
             }

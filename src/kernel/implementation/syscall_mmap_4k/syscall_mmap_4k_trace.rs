@@ -79,6 +79,9 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id
             &&& entry.write
             &&& !entry.execute_disable
             &&& entry.owning_container.view() == thread.owning_container
+            &&& forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].pagetable->Some_0.mapping_4k[v]]
+                pre.process_map.dom().contains(p) && pre.process_map[p].pagetable is Some && pre.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
+                ==> pre.process_map[p].pagetable->Some_0.mapping_4k[v].addr != entry.addr
             &&& post == (KernelU {
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
                     quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_4k_progress_after_leaf(thread.syscall_progress), ..thread

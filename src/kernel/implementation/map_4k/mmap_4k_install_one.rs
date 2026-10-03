@@ -76,6 +76,8 @@ verus! {
             pre.thr_mp.dom().contains(quota_thread_ptr),
             typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
             pre.ctn_mp.dom().contains(container_ptr),
+            pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
+            transfer_source matches Some(source) ==> pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(source),
             !pre.prc_mp.spec_index(process_ptr).view().zombie && pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
             typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             transfer_source matches Some(source) ==> typed_lock_map_contains_mode(pre_lctx.container_lock_map(), source, TypedLockMode::Write)

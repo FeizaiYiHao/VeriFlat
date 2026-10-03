@@ -435,6 +435,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
         caller_cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
         caller_cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(caller_cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).ctn_mp.dom().contains(child_container_ptr),
+        old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().parent == Some(parent_container_ptr),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), child_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),

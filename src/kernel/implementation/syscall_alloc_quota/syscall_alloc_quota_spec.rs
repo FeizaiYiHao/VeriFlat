@@ -2,6 +2,19 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// The result of `syscall_alloc_quota_4k` from the state at entry, in the implementation's check order:
+/// a killed container or process, too little container 4K quota, and process 4K quota overflow.
+pub open spec fn alloc_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
+    let cpu = pre.cpu_array[cpu_id as int];
+    let container = pre.container_map[cpu.owning_container];
+    let process = pre.process_map[cpu.current_process->Some_0];
+    if container.killed { RetValueType::ErrorContainerKilled }
+    else if process.killed { RetValueType::ErrorProcessKilled }
+    else if container.quota_4k < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }
+    else if alloc_amount > usize::MAX - process.quota_4k { RetValueType::ErrorProcessQuotaOverflow }
+    else { RetValueType::Success }
+}
+
 /// The cpu, the running process, and its container are unlocked, exist, are alive, and can move
 /// `alloc_amount` 4K quota from the container to the process without overflow.
 #[verifier::opaque]

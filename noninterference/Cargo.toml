@@ -1,0 +1,31 @@
+# Noninterference proof over the kernel's user-visible step specifications.
+# This is its own Cargo workspace and is excluded from the kernel workspace, so
+# neither `verify-workspace.sh`, `verify-pipeline.sh`, nor the monolith verifies
+# it. Run `noninterference/verify-ni.sh`.
+[workspace]
+members = [".", "u_facts"]
+
+[package]
+name = "veriflat_noninterference"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+vstd = { path = "../verus/source/vstd" }
+veriflat_kernel_core = { path = "../crates/veriflat_kernel_core" }
+veriflat_u_facts = { path = "u_facts" }
+veriflat_map_4k = { path = "../crates/veriflat_map_4k" }
+veriflat_syscall_alloc_quota = { path = "../crates/veriflat_syscall_alloc_quota" }
+veriflat_syscall_schedule = { path = "../crates/veriflat_syscall_schedule" }
+veriflat_syscall_new_thread = { path = "../crates/veriflat_syscall_new_thread" }
+veriflat_syscall_new_process = { path = "../crates/veriflat_syscall_new_process" }
+veriflat_syscall_new_container = { path = "../crates/veriflat_syscall_new_container" }
+veriflat_syscall_mmap_4k = { path = "../crates/veriflat_syscall_mmap_4k" }
+veriflat_syscall_unmap_4k = { path = "../crates/veriflat_syscall_unmap_4k" }
+veriflat_syscall_ipc = { path = "../crates/veriflat_syscall_ipc" }
+
+[package.metadata.verus]
+verify = true

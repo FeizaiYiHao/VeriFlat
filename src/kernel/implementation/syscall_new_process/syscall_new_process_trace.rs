@@ -121,7 +121,7 @@ pub(super) proof fn new_process_publish_step_from_u(
             })
             &&& post.process_map[child_ptr] == (ProcessU {
                 lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
-                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid: post.process_map[child_ptr].pcid, owned_pci_functions: Set::empty(),
+                iommu_table: if with_iommu { Some(empty_table) } else { None }, pcid: post.process_map[child_ptr].pcid, owning_container: container_ptr, owned_pci_functions: Set::empty(),
                 quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent_ptr), children: Seq::empty(),
                 depth: (pre.process_map[parent_ptr].depth + 1) as usize, uppertree_seq: ancestors,
                 subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
@@ -175,6 +175,8 @@ pub(super) proof fn new_process_finish_step_pre_from_u(
             &&& child.pagetable is Some
             &&& child.pagetable->Some_0.lock_state is WriteLocked
             &&& (child.iommu_table is Some ==> child.iommu_table->Some_0.lock_state is WriteLocked)
+            &&& child.owning_container == thread.owning_container
+            &&& (record.endpoint_index is Some ==> edp_idx_valid(record.endpoint_index->Some_0))
             &&& (record.endpoint_index is Some ==> endpoint_ptr is Some && thread.endpoint_descriptors[record.endpoint_index->Some_0 as int] == endpoint_ptr)
             &&& (endpoint_ptr is Some ==> pre.endpoint_map.dom().contains(endpoint_ptr->Some_0) && pre.endpoint_map.spec_index(endpoint_ptr->Some_0).lock_state is WriteLocked)
         },

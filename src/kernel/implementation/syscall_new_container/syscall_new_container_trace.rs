@@ -167,6 +167,7 @@ pub(super) proof fn new_container_finish_step_pre_from_u(
             &&& pre.container_map.dom().contains(child_ptr)
             &&& pre.container_map.spec_index(child_ptr).lock_state is WriteLocked
             &&& pre.container_map.spec_index(child_ptr).root_process == root_ptr
+            &&& pre.container_map.spec_index(child_ptr).parent == Some(container_ptr)
             &&& pre.process_map.dom().contains(process_ptr)
             &&& parent.lock_state is WriteLocked
             &&& parent.pagetable is Some
@@ -175,6 +176,7 @@ pub(super) proof fn new_container_finish_step_pre_from_u(
             &&& root.lock_state is WriteLocked
             &&& root.pagetable is Some
             &&& root.pagetable->Some_0.lock_state is WriteLocked
+            &&& root.owning_container == child_ptr
         },
     ensures
         new_container_finish_step_pre(pre, cpu_id),

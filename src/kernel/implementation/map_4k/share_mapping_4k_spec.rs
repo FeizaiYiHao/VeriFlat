@@ -90,8 +90,9 @@ pub open spec fn share_4k_leaf_at(old_u: KernelU, new_u: KernelU, progress_threa
 }
 
 /// A directory step runs before the next recorded page is shared, while the target page table is
-/// write-locked and the quota thread can pay for one target directory page. With a transfer source,
-/// both the source and target containers are write-locked.
+/// write-locked and the quota thread can pay for one target directory page. The target process belongs
+/// to the target container. With a transfer source, the target container is a child of the source and
+/// both are write-locked.
 #[verifier::opaque]
 pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -103,11 +104,13 @@ pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& old_u.process_map.dom().contains(objects.target)
     &&& old_u.process_map[objects.target].pagetable is Some
     &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked
+    &&& old_u.process_map[objects.target].owning_container == objects.target_container
     &&& objects.transfer_source matches Some(source) ==> {
         &&& old_u.container_map.dom().contains(source)
         &&& old_u.container_map[source].lock_state is WriteLocked
         &&& old_u.container_map.dom().contains(objects.target_container)
         &&& old_u.container_map[objects.target_container].lock_state is WriteLocked
+        &&& old_u.container_map[objects.target_container].parent == Some(source)
     }
 }
 
@@ -119,13 +122,17 @@ pub open spec fn share_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id:
     share_4k_directory_at(old_u, new_u, objects.quota_thread, objects.target_container, objects.transfer_source)
 }
 
-/// A leaf step shares the next recorded source page into the next recorded target address.
+/// A leaf step shares the next recorded source page into the next recorded target address of a
+/// process of the target container. With a transfer source, the target container is its child.
 #[verifier::opaque]
 pub open spec fn share_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
     &&& share_4k_locked(old_u, cpu_id)
     &&& share_4k_leaf_pre_at(old_u, caller, old_u.thread_map[objects.source_thread].owning_proc, objects.target)
+    &&& old_u.process_map[objects.target].owning_container == objects.target_container
+    &&& objects.transfer_source matches Some(source)
+        ==> old_u.container_map.dom().contains(objects.target_container) && old_u.container_map[objects.target_container].parent == Some(source)
 }
 
 /// A leaf step copies the recorded source entry into the target mapping and advances share progress.

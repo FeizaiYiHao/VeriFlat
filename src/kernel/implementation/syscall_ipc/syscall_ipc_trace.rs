@@ -182,6 +182,7 @@ pub(super) proof fn ipc_endpoint_finish_step_pre_from_u(
     requires
         receiver == thread_ptr || receiver == peer_ptr,
         thread_ptr != peer_ptr,
+        edp_idx_valid(source_index),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map[thread_ptr];

@@ -6,6 +6,29 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
+/// The result of `syscall_new_process` and its endpoint and IOMMU variants from the state at entry, in
+/// the implementation's check order: malformed arguments, no free PCID in the caller's container, a
+/// killed process or caller, an empty `endpoint_index` descriptor, too little caller 4K quota, and a
+/// range below the first user L4 index or with a page that has no present 4K leaf. `Success` stands for
+/// the variant's success value, whose fresh process, IOMMU table, and thread pointers the state does
+/// not determine.
+pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> RetValueType {
+    let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
+    let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
+    let base: usize = if with_iommu { 6 } else { 4 };
+    let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+    if range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - base) / 3 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) {
+        RetValueType::Error
+    } else if pre.container_map[thread.owning_container].free_pcids.is_empty() { RetValueType::ErrorNoPcid }
+    else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
+    else if thread.killed { RetValueType::ErrorThreadKilled }
+    else if endpoint_index is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] is None { RetValueType::Error }
+    else if thread.quota_4k < base + 3 * range { RetValueType::ErrorNoQuota }
+    else if user_va_range(pre, va_range) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> mapping.dom().contains(va_range.view()[j]) && mapping[va_range.view()[j]].present {
+        RetValueType::Success
+    } else { RetValueType::Error }
+}
+
 /// The cpu runs a live thread of a live process; the thread has no syscall in progress; `range` is
 /// a nonempty well-formed user range whose every page the process maps; the thread's container has a
 /// free PCID; the thread's 4K quota pays for the new process's pages and three directory pages per
@@ -126,7 +149,7 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
     &&& new_u.process_map[child] == (ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
-            iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: new_u.process_map[child].pcid,
+            iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: new_u.process_map[child].pcid, owning_container: container,
             owned_pci_functions: Set::empty(), quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
             depth: (old_u.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors, subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         })
@@ -141,9 +164,9 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// Finishing runs after the whole recorded range has been shared into the recorded child, while the
-/// running thread holds the cpu, its process's page table, the child and its tables, itself, and the
-/// recorded endpoint.
+/// Finishing runs after the whole recorded range has been shared into the recorded child of the
+/// thread's container, while the running thread holds the cpu, its process's page table, the child and
+/// its tables, itself, and the endpoint at the recorded valid descriptor index.
 #[verifier::opaque]
 pub open spec fn new_process_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -171,7 +194,12 @@ pub open spec fn new_process_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& child.pagetable is Some
     &&& child.pagetable->Some_0.lock_state is WriteLocked
     &&& child.iommu_table is Some ==> child.iommu_table->Some_0.lock_state is WriteLocked
-    &&& origin->NewProcess_0.endpoint_index is Some ==> old_u.endpoint_map.dom().contains(endpoint_ptr) && old_u.endpoint_map[endpoint_ptr].lock_state is WriteLocked
+    &&& child.owning_container == thread.owning_container
+    &&& origin->NewProcess_0.endpoint_index is Some ==> {
+        &&& edp_idx_valid(origin->NewProcess_0.endpoint_index->Some_0)
+        &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+        &&& old_u.endpoint_map[endpoint_ptr].lock_state is WriteLocked
+    }
 }
 
 /// The last step creates the child's first thread with the recorded registers and endpoint,
