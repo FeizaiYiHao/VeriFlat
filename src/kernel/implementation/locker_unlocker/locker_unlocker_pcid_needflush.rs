@@ -42,13 +42,13 @@ impl KernelK {
             &&& wlock_requires(self.pcid_needflush.spec_index(cpu_id, pcid), &*lctx)
         }) by { reveal(pcid_needflush_wf); reveal(LockedArray2D::typed_lock_map_aligned); };
         assert(old(lctx).lock_id_acyclic(old(self).pcid_needflush.lock_id_by_index(cpu_id, pcid))) by {
-            reveal(LocalContext::lock_id_acyclic);
+            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
             reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
         };
         let ret = self.pcid_needflush.wlock(cpu_id, pcid, Tracked(&mut *lctx), Ghost(KernelObjId::PcidNeedFlush(cpu_id, pcid)));
         self.pcid_needflush.set_ghost(cpu_id, pcid, Ghost(Some(lctx.cpu_id())), Tracked(&*lctx), Tracked(ret.borrow()));
         proof {
-            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -92,7 +92,7 @@ impl KernelK {
         self.pcid_needflush.set_ghost(cpu_id, pcid, Ghost(None), Tracked(&*lctx), Tracked(lp.borrow()));
         self.pcid_needflush.wunlock(cpu_id, pcid, Tracked(&mut *lctx), lp, Ghost(KernelObjId::PcidNeedFlush(cpu_id, pcid)));
         proof {
-            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -132,7 +132,7 @@ impl KernelK {
         let entry = self.pcid_needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), lp);
         entry.set(true);
         proof {
-            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };

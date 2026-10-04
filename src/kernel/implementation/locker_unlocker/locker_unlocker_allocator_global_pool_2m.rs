@@ -46,7 +46,7 @@ impl KernelK {
             proof {
                 assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { reveal(allocator_perms_wf); };
                 assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().container_depth(), process: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().process_depth(), major: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().current_lock_major(), minor: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().lock_minor(), })) by {
-                    reveal(LocalContext::lock_id_acyclic);
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
                 };
                 assert(wlock_requires(self.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, &*lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };

@@ -145,7 +145,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
             &&& endpoint_perms_wf(post.ep_mp)
             &&& scheduler_perms_wf(post.sched_mp)
         }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf);
+        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
     };
     ipc_cpu_rendezvous_eof_memory_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
     ipc_cpu_rendezvous_eof_process_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);

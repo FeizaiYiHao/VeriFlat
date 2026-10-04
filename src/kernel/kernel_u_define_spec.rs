@@ -123,6 +123,7 @@ verus! {
                         owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
                         parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
                         cpu_set_lock: if include_lock_state { krnl.cpu_set_mp.spec_index(c_ro.cpu_set).lock_state_u() } else { LockStateU::Unlocked },
+                        cpu_offline_requests: cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ptr))),
                         scheduler: krnl.sched_mp.spec_index(c_ro.scheduler).view().queue.view(),
                         free_pcids: PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(c_ro.pcid_allocator).view().ref_counters.view()),
                         quota_4k: krnl.allc_4k_mp.spec_index(c_ro.allocator_ptr_4k).quota.view().view(),

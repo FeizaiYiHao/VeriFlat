@@ -11,6 +11,8 @@ pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
 pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 30002;
 pub const PCID_NEEDFLUSH_LOCK_MAJOR:LockMajorId = 30001;
 pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
+// Per-container offline request cells: held through an entire self-offline, so it sits below every object lock.
+pub const CPU_OFFLINE_FLAG_LOCK_MAJOR:LockMajorId = 3;
 pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
 pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;
 pub const PROCESS_LOCK_MAJOR:LockMajorId = 105;
@@ -250,6 +252,7 @@ pub ghost enum KernelObjId {
     Page(PageIndex),
     Cpu(CpuId),
     PcidNeedFlush(CpuId, Pcid),
+    CpuOfflineFlag(RwLockCpuOfflineFlagsPtr, CpuId),
     AllocatorQuota(PageSize, RwLockPageAllocatorPtr),
     AllocatorCache(PageSize, RwLockPageAllocatorPtr, CpuId),
     AllocatorGlobalPool(PageSize, RwLockPageAllocatorPtr),

@@ -78,7 +78,7 @@ impl KernelK {
         {
             proof {
                 container_perms_wf_at(old(self).ctn_mp, container_ptr);
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
                 assert(!old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id())) by {
                     if old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()) {
                         assert(old(lctx).container_lock_map().dom().contains(container_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };

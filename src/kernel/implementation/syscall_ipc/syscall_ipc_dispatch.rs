@@ -217,6 +217,7 @@ verus! {
                 &&& final(lctx).allocator_quota_1g_lock_map().dom().is_empty()
                 &&& final(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                 &&& final(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
+                &&& final(lctx).cpu_offline_flag_lock_map().dom().is_empty()
                 &&& final(lctx).pcid_needflush_lock_map().dom().is_empty()
                 &&& typed_lock_maps_aligned(final(krnl), final(lctx))
                 &&& ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state, blocking)
@@ -663,6 +664,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             old(steps).nonlock_view().len() == 0,

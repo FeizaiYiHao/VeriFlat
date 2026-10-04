@@ -85,6 +85,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framin
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
@@ -482,6 +483,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         iommu_l4_page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().locking_thread()->Write_lock_id,
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),

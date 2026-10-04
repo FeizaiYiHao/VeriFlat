@@ -65,6 +65,7 @@ pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         old(lctx).page_lock_map().dom().is_empty(),
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
         old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),

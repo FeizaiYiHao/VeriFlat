@@ -127,7 +127,7 @@ impl KernelK {
         {
             proof {
                 endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr);
-                assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(thread_cpu_wf); reveal(endpoint_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(thread_cpu_wf); reveal(endpoint_perms_wf); };
                 assert(!old(self).ep_mp.spec_index(endpoint_ptr).locked_by_thread(old(lctx).thread_id())) by {
                     if old(self).ep_mp.spec_index(endpoint_ptr).locked_by_thread(old(lctx).thread_id()) {
                         assert(old(lctx).endpoint_lock_map().dom().contains(endpoint_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };

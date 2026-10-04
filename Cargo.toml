@@ -12,6 +12,7 @@ members = [
     "crates/veriflat_syscall_unmap_4k",
     "crates/veriflat_syscall_ipc",
     "crates/veriflat_syscall_schedule",
+    "crates/veriflat_syscall_cpu_hotplug",
 ]
 exclude = ["verus", "noninterference"]
 

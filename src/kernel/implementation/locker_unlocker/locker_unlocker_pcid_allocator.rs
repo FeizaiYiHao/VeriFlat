@@ -63,7 +63,7 @@ impl KernelK {
     {
         proof {
             pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr);
-            assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); };
+            assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); };
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id()) {
                     assert(old(lctx).pcid_allocator_lock_map().dom().contains(allocator_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };

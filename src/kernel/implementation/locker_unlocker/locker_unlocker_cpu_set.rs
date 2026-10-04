@@ -44,7 +44,7 @@ impl KernelK {
     {
         assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(cpu_set_perms_wf); };
         assert(old(lctx).lock_id_acyclic(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr))) by {
-            reveal(LocalContext::lock_id_acyclic);
+            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
             reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
         };
         assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(old(lctx).thread_id())) by {

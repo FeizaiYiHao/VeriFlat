@@ -28,6 +28,8 @@ pub struct Cpu {
     tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     container_depth: usize,
     process_depth: usize,
+    /// Ghost record of whether the hardware cpu is halted; set when publishing Off, cleared by the woken cpu.
+    hw_halted: Ghost<bool>,
 }
 
 pub ghost struct CpuView {
@@ -44,6 +46,7 @@ pub ghost struct CpuView {
     pub tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     pub container_depth: usize, // killing_container's depth if being killed.
     pub process_depth: usize,
+    pub hw_halted: bool,
 }
 
 pub ghost struct CpuU {
@@ -80,6 +83,7 @@ impl Cpu{
             ret.view().current_pagetable is None,
             ret.view().current_cr3 == default_cr3,
             ret.view().current_pcid == KERNEL_DEFAULT_PCID,
+            ret.view().hw_halted == (state is Off),
             forall|pcid: Pcid|
                 #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
                 pcid_valid(pcid)
@@ -95,6 +99,7 @@ impl Cpu{
             tlb_dirty_bitmap: BitMap::new_with_init_value(None),
             container_depth,
             process_depth: 0,
+            hw_halted: Ghost(state is Off),
         }
     }
 
@@ -234,6 +239,7 @@ impl Cpu{
             tlb_dirty_bitmap: self.tlb_dirty_bitmap,
             container_depth: self.container_depth,
             process_depth: self.process_depth,
+            hw_halted: self.hw_halted.view(),
         }
     }
 
@@ -327,6 +333,32 @@ impl Cpu{
     {
         self.owning_container = container;
         self.container_depth = depth;
+    }
+
+    pub fn publish_idle_from_off(&mut self)
+        requires old(self).wf(), old(self).view().state is Off,
+        ensures final(self).wf(), final(self).view() == (CpuView { state: CpuState::Idle, ..old(self).view() }),
+    {
+        self.state = CpuState::Idle;
+    }
+
+    /// The woken cpu records that its hardware runs again; the software state is untouched.
+    pub fn clear_hw_halted(&mut self)
+        requires old(self).wf(),
+        ensures final(self).wf(), final(self).view() == (CpuView { hw_halted: false, ..old(self).view() }),
+    { self.hw_halted = Ghost(false); }
+
+    /// Publish Off from Idle with an empty dirty map; the caller has flushed every non-default PCID of this cpu.
+    pub fn publish_off_from_idle(&mut self)
+        requires old(self).wf(), old(self).view().state is Idle,
+        ensures
+            final(self).wf(),
+            final(self).view() == (CpuView { state: CpuState::Off, tlb_dirty_bitmap: final(self).view().tlb_dirty_bitmap, hw_halted: true, ..old(self).view() }),
+            forall|pcid: Pcid| #![trigger final(self).tlb_dirty_bitmap().spec_index(pcid)] pcid_valid(pcid) ==> final(self).tlb_dirty_bitmap().spec_index(pcid) is None,
+    {
+        self.state = CpuState::Off;
+        self.tlb_dirty_bitmap = BitMap::new_with_init_value(None);
+        self.hw_halted = Ghost(true);
     }
 }
 

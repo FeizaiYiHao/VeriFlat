@@ -1273,6 +1273,9 @@ pub fn finish_init_from_boot(
     allc_4k_mp.retype_page_to_allocator_and_insert(layout.allocator_4k, allocator_4k, Tracked(allocator_4k_page_perm));
     allc_2m_mp.retype_page_to_allocator_and_insert(layout.allocator_2m, allocator_2m, Tracked(allocator_2m_page_perm));
     allc_1g_mp.retype_page_to_allocator_and_insert(layout.allocator_1g, allocator_1g, Tracked(allocator_1g_page_perm));
+    let mut cpu_offline_mp = CpuOfflineFlagsUnLockedMap::new_empty();
+    let cpu_offline_flags = CpuOfflineFlags::new_empty(Ghost(layout.root_container), Ghost(cpu_offline_flags_ptr(layout.root_container)));
+    cpu_offline_mp.retype_container_page_tail_and_insert(&ctn_mp, layout.root_container, cpu_offline_flags);
 
     let krnl = KernelK {
         pt_mp,
@@ -1281,6 +1284,7 @@ pub fn finish_init_from_boot(
         pg_arr: page_array,
         cpu_arr: cpu_array,
         pcid_needflush,
+        cpu_offline_mp,
         cpu_published,
         ctn_mp,
         sched_mp,
@@ -1313,6 +1317,7 @@ pub fn finish_init_from_boot(
         )) by {
             reveal(cpu_published_wf);
         };
+        assert(cpu_offline_flags_wf(krnl.cpu_offline_mp, krnl.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(container_perms_wf(krnl.ctn_mp)) by {
             reveal(container_perms_wf);
             assert(containers_inv(krnl.ctn_mp)) by {
@@ -1529,6 +1534,7 @@ pub fn finish_init_from_boot(
         };
         assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
         assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+        assert(container_cpu_offline_flags_wf(krnl.ctn_mp, krnl.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
         assert(container_pcid_allocator_wf(
             krnl.ctn_mp,
             krnl.pcid_allc_mp,

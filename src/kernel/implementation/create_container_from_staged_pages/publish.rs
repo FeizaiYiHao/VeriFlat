@@ -293,6 +293,20 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.view().is_empty()
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.closed_view().is_empty()
+    &&& post.cpu_offline_mp.perms_wf()
+    &&& post.cpu_offline_mp.dom() =~= pre.cpu_offline_mp.dom().insert(cpu_offline_flags_ptr(container_page))
+    &&& forall|ptr: RwLockCpuOfflineFlagsPtr|
+        #![trigger post.cpu_offline_mp.spec_index(ptr)]
+        pre.cpu_offline_mp.dom().contains(ptr) ==> post.cpu_offline_mp.spec_index(ptr) == pre.cpu_offline_mp.spec_index(ptr)
+    &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).inv()
+    &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).owning_container.view() == container_page
+    &&& forall|cpu_id: CpuId|
+        #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).flags.spec_index(cpu_id)]
+        index_valid(NUM_CPUS, cpu_id) ==> {
+            &&& !post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).flags.spec_index(cpu_id).view().locked()
+            &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).flags.spec_index(cpu_id).view().view().index() == (cpu_offline_flags_ptr(container_page), cpu_id)
+            &&& !post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).flags.spec_index(cpu_id).view().view().requested
+        }
     &&& post.pcid_allc_mp.dom() =~= pre.pcid_allc_mp.dom().insert(pcid_allocator_page)
     &&& forall|ptr: RwLockPcidAllocatorPtr|
         #![trigger post.pcid_allc_mp.spec_index(ptr)]
@@ -574,6 +588,7 @@ pub(super) fn publish_staged_container_root_mutation(
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom(),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map().dom() == old(lctx).container_lock_map().dom().insert(container_page),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(lctx).container_lock_map().get(ptr)]
@@ -838,6 +853,14 @@ pub(super) fn publish_staged_container_root_mutation(
         uppertree_seq: Ghost(child_uppers), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(child_process_ptr)),
         owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()),
     };
+    proof {
+        assert(old(krnl).cpu_offline_mp.perms_wf()) by { reveal(cpu_offline_flags_wf); };
+        assert(!old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_container_ptr))) by {
+            reveal(container_cpu_offline_flags_wf);
+            let owner = old(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).owning_container.view();
+            assert(old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_container_ptr)) ==> old(krnl).ctn_mp.dom().contains(owner) && page_ptr_2m_valid(owner) && cpu_offline_flags_ptr(owner) == cpu_offline_flags_ptr(child_container_ptr)) by { reveal(container_pages_wf); };
+        };
+    }
     let (Tracked(child_pcid_allocator_lock_perm), Tracked(child_container_lock_perm)) = publish_new_container_pcid_allocator_and_container(
         krnl, child_pcid_allocator_ptr, pcid_allocator_value, child_container_ptr, container_value, container_rodata, container_ghost,
         Tracked(&mut *lctx), Tracked(pcid_allocator_perm), Tracked(container_perm),
@@ -1158,6 +1181,7 @@ pub fn publish_staged_container_root(
         ],),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map().dom() == old(lctx).container_lock_map().dom().insert(container_page),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(lctx).container_lock_map().get(ptr)]

@@ -160,6 +160,96 @@ Status: conforms (focused run #27374).
 Stutters: Off, a killed running process or thread (Continue), an empty
 scheduler or a killed head (Idle or Continue).
 
+## 4a. cpu_offline_request, cpu_online — one step each
+
+Status: conforms (workspace run #28133, noninterference run #28132).
+
+Both are issued by a running thread on behalf of its container `C`
+(`cpu.owning_container`); no permission check beyond container ownership of
+`target`. Neither is issued under a syscall progress, so their pres name
+`cpu.owning_container` directly (R3).
+
+- Arguments: `target`. An invalid `target` rejects before any lock.
+- U locks acquired and released in the step: `cpu` and `CS(C)`; cpu_online
+  also acquires `cpu_array[target]` (Off, terminal lock major). Non-U:
+  cpu_offline_request holds the request cell `F(C, target)` of `C`'s offline
+  request table (lock major 3) across the step.
+
+**cpu_offline_request step**
+
+- Pre: `index_valid` for `cpu_id` and `target`, `cpu.state is Running`, `C`
+  present, `Unlocked(cpu)`, `Unlocked(CS(C))`;
+  `cpu_array[target].owning_container == C`; `!(cpu_array[target].state is Off)`;
+  `!C.cpu_offline_requests[target]`.
+- Effect: `C.cpu_offline_requests[target] = true`
+  (`kernel_u_cpu_offline_request_changed`). The requester then sends an IPI to
+  `target` (no U effect); the target's own check step (§4b) consumes the bit.
+
+Stutters: CpuOwnerMismatch (invalid or foreign `target`), CpuAlreadyOff, and
+Success when the bit was already set.
+
+**cpu_online step**
+
+- Pre: `index_valid` for `cpu_id` and `target`, `cpu.state is Running`, `C`
+  present, `Unlocked(cpu)`, `Unlocked(CS(C))`, `Unlocked(cpu_array[target])`;
+  `cpu_array[target].owning_container == C`; `cpu_array[target].state is Off`.
+- Effect: `cpu_array[target].state = Idle` (`kernel_u_cpu_online_changed`);
+  the request bit of an Off cpu is already clear. The caller then sends an IPI
+  to `target` (no U effect).
+
+Stutters: CpuOwnerMismatch, CpuNotOff.
+
+## 4b. cpu_offline_check — one step before each schedule
+
+Status: conforms (workspace run #28133, noninterference run #28132).
+
+Entry `cpu_offline_check(cpu_id, pt_regs) -> OfflineCheckResult { Continue, Off }`
+is run by the trap layer on every cpu right before `syscall_schedule` and on
+IPI entry of a non-Off cpu. It is not a syscall: no `Caller`, and `C` is
+`cpu.owning_container` (R3). The cpu that goes Off is the one running the
+entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
+
+- U locks acquired and released in the step: `cpu`, `CS(C)`, and when the cpu
+  is Running also `current_process` and `current_thread`. Non-U: the request
+  cell `F(C, cpu_id)` (lock major 3) is held from the read through the whole
+  offline, then `C`'s scheduler and `(cpu_id, KERNEL_DEFAULT_PCID)` needflush.
+
+**cpu_offline_check step** (`cpu_offline_check_step`, label
+`flushed_default_pcid`)
+
+- Pre: `index_valid(cpu_id)`, `!(cpu.state is Off)`, `C` present,
+  `C.cpu_offline_requests[cpu_id]`, `Unlocked(cpu)`, `Unlocked(CS(C))`;
+  if `cpu.current_thread is Some(prev)`: `prev` and `cpu.current_process` are
+  present, not killed, `Unlocked`, `prev.state == RUNNING { cpu_id }`, and
+  `prev.owning_proc == cpu.current_process`.
+- Effect (`kernel_u_cpu_went_off_changed`): `cpu.state = Off`,
+  `cpu.current_process = cpu.current_thread = None`;
+  `C.cpu_offline_requests[cpu_id] = false`; `prev`, if any, becomes
+  `SCHEDULED` with `error_code = None`, `trap_frame = Some(pt_regs)` and is
+  pushed on `C.scheduler`; `cpu_tlb` keeps its domain, every `(cpu_id, p)`
+  entry with `p != KERNEL_DEFAULT_PCID` becomes empty, and
+  `(cpu_id, KERNEL_DEFAULT_PCID)` is reset to empty exactly when the label
+  `flushed_default_pcid` holds (the cpu was Running and its default-PCID
+  needflush bit was set: `cpu_offline_check_flushed_default_pcid`). Nothing
+  else changes; the cpu's lock state is Unlocked again at the end.
+- Result: `cpu_offline_check_result(u, cpu_id)` is `Off` exactly when the step
+  pre holds; the trace predicate `cpu_offline_check_entry_trace` records
+  `went_off` and the label.
+
+Stutters (`Continue`, no U step): the cpu is already Off; the request bit is
+clear; the running thread or its process is already killed (the bit is kept
+and `syscall_schedule` handles the kill). Each stutter leaves U unchanged.
+
+**cpu_online_resume** (`cpu_online_resume(cpu_id) -> OnlineResumeResult
+{ StillOff, Resumed }`, no U step)
+
+IPI entry of a cpu that halted after going Off. Under `cpu` it re-reads its
+state: while still Off it unlocks and halts again (`StillOff`); once
+`syscall_cpu_online` has published Idle it clears the ghost `Cpu.hw_halted`
+and returns to the idle loop (`Resumed`), where the trap layer runs
+`cpu_offline_check` and `syscall_schedule` as usual. U is unchanged in both
+outcomes (`hw_halted` is not projected).
+
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
 
 Status: conforms (focused run #27397).
@@ -629,6 +719,9 @@ ThreadKilled, InvalidEndpoint, and PeerKilled.
 |---|---|
 | `syscall_alloc_quota_4k` | §3 |
 | `syscall_schedule` | §4 |
+| `syscall_cpu_offline_request`, `syscall_cpu_online` | §4a |
+| `cpu_offline_check` (trap-layer entry, before every `syscall_schedule`) | §4b |
+| `cpu_online_resume` (trap-layer IPI entry of a halted cpu) | §4b |
 | `syscall_new_thread`, `syscall_new_thread_with_endpoint` | §5 |
 | `syscall_mmap_4k` | §6 |
 | `syscall_unmap_4k` | §7 |
@@ -654,6 +747,27 @@ These changes were approved on 2026-09-29 and are all applied.
 `ContainerU.cpu_set_lock` (approved 2026-09-30) projects the container's
 CPU-set lock mode; new_container (§10) and IPC Cpu (§11) state it.
 
+`ContainerU.cpu_offline_requests: Seq<bool>` (approved 2026-10-03 with the cpu
+hotplug plan) projects the container's per-cpu offline request table
+(`cpu_offline_requests_of(cpu_offline_mp[cpu_offline_flags_ptr(c)])`); the
+table lives in the second 4K of the container's 2M page, its cells are locked
+per cpu (major 3) and are not U-visible. new_container publishes it all-false
+(§10); cpu_offline_request sets one bit (§4a); cpu_offline_check clears it
+when the cpu goes Off (§4b).
+
+Kernel representation changes for cpu hotplug (approved 2026-10-03, applied):
+`KernelK.cpu_offline_mp: UnLockedMap<RwLockCpuOfflineFlagsPtr, CpuOfflineFlags>`
+holds every container's table at `cpu_offline_flags_ptr(c) = c + 4096`, with
+`cpu_offline_flags_wf` (cells aligned, `Off ⇒ !requested`) and
+`container_cpu_offline_flags_wf` (container ↔ table); the cell locks form the
+new family `CPU_OFFLINE_FLAG_LOCK_MAJOR = 3` (`KernelObjId::CpuOfflineFlag`,
+`LocalContext.cpu_offline_flag_lock_map`). `Cpu.hw_halted: Ghost<bool>`
+(`CpuView.hw_halted`) records whether the hardware is halted: set when the cpu
+publishes Off (§4b), cleared by `cpu_online_resume`; it is not U-visible and
+no invariant depends on it. Trusted primitives: `CpuTLB::flush_all_local_pcids`
+(external_body; empties every TLB entry of the calling cpu except
+`KERNEL_DEFAULT_PCID`), `send_ipi`, `halt_until_ipi` (empty stubs).
+
 Kernel representation change (applied): `Container.owned_processes` moved to
 the lock-free `ContainerGhost`, so new_process publishes a child without the
 container lock, and `wlock_pcid_allocator` no longer requires it.
@@ -675,3 +789,11 @@ U projection changes:
 1. Later steps read syscall arguments from `prog` (R1), using the §15 fields.
 2. The unmap flush PCID comes from `ProcessU.pcid`.
 3. The user-VA bound is `KernelU.kernel_l4_end`, compared through `UserVa`.
+4. CPU hotplug (2026-10-03): offline requests are per-container cells locked
+   per cpu (major 3, held through the whole offline); no permission check
+   beyond container ownership of the target; the target cpu offlines itself in
+   `cpu_offline_check` right before each schedule, requeueing its running
+   thread and deferring to `syscall_schedule` when that thread or its process
+   is killed; `syscall_cpu_online` publishes Idle and sends the IPI, and the
+   woken cpu only clears `hw_halted` (re-halting while still Off); there is no
+   `Offlining` state.

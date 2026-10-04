@@ -110,6 +110,7 @@ pub(super) fn publish_staged_process_with_iommu(
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -146,6 +147,7 @@ pub(super) fn publish_staged_process_with_iommu(
         final(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, ret.1],
         final(lctx).iommu_table_lock_map().dom() =~= set![ret.2],
         final(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),

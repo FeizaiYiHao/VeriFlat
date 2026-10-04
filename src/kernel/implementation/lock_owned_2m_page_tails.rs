@@ -288,6 +288,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).page_lock_map().dom().disjoint(page_2m_tail_indices(head)),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (old(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -308,6 +309,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_2m_tail_indices(head)),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -356,6 +358,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_2m_tail_prefix_indices(head, count)),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
             lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+            lctx.cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),
@@ -387,6 +390,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             krnl.allc_4k_mp == old(krnl).allc_4k_mp,
             krnl.allc_2m_mp == old(krnl).allc_2m_mp,
             krnl.allc_1g_mp == old(krnl).allc_1g_mp,
+            krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
             krnl.dflt_pt == old(krnl).dflt_pt,
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index).view().view()]
@@ -409,6 +413,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
                     &&& perms.spec_index(index).lock_id() == krnl.pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
                 },
             lctx.pcid_needflush_lock_map().dom().is_empty(),
+            lctx.cpu_offline_flag_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (krnl.pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1 + count),
         decreases 511 - count,
@@ -670,6 +675,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             index_valid(NUM_PAGES, index) && !page_2m_tail_indices(head).contains(index) ==> final(krnl).pg_arr.spec_index(index) == old(krnl).pg_arr.spec_index(index),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -711,6 +717,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().difference(page_2m_tail_prefix_indices(head, count)),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
             lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+            lctx.cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),
@@ -742,6 +749,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             krnl.allc_4k_mp == old(krnl).allc_4k_mp,
             krnl.allc_2m_mp == old(krnl).allc_2m_mp,
             krnl.allc_1g_mp == old(krnl).allc_1g_mp,
+            krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
             krnl.dflt_pt == old(krnl).dflt_pt,
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index).view().view()]

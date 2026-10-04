@@ -120,6 +120,7 @@ pub(super) proof fn eof_container_relations_wf(
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
+        container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp),
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
         container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
         container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp),
@@ -139,6 +140,7 @@ pub(super) proof fn eof_container_relations_wf(
     };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); reveal(container_process_wf); process_no_change_to_tree_fields_imply_wf_forall(); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
     eof_container_cpu_wf(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,

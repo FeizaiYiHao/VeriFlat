@@ -18,7 +18,7 @@ pub(super) proof fn new_container_cpu_transfer_eof(
         post.inv(),
 {
     reveal(new_container_cpu_transfer_transition);
-    assert(post.subsystems_inv()) by { reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by { reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
     assert(post.process_management_inv()) by {
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };

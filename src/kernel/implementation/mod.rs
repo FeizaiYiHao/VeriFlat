@@ -16,6 +16,8 @@ pub mod syscall_unmap_4k;
 pub mod syscall_ipc;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_schedule;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_cpu_hotplug;
 pub mod locker_unlocker;
 pub mod attach_endpoint_reference_and_unlock;
 pub mod create_thread_from_staged_page;

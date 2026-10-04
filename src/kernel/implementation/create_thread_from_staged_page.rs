@@ -118,6 +118,7 @@ pub fn create_thread_from_staged_page_merged(
         }),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
@@ -533,6 +534,7 @@ proof fn eof_create_thread_process_management_inv(
     };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures(); };

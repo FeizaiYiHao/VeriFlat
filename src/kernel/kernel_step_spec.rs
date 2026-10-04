@@ -179,6 +179,9 @@ pub open spec fn kernel_container_nonlock_fields_and_quotas_unchanged(pre: &Kern
     &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
         pre.ctn_mp.dom().contains(c) ==> post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set).lock_state_u()
             == pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set).lock_state_u()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
+        pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))
+            == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))
 }
 
 #[verifier::opaque]
@@ -286,6 +289,7 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
@@ -409,6 +413,7 @@ pub open spec fn kernel_context_switch_fields(
     &&& post.irt.iommu_roots() == pre.irt.iommu_roots()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.cpu_tlb.view() == match flushed_pcid {
         Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
@@ -764,6 +769,8 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
+        pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
         index_valid(NUM_CPUS, i) ==> {
             let a = pre.cpu_arr.spec_index(i).value.view().view();
@@ -988,6 +995,7 @@ pub open spec fn kernel_process_quota_4k_changed(
     &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& pre.prc_mp.dom().contains(process_ptr)
     &&& pre.ctn_mp.dom().contains(container_ptr)
@@ -1183,7 +1191,8 @@ pub open spec fn kernel_u_container_root_published(
         lock_state: LockStateU::WriteLocked, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::empty(),
-        cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked, free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
+        cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
+        cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
         quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false,
     })
     &&& post == (KernelU {
@@ -1248,7 +1257,8 @@ pub open spec fn kernel_u_container_root_created(
         lock_state: LockStateU::WriteLocked, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::empty(),
-        cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked, free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
+        cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked,
+        cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
         quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false,
     })
     &&& post == (KernelU {
@@ -1341,6 +1351,277 @@ pub open spec fn share_4k_objects_k(krnl: KernelK, cpu_id: CpuId) -> Share4kObje
             }
         },
     }
+}
+
+/// The running thread's container `container_ptr` records an offline request for `target`, a non-Off
+/// cpu it owns whose request bit is clear.
+#[verifier::opaque]
+pub open spec fn kernel_u_cpu_offline_request_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let container = old_u.container_map[container_ptr];
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu.state is Running
+    &&& cpu.owning_container == container_ptr
+    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& index_valid(NUM_CPUS, target)
+    &&& old_u.cpu_array[target as int].owning_container == container_ptr
+    &&& !(old_u.cpu_array[target as int].state is Off)
+    &&& container.cpu_offline_requests.len() == NUM_CPUS
+    &&& !container.cpu_offline_requests[target as int]
+    &&& new_u == (KernelU {
+        container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container }),
+        ..old_u
+    })
+}
+
+/// `target`, an Off cpu owned by the running thread's container `container_ptr`, becomes Idle.
+#[verifier::opaque]
+pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let target_cpu = old_u.cpu_array[target as int];
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& cpu.state is Running
+    &&& cpu.owning_container == container_ptr
+    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& index_valid(NUM_CPUS, target)
+    &&& old_u.cpu_array.len() == NUM_CPUS
+    &&& target_cpu.owning_container == container_ptr
+    &&& target_cpu.state is Off
+    &&& new_u == (KernelU { cpu_array: old_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, ..target_cpu }), ..old_u })
+}
+
+/// `syscall_cpu_offline_request` with every lock released again: only the `target` request bit of
+/// the caller container's table is set.
+#[verifier::opaque]
+pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
+    let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let cpu_set_ptr = pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set;
+    let flags_ptr = cpu_offline_flags_ptr(container_ptr);
+    &&& pre.inv()
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& cpu.state is Running
+    &&& cpu.owning_container == container_ptr
+    &&& pre.ctn_mp.dom().contains(container_ptr)
+    &&& pre.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
+    &&& index_valid(NUM_CPUS, target)
+    &&& pre.cpu_arr.spec_index(target).value.view().view().owning_container == container_ptr
+    &&& !(pre.cpu_arr.spec_index(target).value.view().view().state is Off)
+    &&& !pre.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(target).view().view().requested
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..*pre })
+    &&& post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id)
+    &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
+    &&& post.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
+    &&& post.cpu_offline_mp.unchanged_except(&pre.cpu_offline_mp, flags_ptr)
+    &&& cpu_offline_requests_of(post.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(flags_ptr)).update(target as int, true)
+}
+
+/// `syscall_cpu_online` with every lock released again: `target` left Off for Idle and was reopened
+/// in its container's cpu set.
+#[verifier::opaque]
+pub open spec fn kernel_cpu_online_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
+    let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let target_cpu = pre.cpu_arr.spec_index(target).value.view().view();
+    let cpu_set_ptr = pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set;
+    &&& pre.inv()
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& cpu.state is Running
+    &&& cpu.owning_container == container_ptr
+    &&& pre.ctn_mp.dom().contains(container_ptr)
+    &&& pre.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
+    &&& index_valid(NUM_CPUS, target)
+    &&& pre.cpu_arr.spec_index(target).value.locking_thread() is None
+    &&& target_cpu.owning_container == container_ptr
+    &&& target_cpu.state is Off
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, ..*pre })
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != cpu_id && i != target ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i)
+    &&& post.cpu_arr.spec_index(cpu_id).value.view() == pre.cpu_arr.spec_index(cpu_id).value.view()
+    &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& post.cpu_arr.spec_index(target).value.view().view() == (CpuView { state: CpuState::Idle, ..target_cpu })
+    &&& post.cpu_arr.spec_index(target).value.locking_thread() is None
+    &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
+    &&& post.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
+}
+/// `cpu_id`'s TLB entries after it went Off: the default-PCID entry is flushed when `flushed_default_pcid`,
+/// then every non-default PCID entry of the cpu is empty.
+pub open spec fn cpu_tlb_after_cpu_went_off(tlb: Map<(CpuId, Pcid), SingleTLB>, cpu_id: CpuId, flushed_default_pcid: bool) -> Map<(CpuId, Pcid), SingleTLB> {
+    let empty = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
+    let after_default = if flushed_default_pcid { tlb.insert((cpu_id, KERNEL_DEFAULT_PCID), empty) } else { tlb };
+    Map::new(after_default.dom(), |key: (CpuId, Pcid)| if key.0 == cpu_id && key.1 != KERNEL_DEFAULT_PCID { empty } else { after_default[key] })
+}
+
+/// The non-Off cpu `cpu_id`, whose container `C` has a pending request for it, goes Off: its running
+/// thread, if any, is requeued at the tail of `C`'s scheduler with `regs`, `C`'s request bit for the cpu is
+/// cleared, and the cpu's TLB entries are flushed except an unflushed default-PCID entry.
+#[verifier::opaque]
+pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    let container_ptr = cpu.owning_container;
+    let container = old_u.container_map.spec_index(container_ptr);
+    let requeued = match cpu.current_thread {
+        Some(prev) => old_u.thread_map.insert(prev, ThreadU { state: ThreadState::SCHEDULED, error_code: None, trap_frame: Some(regs), ..old_u.thread_map.spec_index(prev) }),
+        None => old_u.thread_map,
+    };
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array.len() == NUM_CPUS
+    &&& !(cpu.state is Off)
+    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& container.cpu_offline_requests.len() == NUM_CPUS
+    &&& container.cpu_offline_requests[cpu_id as int]
+    &&& cpu.current_process is Some == cpu.current_thread is Some
+    &&& (cpu.current_thread is Some ==> {
+        let prev = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
+        &&& old_u.thread_map.dom().contains(cpu.current_thread.unwrap())
+        &&& !prev.killed
+        &&& prev.state == (ThreadState::RUNNING { cpu_id })
+        &&& prev.owning_proc == cpu.current_process.unwrap()
+        &&& old_u.process_map.dom().contains(cpu.current_process.unwrap())
+        &&& !old_u.process_map.spec_index(cpu.current_process.unwrap()).killed
+    })
+    &&& new_u == (KernelU {
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Off, current_process: None, current_thread: None, ..cpu }),
+        container_map: old_u.container_map.insert(container_ptr, ContainerU {
+            scheduler: match cpu.current_thread { Some(prev) => container.scheduler.push(prev), None => container.scheduler },
+            cpu_offline_requests: container.cpu_offline_requests.update(cpu_id as int, false),
+            ..container
+        }),
+        thread_map: requeued,
+        cpu_tlb: cpu_tlb_after_cpu_went_off(old_u.cpu_tlb, cpu_id, flushed_default_pcid),
+        ..old_u
+    })
+}
+
+#[verifier::opaque]
+/// `cpu_offline_check` with every lock released again: the non-Off cpu `cpu_id`, with a pending request of
+/// its container, went Off, its live running thread (if any) was requeued at the tail with `regs`, the
+/// request bit was cleared, and the cpu's TLB entries were flushed.
+pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool) -> bool {
+    let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let previous = cpu.current_thread;
+    let container_ptr = cpu.owning_container;
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
+        pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+        pre.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread()
+    &&& forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
+        pre.thr_mp.dom().contains(p) ==> post.thr_mp.spec_index(p).locking_thread() == pre.thr_mp.spec_index(p).locking_thread()
+    &&& forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
+        pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread()
+    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+        pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+    &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+        pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
+        index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
+    &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
+    &&& forall|p: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(p)]
+        pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread()
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
+    &&& kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)
+    &&& post.irt.owners() == pre.irt.owners()
+    &&& post.irt.iommu_roots() == pre.irt.iommu_roots()
+    &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
+    &&& post.dflt_pt == pre.dflt_pt
+    &&& post.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, flushed_default_pcid)
+    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& !(cpu.state is Off)
+    &&& pre.ctn_mp.dom().contains(container_ptr)
+    &&& pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is None
+    &&& pre.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr))
+    &&& cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)))[cpu_id as int]
+    &&& cpu.current_process is Some == previous is Some
+    &&& (previous is Some ==> {
+        let prev = pre.thr_mp.spec_index(previous.unwrap());
+        let process_ptr = cpu.current_process.unwrap();
+        &&& pre.thr_mp.dom().contains(previous.unwrap())
+        &&& prev.locking_thread() is None
+        &&& !prev.being_killed()
+        &&& prev.view().state == (ThreadState::RUNNING { cpu_id })
+        &&& prev.view().owning_proc == process_ptr
+        &&& pre.prc_mp.dom().contains(process_ptr)
+        &&& pre.prc_mp.spec_index(process_ptr).locking_thread() is None
+        &&& !pre.prc_mp.spec_index(process_ptr).being_killed()
+    })
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
+        index_valid(NUM_CPUS, i) ==> {
+            let a = pre.cpu_arr.spec_index(i).value.view().view();
+            let b = post.cpu_arr.spec_index(i).value.view().view();
+            &&& b.owning_container == a.owning_container
+            &&& b.state == if i == cpu_id { CpuState::Off } else { a.state }
+            &&& b.current_process == if i == cpu_id { None } else { a.current_process }
+            &&& b.current_thread == if i == cpu_id { None } else { a.current_thread }
+        }
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let a = pre.ctn_mp.spec_index(c);
+            let b = post.ctn_mp.spec_index(c);
+            let a_ro = a.view_rodata().view();
+            let b_ro = b.view_rodata().view();
+            &&& b.view().children.view() == a.view().children.view()
+            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+            &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
+            &&& b.view().root_process == a.view().root_process
+            &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
+            &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
+            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view().owned_pages.view() == a.view().owned_pages.view()
+            &&& b_ro.parent == a_ro.parent
+            &&& b_ro.depth == a_ro.depth
+            &&& b_ro.scheduler == a_ro.scheduler
+            &&& b_ro.cpu_set == a_ro.cpu_set
+            &&& b.being_killed() == a.being_killed()
+        }
+    &&& forall|c: RwLockContainerPtr| #![trigger post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let queue = pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler).view().queue.view();
+            post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler).view().queue.view() == if c == container_ptr {
+                match previous { Some(prev) => queue.push(prev), None => queue }
+            } else { queue }
+        }
+    &&& forall|c: RwLockContainerPtr| #![trigger post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)]
+        pre.ctn_mp.dom().contains(c) ==> PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
+            == PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_4k_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_4k_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view()
+            == pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view()
+            == pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view()
+            == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
+        pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) == if c == container_ptr {
+            cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))).update(cpu_id as int, false)
+        } else { cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) }
+    &&& post.thr_mp.dom() == pre.thr_mp.dom()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
+        pre.thr_mp.dom().contains(t) ==> {
+            let a = pre.thr_mp.spec_index(t).view();
+            let b = post.thr_mp.spec_index(t).view();
+            &&& b.state == if previous == Some(t) { ThreadState::SCHEDULED } else { a.state }
+            &&& b.caller == a.caller
+            &&& b.callee == a.callee
+            &&& b.owning_container == a.owning_container
+            &&& b.owning_proc == a.owning_proc
+            &&& b.quota_4k == a.quota_4k
+            &&& b.quota_2m == a.quota_2m
+            &&& b.quota_1g == a.quota_1g
+            &&& b.endpoint_descriptors.view() == a.endpoint_descriptors.view()
+            &&& b.blocking_endpoint_ptr == a.blocking_endpoint_ptr
+            &&& b.ipc_payload == a.ipc_payload
+            &&& b.error_code == if previous == Some(t) { None } else { a.error_code }
+            &&& (previous == Some(t) ==> b.trap_frame.is_some() && *b.trap_frame.get_some_0() == regs)
+            &&& (previous != Some(t) ==> b.trap_frame == a.trap_frame)
+            &&& b.syscall_progress.view() == a.syscall_progress.view()
+            &&& post.thr_mp.spec_index(t).being_killed() == pre.thr_mp.spec_index(t).being_killed()
+        }
 }
 
 }

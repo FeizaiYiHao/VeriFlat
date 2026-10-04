@@ -22,6 +22,7 @@ verus! {
         pub pg_arr: PageLockedArray,
         pub cpu_arr: CpuLockedArray,
         pub pcid_needflush: PcidNeedFlushArray,
+        pub cpu_offline_mp: CpuOfflineFlagsUnLockedMap,
         pub cpu_published: CpuPublishedArray,
         pub ctn_mp: ContainerLockedMap,
         pub sched_mp: SchedulerLockedMap,
@@ -61,6 +62,7 @@ verus! {
             &&&
             cpu_array_wf(self.cpu_arr, self.dflt_pt.view())
             &&& pcid_needflush_wf(self.pcid_needflush)
+            &&& cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)
             &&& cpu_published_wf(self.cpu_published, self.cpu_arr, self.pcid_needflush)
             &&&
             self.cpu_tlb.inv()
@@ -167,6 +169,8 @@ verus! {
             container_scheduler_wf(self.ctn_mp, self.sched_mp)
             &&&
             container_cpu_set_wf(self.ctn_mp, self.cpu_set_mp)
+            &&&
+            container_cpu_offline_flags_wf(self.ctn_mp, self.cpu_offline_mp)
             &&&
             container_pcid_allocator_wf(
                 self.ctn_mp,
@@ -496,6 +500,7 @@ verus! {
     /// allocator quota, cache, or pool locks.
     pub open spec fn held_locks_order_below(k: &KernelK, lctx: &LocalContext, page_bound: LockMajorId) -> bool {
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()
+        &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
         &&& forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(k.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
         &&& forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> k.pg_arr.lock_id_by_index(held_page).major < page_bound
         &&& forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> !(k.thr_mp.spec_index(held_thread).view().state is SCHEDULED)
@@ -512,6 +517,7 @@ verus! {
             #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write)]
             typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write)
             ==> k.pcid_needflush.spec_index(cpu_id, pcid).view_ghost() == Some(lctx.cpu_id()))
+        &&& k.cpu_offline_mp.typed_flag_lock_map_aligned(lctx.cpu_offline_flag_lock_map(), lctx.thread_id())
         &&& k.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
         &&& k.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())
         &&& k.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())

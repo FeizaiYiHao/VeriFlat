@@ -48,6 +48,7 @@ pub ghost struct ContainerU {
     pub scheduler: Seq<RwLockThreadPtr>,
     pub cpu_set: RwLockCpuSetPtr,
     pub cpu_set_lock: LockStateU,
+    pub cpu_offline_requests: Seq<bool>,
     pub free_pcids: Set<Pcid>,
     pub quota_4k: usize,
     pub quota_2m: usize,

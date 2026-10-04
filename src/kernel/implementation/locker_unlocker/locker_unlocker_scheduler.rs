@@ -55,7 +55,7 @@ impl KernelK {
             proof {
                 scheduler_perms_wf_at(old(self).sched_mp, scheduler_ptr);
                 assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).sched_mp.spec_index(scheduler_ptr).container_depth(), process: old(self).sched_mp.spec_index(scheduler_ptr).process_depth(), major: old(self).sched_mp.spec_index(scheduler_ptr).view().current_lock_major(), minor: scheduler_ptr, })) by {
-                    reveal(LocalContext::lock_id_acyclic);
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                 };
                 assert(!old(self).sched_mp.spec_index(scheduler_ptr).locked_by_thread(old(lctx).thread_id())) by {

@@ -1,8 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
-use crate::{ni_alloc_quota::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_process::*, ni_new_thread::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*};
+use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_process::*, ni_new_thread::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
+use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
 use veriflat_syscall_ipc::syscall_ipc::syscall_ipc_spec::*;
 use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
 use veriflat_syscall_new_container::syscall_new_container::syscall_new_container_spec::*;
@@ -18,6 +19,7 @@ pub ghost enum StepLabel {
     Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
     AllocQuota4k { alloc_amount: usize },
     Schedule { entry_regs: Registers, flushed_pcid: Option<Pcid> },
+    CpuOfflineRequest { target: CpuId }, CpuOfflineCheck { regs: Registers, flushed_default_pcid: bool }, CpuOnline { target: CpuId },
     NewThreadEnter { regs: Registers, endpoint_index: Option<EndpointIdx> }, NewThreadFinish,
     NewProcessEnter { range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool }, NewProcessPublish, NewProcessFinish,
     NewContainerEnter { range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers }, NewContainerPublish, NewContainerFinish,
@@ -45,6 +47,9 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Unmap4kExit => unmap_4k_exit_step_pre(old_u, cpu_id) && unmap_4k_exit_step(old_u, new_u, cpu_id),
         StepLabel::AllocQuota4k { alloc_amount } => alloc_quota_4k_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_4k_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::Schedule { entry_regs, flushed_pcid } => schedule_step_pre(old_u, cpu_id) && schedule_step(old_u, new_u, cpu_id, entry_regs, flushed_pcid),
+        StepLabel::CpuOfflineRequest { target } => cpu_offline_request_step_pre(old_u, cpu_id, target) && cpu_offline_request_step(old_u, new_u, cpu_id, target),
+        StepLabel::CpuOfflineCheck { regs, flushed_default_pcid } => cpu_offline_check_step_pre(old_u, cpu_id) && cpu_offline_check_step(old_u, new_u, cpu_id, regs, flushed_default_pcid),
+        StepLabel::CpuOnline { target } => cpu_online_step_pre(old_u, cpu_id, target) && cpu_online_step(old_u, new_u, cpu_id, target),
         StepLabel::NewThreadEnter { regs, endpoint_index } =>
             new_thread_enter_step_pre(old_u, cpu_id, endpoint_index) && new_thread_enter_step(old_u, new_u, cpu_id, regs, endpoint_index),
         StepLabel::NewThreadFinish => new_thread_finish_step_pre(old_u, cpu_id) && new_thread_finish_step(old_u, new_u, cpu_id),
@@ -156,6 +161,13 @@ pub proof fn trace_ni_at(
             StepLabel::Schedule { entry_regs, flushed_pcid } => {
                 schedule_step_lr(old_u, new_u, cpu_id, entry_regs, flushed_pcid, x, y); schedule_step_iso(old_u, new_u, cpu_id, entry_regs, flushed_pcid, x, y);
             },
+            StepLabel::CpuOfflineRequest { target } => {
+                cpu_offline_request_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_offline_request_step_iso(old_u, new_u, cpu_id, target, x, y);
+            },
+            StepLabel::CpuOfflineCheck { regs, flushed_default_pcid } => {
+                cpu_offline_check_step_lr(old_u, new_u, cpu_id, regs, flushed_default_pcid, x, y); cpu_offline_check_step_iso(old_u, new_u, cpu_id, regs, flushed_default_pcid, x, y);
+            },
+            StepLabel::CpuOnline { target } => { cpu_online_step_lr(old_u, new_u, cpu_id, target, x, y); cpu_online_step_iso(old_u, new_u, cpu_id, target, x, y); },
             StepLabel::NewThreadEnter { regs, endpoint_index } => {
                 new_thread_enter_step_lr(old_u, new_u, cpu_id, regs, endpoint_index, x, y); new_thread_enter_step_iso(old_u, new_u, cpu_id, regs, endpoint_index, x, y);
             },

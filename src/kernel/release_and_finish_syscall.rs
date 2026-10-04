@@ -27,7 +27,7 @@ verus! {
             krnl.all_objects_unlocked(lctx),
     {
         reveal(KernelK::all_objects_unlocked); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedArray2D::typed_lock_map_aligned);
-        reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
+        reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned);
         reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
     }
 
@@ -71,6 +71,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -162,6 +163,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -266,6 +268,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),

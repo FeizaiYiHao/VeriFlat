@@ -41,6 +41,7 @@ impl KernelK {
             final(self).allc_4k_mp == old(self).allc_4k_mp,
             final(self).allc_2m_mp == old(self).allc_2m_mp,
             final(self).allc_1g_mp == old(self).allc_1g_mp,
+            final(self).cpu_offline_mp == old(self).cpu_offline_mp,
             final(self).cpu_tlb == old(self).cpu_tlb,
             final(self).iommu_tlb == old(self).iommu_tlb,
             final(self).rt_ctn == old(self).rt_ctn,

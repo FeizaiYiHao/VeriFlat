@@ -19,7 +19,11 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_process_management_inv(
 {
     reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     assert(post.process_management_inv()) by {
-        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by {
+            assert(forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t)
+                ==> post.thr_mp.spec_index(t).view().endpoint_descriptors == pre.thr_mp.spec_index(t).view().endpoint_descriptors);
+            reveal(thread_endpoint_ref_counter_wf);
+        };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(container_thread_endpoint_wf); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_scheduler_wf); };

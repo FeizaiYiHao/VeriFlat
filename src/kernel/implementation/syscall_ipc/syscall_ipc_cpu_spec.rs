@@ -51,6 +51,7 @@ pub open spec fn ipc_cpu_rendezvous_transition(
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn

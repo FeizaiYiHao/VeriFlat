@@ -105,6 +105,7 @@ fn schedule_switch_to_queue_head(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         cpu_lock_perm.view().state() is WriteLock,

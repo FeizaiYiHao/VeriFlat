@@ -102,6 +102,7 @@ pub(super) fn allocate_new_container_pages(
         final(lctx).page_lock_map().dom() == page_ptrs_to_indices(ret.0.view()).union(seq![page_ptr2page_index(ret.1), page_ptr2page_index(ret.2)].to_set()),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
