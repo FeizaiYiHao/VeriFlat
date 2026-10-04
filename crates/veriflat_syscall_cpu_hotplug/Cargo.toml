@@ -1,0 +1,14 @@
+[package]
+name = "veriflat_syscall_cpu_hotplug"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "../../src/kernel/implementation/veriflat_syscall_cpu_hotplug.rs"
+
+[dependencies]
+vstd = { path = "../../verus/source/vstd" }
+veriflat_kernel_core = { path = "../veriflat_kernel_core" }
+
+[package.metadata.verus]
+verify = true

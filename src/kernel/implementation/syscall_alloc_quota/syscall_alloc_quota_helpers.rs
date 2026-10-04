@@ -83,6 +83,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,

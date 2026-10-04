@@ -1,4 +1,4 @@
-use vstd::assert_sets_equal;
+use vstd::{assert_seqs_equal, assert_sets_equal};
 use vstd::prelude::*;
 use crate::*;
 use super::staged_4k_page_chain::{
@@ -140,6 +140,7 @@ pub(super) fn publish_new_container_base(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).page_lock_map().dom()
             == page_ptrs_to_indices(pages_4k.view())
                 .union(page_ptrs_to_indices(funding_pages))
@@ -189,6 +190,7 @@ pub(super) fn publish_new_container_base(
         final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         final(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         final(krnl).ctn_mp.dom().contains(parent_container_ptr),
         final(krnl).prc_mp.dom().contains(parent_process_ptr),
         final(krnl).thr_mp.dom().contains(current_thread_ptr),
@@ -461,7 +463,11 @@ pub(super) fn publish_new_container_base(
             new_container_moved_pages(container_page, pcid_allocator_page, pages_4k.view()[0], pages_4k.view()[1], pages_4k.view()[2],
                 pages_4k.view()[3], pages_4k.view()[8], pages_4k.view()[4], pages_4k.view()[5], pages_4k.view()[6]).union(funding_pages.to_set()), pages_4k.view()[7],
             sharing)) by {
-            reveal(publish_staged_container_root_kernel_state_framing); reveal(kernel_cpu_nonlock_fields_unchanged);
+            reveal(publish_staged_container_root_kernel_state_framing); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(container_cpu_offline_flags_wf);
+            assert(cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page))) == Seq::new(NUM_CPUS as nat, |i: int| false)) by {
+                reveal(cpu_offline_requests_of);
+                assert_seqs_equal!(cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page))) == Seq::new(NUM_CPUS as nat, |i: int| false));
+            };
             let moved = new_container_moved_pages(container_page, pcid_allocator_page, pages_4k.view()[0], pages_4k.view()[1], pages_4k.view()[2],
                 pages_4k.view()[3], pages_4k.view()[8], pages_4k.view()[4], pages_4k.view()[5], pages_4k.view()[6]).union(funding_pages.to_set());
             assert(old(krnl).cpu_arr.spec_index(transfer_cpu_id).value.view().view().owning_container == parent_container_ptr) by { reveal(cpu_set_perms_wf); reveal(container_cpu_wf); };

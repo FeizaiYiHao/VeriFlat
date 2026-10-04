@@ -247,6 +247,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -320,6 +321,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         final(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         final(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         final(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
 {
@@ -534,6 +536,7 @@ pub(super) fn ipc_finish_endpoint_transit(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -760,6 +763,7 @@ pub(super) fn ipc_rendezvous_endpoint(
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,

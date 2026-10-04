@@ -49,7 +49,7 @@ impl KernelK {
             proof {
                 pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
                 assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {
-                    reveal(LocalContext::lock_id_acyclic);
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_perms_wf);
                 };
                 assert(!old(self).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id())) by {
@@ -135,6 +135,7 @@ impl KernelK {
                 final(lctx).page_lock_map() == old(lctx).page_lock_map(),
                 final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
                 final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+                final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
                 final(lctx).container_lock_map() == old(lctx).container_lock_map(),
                 final(lctx).process_lock_map() == old(lctx).process_lock_map(),
                 final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),

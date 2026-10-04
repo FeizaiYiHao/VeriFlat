@@ -88,6 +88,7 @@ pub(super) fn build_staged_4k_global_pool(
             !page_indices.contains(index) ==> final(lctx).page_lock_map().get(index) == old(lctx).page_lock_map().get(index),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -151,6 +152,7 @@ pub(super) fn build_staged_4k_global_pool(
                 !page_indices.contains(index) ==> lctx.page_lock_map().get(index) == old(lctx).page_lock_map().get(index),
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
             lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+            lctx.cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             lctx.process_lock_map() == old(lctx).process_lock_map(),
             lctx.thread_lock_map() == old(lctx).thread_lock_map(),
@@ -555,6 +557,7 @@ pub(super) fn retype_new_container_owned_2m_pages(
             index != page_ptr2page_index(container_page) && index != page_ptr2page_index(pcid_allocator_page) ==> final(lctx).page_lock_map().get(index) == old(lctx).page_lock_map().get(index),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -690,6 +693,7 @@ pub(super) fn prepare_new_container_backing_pages(
             !funding_indices.contains(index) && index != page_ptr2page_index(container_page) && index != page_ptr2page_index(pcid_allocator_page) ==> final(lctx).page_lock_map().get(index) == old(lctx).page_lock_map().get(index),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -1011,6 +1015,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().page_closure() == set![l4_page],
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
@@ -1273,6 +1278,7 @@ pub(super) fn publish_new_container_allocators(
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom(),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -1424,6 +1430,7 @@ pub(super) fn publish_new_container_scheduler(
             index != page_ptr2page_index(scheduler_page) ==> final(lctx).page_lock_map().get(index) == old(lctx).page_lock_map().get(index),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -1517,6 +1524,7 @@ pub(super) fn publish_new_container_cpu_set(
             index != page_ptr2page_index(cpu_set_page) ==> final(lctx).page_lock_map().get(index) == old(lctx).page_lock_map().get(index),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -1566,12 +1574,15 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
     requires
         old(krnl).pcid_allc_mp.perms_wf(),
         old(krnl).ctn_mp.perms_wf(),
+        old(krnl).cpu_offline_mp.perms_wf(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,
         pcid_allocator_value.inv(),
         container_value.inv(),
         !old(krnl).pcid_allc_mp.dom().contains(child_pcid_allocator_ptr),
         !old(krnl).ctn_mp.dom().contains(child_container_ptr),
+        !old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_container_ptr)),
+        page_ptr_2m_valid(child_container_ptr),
         pcid_allocator_perm.is_init(),
         pcid_allocator_perm.addr() == child_pcid_allocator_ptr,
         container_perm.is_init(),
@@ -1583,14 +1594,30 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(final(krnl), final(lctx)), *final(krnl) == (KernelK {
-            pcid_allc_mp: final(krnl).pcid_allc_mp, ctn_mp: final(krnl).ctn_mp,
+            pcid_allc_mp: final(krnl).pcid_allc_mp, ctn_mp: final(krnl).ctn_mp, cpu_offline_mp: final(krnl).cpu_offline_mp,
             ..*old(krnl)
         }),
+        final(krnl).cpu_offline_mp.perms_wf(),
+        final(krnl).cpu_offline_mp.dom() =~= old(krnl).cpu_offline_mp.dom().insert(cpu_offline_flags_ptr(child_container_ptr)),
+        forall|ptr: RwLockCpuOfflineFlagsPtr|
+            #![trigger final(krnl).cpu_offline_mp.spec_index(ptr)]
+            old(krnl).cpu_offline_mp.dom().contains(ptr) ==> final(krnl).cpu_offline_mp.spec_index(ptr) == old(krnl).cpu_offline_mp.spec_index(ptr),
+        final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).inv(),
+        final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).owning_container.view() == child_container_ptr,
+        forall|cpu_id: CpuId|
+            #![trigger final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).flags.spec_index(cpu_id)]
+            index_valid(NUM_CPUS, cpu_id) ==> {
+                &&& !final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).flags.spec_index(cpu_id).view().locked()
+                &&& final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).flags.spec_index(cpu_id).view().view().index() == (cpu_offline_flags_ptr(child_container_ptr), cpu_id)
+                &&& !final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).flags.spec_index(cpu_id).view().view().requested
+            },
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(krnl).pcid_allc_mp.perms_wf(),
         pcid_allocator_perms_wf(old(krnl).pcid_allc_mp) ==> pcid_allocator_perms_wf(final(krnl).pcid_allc_mp),
         final(krnl).ctn_mp.perms_wf(),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
@@ -1641,6 +1668,9 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
     let child_container_lock_perm = container_map_insert_new_2m(
         &mut krnl.ctn_mp, child_container_ptr, container_value, container_rodata, container_ghost, Tracked(container_perm), Tracked(&mut *lctx),
     );
+    let flags_value = CpuOfflineFlags::new_empty(Ghost(child_container_ptr), Ghost(cpu_offline_flags_ptr(child_container_ptr)));
+    krnl.cpu_offline_mp.retype_container_page_tail_and_insert(&krnl.ctn_mp, child_container_ptr, flags_value);
+    proof { assert(krnl.cpu_offline_mp.typed_flag_lock_map_aligned(lctx.cpu_offline_flag_lock_map(), lctx.thread_id())) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); }; }
     (child_pcid_allocator_lock_perm, child_container_lock_perm)
 }
 

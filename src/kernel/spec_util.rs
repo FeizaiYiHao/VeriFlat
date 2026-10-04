@@ -11,6 +11,9 @@ impl KernelK {
         &&& forall|cpu_i: CpuId|
             #![trigger self.cpu_arr.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()), index_valid(NUM_CPUS, cpu_i)]
             index_valid(NUM_CPUS, cpu_i) ==> self.cpu_arr.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
+        &&& forall|flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_i: CpuId|
+            #![trigger self.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
+            self.cpu_offline_mp.dom().contains(flags_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
         &&& forall|p_i: PageIndex|
             #![trigger self.pg_arr.spec_index(p_i), index_valid(NUM_PAGES, p_i)]
             index_valid(NUM_PAGES, p_i) ==> self.pg_arr.spec_index(p_i).view().locked_by_thread(lctx.thread_id()) == false

@@ -82,6 +82,7 @@ verus! {
             final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map().remove(endpoint_ptr),
             final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
             final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+            final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
             final(lctx).container_lock_map() == old(lctx).container_lock_map(),
             final(lctx).process_lock_map() == old(lctx).process_lock_map(),
             final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),

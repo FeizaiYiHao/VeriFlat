@@ -134,6 +134,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             old(krnl).cpu_set_mp.dom() == old(steps).snapshot_k().cpu_set_mp.dom(),
             forall|p: RwLockCpuSetPtr| #![trigger old(krnl).cpu_set_mp.spec_index(p)] #![trigger old(steps).snapshot_k().cpu_set_mp.spec_index(p)]
@@ -350,6 +351,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures

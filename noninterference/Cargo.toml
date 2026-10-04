@@ -26,6 +26,7 @@ veriflat_syscall_new_container = { path = "../crates/veriflat_syscall_new_contai
 veriflat_syscall_mmap_4k = { path = "../crates/veriflat_syscall_mmap_4k" }
 veriflat_syscall_unmap_4k = { path = "../crates/veriflat_syscall_unmap_4k" }
 veriflat_syscall_ipc = { path = "../crates/veriflat_syscall_ipc" }
+veriflat_syscall_cpu_hotplug = { path = "../crates/veriflat_syscall_cpu_hotplug" }
 
 [package.metadata.verus]
 verify = true

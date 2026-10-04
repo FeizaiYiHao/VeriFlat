@@ -28,6 +28,7 @@ pub mod domain;
 pub mod isolation;
 pub mod ni_alloc_quota;
 pub mod ni_schedule;
+pub mod ni_cpu_hotplug;
 pub mod ni_new_thread;
 pub mod ni_mmap_4k;
 pub mod ni_unmap_4k;

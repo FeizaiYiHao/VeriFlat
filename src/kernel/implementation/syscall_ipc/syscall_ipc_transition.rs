@@ -89,6 +89,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             waiting_state.is_endpoint_waiting(),
             payload.wf(),
@@ -162,7 +163,7 @@ verus! {
                     &&& thread_perms_wf(krnl.thr_mp)
                     &&& endpoint_perms_wf(krnl.ep_mp)
                 }) by { reveal(cpu_array_wf); reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(endpoint_perms_wf); };
-                reveal(KernelK::default_pagetable_wf);
+                reveal(KernelK::default_pagetable_wf); reveal(cpu_offline_flags_wf);
             };
             assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
             assert(krnl.process_management_inv()) by {
@@ -170,7 +171,17 @@ verus! {
                     &&& krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors
                     &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.wf()
                 }) by { reveal(endpoint_perms_wf); };
-                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by {
+                    assert(forall|t: RwLockThreadPtr| #![trigger krnl.thr_mp.spec_index(t)] old(krnl).thr_mp.dom().contains(t)
+                        ==> krnl.thr_mp.spec_index(t).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(t).view().endpoint_descriptors) by {
+                        reveal(endpoint_perms_wf);
+                    };
+                    assert(forall|e: RwLockEndpointPtr| #![trigger krnl.ep_mp.spec_index(e)] old(krnl).ep_mp.dom().contains(e)
+                        ==> krnl.ep_mp.spec_index(e).view().owning_threads == old(krnl).ep_mp.spec_index(e).view().owning_threads) by {
+                        reveal(endpoint_perms_wf);
+                    };
+                    reveal(thread_endpoint_ref_counter_wf);
+                };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                     &&& thread_caller_callee_wf(krnl.thr_mp)
@@ -352,6 +363,7 @@ verus! {
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures

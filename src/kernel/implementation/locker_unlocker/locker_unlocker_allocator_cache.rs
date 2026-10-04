@@ -53,7 +53,7 @@ impl KernelK {
         proof {
             assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); };
             assert(old(lctx).lock_id_acyclic(LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(), process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(), major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(), minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor() })) by {
-                reveal(LocalContext::lock_id_acyclic);
+                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
             };
             assert(wlock_requires(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(), &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };

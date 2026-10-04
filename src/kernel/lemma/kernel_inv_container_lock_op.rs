@@ -89,6 +89,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
         post.thr_mp == pre.thr_mp,
         post.ep_mp == pre.ep_mp,
         post.rt_ctn == pre.rt_ctn,
+        post.cpu_offline_mp == pre.cpu_offline_mp,
     ensures
         post.process_management_inv(),
 {
@@ -116,6 +117,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
+    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
 }
 
 pub proof fn cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre: KernelK, post: KernelK)

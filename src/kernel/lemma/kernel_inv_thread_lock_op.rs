@@ -127,6 +127,7 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
         post.prc_mp == pre.prc_mp,
         post.ep_mp == pre.ep_mp,
         post.rt_ctn == pre.rt_ctn,
+        post.cpu_offline_mp == pre.cpu_offline_mp,
     ensures
         post.process_management_inv(),
 {
@@ -139,6 +140,7 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
+    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
 }
 
 pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(

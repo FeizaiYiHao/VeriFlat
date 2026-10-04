@@ -41,14 +41,14 @@ impl KernelK {
         {
             proof {
                 assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { reveal(cpu_array_wf); };
-                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); };
+                assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); };
             }
             assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
             assert(old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_published_wf); };
             proof {
                 assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); };
                 assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
@@ -105,7 +105,7 @@ impl KernelK {
                 assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { reveal(cpu_array_wf); };
                 assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); reveal(container_cpu_wf); };
                 assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
-                    reveal(LocalContext::lock_id_acyclic);
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedArray2D::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
                 };
             }
@@ -114,7 +114,7 @@ impl KernelK {
             assert(old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_published_wf); };
             proof {
                 assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); };
                 assert(self.process_management_inv()) by {
                     reveal(container_cpu_wf);
                     reveal(process_cpu_wf);
@@ -193,7 +193,7 @@ impl KernelK {
             // other KernelK field is unchanged. Same template as wlock_cpu.
             proof {
                 assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); };
+                assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); };
                 assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
                 assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
                 assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };

@@ -184,6 +184,7 @@ fn new_process_lock_entry(
             &&& final(lctx).pagetable_lock_map().dom() =~= set![x.source_pagetable_ptr]
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).pcid_needflush_lock_map().dom().is_empty()
+            &&& final(lctx).cpu_offline_flag_lock_map().dom().is_empty()
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
         }),
 {

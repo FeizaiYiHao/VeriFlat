@@ -48,6 +48,7 @@ pub type RwLockPageAllocatorPtr = usize;
 pub type RwLockSchedulerPtr = usize;
 pub type RwLockPcidAllocatorPtr = usize;
 pub type RwLockCpuSetPtr = usize;
+pub type RwLockCpuOfflineFlagsPtr = usize;
 
 pub type PciBdf = (usize, usize, usize);
 
@@ -328,6 +329,11 @@ pub enum RetValueType {
     ErrorIpcSameContainer,
     ErrorIpcCpuOwnerMismatch,
     ErrorIpcCpuNotOff,
+    // ---- cpu hotplug failure modes ----
+    /// The target cpu is invalid or not owned by the caller's container.
+    ErrorCpuOwnerMismatch,
+    ErrorCpuAlreadyOff,
+    ErrorCpuNotOff,
     ErrorIpcSourceUnmapped,
     ErrorIpcPageOwnerMismatch,
     ErrorIpcEndpointSourceInvalid,

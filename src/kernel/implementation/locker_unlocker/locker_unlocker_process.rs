@@ -99,7 +99,7 @@ impl KernelK {
         {
             proof {
                 process_perms_wf_at(old(self).prc_mp, process_ptr);
-                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(pcid_allocator_perms_wf); reveal(allocator_perms_wf); };
                 assert(!old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id())) by {
                     if old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id()) {
                         assert(old(lctx).process_lock_map().dom().contains(process_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };

@@ -86,6 +86,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
     ensures
         final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, parent_ptr),
         final(krnl).prc_mp.spec_index(parent_ptr).view_rodata() == old(krnl).prc_mp.spec_index(parent_ptr).view_rodata(),
@@ -118,6 +119,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
+        final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
         *final(krnl) == (KernelK {
             pg_arr: final(krnl).pg_arr,
             prc_mp: final(krnl).prc_mp,

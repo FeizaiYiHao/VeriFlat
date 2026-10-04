@@ -48,6 +48,7 @@ pub tracked struct LocalContext {
     ghost page_lock_map: Map<PageIndex, TypedHeldLock>,
     ghost cpu_lock_map: Map<CpuId, TypedHeldLock>,
     ghost pcid_needflush_lock_map: Map<(CpuId, Pcid), TypedHeldLock>,
+    ghost cpu_offline_flag_lock_map: Map<(RwLockCpuOfflineFlagsPtr, CpuId), TypedHeldLock>,
     ghost container_lock_map: Map<RwLockContainerPtr, TypedHeldLock>,
     ghost process_lock_map: Map<RwLockProcessPtr, TypedHeldLock>,
     ghost thread_lock_map: Map<RwLockThreadPtr, TypedHeldLock>,
@@ -82,6 +83,7 @@ impl LocalContext {
             page_lock_map: Map::empty(),
             cpu_lock_map: Map::empty(),
             pcid_needflush_lock_map: Map::empty(),
+            cpu_offline_flag_lock_map: Map::empty(),
             container_lock_map: Map::empty(),
             process_lock_map: Map::empty(),
             thread_lock_map: Map::empty(),
@@ -130,6 +132,10 @@ impl LocalContext {
 
     pub closed spec fn pcid_needflush_lock_map(&self) -> Map<(CpuId, Pcid), TypedHeldLock> {
         self.pcid_needflush_lock_map
+    }
+
+    pub closed spec fn cpu_offline_flag_lock_map(&self) -> Map<(RwLockCpuOfflineFlagsPtr, CpuId), TypedHeldLock> {
+        self.cpu_offline_flag_lock_map
     }
 
     pub closed spec fn container_lock_map(&self) -> Map<RwLockContainerPtr, TypedHeldLock> {
@@ -243,6 +249,9 @@ impl LocalContext {
             KernelObjId::PcidNeedFlush(cpu_id, pcid) => if self.pcid_needflush_lock_map().dom().contains((cpu_id, pcid)) {
                 Some(self.pcid_needflush_lock_map().index((cpu_id, pcid)))
             } else { None },
+            KernelObjId::CpuOfflineFlag(ptr, cpu_id) => if self.cpu_offline_flag_lock_map().dom().contains((ptr, cpu_id)) {
+                Some(self.cpu_offline_flag_lock_map().index((ptr, cpu_id)))
+            } else { None },
             KernelObjId::Container(ptr) => if self.container_lock_map().dom().contains(ptr) {
                 Some(self.container_lock_map().index(ptr))
             } else { None },
@@ -320,6 +329,7 @@ impl LocalContext {
         &&& self.page_lock_map().dom().is_empty()
         &&& self.cpu_lock_map().dom().is_empty()
         &&& self.pcid_needflush_lock_map().dom().is_empty()
+        &&& self.cpu_offline_flag_lock_map().dom().is_empty()
         &&& self.container_lock_map().dom().is_empty()
         &&& self.process_lock_map().dom().is_empty()
         &&& self.thread_lock_map().dom().is_empty()
@@ -346,6 +356,7 @@ impl LocalContext {
         &&& typed_lock_map_ids_lt(self.page_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.cpu_lock_map(), lock_id)
         &&& typed_lock_map_2d_ids_lt(self.pcid_needflush_lock_map(), lock_id)
+        &&& typed_lock_map_2d_ids_lt(self.cpu_offline_flag_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.container_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.process_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.thread_lock_map(), lock_id)
@@ -371,6 +382,7 @@ impl LocalContext {
         &&& typed_lock_map_majors_lt(self.page_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.cpu_lock_map(), major)
         &&& typed_lock_map_2d_majors_lt(self.pcid_needflush_lock_map(), major)
+        &&& typed_lock_map_2d_majors_lt(self.cpu_offline_flag_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.container_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.process_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.thread_lock_map(), major)
@@ -511,6 +523,7 @@ pub open spec fn typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContex
     &&& new.page_lock_map() == old.page_lock_map()
     &&& new.cpu_lock_map() == old.cpu_lock_map()
     &&& new.pcid_needflush_lock_map() == old.pcid_needflush_lock_map()
+    &&& new.cpu_offline_flag_lock_map() == old.cpu_offline_flag_lock_map()
     &&& new.container_lock_map() == old.container_lock_map()
     &&& new.process_lock_map() == old.process_lock_map()
     &&& new.thread_lock_map() == old.thread_lock_map()
@@ -544,6 +557,10 @@ pub open spec fn typed_lock_maps_inserted(
     &&& new.pcid_needflush_lock_map() == match obj_id {
         KernelObjId::PcidNeedFlush(cpu_id, pcid) => old.pcid_needflush_lock_map().insert((cpu_id, pcid), entry),
         _ => old.pcid_needflush_lock_map(),
+    }
+    &&& new.cpu_offline_flag_lock_map() == match obj_id {
+        KernelObjId::CpuOfflineFlag(ptr, cpu_id) => old.cpu_offline_flag_lock_map().insert((ptr, cpu_id), entry),
+        _ => old.cpu_offline_flag_lock_map(),
     }
     &&& new.container_lock_map() == match obj_id {
         KernelObjId::Container(ptr) => old.container_lock_map().insert(ptr, entry),
@@ -647,6 +664,10 @@ pub open spec fn typed_lock_maps_removed(
     &&& new.pcid_needflush_lock_map() == match obj_id {
         KernelObjId::PcidNeedFlush(cpu_id, pcid) => old.pcid_needflush_lock_map().remove((cpu_id, pcid)),
         _ => old.pcid_needflush_lock_map(),
+    }
+    &&& new.cpu_offline_flag_lock_map() == match obj_id {
+        KernelObjId::CpuOfflineFlag(ptr, cpu_id) => old.cpu_offline_flag_lock_map().remove((ptr, cpu_id)),
+        _ => old.cpu_offline_flag_lock_map(),
     }
     &&& new.container_lock_map() == match obj_id {
         KernelObjId::Container(ptr) => old.container_lock_map().remove(ptr),

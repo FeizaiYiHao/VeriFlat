@@ -116,6 +116,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_cpu_hotplug"
+version = "0.1.0"
+dependencies = [
+ "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
 name = "veriflat_syscall_ipc"
 version = "0.1.0"
 dependencies = [

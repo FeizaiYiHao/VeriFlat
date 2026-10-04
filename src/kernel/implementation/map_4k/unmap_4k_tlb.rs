@@ -84,7 +84,7 @@ pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid
     krnl.cpu_tlb.flush_remote_pcid(cpu_id, pcid, Tracked(lctx));
     pcid_needflush_array_clear(&mut krnl.pcid_needflush, cpu_id, pcid, Tracked(lctx), needflush_perm);
     proof {
-        assert(krnl.subsystems_inv()) by { reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.subsystems_inv()) by { reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
@@ -139,7 +139,7 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
     cpu_array_flush_current_tlb(&mut krnl.cpu_arr, &mut krnl.cpu_tlb, cpu_id, cr3, pcid, Tracked(lctx), cpu_perm);
     pcid_needflush_array_clear(&mut krnl.pcid_needflush, cpu_id, pcid, Tracked(lctx), needflush_perm);
     proof {
-        assert(krnl.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(krnl.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
         assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); };

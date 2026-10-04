@@ -15,6 +15,7 @@ impl KernelK {
                 {
                     let major = old(self).pg_arr.lock_id_by_index(page_index).major;
                     &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
+                    &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
                     &&& forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
                     &&& forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < major || (old(self).pg_arr.lock_id_by_index(held_page).major == major && held_page < page_index)
                     &&& major < FREE_PAGE_LOCK_MAJOR ==> {
@@ -56,11 +57,11 @@ impl KernelK {
             proof {
                 page_array_wf_at(old(self).pg_arr, page_index);
                 assert(old(lctx).lock_id_acyclic(old(self).pg_arr.lock_id_by_index(page_index))) by {
-                    reveal(LocalContext::lock_id_acyclic);
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
                 };
                 assert(!lctx.page_lock_map().dom().contains(page_index)) by {
-                    reveal(LocalContext::lock_id_acyclic);
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                     if lctx.page_lock_map().dom().contains(page_index) {
                         assert(lctx.page_lock_map().index(page_index).lock_id == self.pg_arr.lock_id_by_index(page_index)) by { reveal(LockedArray::typed_lock_map_aligned); };
                     }

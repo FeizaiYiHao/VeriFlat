@@ -129,6 +129,7 @@ pub(in super::super) fn commit_new_process(
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         old(steps).view().len() as int + source_range.len as int + 3 <= final(steps).view().len() as int <= old(steps).view().len() as int + 4 * source_range.len as int + 3,

@@ -159,7 +159,7 @@ impl KernelK {
                         assert(old(lctx).lock_id_acyclic(
                             old(self).thr_mp.lock_id_by_key(thread_ptr),
                         )) by {
-                            reveal(LocalContext::lock_id_acyclic);
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                             reveal(container_cpu_wf);
@@ -173,6 +173,7 @@ impl KernelK {
                         assert(old(lctx).held_lock_majors_lt(
                             THREAD_SCHEDULED_LOCK_MAJOR,
                         )) by {
+                            reveal(UnLockedMap::typed_flag_lock_map_aligned);
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                             reveal(thread_cpu_wf);
@@ -181,7 +182,7 @@ impl KernelK {
                         assert(old(lctx).lock_id_acyclic(
                             old(self).thr_mp.lock_id_by_key(thread_ptr),
                         )) by {
-                            reveal(LocalContext::lock_id_acyclic);
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                             reveal(container_cpu_wf);
@@ -195,7 +196,7 @@ impl KernelK {
                         assert(old(lctx).lock_id_acyclic(
                             old(self).thr_mp.lock_id_by_key(thread_ptr),
                         )) by {
-                            reveal(LocalContext::lock_id_acyclic);
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                             reveal(LockedArray::typed_lock_map_aligned);
                             reveal(LockedMap::typed_lock_map_aligned);
                         };

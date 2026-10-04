@@ -109,6 +109,7 @@ impl KernelSteps {
             krnl.allc_4k_mp == old(self).snapshot_k().allc_4k_mp,
             krnl.allc_2m_mp == old(self).snapshot_k().allc_2m_mp,
             krnl.allc_1g_mp == old(self).snapshot_k().allc_1g_mp,
+            krnl.cpu_offline_mp == old(self).snapshot_k().cpu_offline_mp,
             match allocator {
                 Some(p) => {
                     &&& krnl.pcid_allc_mp.unchanged_except(&old(self).snapshot_k().pcid_allc_mp, p)
@@ -1003,6 +1004,159 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
+    /// Records the offline-request step of `syscall_cpu_offline_request`.
+    pub proof fn end_kernel_step_cpu_offline_request_changed(
+        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId,
+    )
+        requires
+            krnl.inv(),
+            lctx.kernel_view_locking_state() is Release,
+            kernel_cpu_offline_request_changed(&old(self).snapshot_k(), krnl, cpu_id, container_ptr, target),
+        ensures
+            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
+            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
+            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
+            final(self).snapshot_k() == *krnl,
+            final(self).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+            kernel_u_cpu_offline_request_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u, cpu_id, container_ptr, target),
+            kernel_u_cpu_offline_request_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, target),
+            kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[cpu_id as int].lock_state is Unlocked,
+            kernel_k_to_kernel_u(old(self).snapshot_k()).container_map[container_ptr].cpu_set_lock is Unlocked,
+            final(self).nonlock_view().last().old_u.cpu_array[cpu_id as int].lock_state is Unlocked,
+            final(self).nonlock_view().last().old_u.container_map[container_ptr].cpu_set_lock is Unlocked,
+    {
+        reveal(kernel_u_cpu_offline_request_changed);
+        use_type_invariant(&*self);
+        assert({
+            let pre_u = kernel_k_to_nonlock_kernel_u(self.snapshot_k());
+            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
+            &&& pre_u.container_map[container_ptr].cpu_set_lock is Unlocked
+        }) by { reveal(kernel_k_to_nonlock_kernel_u); reveal(kernel_cpu_offline_request_changed); };
+        assert({
+            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
+            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
+            &&& pre_u.container_map[container_ptr].cpu_set_lock is Unlocked
+        }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_cpu_offline_request_changed); };
+        assert(kernel_u_cpu_offline_request_changed(self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl), cpu_id, container_ptr, target)) by {
+            kernel_cpu_offline_request_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, container_ptr, target, false);
+            reveal(kernel_k_to_nonlock_kernel_u);
+        };
+        assert(kernel_u_cpu_offline_request_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, target)) by {
+            kernel_cpu_offline_request_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, container_ptr, target, true);
+            reveal(kernel_k_to_kernel_u);
+        };
+        self.end_kernel_step_raw(krnl, lctx);
+    }
+
+    /// Records the online step of `syscall_cpu_online`.
+    pub proof fn end_kernel_step_cpu_online_changed(
+        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId,
+    )
+        requires
+            krnl.inv(),
+            lctx.kernel_view_locking_state() is Release,
+            kernel_cpu_online_changed(&old(self).snapshot_k(), krnl, cpu_id, container_ptr, target),
+        ensures
+            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
+            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
+            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
+            final(self).snapshot_k() == *krnl,
+            final(self).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+            kernel_u_cpu_online_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u, cpu_id, container_ptr, target),
+            kernel_u_cpu_online_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, target),
+            kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[cpu_id as int].lock_state is Unlocked,
+            kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[target as int].lock_state is Unlocked,
+            kernel_k_to_kernel_u(old(self).snapshot_k()).container_map[container_ptr].cpu_set_lock is Unlocked,
+            final(self).nonlock_view().last().old_u.cpu_array[cpu_id as int].lock_state is Unlocked,
+            final(self).nonlock_view().last().old_u.cpu_array[target as int].lock_state is Unlocked,
+            final(self).nonlock_view().last().old_u.container_map[container_ptr].cpu_set_lock is Unlocked,
+    {
+        reveal(kernel_u_cpu_online_changed);
+        use_type_invariant(&*self);
+        assert({
+            let pre_u = kernel_k_to_nonlock_kernel_u(self.snapshot_k());
+            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
+            &&& pre_u.cpu_array[target as int].lock_state is Unlocked
+            &&& pre_u.container_map[container_ptr].cpu_set_lock is Unlocked
+        }) by { reveal(kernel_k_to_nonlock_kernel_u); reveal(kernel_cpu_online_changed); };
+        assert({
+            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
+            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
+            &&& pre_u.cpu_array[target as int].lock_state is Unlocked
+            &&& pre_u.container_map[container_ptr].cpu_set_lock is Unlocked
+        }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_cpu_online_changed); };
+        assert(kernel_u_cpu_online_changed(self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl), cpu_id, container_ptr, target)) by {
+            kernel_cpu_online_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, container_ptr, target, false);
+            reveal(kernel_k_to_nonlock_kernel_u);
+        };
+        assert(kernel_u_cpu_online_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, target)) by {
+            kernel_cpu_online_changed_implies_u_step(&self.snapshot_k(), krnl, cpu_id, container_ptr, target, true);
+            reveal(kernel_k_to_kernel_u);
+        };
+        self.end_kernel_step_raw(krnl, lctx);
+    }
+
+    pub proof fn end_kernel_step_cpu_went_off(tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
+        requires
+            krnl.inv(),
+            lctx.kernel_view_locking_state() is Release,
+            kernel_cpu_went_off_fields(&old(self).snapshot_k(), krnl, cpu_id, regs, flushed_default_pcid),
+        ensures
+            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
+            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
+            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
+            final(self).snapshot_k() == *krnl,
+            final(self).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+            kernel_u_cpu_went_off_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u, cpu_id, regs, flushed_default_pcid),
+            kernel_u_cpu_went_off_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, regs, flushed_default_pcid),
+            {
+                let old_u = final(self).nonlock_view().last().old_u;
+                let cpu = old_u.cpu_array[cpu_id as int];
+                &&& cpu.lock_state is Unlocked
+                &&& old_u.container_map[cpu.owning_container].cpu_set_lock is Unlocked
+                &&& (cpu.current_thread is Some ==> old_u.thread_map[cpu.current_thread.unwrap()].lock_state is Unlocked && old_u.process_map[cpu.current_process.unwrap()].lock_state is Unlocked)
+            },
+            {
+                let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
+                let cpu = old_u.cpu_array[cpu_id as int];
+                &&& cpu.lock_state is Unlocked
+                &&& old_u.container_map[cpu.owning_container].cpu_set_lock is Unlocked
+                &&& (cpu.current_thread is Some ==> old_u.thread_map[cpu.current_thread.unwrap()].lock_state is Unlocked && old_u.process_map[cpu.current_process.unwrap()].lock_state is Unlocked)
+            },
+    {
+        reveal(kernel_u_cpu_went_off_changed);
+        use_type_invariant(&*self);
+        assert({
+            let pre_u = kernel_k_to_nonlock_kernel_u(self.snapshot_k());
+            let cpu = pre_u.cpu_array[cpu_id as int];
+            &&& cpu.lock_state is Unlocked
+            &&& pre_u.container_map[cpu.owning_container].cpu_set_lock is Unlocked
+            &&& (cpu.current_thread is Some ==> pre_u.thread_map[cpu.current_thread.unwrap()].lock_state is Unlocked && pre_u.process_map[cpu.current_process.unwrap()].lock_state is Unlocked)
+        }) by { reveal(kernel_k_to_nonlock_kernel_u); reveal(kernel_cpu_went_off_fields); };
+        assert({
+            let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
+            let cpu = pre_u.cpu_array[cpu_id as int];
+            &&& cpu.lock_state is Unlocked
+            &&& pre_u.container_map[cpu.owning_container].cpu_set_lock is Unlocked
+            &&& (cpu.current_thread is Some ==> pre_u.thread_map[cpu.current_thread.unwrap()].lock_state is Unlocked && pre_u.process_map[cpu.current_process.unwrap()].lock_state is Unlocked)
+        }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_cpu_went_off_fields); };
+        assert(kernel_u_cpu_went_off_changed(self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl), cpu_id, regs, flushed_default_pcid)) by {
+            kernel_cpu_went_off_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, regs, flushed_default_pcid, false);
+            reveal(kernel_k_to_nonlock_kernel_u);
+        };
+        assert(kernel_u_cpu_went_off_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, regs, flushed_default_pcid)) by {
+            kernel_cpu_went_off_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, regs, flushed_default_pcid, true);
+            reveal(kernel_k_to_kernel_u);
+        };
+        self.end_kernel_step_raw(krnl, lctx);
+    }
+
 }
 
 pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_for_equal(pre: PageTableLockedMap, post: PageTableLockedMap)
@@ -1532,6 +1686,10 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.cpu_tlb == before.cpu_tlb,
         after.iommu_tlb == before.iommu_tlb,
         after.dflt_pt == before.dflt_pt,
+        after.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child)),
+        cpu_offline_requests_of(after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child))) == Seq::new(NUM_CPUS as nat, |i: int| false),
+        forall|c: RwLockContainerPtr| #![trigger after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))] before.ctn_mp.dom().contains(c) ==>
+            after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)) == before.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)),
         forall|p: RwLockCpuSetPtr| #![trigger after.cpu_set_mp.spec_index(p)] before.cpu_set_mp.dom().contains(p) ==>
             after.cpu_set_mp.spec_index(p).locking_thread() == before.cpu_set_mp.spec_index(p).locking_thread(),
         before.thr_mp.spec_index(thread).view().quota_4k >= 8 + funding,
@@ -1937,6 +2095,7 @@ pub proof fn kernel_container_projection_at(krnl: &KernelK, ptr: RwLockContainer
                 owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
                 parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
                 cpu_set_lock: krnl.cpu_set_mp.spec_index(c_ro.cpu_set).lock_state_u(),
+                cpu_offline_requests: cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ptr))),
                 scheduler: krnl.sched_mp.spec_index(c_ro.scheduler).view().queue.view(),
                 free_pcids: PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(c_ro.pcid_allocator).view().ref_counters.view()),
                 quota_4k: krnl.allc_4k_mp.spec_index(c_ro.allocator_ptr_4k).quota.view().view(),
@@ -3816,6 +3975,88 @@ proof fn kernel_process_quota_4k_changed_implies_u_step(
     }), p => {
         reveal(process_pagetable_match); reveal(process_iommu_table_match);
     });
+}
+
+/// K→U: setting one request bit of the caller container's table changes only that
+/// `ContainerU.cpu_offline_requests` entry.
+proof fn kernel_cpu_offline_request_changed_implies_u_step(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId, include_lock_state: bool,
+)
+    requires kernel_cpu_offline_request_changed(pre, post, cpu_id, container_ptr, target),
+    ensures
+        kernel_u_cpu_offline_request_changed(
+            kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state), cpu_id, container_ptr, target,
+        ),
+{
+    reveal(kernel_u_cpu_offline_request_changed); reveal(kernel_cpu_offline_request_changed);
+    reveal(container_cpu_set_wf); reveal(container_cpu_offline_flags_wf);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let container = pre_u.container_map.spec_index(container_ptr);
+    assert(container.cpu_offline_requests.len() == NUM_CPUS && !container.cpu_offline_requests[target as int]) by { reveal(cpu_offline_requests_of); };
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
+        cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container
+    }), c => {});
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {});
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {});
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {});
+}
+
+/// K→U: publishing Idle on an Off cpu changes only that `CpuU.state`.
+proof fn kernel_cpu_online_changed_implies_u_step(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId, include_lock_state: bool,
+)
+    requires kernel_cpu_online_changed(pre, post, cpu_id, container_ptr, target),
+    ensures
+        kernel_u_cpu_online_changed(kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state), cpu_id, container_ptr, target),
+{
+    reveal(kernel_u_cpu_online_changed); reveal(kernel_cpu_online_changed); reveal(container_cpu_set_wf);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let target_cpu = pre_u.cpu_array[target as int];
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, ..target_cpu }));
+    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {});
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {});
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {});
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {});
+}
+
+#[verifier::spinoff_prover]
+proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool, include_lock_state: bool)
+    requires
+        post.inv(),
+        kernel_cpu_went_off_fields(pre, post, cpu_id, regs, flushed_default_pcid),
+    ensures
+        kernel_u_cpu_went_off_changed(kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state), cpu_id, regs, flushed_default_pcid),
+{
+    reveal(kernel_u_cpu_went_off_changed); reveal(kernel_cpu_went_off_fields); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
+    reveal(container_cpu_set_wf);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let cpu = pre_u.cpu_array[cpu_id as int];
+    let container_ptr = cpu.owning_container;
+    let container = pre_u.container_map.spec_index(container_ptr);
+    assert(container.cpu_offline_requests.len() == NUM_CPUS) by { reveal(cpu_offline_requests_of); };
+    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Off, current_process: None, current_thread: None, ..cpu }));
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {});
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
+        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+    });
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
+        scheduler: match cpu.current_thread { Some(prev) => container.scheduler.push(prev), None => container.scheduler },
+        cpu_offline_requests: container.cpu_offline_requests.update(cpu_id as int, false),
+        ..container
+    }), c => {});
+    match cpu.current_thread {
+        Some(prev) => {
+            assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(prev, ThreadU {
+                state: ThreadState::SCHEDULED, error_code: None, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(prev)
+            }), t => {});
+        },
+        None => { assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {}); },
+    }
 }
 
 #[verifier::spinoff_prover]

@@ -86,6 +86,7 @@ pub(super) proof fn eof_subsystems_inv(
     assert(allocator_perms_wf(post.allc_2m_mp)) by { reveal(allocator_perms_wf); };
     assert(allocator_perms_wf(post.allc_1g_mp)) by { reveal(allocator_perms_wf); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
 }
 
 #[verifier::spinoff_prover]

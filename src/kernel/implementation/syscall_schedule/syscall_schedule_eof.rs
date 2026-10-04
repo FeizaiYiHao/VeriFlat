@@ -85,6 +85,7 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
         assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTable::table_pages_wf); reveal(cpu_published_wf); };
+        assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         reveal(KernelK::default_pagetable_wf);
     };
     assert(post.memory_management_inv()) by {

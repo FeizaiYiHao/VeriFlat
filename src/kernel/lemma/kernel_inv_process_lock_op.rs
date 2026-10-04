@@ -87,6 +87,7 @@ pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: 
         post.thr_mp == pre.thr_mp,
         post.ep_mp == pre.ep_mp,
         post.rt_ctn == pre.rt_ctn,
+        post.cpu_offline_mp == pre.cpu_offline_mp,
     ensures
         post.process_management_inv(),
 {
@@ -94,5 +95,6 @@ pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: 
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
+    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
 }
 }
