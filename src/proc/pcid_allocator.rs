@@ -14,33 +14,21 @@ pub struct PcidAllocator {
 }
 
 impl PcidAllocator {
-    pub fn new_boot_root(
-        owning_container: RwLockContainerPtr,
-        root_process: RwLockProcessPtr,
-    ) -> (ret: Self)
+    pub fn new_boot_root(owning_container: RwLockContainerPtr, root_process: RwLockProcessPtr) -> (ret: Self)
         ensures
             ret.inv(),
             ret.owning_container.view() == owning_container,
             ret.container_depth.view() == 0,
             ret.ref_counters.spec_index(1) == 1,
-            ret.id_to_proc.view().spec_index(1)
-                =~= set![root_process],
+            ret.id_to_proc.view().spec_index(1) =~= set![root_process],
             forall|id: Pcid|
                 #![trigger ret.ref_counters.spec_index(id)]
-                pcid_valid(id)
-                && id != 1
-                ==> ret.ref_counters.spec_index(id) == 0,
+                pcid_valid(id) && id != 1 ==> ret.ref_counters.spec_index(id) == 0,
             forall|id: Pcid|
-                #![trigger ret.id_to_proc.view()
-                    .spec_index(id as int)]
-                pcid_valid(id)
-                && id != 1
-                ==> ret.id_to_proc.view()
-                    .spec_index(id as int).is_empty(),
+                #![trigger ret.id_to_proc.view().spec_index(id as int)]
+                pcid_valid(id) && id != 1 ==> ret.id_to_proc.view().spec_index(id as int).is_empty(),
     {
         let mut ret = Self::new_empty(owning_container, 0);
-        assert(ret.process_is_unallocated(root_process)) by {
-        }
         ret.alloc(1, root_process);
         ret
     }
@@ -53,12 +41,7 @@ impl PcidAllocator {
             ret.id_to_proc.view() == Seq::new(PCID_MAX as nat, |_id: int| Set::<RwLockProcessPtr>::empty()),
             forall|id: Pcid| #![auto] pcid_valid(id) ==> ret.ref_counters.spec_index(id) == 0,
     {
-        Self {
-            owning_container: Ghost(owning_container),
-            container_depth: Ghost(container_depth),
-            ref_counters: Array::new_with_init_value(0),
-            id_to_proc: Ghost(Seq::new(PCID_MAX as nat, |_id: int| Set::<RwLockProcessPtr>::empty())),
-        }
+        Self { owning_container: Ghost(owning_container), container_depth: Ghost(container_depth), ref_counters: Array::new_with_init_value(0), id_to_proc: Ghost(Seq::new(PCID_MAX as nat, |_id: int| Set::<RwLockProcessPtr>::empty())) }
     }
 
     pub open spec fn wf(&self) -> bool {
@@ -69,18 +52,13 @@ impl PcidAllocator {
         &&& forall|id: usize|
             #![trigger self.ref_counters.spec_index(id)]
             #![trigger self.id_to_proc.view().spec_index(id as int)]
-            usize_in_range::<PCID_MAX>(id)
-            ==>
-            self.ref_counters.spec_index(id)
-                == self.id_to_proc.view().spec_index(id as int).len()
+            usize_in_range::<PCID_MAX>(id) ==> self.ref_counters.spec_index(id) == self.id_to_proc.view().spec_index(id as int).len()
     }
 
     pub open spec fn process_is_unallocated(&self, process_ptr: RwLockProcessPtr) -> bool {
         forall|id: usize|
             #![trigger self.id_to_proc.view().spec_index(id as int).contains(process_ptr)]
-            usize_in_range::<PCID_MAX>(id)
-            ==>
-            self.id_to_proc.view().spec_index(id as int).contains(process_ptr) == false
+            usize_in_range::<PCID_MAX>(id) ==> self.id_to_proc.view().spec_index(id as int).contains(process_ptr) == false
     }
 
     pub open spec fn pcid_is_free(&self, id: Pcid) -> bool {
@@ -123,18 +101,11 @@ impl PcidAllocator {
         None
     }
 
-    pub open spec fn alloc_ensures(
-        &self,
-        old: &Self,
-        process_ptr: RwLockProcessPtr,
-        id: usize,
-    ) -> bool {
+    pub open spec fn alloc_ensures(&self, old: &Self, process_ptr: RwLockProcessPtr, id: usize) -> bool {
         &&& self.owning_container.view() == old.owning_container.view()
         &&& self.container_depth.view() == old.container_depth.view()
-        &&& self.ref_counters.view()
-            =~= old.ref_counters.view().update(id as int, (old.ref_counters.spec_index(id) + 1) as usize)
-        &&& self.id_to_proc.view()
-            =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).insert(process_ptr))
+        &&& self.ref_counters.view() =~= old.ref_counters.view().update(id as int, (old.ref_counters.spec_index(id) + 1) as usize)
+        &&& self.id_to_proc.view() =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).insert(process_ptr))
     }
 
     pub fn alloc(&mut self, id: usize, process_ptr: RwLockProcessPtr)
@@ -150,75 +121,34 @@ impl PcidAllocator {
     {
         let old_counter = *self.ref_counters.get(id);
         self.ref_counters.set(id, old_counter + 1);
-        self.id_to_proc = Ghost(
-            self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).insert(process_ptr)),
-        );
+        self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).insert(process_ptr)));
     }
 }
 
 impl LockInvTrait for PcidAllocator {
-    open spec fn inv(&self) -> bool {
-        self.wf()
-    }
+    open spec fn inv(&self) -> bool { self.wf() }
 }
 
 impl LockMajorTrait for PcidAllocator {
-    open spec fn lock_major_1(&self) -> LockMajorId {
-        PCID_ALLOCATOR_LOCK_MAJOR
-    }
-
-    open spec fn lock_major_2(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_3(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_1_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_2_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_3_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_default_predicate(&self) -> bool {
-        true
-    }
+    open spec fn lock_major_1(&self) -> LockMajorId { PCID_ALLOCATOR_LOCK_MAJOR }
+    open spec fn lock_major_2(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_3(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_default(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_1_predicate(&self) -> bool { true }
+    open spec fn lock_major_2_predicate(&self) -> bool { true }
+    open spec fn lock_major_3_predicate(&self) -> bool { true }
+    open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
 impl LockOwnerIdTrait for PcidAllocator {
-    open spec fn container_depth(&self) -> LockOwnerId {
-        LockOwnerId::Some(self.container_depth.view())
-    }
-
-    open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::NotApp
-    }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.container_depth.view()) }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 
 impl LockUserVisibilityTrait for PcidAllocator {
-    open spec fn is_user_visible() -> bool {
-        true
-    }
+    open spec fn is_user_visible() -> bool { true }
 }
 } // verus!
 
 const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<usize>()] = [(); core::mem::size_of::<PcidAllocator>()];
-const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [();
-    (core::mem::size_of::<RwLock<
-        PcidAllocator,
-        (),
-        (),
-        PCID_ALLOCATOR_HAS_KILL_STATE,
-    >>() <= PAGE_SZ_2M) as usize
-];
+const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [(); (core::mem::size_of::<RwLock<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE, >>() <= PAGE_SZ_2M) as usize];

@@ -3,23 +3,14 @@ use crate::*;
 
 verus! {
 /// Kernel invariants read page payloads, never the current page lock owner.
-pub open spec fn page_invariant_fields_unchanged(
-    pre: PageLockedArray,
-    post: PageLockedArray,
-) -> bool {
+pub open spec fn page_invariant_fields_unchanged(pre: PageLockedArray, post: PageLockedArray) -> bool {
     forall|page_index: PageIndex|
         #![trigger pre.spec_index(page_index)]
         #![trigger post.spec_index(page_index)]
-        index_valid(NUM_PAGES, page_index) ==>
-            post.spec_index(page_index).view().view()
-                == pre.spec_index(page_index).view().view()
+        index_valid(NUM_PAGES, page_index) ==> post.spec_index(page_index).view().view() == pre.spec_index(page_index).view().view()
 }
 
-pub proof fn page_lock_op_preserves_invariant_fields(
-    pre: PageLockedArray,
-    post: PageLockedArray,
-    changed: PageIndex,
-)
+pub proof fn page_lock_op_preserves_invariant_fields(pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
     requires
         post.unchanged_except(&pre, changed),
     ensures
@@ -47,25 +38,16 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     ensures
         post.memory_management_inv(),
 {
-    assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        reveal(allocator_4k_pages_wf);
-        reveal(allocator_2m_pages_wf);
-        reveal(allocator_1g_pages_wf);
-    };
+    assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
-    assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
-        reveal(pagetable_perms_wf);
-        reveal(mapped_4k_page_pagetable_wf);
-        reveal(mapped_2m_page_pagetable_wf);
-        reveal(mapped_1g_page_pagetable_wf);
-    };
+    assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
-    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
+    assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
@@ -98,10 +80,7 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
     ensures
         forall|pre: KernelK, post: KernelK|
             #![trigger pre.memory_management_inv(), post.memory_management_inv()]
-            pre.memory_management_inv()
-            && pagetable_perms_wf(pre.pt_mp)
-            && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr)
-            && {
+            pre.memory_management_inv() && pagetable_perms_wf(pre.pt_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
                 &&& post.pt_mp == pre.pt_mp
                 &&& post.it_mp == pre.it_mp
                 &&& post.ctn_mp == pre.ctn_mp
@@ -117,10 +96,7 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
             } ==> post.memory_management_inv(),
 {
     assert forall|pre: KernelK, post: KernelK| #![auto]
-        pre.memory_management_inv()
-        && pagetable_perms_wf(pre.pt_mp)
-        && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr)
-        && {
+        pre.memory_management_inv() && pagetable_perms_wf(pre.pt_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
             &&& post.pt_mp == pre.pt_mp
             &&& post.it_mp == pre.it_mp
             &&& post.ctn_mp == pre.ctn_mp
@@ -141,13 +117,6 @@ pub proof fn lemma_page_array_wf_preserved_for_lock_op_forall()
     ensures
         forall|pre: PageLockedArray, post: PageLockedArray, changed: PageIndex|
             #![trigger page_array_wf(pre), page_array_wf(post), post.spec_index(changed)]
-            page_array_wf(pre)
-            && index_valid(NUM_PAGES, changed)
-            && post.inv()
-            && post.unchanged_except(&pre, changed)
-            && post.spec_index(changed).view().inv()
-            ==> page_array_wf(post),
-{
-    reveal(page_array_wf);
-}
+            page_array_wf(pre) && index_valid(NUM_PAGES, changed) && post.inv() && post.unchanged_except(&pre, changed) && post.spec_index(changed).view().inv() ==> page_array_wf(post),
+{ reveal(page_array_wf); }
 }

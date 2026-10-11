@@ -2,28 +2,18 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-pub open spec fn endpoint_invariant_fields_unchanged(
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-) -> bool {
+pub open spec fn endpoint_invariant_fields_unchanged(pre: EndpointLockedMap, post: EndpointLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& forall|e_ptr: RwLockEndpointPtr|
         #![trigger pre.spec_index(e_ptr).view()]
         #![trigger post.spec_index(e_ptr).view()]
-        pre.dom().contains(e_ptr) ==>
-            post.spec_index(e_ptr).view()
-                == pre.spec_index(e_ptr).view()
+        pre.dom().contains(e_ptr) ==> post.spec_index(e_ptr).view() == pre.spec_index(e_ptr).view()
 }
 
-pub proof fn endpoint_lock_op_preserves_invariant_fields(
-    pre: EndpointLockedMap,
-    post: EndpointLockedMap,
-    changed: RwLockEndpointPtr,
-)
+pub proof fn endpoint_lock_op_preserves_invariant_fields(pre: EndpointLockedMap, post: EndpointLockedMap, changed: RwLockEndpointPtr)
     requires
         post.unchanged_except(&pre, changed),
-        post.spec_index(changed).view()
-            == pre.spec_index(changed).view(),
+        post.spec_index(changed).view() == pre.spec_index(changed).view(),
     ensures
         endpoint_invariant_fields_unchanged(pre, post),
 {
@@ -31,122 +21,50 @@ pub proof fn endpoint_lock_op_preserves_invariant_fields(
 
 pub proof fn lemma_endpoint_perms_wf_preserved_for_lock_op_forall()
     ensures
-        forall|pre: EndpointLockedMap,
-            post: EndpointLockedMap,
-            changed: RwLockEndpointPtr|
-            #![trigger
-                endpoint_perms_wf(pre),
-                endpoint_perms_wf(post),
-                post.spec_index(changed)
-            ]
-            endpoint_perms_wf(pre)
-            && pre.dom().contains(changed)
-            && post.perms_wf()
-            && post.unchanged_except(&pre, changed)
-            && post.spec_index(changed).inv()
-            ==> endpoint_perms_wf(post),
-{
-    reveal(endpoint_perms_wf);
-}
+        forall|pre: EndpointLockedMap, post: EndpointLockedMap, changed: RwLockEndpointPtr|
+            #![trigger endpoint_perms_wf(pre), endpoint_perms_wf(post), post.spec_index(changed)]
+            endpoint_perms_wf(pre) && pre.dom().contains(changed) && post.perms_wf() && post.unchanged_except(&pre, changed) && post.spec_index(changed).inv() ==> endpoint_perms_wf(post),
+{ reveal(endpoint_perms_wf); }
 
 pub proof fn lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
-        forall|pre: EndpointLockedMap,
-            post: EndpointLockedMap,
-            page_array: PageLockedArray|
-            #![trigger
-                endpoint_pages_wf(pre, page_array),
-                endpoint_pages_wf(post, page_array)
-            ]
-            endpoint_pages_wf(pre, page_array)
-            && endpoint_invariant_fields_unchanged(pre, post)
-            ==> endpoint_pages_wf(post, page_array),
-{
-    reveal(endpoint_pages_wf);
-}
+        forall|pre: EndpointLockedMap, post: EndpointLockedMap, page_array: PageLockedArray|
+            #![trigger endpoint_pages_wf(pre, page_array), endpoint_pages_wf(post, page_array)]
+            endpoint_pages_wf(pre, page_array) && endpoint_invariant_fields_unchanged(pre, post) ==> endpoint_pages_wf(post, page_array),
+{ reveal(endpoint_pages_wf); }
 
 pub proof fn lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
-        forall|container_map: ContainerLockedMap,
-            pre: EndpointLockedMap,
-            post: EndpointLockedMap|
-            #![trigger
-                container_endpoint_wf(container_map, pre),
-                container_endpoint_wf(container_map, post)
-            ]
-            container_endpoint_wf(container_map, pre)
-            && endpoint_invariant_fields_unchanged(pre, post)
-            ==> container_endpoint_wf(container_map, post),
-{
-    reveal(container_endpoint_wf);
-}
+        forall|container_map: ContainerLockedMap, pre: EndpointLockedMap, post: EndpointLockedMap|
+            #![trigger container_endpoint_wf(container_map, pre), container_endpoint_wf(container_map, post)]
+            container_endpoint_wf(container_map, pre) && endpoint_invariant_fields_unchanged(pre, post) ==> container_endpoint_wf(container_map, post),
+{ reveal(container_endpoint_wf); }
 
 pub proof fn lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
-        forall|thread_map: ThreadLockedMap,
-            pre: EndpointLockedMap,
-            post: EndpointLockedMap|
-            #![trigger
-                thread_endpoint_ref_counter_wf(thread_map, pre),
-                thread_endpoint_ref_counter_wf(thread_map, post)
-            ]
-            thread_endpoint_ref_counter_wf(thread_map, pre)
-            && endpoint_invariant_fields_unchanged(pre, post)
-            ==> thread_endpoint_ref_counter_wf(thread_map, post),
-{
-    reveal(thread_endpoint_ref_counter_wf);
-}
+        forall|thread_map: ThreadLockedMap, pre: EndpointLockedMap, post: EndpointLockedMap|
+            #![trigger thread_endpoint_ref_counter_wf(thread_map, pre), thread_endpoint_ref_counter_wf(thread_map, post)]
+            thread_endpoint_ref_counter_wf(thread_map, pre) && endpoint_invariant_fields_unchanged(pre, post) ==> thread_endpoint_ref_counter_wf(thread_map, post),
+{ reveal(thread_endpoint_ref_counter_wf); }
 
 pub proof fn lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
-        forall|thread_map: ThreadLockedMap,
-            pre: EndpointLockedMap,
-            post: EndpointLockedMap|
-            #![trigger
-                thread_endpoint_queue_wf(thread_map, pre),
-                thread_endpoint_queue_wf(thread_map, post)
-            ]
-            thread_perms_wf(thread_map)
-            && endpoint_perms_wf(pre)
-            && endpoint_perms_wf(post)
-            && thread_endpoint_ref_counter_wf(thread_map, pre)
-            && thread_endpoint_ref_counter_wf(thread_map, post)
-            && thread_endpoint_queue_wf(thread_map, pre)
-            && endpoint_invariant_fields_unchanged(pre, post)
-            ==> thread_endpoint_queue_wf(thread_map, post),
-{
-    reveal(thread_endpoint_queue_wf);
-}
+        forall|thread_map: ThreadLockedMap, pre: EndpointLockedMap, post: EndpointLockedMap|
+            #![trigger thread_endpoint_queue_wf(thread_map, pre), thread_endpoint_queue_wf(thread_map, post)]
+            thread_perms_wf(thread_map) && endpoint_perms_wf(pre) && endpoint_perms_wf(post) && thread_endpoint_ref_counter_wf(thread_map, pre) && thread_endpoint_ref_counter_wf(thread_map, post) && thread_endpoint_queue_wf(thread_map, pre) && endpoint_invariant_fields_unchanged(pre, post)
+                ==> thread_endpoint_queue_wf(thread_map, post),
+{ reveal(thread_endpoint_queue_wf); }
 
 pub proof fn lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall()
     ensures
-        forall|container_map: ContainerLockedMap,
-            thread_map: ThreadLockedMap,
-            pre: EndpointLockedMap,
-            post: EndpointLockedMap|
-            #![trigger
-                container_thread_endpoint_wf(container_map, thread_map, pre),
-                container_thread_endpoint_wf(container_map, thread_map, post)
-            ]
-            thread_perms_wf(thread_map)
-            && thread_endpoint_ref_counter_wf(thread_map, pre)
-            && thread_endpoint_ref_counter_wf(thread_map, post)
-            && container_endpoint_wf(container_map, pre)
-            && container_endpoint_wf(container_map, post)
-            && container_thread_endpoint_wf(container_map, thread_map, pre)
-            && endpoint_invariant_fields_unchanged(pre, post)
-            ==> container_thread_endpoint_wf(container_map, thread_map, post),
-{
-    reveal(container_thread_endpoint_wf);
-    reveal(thread_endpoint_ref_counter_wf);
-}
+        forall|container_map: ContainerLockedMap, thread_map: ThreadLockedMap, pre: EndpointLockedMap, post: EndpointLockedMap|
+            #![trigger container_thread_endpoint_wf(container_map, thread_map, pre), container_thread_endpoint_wf(container_map, thread_map, post)]
+            thread_perms_wf(thread_map) && thread_endpoint_ref_counter_wf(thread_map, pre) && thread_endpoint_ref_counter_wf(thread_map, post) && container_endpoint_wf(container_map, pre) && container_endpoint_wf(container_map, post)
+                && container_thread_endpoint_wf(container_map, thread_map, pre) && endpoint_invariant_fields_unchanged(pre, post)
+                ==> container_thread_endpoint_wf(container_map, thread_map, post),
+{ reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); }
 
-pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
-    pre_thread_map: ThreadLockedMap,
-    post_thread_map: ThreadLockedMap,
-    pre_endpoint_map: EndpointLockedMap,
-    post_endpoint_map: EndpointLockedMap,
-)
+pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, pre_endpoint_map: EndpointLockedMap, post_endpoint_map: EndpointLockedMap)
     requires
         thread_perms_wf(pre_thread_map),
         thread_perms_wf(post_thread_map),
@@ -174,7 +92,5 @@ pub proof fn thread_endpoint_queue_wf_preserved_for_queue_fields(
             },
     ensures
         thread_endpoint_queue_wf(post_thread_map, post_endpoint_map),
-{
-    reveal(thread_endpoint_queue_wf);
-}
+{ reveal(thread_endpoint_queue_wf); }
 }

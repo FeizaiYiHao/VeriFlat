@@ -4,10 +4,7 @@ use super::share_mapping_4k_spec::*;
 
 verus! {
 /// Copying the next recorded source entry into the target table is the leaf step on `pre`/`post`.
-pub proof fn share_4k_leaf_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, progress_thread: RwLockThreadPtr, source_thread: RwLockThreadPtr, source: RwLockProcessPtr, target: RwLockProcessPtr,
-    source_va: VAddr, target_va: VAddr,
-)
+pub proof fn share_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, progress_thread: RwLockThreadPtr, source_thread: RwLockThreadPtr, source: RwLockProcessPtr, target: RwLockProcessPtr, source_va: VAddr, target_va: VAddr)
     requires
         share_4k_locked(pre, cpu_id),
         {
@@ -20,8 +17,8 @@ pub proof fn share_4k_leaf_step_from_u(
             &&& share_4k_objects(pre, cpu_id).source_thread == source_thread
             &&& share_4k_objects(pre, cpu_id).target == target
             &&& pre.process_map.spec_index(target).owning_container == share_4k_objects(pre, cpu_id).target_container
-            &&& share_4k_objects(pre, cpu_id).transfer_source matches Some(s) ==> pre.container_map.dom().contains(share_4k_objects(pre, cpu_id).target_container)
-                && pre.container_map[share_4k_objects(pre, cpu_id).target_container].parent == Some(s)
+            &&& share_4k_objects(pre, cpu_id).transfer_source matches Some(s)
+                ==> pre.container_map.dom().contains(share_4k_objects(pre, cpu_id).target_container) && pre.container_map[share_4k_objects(pre, cpu_id).target_container].parent == Some(s)
             &&& pre.thread_map.dom().contains(source_thread)
             &&& pre.thread_map.spec_index(source_thread).owning_proc == source
             &&& pre.thread_map.dom().contains(progress_thread)

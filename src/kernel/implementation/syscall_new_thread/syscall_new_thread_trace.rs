@@ -4,6 +4,7 @@ use super::syscall_new_thread_spec::*;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
+#[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 verus! {
 /// Acquiring the caller's context locks and recording the progress is the enter step on `pre`/`post`.
@@ -47,10 +48,7 @@ pub proof fn new_thread_enter_step_from_u(
             },
             ..pre
         }),
-        post == (KernelU {
-            thread_map: locked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::NewThread { regs, endpoint_index }), ..locked.thread_map[thread_ptr] }),
-            ..locked
-        }),
+        post == (KernelU { thread_map: locked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::NewThread { regs, endpoint_index }), ..locked.thread_map[thread_ptr] }), ..locked }),
     ensures
         new_thread_enter_step_pre(pre, cpu_id, endpoint_index),
         new_thread_enter_step(pre, post, cpu_id, regs, endpoint_index),
@@ -89,7 +87,7 @@ pub proof fn new_thread_finish_step_from_u(
                 None => pre.endpoint_map,
             },
             ..pre
-        }, post, process_ptr, thread_ptr, container_ptr, new_thread_ptr, regs, endpoint_ptr, None),
+        }, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, regs, endpoint_ptr, None),
     ensures
         new_thread_finish_step_pre(pre, cpu_id),
         new_thread_finish_step(pre, post, cpu_id),
@@ -106,9 +104,7 @@ pub proof fn new_thread_trace_enter_step(steps: &KernelSteps, before: Seq<Kernel
 { reveal(new_thread_trace_after_enter); }
 
 /// The finish step pushed after the partial trace that starts at `start` completes the successful trace.
-pub proof fn new_thread_trace_finish_step(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>,
-)
+pub proof fn new_thread_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>)
     requires
         0 <= start <= before.len(),
         new_thread_trace_after_enter(before.subrange(start, before.len() as int), pre, cpu_id, regs, endpoint_index),

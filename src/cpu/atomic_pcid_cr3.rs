@@ -16,15 +16,22 @@ impl AtomicPcidCr3 {
     }
 
     pub fn new(cr3: PageTableRoot, pcid: Pcid, Ghost(owner_cpu): Ghost<CpuId>) -> (ret: Self)
-        requires page_ptr_valid(cr3), pcid_valid(pcid), index_valid(NUM_CPUS, owner_cpu),
-        ensures ret.inv(), ret.view() == (cr3, pcid), ret.owner_cpu() == owner_cpu,
+        requires
+            page_ptr_valid(cr3),
+            pcid_valid(pcid),
+            index_valid(NUM_CPUS, owner_cpu),
+        ensures
+            ret.inv(),
+            ret.view() == (cr3, pcid),
+            ret.owner_cpu() == owner_cpu,
     {
         let packed = pack_pcid_cr3(cr3, pcid);
         Self { atomic: TrustedAtomicUsize::new(packed, Ghost(owner_cpu)) }
     }
 
     pub fn load(&self, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageTableRoot, Pcid))
-        requires old(lctx).kernel_view_locking_state() is Acquire,
+        requires
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             ret == self.view(),
             self.inv() ==> page_ptr_valid(ret.0) && pcid_valid(ret.1),
@@ -54,7 +61,9 @@ impl AtomicPcidCr3 {
 }
 
 fn pack_pcid_cr3(cr3: PageTableRoot, pcid: Pcid) -> (ret: usize)
-    requires page_ptr_valid(cr3), pcid_valid(pcid),
+    requires
+        page_ptr_valid(cr3),
+        pcid_valid(pcid),
     ensures
         ret & MEM_MASK as usize == cr3,
         ret & 0xfffusize == pcid,
@@ -65,7 +74,10 @@ fn pack_pcid_cr3(cr3: PageTableRoot, pcid: Pcid) -> (ret: usize)
         &&& (cr3 | pcid) & 0xfffusize == pcid
         &&& (cr3 | pcid) & !(MEM_MASK as usize | 0xfffusize) == 0
     }) by (bit_vector)
-        requires cr3 % 4096 == 0, cr3 / 4096 < 2 * 1024 * 1024, pcid < 4096,
+        requires
+            cr3 % 4096 == 0,
+            cr3 / 4096 < 2 * 1024 * 1024,
+            pcid < 4096,
     ;
     cr3 | pcid
 }

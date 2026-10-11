@@ -4,7 +4,9 @@ use crate::*;
 verus! {
 impl Thread {
     pub open spec fn free_quota_pending_4k_at_depth(&self, depth: usize) -> usize
-        recommends self.inv(), depth <= self.container_depth,
+        recommends
+            self.inv(),
+            depth <= self.container_depth,
     {
         if depth == self.container_depth { self.direct_free_quota_pending_4k.view() }
         else { self.indirect_free_quota_pending_4k.view().spec_index(depth as int) }

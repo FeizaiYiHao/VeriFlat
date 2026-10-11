@@ -1,60 +1,64 @@
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
 use vstd::std_specs::cmp::*;
 use core::cmp::Ordering;
 
 use crate::define::*;
 verus! {
 // -------------------- Begin of const ------------------------
-pub const CPU_LOCK_MAJOR_RUNNING:LockMajorId = 1;
-pub const CPU_LOCK_MAJOR_IDLE:LockMajorId = 2;
+pub const CPU_LOCK_MAJOR_RUNNING: LockMajorId = 1;
+pub const CPU_LOCK_MAJOR_IDLE: LockMajorId = 2;
 // An Off CPU is terminal after its owning CPU-set lock proves the slot closed.
-pub const CPU_LOCK_MAJOR_OFF:LockMajorId = 30002;
-pub const PCID_NEEDFLUSH_LOCK_MAJOR:LockMajorId = 30001;
-pub const CPU_LOCK_MAJOR_DEFAULT:LockMajorId = 4;
-// Per-container offline request cells: held through an entire self-offline, so it sits below every object lock.
-pub const CPU_OFFLINE_FLAG_LOCK_MAJOR:LockMajorId = 3;
-pub const CONTAINER_LOCK_MAJOR:LockMajorId = 101;
-pub const PCID_ALLOCATOR_LOCK_MAJOR:LockMajorId = CONTAINER_LOCK_MAJOR + 1;
-pub const PROCESS_LOCK_MAJOR:LockMajorId = 105;
-pub const THREAD_LOCK_MAJOR:LockMajorId = 106;
+pub const CPU_LOCK_MAJOR_OFF: LockMajorId = 30002;
+pub const PCID_NEEDFLUSH_LOCK_MAJOR: LockMajorId = 30001;
+pub const CPU_LOCK_MAJOR_DEFAULT: LockMajorId = 4;
+pub const CONTAINER_LOCK_MAJOR: LockMajorId = 101;
+pub const PCID_ALLOCATOR_LOCK_MAJOR: LockMajorId = CONTAINER_LOCK_MAJOR + 1;
+// Per-container offline request cells: held through an entire self-offline, so it sits below the process,
+// thread, and cpu-set locks taken there; above the container lock so a parent can request a child's cpu.
+pub const CPU_OFFLINE_FLAG_LOCK_MAJOR: LockMajorId = 104;
+pub const PROCESS_LOCK_MAJOR: LockMajorId = 105;
+pub const THREAD_LOCK_MAJOR: LockMajorId = 106;
 
-pub const ALLOCATOR_INNER_MAJOR:LockMajorId = 1000;
+pub const ALLOCATOR_INNER_MAJOR: LockMajorId = 1000;
 
-pub const ALLOCATED_PAGE_MAJOR:LockMajorId = 1000;
+pub const ALLOCATED_PAGE_MAJOR: LockMajorId = 1000;
 // Owned pages (Owned4k/Owned2m) are never actually wlock'd — they are retyped
 // immediately. Give them a very low major so they don't interfere with real
 // lock ordering.
-pub const OWNED_PAGE_LOCK_MAJOR:LockMajorId = 1;
-pub const PAGETABLE_PAGE_MAJOR:LockMajorId = 1001;
+pub const OWNED_PAGE_LOCK_MAJOR: LockMajorId = 1;
+pub const PAGETABLE_PAGE_MAJOR: LockMajorId = 1001;
 
-pub const THREAD_IPC_TRANSIT_LOCK_MAJOR:LockMajorId = 10000;
-pub const ENDPOINT_LOCK_MAJOR:LockMajorId = 10001;
-pub const THREAD_BLOCKED_LOCK_MAJOR:LockMajorId = 10002;
+pub const THREAD_IPC_TRANSIT_LOCK_MAJOR: LockMajorId = 10000;
+pub const ENDPOINT_LOCK_MAJOR: LockMajorId = 10001;
+pub const THREAD_BLOCKED_LOCK_MAJOR: LockMajorId = 10002;
 // A rendezvous discovers and pins its blocked peer before it can discover the
 // two process address spaces.  Page tables therefore follow blocked threads;
 // mapped pages still follow both page-table kinds.
-pub const PAGE_TABLE_LOCK_MAJOR:LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
-pub const IOMMU_TABLE_LOCK_MAJOR:LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
-pub const MAPPED_PAGE_LOCK_MAJOR:LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+pub const PAGE_TABLE_LOCK_MAJOR: LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
+pub const IOMMU_TABLE_LOCK_MAJOR: LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
+// The one static VT-d root table is locked after the IOMMU tables its context
+// entries point at, so attach can read a process's IOMMU root under both.
+pub const IOMMU_ROOT_TABLE_LOCK_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+pub const MAPPED_PAGE_LOCK_MAJOR: LockMajorId = IOMMU_ROOT_TABLE_LOCK_MAJOR + 1;
 
 // CPU sets are discovered through IPC peers; their locks follow mapped pages.
-pub const CPU_SET_LOCK_MAJOR:LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
+pub const CPU_SET_LOCK_MAJOR: LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
 
 // An endpoint rendezvous discovers the peer only after locking the endpoint
 // and that blocked thread. Its owning-container scheduler is therefore locked
 // afterward. Keep allocation above the scheduler so new-thread creation can
 // still allocate while holding the destination scheduler.
-pub const SCHEDULER_LOCK_MAJOR:LockMajorId = CPU_SET_LOCK_MAJOR + 1;
+pub const SCHEDULER_LOCK_MAJOR: LockMajorId = CPU_SET_LOCK_MAJOR + 1;
 pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = SCHEDULER_LOCK_MAJOR + 1;
 pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
-pub const THREAD_SCHEDULED_LOCK_MAJOR:LockMajorId = 20001;
+pub const THREAD_SCHEDULED_LOCK_MAJOR: LockMajorId = 20001;
 
-pub const FREE_PAGE_LOCK_MAJOR:LockMajorId = 30000;
-pub const MERGED_PAGE_LOCK_MAJOR:LockMajorId = 30000;
+pub const FREE_PAGE_LOCK_MAJOR: LockMajorId = 30000;
+pub const MERGED_PAGE_LOCK_MAJOR: LockMajorId = 30000;
 
 pub const QUOTA_MAJOR: LockMajorId = THREAD_SCHEDULED_LOCK_MAJOR + 1;
 // -------------------- End of const --------------------------
-
 
 // -------------------- Begin of lock thread id  --------------
 pub type LockThreadId = usize;
@@ -63,21 +67,17 @@ pub type LockThreadId = usize;
 // -------------------- Begin of lock id  ---------------------
 #[derive(PartialEq)]
 #[derive(Eq)]
-pub enum LockOwnerId{
+pub enum LockOwnerId {
     High,
     Some(usize),
     None,
     NotApp,
 }
-impl LockOwnerId{
-    pub open spec fn none() -> Self{
-        LockOwnerId::None
-    }
+impl LockOwnerId {
+    pub open spec fn none() -> Self { LockOwnerId::None }
     pub open spec fn spec_eq(self, other: Self) -> bool {
-        |||
-        self === other
-        |||
-        self is NotApp || other is NotApp
+        ||| self === other
+        ||| self is NotApp || other is NotApp
     }
     pub open spec fn spec_gt(self, other: Self) -> bool {
         // Owner-id order (high → low): None > Some(big) > … > Some(small) > High.
@@ -91,7 +91,7 @@ impl LockOwnerId{
         //     be locked on top of it — i.e. owned pages are effectively private.
         //   - `NotApp` is a wildcard (spec_eq with anything), so its rows never
         //     decide an ordering — the LockId comparison skips to the next field.
-        match (self, other){
+        match (self, other) {
             (LockOwnerId::NotApp, _) => false,
             (_, LockOwnerId::NotApp) => false,
             (LockOwnerId::High, LockOwnerId::High) => false,
@@ -106,16 +106,14 @@ impl LockOwnerId{
         }
     }
     pub open spec fn spec_ge(self, other: Self) -> bool {
-        |||
-        self == other
-        |||
-        self > other
+        ||| self == other
+        ||| self > other
     }
     pub open spec fn spec_lt(self, other: Self) -> bool {
         // Mirror of spec_gt: a < b iff b > a (NotApp rows stay false). Order
         // high → low is None > Some(big) > Some(small) > High, so `None` is
         // never less than anything and `High` is less than everything.
-        match (self, other){
+        match (self, other) {
             (LockOwnerId::NotApp, _) => false,
             (_, LockOwnerId::NotApp) => false,
             (LockOwnerId::High, LockOwnerId::High) => false,
@@ -130,102 +128,64 @@ impl LockOwnerId{
         }
     }
     pub open spec fn spec_le(self, other: Self) -> bool {
-        |||
-        self == other
-        |||
-        self < other
+        ||| self == other
+        ||| self < other
     }
 }
 
 pub type LockMajorId = usize;
 pub type LockMinorId = usize;
-// #[derive(PartialEq)]
-// #[derive(Eq)]
-pub struct LockId{
+pub struct LockId {
     pub container: LockOwnerId,
     pub process: LockOwnerId,
-    pub major:LockMajorId,
-    pub minor:LockMinorId,
+    pub major: LockMajorId,
+    pub minor: LockMinorId,
 }
 
 pub proof fn lock_id_fields_eq_imply_eq()
     ensures
-        forall|lock_id1: LockId, lock_id2: LockId|
-            {
-                &&& lock_id1.container == lock_id2.container
-                &&& lock_id1.process == lock_id2.process
-                &&& lock_id1.major == lock_id2.major
-                &&& lock_id1.minor == lock_id2.minor
-            }
-            ==>
-            lock_id1 == lock_id2
+        forall|lock_id1: LockId, lock_id2: LockId| {
+            &&& lock_id1.container == lock_id2.container
+            &&& lock_id1.process == lock_id2.process
+            &&& lock_id1.major == lock_id2.major
+            &&& lock_id1.minor == lock_id2.minor
+        } ==> lock_id1 == lock_id2
 {}
 
-impl LockId{
+impl LockId {
     pub open spec fn spec_gt(self, other: Self) -> bool {
-        if self.container.spec_eq(other.container) == false {
-            self.container.spec_gt(other.container)
-        }else if self.process.spec_eq(other.process) == false {
-            self.process.spec_gt(other.process)
-        }else if self.major != other.major {
-            self.major > other.major
-        }else{
-            self.minor > other.minor
-        }
+        if self.container.spec_eq(other.container) == false { self.container.spec_gt(other.container) }
+        else if self.process.spec_eq(other.process) == false { self.process.spec_gt(other.process) }
+        else if self.major != other.major { self.major > other.major }
+        else { self.minor > other.minor }
     }
     pub open spec fn spec_ge(self, other: Self) -> bool {
-        |||
-        self == other
-        |||
-        self > other
+        ||| self == other
+        ||| self > other
     }
     pub open spec fn spec_lt(self, other: Self) -> bool {
-        if self.container != other.container {
-            self.container < other.container
-        }else if self.process != other.process{
-            self.process < other.process
-        }else if self.major != other.major {
-            self.major < other.major
-        }else{
-            self.minor < other.minor
-        }
+        if self.container != other.container { self.container < other.container }
+        else if self.process != other.process { self.process < other.process }
+        else if self.major != other.major { self.major < other.major }
+        else { self.minor < other.minor }
     }
     pub open spec fn spec_le(self, other: Self) -> bool {
-        |||
-        self == other
-        |||
-        self < other
+        ||| self == other
+        ||| self < other
     }
 }
 
-impl LockId{
-    // pub open spec fn from_pagetable_root(pagetable_root: RwLockPageTableRoot) -> Self{
-    //     LockId{
-    //         container: LockOwnerId::none(),
-    //         process: LockOwnerId::none(),
-    //         major: PAGE_TABLE_LOCK_MAJOR,
-    //         minor:pagetable_root,
-    //     }
-    // }
-}
-
-pub trait ToLockId{
+pub trait ToLockId {
     spec fn to_lock_id(&self) -> LockId;
 }
 
 // -------------------- End of lock id  -----------------------
 
-impl ToLockId for RwLockPageTableRoot{
-    open spec fn to_lock_id(&self) -> LockId{
-        LockId{
-            container: LockOwnerId::none(),
-            process: LockOwnerId::none(),
-            major: PAGE_TABLE_LOCK_MAJOR,
-            minor:*self,
-        }
+impl ToLockId for RwLockPageTableRoot {
+    open spec fn to_lock_id(&self) -> LockId {
+        LockId { container: LockOwnerId::none(), process: LockOwnerId::none(), major: PAGE_TABLE_LOCK_MAJOR, minor: *self }
     }
 }
-
 
 // -------------------- Begin of kernel obj id ----------------
 //
@@ -244,11 +204,12 @@ pub ghost enum KernelObjId {
     Process(RwLockProcessPtr),
     Thread(RwLockThreadPtr),
     Endpoint(RwLockEndpointPtr),
-    Scheduler(RwLockSchedulerPtr),
+    SchedulerShard(RwLockSchedulerPtr, CpuId),
     PcidAllocator(RwLockPcidAllocatorPtr),
     CpuSet(RwLockCpuSetPtr),
     PageTable(RwLockPageTableRoot),
     IommuTable(RwLockPageTableRoot),
+    IommuRootTable(PAddr),
     Page(PageIndex),
     Cpu(CpuId),
     PcidNeedFlush(CpuId, Pcid),

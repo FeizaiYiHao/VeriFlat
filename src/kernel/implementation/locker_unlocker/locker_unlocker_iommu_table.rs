@@ -3,12 +3,7 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub fn wunlock_iommu_table(
-        &mut self,
-        iommu_table_ptr: RwLockPageTableRoot,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        lock_perm: Tracked<LockPerm>,
-    )
+    pub fn wunlock_iommu_table(&mut self, iommu_table_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).it_mp.dom().contains(iommu_table_ptr),
@@ -38,14 +33,14 @@ impl KernelK {
         proof {
             assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { reveal(iommu_table_pages_wf); reveal(process_iommu_table_match); };
-            assert(iommu_root_table_process_wf(&self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, &self.irt, self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec); };
+            assert(self.memory_management_inv()) by { reveal(pagetable_pages_wf); reveal(process_iommu_table_match); };
+            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf); };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }

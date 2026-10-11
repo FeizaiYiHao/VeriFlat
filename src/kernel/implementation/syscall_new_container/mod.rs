@@ -17,4 +17,4 @@ pub(super) use syscall_new_container_allocation::*;
 pub(super) use syscall_new_container_publish::*;
 pub(super) use syscall_new_container_finish::*;
 pub(super) use syscall_new_container_commit::*;
-pub use syscall_new_container::syscall_new_container;
+pub use syscall_new_container::{syscall_new_container, syscall_new_container_with_endpoint};

@@ -1,31 +1,26 @@
 use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_map_one_leaf::map_one_mmap_4k_page;
+#[cfg(verus_keep_ghost)]
 use super::syscall_mmap_4k_spec::mmap_4k_range_step;
+#[cfg(verus_keep_ghost)]
 use super::syscall_mmap_4k_trace::{mmap_4k_range_steps_from_directory, mmap_4k_range_steps_from_leaf};
 
 verus! {
 /// Every not-yet-processed VA is still absent from the 4K mapping.
 pub open spec fn mmap_4k_leaf_range_empty_from(pagetable: PageTable<PT_TYPE>, range: &VaRange4K, first: int) -> bool {
-    forall|i: int|
-        #![trigger pagetable.mapping_4k().dom().contains(range.view().spec_index(i))]
-        first <= i < range.len
-        ==> !pagetable.mapping_4k().dom().contains(range.view().spec_index(i))
+    forall|i: int| #![trigger pagetable.mapping_4k().dom().contains(range.view().spec_index(i))] first <= i < range.len ==> !pagetable.mapping_4k().dom().contains(range.view().spec_index(i))
 }
 
 /// Every VA in the range already has the L1 table needed by a 4K leaf.
 pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>, range: &VaRange4K, upper: int) -> bool {
-    forall|i: int|
-        #![trigger pagetable.mapping_4k().dom().contains(range.view().spec_index(i))]
-        #![trigger pagetable.mapping_4k().spec_index(range.view().spec_index(i))]
-        0 <= i < upper
-        ==> {
-            let va = range.view().spec_index(i);
-            &&& pagetable.mapping_4k().dom().contains(va)
-            &&& pagetable.mapping_4k().spec_index(va).present
-            &&& pagetable.mapping_4k().spec_index(va).write
-            &&& !pagetable.mapping_4k().spec_index(va).execute_disable
-        }
+    forall|i: int| #![trigger pagetable.mapping_4k().dom().contains(range.view().spec_index(i))] #![trigger pagetable.mapping_4k().spec_index(range.view().spec_index(i))] 0 <= i < upper ==> {
+        let va = range.view().spec_index(i);
+        &&& pagetable.mapping_4k().dom().contains(va)
+        &&& pagetable.mapping_4k().spec_index(va).present
+        &&& pagetable.mapping_4k().spec_index(va).write
+        &&& !pagetable.mapping_4k().spec_index(va).execute_disable
+    }
 }
 
     /// Build each target path immediately before publishing its data page.
@@ -80,6 +75,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom() =~= set![pagetable_ptr],
             old(lctx).iommu_table_lock_map().dom().is_empty(),
+            old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
             old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
@@ -104,9 +100,8 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap4k { range: *range, mapped: 0, directory: Mmap4kDirectory::None }),
         ensures
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-                old(lctx).pagetable_lock_map().dom().contains(pt)
-                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+                old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                    ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
             final(krnl).inv(),
@@ -154,19 +149,13 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
     {
         let range_start = range.start;
-        proof {
-            assert(mmap_4k_leaf_range_empty_from(krnl.pt_mp.spec_index(pagetable_ptr).view(), range, 0)) by {
-                reveal(PageTable::spec_mapping_4k_va_range_empty);
-                range.va_range_lemma();
-            };
-        }
+        proof { assert(mmap_4k_leaf_range_empty_from(krnl.pt_mp.spec_index(pagetable_ptr).view(), range, 0)) by { reveal(PageTable::spec_mapping_4k_va_range_empty); range.va_range_lemma(); }; }
         let mut i: usize = 0;
         while i < range.len
             invariant
                 forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view())]
-                    old(lctx).pagetable_lock_map().dom().contains(pt)
-                    && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-                    ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
+                    old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                        ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
                 lctx.cpu_id() == old(lctx).cpu_id(),
                 index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
                 krnl.inv(),
@@ -209,6 +198,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 lctx.cpu_set_lock_map().dom().is_empty(),
                 lctx.pagetable_lock_map().dom() =~= set![pagetable_ptr],
                 lctx.iommu_table_lock_map().dom().is_empty(),
+                lctx.iommu_root_table_lock_map().dom().is_empty(),
                 lctx.allocator_quota_4k_lock_map().dom().is_empty(),
                 lctx.allocator_cache_4k_lock_map().dom().is_empty(),
                 lctx.allocator_global_pool_4k_lock_map().dom().is_empty(),
@@ -289,20 +279,14 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     range.va_range_lemma();
                     seq_index_lemma::<VAddr>();
                     reveal(PageTable::wf_mapping_4k);
-                    spec_va_4k_index_roundtrip_at(
-                        current_va, spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va),
-                        spec_v2l1index(current_va),
-                    );
+                    spec_va_4k_index_roundtrip_at(current_va, spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va));
                 };
             }
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
             let ghost build_before = steps.view();
-            mmap_4k_build_one_structure(
-                krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, None, Ghost(thread_ptr),
-                Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None),
-            );
+            mmap_4k_build_one_structure(krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, None, Ghost(thread_ptr), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None));
             proof {
                 assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_cpu_wf); };
                 assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id)) by {
@@ -311,15 +295,10 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             }
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             let ghost leaf_before = steps.view();
-            map_one_mmap_4k_page(
-                krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, current_va, Tracked(&mut *lctx), Tracked(&mut *steps),
-                Tracked(thread_lock_perm), Tracked(pagetable_lock_perm),
-            );
+            map_one_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, current_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
             proof {
                 assert(steps.nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view()) by {
-                    vstd::seq::lemma_seq_subrange_composition(
-                        steps.nonlock_view(), 0, (steps.nonlock_view().len() - 1) as int, 0, old(steps).nonlock_view().len() as int,
-                    );
+                    vstd::seq::lemma_seq_subrange_composition(steps.nonlock_view(), 0, (steps.nonlock_view().len() - 1) as int, 0, old(steps).nonlock_view().len() as int);
                 };
                 assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_cpu_wf); };
                 assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id)) by {

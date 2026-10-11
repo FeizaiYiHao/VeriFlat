@@ -1,4 +1,5 @@
 #![feature(adt_const_params)]
+#![no_std]
 
 use vstd::prelude::*;
 
@@ -12,15 +13,9 @@ pub use map_4k::mmap_4k_build_structure_spec::*;
 pub use map_4k::share_mapping_4k_spec::*;
 pub use map_4k::unmap_4k_spec::*;
 pub use map_4k::share_mapping_4k::{
-    required_4k_directory_pages_for_empty_target,
-    spec_required_4k_directory_pages_for_empty_target,
-    share_mapping_4k_build_and_share,
-    share_mapping_4k_target_map_with_shared_prefix,
-    share_mapping_4k_leaf_owner_compatible,
-    share_mapping_4k_range_owner_compatible,
-    share_mapping_4k_source_owner_precheck,
-    share_mapping_4k_source_precheck,
-    share_mapping_4k_source_range_present,
+    required_4k_directory_pages_for_empty_target, spec_required_4k_directory_pages_for_empty_target, share_mapping_4k_build_and_share,
+    share_mapping_4k_target_map_with_shared_prefix, share_mapping_4k_leaf_owner_compatible, share_mapping_4k_range_owner_compatible,
+    share_mapping_4k_source_owner_precheck, share_mapping_4k_source_precheck, share_mapping_4k_source_range_present,
 };
 
 verus! {

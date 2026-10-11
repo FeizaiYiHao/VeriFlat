@@ -14,8 +14,8 @@ pub(super) proof fn schedule_step_from_u(pre: KernelU, post: KernelU, cpu_id: Cp
             &&& cpu.lock_state is Unlocked
             &&& !(cpu.state is Off)
             &&& pre.container_map.dom().contains(cpu.owning_container)
-            &&& container.scheduler.len() > 0
-            &&& container.scheduler[0] == next_thread
+            &&& container.scheduler[cpu_id as int].len() > 0
+            &&& container.scheduler[cpu_id as int][0] == next_thread
             &&& pre.thread_map.dom().contains(next_thread)
             &&& next.lock_state is Unlocked
             &&& !next.killed

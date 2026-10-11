@@ -3,11 +3,7 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub fn wlock_pcid_allocator(
-        &mut self,
-        allocator_ptr: RwLockPcidAllocatorPtr,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-    ) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_pcid_allocator(&mut self, allocator_ptr: RwLockPcidAllocatorPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).pcid_allc_mp.dom().contains(allocator_ptr),
@@ -27,6 +23,7 @@ impl KernelK {
                 &&& old(lctx).cpu_set_lock_map().dom().is_empty()
                 &&& old(lctx).pagetable_lock_map().dom().is_empty()
                 &&& old(lctx).iommu_table_lock_map().dom().is_empty()
+                &&& old(lctx).iommu_root_table_lock_map().dom().is_empty()
                 &&& old(lctx).allocator_quota_4k_lock_map().dom().is_empty()
                 &&& old(lctx).allocator_cache_4k_lock_map().dom().is_empty()
                 &&& old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty()
@@ -37,6 +34,7 @@ impl KernelK {
                 &&& old(lctx).allocator_cache_1g_lock_map().dom().is_empty()
                 &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
                 &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
+                &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
                 &&& (forall|held_cpu_id: CpuId|
                     #![trigger cpus.contains(held_cpu_id)]
                     cpus.contains(held_cpu_id) ==> {
@@ -63,14 +61,16 @@ impl KernelK {
     {
         proof {
             pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr);
-            assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); };
+            assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by {
+                reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf);
+            };
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id()) {
                     assert(old(lctx).pcid_allocator_lock_map().dom().contains(allocator_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
                 }
             };
         }
-        assert(wlock_requires(self.pcid_allc_mp.spec_index(allocator_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.pcid_allc_mp.wlock(allocator_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PcidAllocator(allocator_ptr)));
         proof {
             assert(pcid_allocator_perms_wf(self.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
@@ -85,12 +85,7 @@ impl KernelK {
         ret
     }
 
-    pub fn wunlock_pcid_allocator(
-        &mut self,
-        allocator_ptr: RwLockPcidAllocatorPtr,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        lock_perm: Tracked<LockPerm>,
-    )
+    pub fn wunlock_pcid_allocator(&mut self, allocator_ptr: RwLockPcidAllocatorPtr, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).pcid_allc_mp.dom().contains(allocator_ptr),

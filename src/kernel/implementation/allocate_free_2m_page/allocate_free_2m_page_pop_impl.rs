@@ -1,4 +1,6 @@
+#[cfg(verus_keep_ghost)]
 use super::allocate_free_2m_page_pop_eof::{pop_stage_2m_page_transition_framing, pop_stage_2m_page_eof};
+#[cfg(verus_keep_ghost)]
 use super::allocate_free_2m_page_pop_postconditions::eof_pop_2m_postconditions;
 use super::*;
 use vstd::prelude::*;
@@ -9,9 +11,9 @@ verus! {
     /// Pops the head 2m page of the CPU cache (`source` is `Some`) or the global pool (`None`) and stages it on `thread_ptr`.
     #[verifier::spinoff_prover]
     pub(super) fn pop_stage_2m_page(
-    krnl: &mut KernelK, alloc_ptr_2m: RwLockPageAllocatorPtr, source: Option<CpuId>, thread_ptr: RwLockThreadPtr,
-    container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(source_lock_perm): Tracked<&LockPerm>,
-    Tracked(thread_lock_perm): Tracked<&LockPerm>,
+        krnl: &mut KernelK, alloc_ptr_2m: RwLockPageAllocatorPtr, source: Option<CpuId>, thread_ptr: RwLockThreadPtr,
+        container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(source_lock_perm): Tracked<&LockPerm>,
+        Tracked(thread_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: (PagePtr, Tracked<LockPerm>))
         requires
             old(krnl).inv(),
@@ -53,10 +55,7 @@ verus! {
             !old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(ret.0),
             final(krnl).allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
-            *final(krnl) == (KernelK {
-                pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, allc_2m_mp: final(krnl).allc_2m_mp,
-                ..*old(krnl)
-            }),
+            *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(ret.0)),
             held_pages_unchanged_except(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx), set![page_ptr2page_index(ret.0)]),
             kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
@@ -80,11 +79,7 @@ verus! {
                 &&& typed_lock_map_contains_mode(final(lctx).allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedLockMode::Write)
             },
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
-            final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
-                temp_alloc_cache_2m:
-                    final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m,
-                ..old(krnl).thr_mp.spec_index(thread_ptr).view()
-            }),
+            final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { temp_alloc_cache_2m: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
@@ -96,12 +91,10 @@ verus! {
             ret.1.view().state() is WriteLock,
             ret.1.view().thread_id() == final(lctx).thread_id(),
             ret.1.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().locking_thread()->Write_lock_id,
-            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(ret.0)), TypedHeldLock {
-                lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), mode: TypedLockMode::Write,
-            }),
+            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(ret.0)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), mode: TypedLockMode::Write }),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().insert(ret.0),
-            final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned2m{ thread_ptr }),
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned2m { thread_ptr }),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().view().owning_container == container_ptr,
     {
         assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.inv()
@@ -115,12 +108,11 @@ verus! {
         let page_index = page_ptr2page_index(page_ptr);
         let ghost free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
         proof {
-            page_ptr_valid_imply_page_index_valid();
             if let Some(cpu_id) = source {
                 assert({
                     &&& old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)
                     &&& krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }
-                }) by { reveal(LinkedList::wf_value_list); reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); };
+                }) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); };
             } else {
                 assert(old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().view().contains(page_ptr)) by { reveal(LinkedList::wf_value_list); };
                 assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by {
@@ -131,16 +123,8 @@ verus! {
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
 
         let (node_addr2, Tracked(node_perm)) = match source {
-            Some(cpu_id) => krnl.allc_2m_mp.pop_cache_page_typed(
-                alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_quota_2m_lock_map()),
-                Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()),
-                Tracked(&*lctx), Tracked(source_lock_perm),
-            ),
-            None => krnl.allc_2m_mp.pop_global_pool_page_typed(
-                alloc_ptr_2m, Ghost(lctx.allocator_quota_2m_lock_map()),
-                Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()),
-                Tracked(&*lctx), Tracked(source_lock_perm),
-            ),
+            Some(cpu_id) => krnl.allc_2m_mp.pop_cache_page_typed(alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)),
+            None => krnl.allc_2m_mp.pop_global_pool_page_typed(alloc_ptr_2m, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)),
         };
         proof {
             if let Some(cpu_id) = source {
@@ -169,9 +153,7 @@ verus! {
         proof {
             lctx.enter_kernel_view_release();
             lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index));
-            map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_index,
-                TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
-                TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
+            map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
         }
         assert(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr) == false) by {
             if old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr) {

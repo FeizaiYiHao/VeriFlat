@@ -6,9 +6,8 @@ use super::*;
 verus! {
 #[verifier::spinoff_prover]
 pub(super) fn allocate_new_container_pages(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
-    current_thread_ptr: RwLockThreadPtr, parent_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId,
-    Tracked(current_thread_lock_perm): Tracked<&LockPerm>
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, current_thread_ptr: RwLockThreadPtr,
+    parent_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId, Tracked(current_thread_lock_perm): Tracked<&LockPerm>
 ) -> (ret: (ArrayVec<PagePtr, 9>, PagePtr, PagePtr, Tracked<Map<PagePtr, LockPerm>>, Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         old(krnl).inv(),
@@ -16,8 +15,8 @@ pub(super) fn allocate_new_container_pages(
         old(lctx).kernel_view_locking_state() is Acquire,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
-        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
+        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -39,9 +38,8 @@ pub(super) fn allocate_new_container_pages(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-            old(lctx).pagetable_lock_map().dom().contains(pt)
-            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+            old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
@@ -112,6 +110,7 @@ pub(super) fn allocate_new_container_pages(
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
@@ -128,36 +127,23 @@ pub(super) fn allocate_new_container_pages(
 {
     hide(Seq::no_duplicates);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-
     proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-    let (pages_4k, Tracked(page_4k_lock_perms)) = allocate_free_4k_pages::<9>(
-        krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
-        Tracked(current_thread_lock_perm)
-    );
+    let (pages_4k, Tracked(page_4k_lock_perms)) = allocate_free_4k_pages::<9>(krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm));
     let ghost staged_4k_cache = krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view();
     let ghost effective_2m_before_container = thread_effective_quota_2m(krnl.thr_mp.spec_index(current_thread_ptr));
-    proof {
-        assert(staged_4k_cache == pages_4k.view().to_set()) by { vstd::set::axiom_set_ext_equal(staged_4k_cache, pages_4k.view().to_set()); };
-    }
+    proof { assert(staged_4k_cache == pages_4k.view().to_set()) by { vstd::set::axiom_set_ext_equal(staged_4k_cache, pages_4k.view().to_set()); }; }
     proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
     proof { use_type_invariant(&*steps); }
-    let (container_page, Tracked(container_page_lock_perm)) = allocate_free_2m_page(
-        krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
-        Tracked(current_thread_lock_perm)
-    );
+    let (container_page, Tracked(container_page_lock_perm)) = allocate_free_2m_page(krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm));
     let ghost effective_2m_before_pcid_allocator = thread_effective_quota_2m(krnl.thr_mp.spec_index(current_thread_ptr));
-
     proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
     proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
     proof { use_type_invariant(&*steps); }
-    let (pcid_allocator_page, Tracked(pcid_allocator_page_lock_perm)) = allocate_free_2m_page(
-        krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps),
-        Tracked(current_thread_lock_perm)
-    );
+    let (pcid_allocator_page, Tracked(pcid_allocator_page_lock_perm)) = allocate_free_2m_page(krnl, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm));
     proof {
         assert(page_ptrs_to_indices(pages_4k.view()) == set![
             page_ptr2page_index(pages_4k.view().spec_index(0)), page_ptr2page_index(pages_4k.view().spec_index(1)), page_ptr2page_index(pages_4k.view().spec_index(2)),
@@ -185,15 +171,10 @@ pub(super) fn allocate_new_container_pages(
         assert(lctx.page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set())) by {
             seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set_ensures();
         };
-        assert(pages_4k.view().to_set().subset_of(krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view())) by {
-            pages_4k.view().to_set_ensures();
-            page_ptr_roundtrip();
-            reveal(container_page_owner_wf);
-        };
+        assert(pages_4k.view().to_set().subset_of(krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view())) by { pages_4k.view().to_set_ensures(); page_ptr_roundtrip(); reveal(container_page_owner_wf); };
         assert(!krnl.thr_mp.dom().contains(pages_4k.view().spec_index(7))) by {
             assert(page_4k_lock_perms.dom().contains(pages_4k.view().spec_index(7))) by { pages_4k.view().to_set_ensures(); };
-            reveal(thread_pages_wf);
-            page_ptr_roundtrip();
+            reveal(thread_pages_wf); page_ptr_roundtrip();
         };
     }
     (pages_4k, container_page, pcid_allocator_page, Tracked(page_4k_lock_perms), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm))

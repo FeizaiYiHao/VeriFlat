@@ -47,12 +47,6 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let state = cpu.state();
-    proof {
-        assert({
-            &&& krnl.cpu_published[cpu_id as int].view() == (krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
-            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
-        }) by { reveal(cpu_published_wf); reveal(cpu_array_wf); };
-    }
     if let CpuState::Off = state {
         release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
         proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }
@@ -73,17 +67,14 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
         };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&locked, &*krnl)) by {
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
         };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&locked, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_endpoint_nonlock_fields_unchanged(locked.ep_mp, krnl.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
         assert({
             &&& kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)
             &&& kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)
             &&& kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)
-        }) by {
-            broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
-        };
+        }) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive; };
     }
     release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
     proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }

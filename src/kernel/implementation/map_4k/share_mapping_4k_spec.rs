@@ -23,9 +23,7 @@ pub open spec fn share_4k_directory_pre_at(old_u: KernelU, progress_thread: RwLo
 
 /// Allocating one target directory consumes one quota-thread quota; a child container may receive its backing page.
 #[verifier::opaque]
-pub open spec fn share_4k_directory_at(
-    pre: KernelU, post: KernelU, quota_thread: RwLockThreadPtr, target: RwLockContainerPtr, source: Option<RwLockContainerPtr>,
-) -> bool {
+pub open spec fn share_4k_directory_at(pre: KernelU, post: KernelU, quota_thread: RwLockThreadPtr, target: RwLockContainerPtr, source: Option<RwLockContainerPtr>) -> bool {
     let containers = match source {
         None => pre.container_map,
         Some(parent) => pre.container_map.insert(parent, ContainerU { owned_pages: post.container_map[parent].owned_pages, ..pre.container_map[parent] })
@@ -40,11 +38,7 @@ pub open spec fn share_4k_directory_at(
         &&& post.container_map[parent].owned_pages.subset_of(pre.container_map[parent].owned_pages)
         &&& post.container_map[target].owned_pages == pre.container_map[target].owned_pages.union(moved)
     }
-    &&& post == (KernelU {
-        thread_map: pre.thread_map.insert(quota_thread, ThreadU { quota_4k: (pre.thread_map[quota_thread].quota_4k - 1) as usize, ..pre.thread_map[quota_thread] }),
-        container_map: containers,
-        ..pre
-    })
+    &&& post == (KernelU { thread_map: pre.thread_map.insert(quota_thread, ThreadU { quota_4k: (pre.thread_map[quota_thread].quota_4k - 1) as usize, ..pre.thread_map[quota_thread] }), container_map: containers, ..pre })
 }
 
 /// The next recorded source page of `progress_thread`'s share is mapped and the next recorded target
@@ -82,9 +76,7 @@ pub open spec fn share_4k_leaf_at(old_u: KernelU, new_u: KernelU, progress_threa
     let entry = old_u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[shared]];
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(progress_thread, ThreadU { syscall_progress: share_4k_progress_after_leaf(thread.syscall_progress), ..thread }),
-        process_map: old_u.process_map.insert(target, ProcessU {
-            pagetable: Some(PageTableU { mapping_4k: target_table.mapping_4k.insert(progress->Share4k_target_range.view()[shared], entry), ..target_table }), ..process
-        }),
+        process_map: old_u.process_map.insert(target, ProcessU { pagetable: Some(PageTableU { mapping_4k: target_table.mapping_4k.insert(progress->Share4k_target_range.view()[shared], entry), ..target_table }), ..process }),
         ..old_u
     })
 }

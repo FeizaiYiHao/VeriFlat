@@ -33,12 +33,7 @@ impl LockMinorTrait for GlobalPool {
 
 impl LockIdTrait for GlobalPool {
     open spec fn lock_id(&self) -> LockId {
-        LockId{
-            container: self.container_depth(),
-            process: self.process_depth(),
-            major: self.current_lock_major(),
-            minor: self.lock_minor(),
-        }
+        LockId { container: self.container_depth(), process: self.process_depth(), major: self.current_lock_major(), minor: self.lock_minor() }
     }
 }
 
@@ -54,34 +49,41 @@ impl GlobalPool {
     pub open spec fn view(&self) -> Seq<PagePtr> { self.linked_list.view() }
     pub open spec fn dom(&self) -> Set<PagePtr> { self.linked_list.dom() }
     pub open spec fn map(&self) -> Map<usize, PagePtr> { self.linked_list.map() }
-
-    pub open spec fn spec_len(&self) -> usize {
-        self.linked_list.view().len() as usize
-    }
+    pub open spec fn spec_len(&self) -> usize { self.linked_list.view().len() as usize }
 
     #[verifier(when_used_as_spec(spec_len))]
     pub fn len(&self) -> (ret: usize)
-        requires self.linked_list.wf(),
-        ensures ret == self.linked_list.len(),
+        requires
+            self.linked_list.wf(),
+        ensures
+            ret == self.linked_list.len(),
     { self.linked_list.len() }
 
     pub fn peek_head(&self) -> (ret: (usize, PagePtr))
         where PagePtr: Copy
-        requires self.linked_list.wf(), self.linked_list.len() != 0,
-        ensures self.linked_list.dom().contains(ret.0),
+        requires
+            self.linked_list.wf(),
+            self.linked_list.len() != 0,
+        ensures
+            self.linked_list.dom().contains(ret.0),
             self.linked_list.map().dom().contains(ret.0),
             ret.1 == self.linked_list.view().spec_index(0),
             ret.1 == self.linked_list.map().spec_index(ret.0),
     { self.linked_list.peek_head() }
 
     pub fn get(&self, index: usize) -> (ret: PagePtr)
-        requires self.linked_list.wf(), index < self.linked_list.len(),
-        ensures ret == self.linked_list.view().spec_index(index as int),
+        requires
+            self.linked_list.wf(),
+            index < self.linked_list.len(),
+        ensures
+            ret == self.linked_list.view().spec_index(index as int),
     { self.linked_list.get(index) }
 
     pub proof fn lemma_len_view(&self)
-        requires self.linked_list.wf(),
-        ensures self.linked_list.view().len() == self.linked_list.len(),
+        requires
+            self.linked_list.wf(),
+        ensures
+            self.linked_list.view().len() == self.linked_list.len(),
     { self.linked_list.lemma_len_view(); }
 }
 } // verus!

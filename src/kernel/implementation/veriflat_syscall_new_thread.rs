@@ -1,4 +1,5 @@
 #![feature(adt_const_params)]
+#![no_std]
 
 use vstd::prelude::*;
 
@@ -7,6 +8,7 @@ use veriflat_kernel_core::*;
 
 pub mod syscall_new_thread;
 pub mod syscall_new_thread_with_endpoint;
+pub mod syscall_new_endpoint;
 
 verus! {
 global size_of usize == 8;

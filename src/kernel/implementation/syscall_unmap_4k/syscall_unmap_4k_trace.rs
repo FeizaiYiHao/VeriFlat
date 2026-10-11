@@ -4,9 +4,7 @@ use super::syscall_unmap_4k_spec::*;
 
 verus! {
 /// Write-locking the caller's context and recording the first page is the enter step on `pre`/`post`.
-pub(super) proof fn unmap_4k_enter_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K,
-)
+pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K)
     requires
         index_valid(NUM_CPUS, cpu_id),
         {
@@ -45,10 +43,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
                 pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
                 ..pre.process_map.spec_index(process_ptr)
             }),
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false }),
-                ..pre.thread_map.spec_index(thread_ptr)
-            }),
+            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false }), ..pre.thread_map.spec_index(thread_ptr) }),
             ..pre
         }),
     ensures
@@ -57,9 +52,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
 { reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step); }
 
 /// Clearing the progress and releasing the unmap locks after the flushed range is the exit step on `pre`/`post`.
-pub(super) proof fn unmap_4k_exit_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-)
+pub(super) proof fn unmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         {

@@ -3,21 +3,26 @@ use crate::*;
 
 verus! {
 pub(super) struct CpuCr3Pcid {
+    /// What the last `mov cr3` loaded; only `CpuTLB::write_cr3_pcid` moves it.
     pub(super) hardware: Ghost<(PageTableRoot, Pcid)>,
+    /// Exec copy of `hardware`, so a switch to the same root and pcid skips the `mov cr3`.
+    pub(super) current_cr3: PageTableRoot,
+    pub(super) current_pcid: Pcid,
 }
 
 impl CpuCr3Pcid {
     pub(super) closed spec fn cr3(&self) -> PageTableRoot { self.hardware.view().0 }
     pub(super) closed spec fn pcid(&self) -> Pcid { self.hardware.view().1 }
+    /// The exec copy matches the physical register; part of the cpu lock invariant.
+    pub(super) closed spec fn wf(&self) -> bool { self.hardware.view() == (self.current_cr3, self.current_pcid) }
 
     pub(super) fn new(cr3: PageTableRoot, pcid: Pcid) -> (ret: Self)
         ensures
+            ret.wf(),
             ret.cr3() == cr3,
             ret.pcid() == pcid,
     {
-        Self {
-            hardware: Ghost((cr3, pcid)),
-        }
+        Self { hardware: Ghost((cr3, pcid)), current_cr3: cr3, current_pcid: pcid }
     }
 
     pub(super) fn flush_current(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
@@ -42,6 +47,7 @@ impl CpuCr3Pcid {
 
     pub(super) fn write(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
+            old(self).wf(),
             old(lctx).kernel_view_locking_state() is Acquire,
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
@@ -49,6 +55,7 @@ impl CpuCr3Pcid {
             pcid_valid(pcid),
             old(tlb).inv(),
         ensures
+            final(self).wf(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).cr3() == cr3,
             final(self).pcid() == pcid,
@@ -65,7 +72,11 @@ impl CpuCr3Pcid {
             final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(tlb).view() },
     {
         proof { lctx.enter_kernel_view_release(); }
-        tlb.write_cr3_pcid(cpu_id, cr3, pcid, flush, self, Tracked(&*lctx));
+        if flush || self.current_cr3 != cr3 || self.current_pcid != pcid {
+            tlb.write_cr3_pcid(cpu_id, cr3, pcid, flush, self, Tracked(&*lctx));
+            self.current_cr3 = cr3;
+            self.current_pcid = pcid;
+        }
     }
 }
 }

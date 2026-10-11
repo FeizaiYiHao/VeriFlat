@@ -5,11 +5,11 @@ use super::*;
 verus! {
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
-pub struct UnLockedMap<K, T>{
+pub struct UnLockedMap<K, T> {
     map: Tracked<Map<K, PointsTo<T>>>,
 }
 
-impl<T> UnLockedMap<usize, T>{
+impl<T> UnLockedMap<usize, T> {
     pub fn new_empty() -> (ret: Self)
         ensures
             ret.perms_wf(),
@@ -20,26 +20,14 @@ impl<T> UnLockedMap<usize, T>{
         }
     }
 
-    pub closed spec fn view(&self) -> Map<usize, PointsTo<T>>{
-        self.map.view()
-    }
-    // pub closed spec fn user_view(&self) -> Map<usize, >
-    pub open spec fn dom(&self) -> Set<usize>{
-        self.view().dom()
-    }
+    pub closed spec fn view(&self) -> Map<usize, PointsTo<T>> { self.map.view() }
+    pub open spec fn dom(&self) -> Set<usize> { self.view().dom() }
     pub open spec fn perms_wf(&self) -> bool {
-        &&&
-        forall|k:usize|
-            // #![trigger self.view().spec_index(k).is_init()]
-            // #![trigger self.view().spec_index(k).addr()]
+        &&& forall|k: usize|
             #![trigger self.view().dom().contains(k)]
-            self.view().dom().contains(k)
-            ==>
-            {
-                &&&
-                self.view().spec_index(k).is_init()
-                &&&
-                self.view().spec_index(k).addr() == k
+            self.view().dom().contains(k) ==> {
+                &&& self.view().spec_index(k).is_init()
+                &&& self.view().spec_index(k).addr() == k
             }
     }
     pub open spec fn spec_index(&self, key: usize) -> T
@@ -48,25 +36,16 @@ impl<T> UnLockedMap<usize, T>{
     {
         self.view().spec_index(key).value()
     }
-    pub open spec fn unchanged_except(&self, old: &Self, key:usize) -> bool{
-        &&&
-        old.dom() == self.dom()
-        &&&
-        self.dom().contains(key)
-        &&&
-        forall|k:usize|
+    pub open spec fn unchanged_except(&self, old: &Self, key: usize) -> bool {
+        &&& old.dom() == self.dom()
+        &&& self.dom().contains(key)
+        &&& forall|k: usize|
             #![trigger self.spec_index(k)]
             #![trigger old.spec_index(k)]
-            old.dom().contains(k) && k != key
-            ==>
-            self.spec_index(k) == old.spec_index(k)
+            old.dom().contains(k) && k != key ==> self.spec_index(k) == old.spec_index(k)
     }
 
-    pub fn insert_with_perm(
-        &mut self,
-        key: usize,
-        Tracked(perm): Tracked<PointsTo<T>>,
-    )
+    pub fn insert_with_perm(&mut self, key: usize, Tracked(perm): Tracked<PointsTo<T>>)
         requires
             !old(self).dom().contains(key),
             perm.is_init(),
@@ -77,9 +56,7 @@ impl<T> UnLockedMap<usize, T>{
             final(self).dom().contains(key),
             final(self).spec_index(key) == perm.value(),
             forall|old_key: usize| #![auto]
-                old(self).dom().contains(old_key)
-                ==> final(self).spec_index(old_key)
-                    == old(self).spec_index(old_key),
+                old(self).dom().contains(old_key) ==> final(self).spec_index(old_key) == old(self).spec_index(old_key),
     {
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
@@ -110,44 +87,5 @@ impl<T> UnLockedMap<usize, T>{
         let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
         PPtr::<T>::from_usize(key).borrow_mut(Tracked(perm))
     }
-
-    // pub fn take(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret:T)
-    //     requires
-    //         // old(self).perms_wf(),
-    //         old(self).dom().contains(key),
-    //         old(self)[key].is_init(),
-    //     ensures
-    //         self.perms_wf(),
-    //         self.unchanged_except(old(self), key),
-
-    //         self[key].is_init() == false,
-    //         ret == old(self)[key].value(),
-    // {
-    //     let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-    //     let ret = PPtr::<T>::from_usize(key).take(Tracked(&mut perm));
-    //     proof{
-    //         self.map.borrow_mut().tracked_insert(key, perm);
-    //     }
-    //     return ret;
-    // }
-
-    // pub fn put(&mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>, v:T)
-    //     requires
-    //         old(self).perms_wf(),
-    //         old(self).dom().contains(key),
-    //         old(self)[key].is_init() == false,
-    //     ensures
-    //         self.perms_wf(),
-    //         self.unchanged_except(old(self), key),
-
-    //         self[key].is_init(),
-    //         v == self[key].value(),
-    // {
-    //     let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-    //     PPtr::<T>::from_usize(key).put(Tracked(&mut perm), v);
-    //     proof{
-    //         self.map.borrow_mut().tracked_insert(key, perm);
-    //     }
-    // }
 }
 }

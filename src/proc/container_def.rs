@@ -45,7 +45,7 @@ pub ghost struct ContainerU {
     pub owned_pages: Set<PagePtr>,
     pub parent: Option<RwLockContainerPtr>,
     pub depth: usize,
-    pub scheduler: Seq<RwLockThreadPtr>,
+    pub scheduler: Seq<Seq<RwLockThreadPtr>>,
     pub cpu_set: RwLockCpuSetPtr,
     pub cpu_set_lock: LockStateU,
     pub cpu_offline_requests: Seq<bool>,
@@ -53,40 +53,28 @@ pub ghost struct ContainerU {
     pub quota_4k: usize,
     pub quota_2m: usize,
     pub quota_1g: usize,
-
     pub killed: bool,
 }
 
 impl LockInvTrait for Container {
     open spec fn inv(&self) -> bool {
-        &&&
-        self.wf()
+        &&& self.wf()
     }
 }
 
-impl Container{
-    pub fn new_boot_root(
-        container_ptr: RwLockContainerPtr,
-        root_process: RwLockProcessPtr,
-        root_endpoint: RwLockEndpointPtr,
-        owned_pages: Ghost<Set<PagePtr>>,
-    ) -> (ret: Self)
+impl Container {
+    pub fn new_boot_root(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, root_endpoint: RwLockEndpointPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
         ensures
             ret.inv(),
             ret.parent_linkedlist_node.is_init(),
-            ret.children.view()
-                == Seq::<RwLockContainerPtr>::empty(),
-            ret.children.map()
-                == Map::<usize, RwLockContainerPtr>::empty(),
+            ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
+            ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
-            ret.owned_endpoints.view()
-                =~= set![root_endpoint],
+            ret.owned_endpoints.view() =~= set![root_endpoint],
             ret.owned_pages == owned_pages,
     {
         let mut ret = Self::new_staged(container_ptr, root_process, 0);
-        ret.owned_endpoints = Ghost(
-            Set::empty().insert(root_endpoint),
-        );
+        ret.owned_endpoints = Ghost(Set::empty().insert(root_endpoint));
         ret.owned_pages = owned_pages;
         ret
     }
@@ -101,77 +89,34 @@ impl Container{
             ret.owned_endpoints.view() == Set::<RwLockEndpointPtr>::empty(),
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
-        Self {
-            parent_linkedlist_node: ExternalNode::new(container_ptr),
-            children: LinkedList::new(Some(depth), Some(container_ptr)),
-            root_process,
-            owned_endpoints: Ghost(Set::empty()),
-            owned_pages: Ghost(Set::empty()),
-        }
+        Self { parent_linkedlist_node: ExternalNode::new(container_ptr), children: LinkedList::new(Some(depth), Some(container_ptr)), root_process, owned_endpoints: Ghost(Set::empty()), owned_pages: Ghost(Set::empty()) }
     }
 
-    pub open spec fn wf(&self) -> bool {
-        self.children.inv()
-    }
+    pub open spec fn wf(&self) -> bool { self.children.inv() }
 }
 
 impl LockMajorTrait for Container {
-    open spec fn lock_major_1(&self) -> LockMajorId {
-        CONTAINER_LOCK_MAJOR
-    }
-
-    open spec fn lock_major_2(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_3(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_1_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_2_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_3_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_default_predicate(&self) -> bool {
-        true
-    }
+    open spec fn lock_major_1(&self) -> LockMajorId { CONTAINER_LOCK_MAJOR }
+    open spec fn lock_major_2(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_3(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_default(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_1_predicate(&self) -> bool { true }
+    open spec fn lock_major_2_predicate(&self) -> bool { true }
+    open spec fn lock_major_3_predicate(&self) -> bool { true }
+    open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
-impl LockUserVisibilityTrait for Container{
-    open spec fn is_user_visible() -> bool {
-        true
-    }
+impl LockUserVisibilityTrait for Container {
+    open spec fn is_user_visible() -> bool { true }
 }
 
-impl LockOwnerIdTrait for Container{
-    open spec fn container_depth(&self) -> LockOwnerId {
-        LockOwnerId::NotApp
-    }
-
-    open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::NotApp
-    }
+impl LockOwnerIdTrait for Container {
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 
-impl LockOwnerIdTrait for ContainerRO{
-    open spec fn container_depth(&self) -> LockOwnerId {
-        LockOwnerId::Some(self.depth)
-    }
-
-    open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::NotApp
-    }
+impl LockOwnerIdTrait for ContainerRO {
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.depth) }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 } // verus!

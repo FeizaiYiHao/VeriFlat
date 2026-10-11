@@ -9,7 +9,6 @@ pub mod pages_pcid_allocator_spec;
 pub mod pages_owned_spec;
 pub mod pages_endpoint_spec;
 pub mod pages_pagetable_spec;
-pub mod pages_iommu_table_spec;
 pub mod container_allocator_pages_spec;
 pub mod container_allocator_process_thread_spec;
 
@@ -28,7 +27,6 @@ pub use pages_pcid_allocator_spec::*;
 pub use pages_owned_spec::*;
 pub use pages_endpoint_spec::*;
 pub use pages_pagetable_spec::*;
-pub use pages_iommu_table_spec::*;
 pub use container_allocator_pages_spec::*;
 pub use container_allocator_process_thread_spec::*;
 

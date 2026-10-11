@@ -3,12 +3,7 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub fn wlock_allocator_cache_4k(
-        &mut self,
-        alloc_ptr_4k: RwLockPageAllocatorPtr,
-        cache_cpu: CpuId,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-    ) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_allocator_cache_4k(&mut self, alloc_ptr_4k: RwLockPageAllocatorPtr, cache_cpu: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).allc_4k_mp.dom().contains(alloc_ptr_4k),
@@ -47,13 +42,22 @@ impl KernelK {
             final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.unchanged_except(&old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches, cache_cpu),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            wlock_ensures(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(), final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(), LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(), process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(), major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(), minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor() }, final(lctx), ret.view()),
+            wlock_ensures(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
+                final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(),
+                LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(),
+                    process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(),
+                    major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(),
+                    minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor() },
+                final(lctx), ret.view()),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu), mode: TypedLockMode::Write }),
     {
         proof {
             assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); };
-            assert(old(lctx).lock_id_acyclic(LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(), process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(), major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(), minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor() })) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
+            assert(old(lctx).lock_id_acyclic(LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(),
+                process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(),
+                major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(),
+                minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_minor() })) by {
+                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
             };
             assert(wlock_requires(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(), &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
@@ -65,8 +69,7 @@ impl KernelK {
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by {
                 lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
-                reveal(container_process_allocator_quota_4k_wf);
-                reveal(container_allocator_wf);
+                reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
                 lemma_container_allocator_wf_preserved_for_allocator_quota_value_framed_fields_forall();
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
@@ -79,13 +82,7 @@ impl KernelK {
         ret
     }
 
-    pub fn wunlock_allocator_cache_4k(
-        &mut self,
-        alloc_ptr_4k: RwLockPageAllocatorPtr,
-        cache_cpu: CpuId,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        lock_perm: Tracked<LockPerm>,
-    )
+    pub fn wunlock_allocator_cache_4k(&mut self, alloc_ptr_4k: RwLockPageAllocatorPtr, cache_cpu: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).allc_4k_mp.dom().contains(alloc_ptr_4k),
@@ -114,10 +111,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu), old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_id()),
     {
         proof {
-            assert({
-                &&& old(self).allc_4k_mp.perms_wf()
-                &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()
-            }) by { reveal(allocator_perms_wf); };
+            assert({ &&& old(self).allc_4k_mp.perms_wf() &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf() }) by { reveal(allocator_perms_wf); };
             assert(old(lctx).lock_entry_contains(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu))) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         }
         assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
@@ -128,9 +122,7 @@ impl KernelK {
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by {
                 lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
-                reveal(container_process_allocator_quota_4k_wf);
-                reveal(container_allocator_wf);
-                lemma_container_allocator_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
             };

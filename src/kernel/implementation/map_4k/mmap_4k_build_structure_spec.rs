@@ -80,9 +80,6 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     &&& new_progress->Mmap4k_range == progress->Mmap4k_range
     &&& new_progress->Mmap4k_mapped == progress->Mmap4k_mapped
     &&& mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(new_progress->Mmap4k_directory)
-    &&& new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
-        ..old_u
-    })
+    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }), ..old_u })
 }
 } // verus!

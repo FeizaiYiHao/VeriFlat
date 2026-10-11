@@ -1,0 +1,8 @@
+# The whole boot workspace is bare metal. The Verus toolchain is a stable
+# rustc, so nightly features (adt_const_params, abi_x86_interrupt, ...) are
+# unlocked with RUSTC_BOOTSTRAP for every rustc and build-script invocation.
+[build]
+target = "x86_64-unknown-none"
+
+[env]
+RUSTC_BOOTSTRAP = "1"

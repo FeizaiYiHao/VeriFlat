@@ -2,15 +2,12 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-#[verifier::opaque]
 /// Removes a page's final 4K mapping, returns the page to the allocator CPU
 /// cache, and increments the owning thread's pending free-quota counter.
+#[verifier::opaque]
 pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
-    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot,
-    va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
-    owner: RwLockContainerPtr, depth: usize,
-    allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
-    old_counter: usize, new_counter: usize, node_addr: usize,
+    pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
+    depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
     let old_page = pre.pg_arr.spec_index(page_index).view();
@@ -74,10 +71,7 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     &&& old_page.view().free_list_node_storage.addr() == node_addr
     &&& new_page.view() == (Page {
         state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
-        mappings: Ghost(old_page.view().mappings().remove((pagetable, va))),
-        ref_count: 0,
-        free_list_node_storage: new_page.view().free_list_node_storage,
-        ..old_page.view()
+        mappings: Ghost(old_page.view().mappings().remove((pagetable, va))), ref_count: 0, free_list_node_storage: new_page.view().free_list_node_storage, ..old_page.view()
     })
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
@@ -97,11 +91,7 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     &&& old_thread.locking_thread() is Write
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.being_killed() == old_thread.being_killed()
-    &&& new_thread.view() == (Thread {
-        direct_free_quota_pending_4k: new_thread.view().direct_free_quota_pending_4k,
-        indirect_free_quota_pending_4k: new_thread.view().indirect_free_quota_pending_4k,
-        ..old_thread.view()
-    })
+    &&& new_thread.view() == (Thread { direct_free_quota_pending_4k: new_thread.view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: new_thread.view().indirect_free_quota_pending_4k, ..old_thread.view() })
     &&& new_counter == old_counter + 1
     &&& new_thread.view().free_quota_pending_4k_at_depth(depth) == new_counter
     &&& new_thread.view().direct_free_quota_pending_4k.view() == old_thread.view().direct_free_quota_pending_4k.view() + if depth == old_thread.view().container_depth { 1int } else { 0int }

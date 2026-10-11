@@ -2,8 +2,6 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-
-
 /// A preallocated vector.
 pub struct ArrayVec<T, const N: usize> {
     pub data: Array<T, N>,
@@ -19,11 +17,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
             ret.len() == 0,
             ret.capacity() == N,
     {
-        let ret = Self {
-            data: Array::new(),
-            len: 0,
-        };
-
+        let ret = Self { data: Array::new(), len: 0 };
         ret
     }
 
@@ -37,9 +31,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         self.len
     }
 
-    pub open spec fn spec_len(&self) -> usize {
-        self.len
-    }
+    pub open spec fn spec_len(&self) -> usize { self.len }
 
     #[verifier(when_used_as_spec(spec_capacity))]
     pub const fn capacity(&self) -> (ret: usize)
@@ -49,15 +41,12 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         N
     }
 
-    pub open spec fn spec_capacity(&self) -> usize {
-        N
-    }
+    pub open spec fn spec_capacity(&self) -> usize { N }
 
     pub closed spec fn view(&self) -> Seq<T>
     {
         self.data.view().subrange(0, self.len as int)
     }
-
 
     pub open spec fn wf(&self) -> bool {
         &&& self.len() == self.view().len()
@@ -65,9 +54,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         &&& self.data.wf()
     }
 
-    pub open spec fn spec_index(&self, index: int) -> (ret: T) {
-        self.view().spec_index(index)
-    }
+    pub open spec fn spec_index(&self, index: int) -> (ret: T) { self.view().spec_index(index) }
 
     pub fn get(&self, index: usize) -> (ret: &T)
         requires
@@ -90,25 +77,23 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     {
         let index = self.len;
         self.data.set(index, value);
-
         self.len = self.len + 1;
     }
 
     pub fn push_unique(&mut self, value: T)
-    requires
-        old(self).wf(),
-        old(self).len() < old(self).capacity(),
-        old(self).view().no_duplicates(),
-        old(self).view().contains(value) == false,
-    ensures
-        final(self).wf(),
-        final(self).view() =~= old(self).view().push(value),
-        final(self).len() == old(self).len() + 1,
-        final(self).view().no_duplicates(),
+        requires
+            old(self).wf(),
+            old(self).len() < old(self).capacity(),
+            old(self).view().no_duplicates(),
+            old(self).view().contains(value) == false,
+        ensures
+            final(self).wf(),
+            final(self).view() =~= old(self).view().push(value),
+            final(self).len() == old(self).len() + 1,
+            final(self).view().no_duplicates(),
     {
         let index = self.len;
         self.data.set(index, value);
-
         self.len = self.len + 1;
     }
 
@@ -124,9 +109,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     {
         let index = self.len() - 1;
         let ret = *self.data.get(index);
-
         self.len = self.len - 1;
-
         ret
     }
 
@@ -144,9 +127,7 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
     {
         let index = self.len() - 1;
         let ret = self.data.get(index);
-
         self.len = self.len - 1;
-
         ret
     }
 

@@ -4,40 +4,27 @@ use crate::kernel::*;
 
 verus! {
 /// Container invariant fields other than the empty-process write-lock guard.
-pub open spec fn container_invariant_fields_unchanged(
-    pre: ContainerLockedMap,
-    post: ContainerLockedMap,
-) -> bool {
+pub open spec fn container_invariant_fields_unchanged(pre: ContainerLockedMap, post: ContainerLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& forall|c_ptr: RwLockContainerPtr|
         #![trigger pre.spec_index(c_ptr)]
         #![trigger post.spec_index(c_ptr)]
-        pre.dom().contains(c_ptr) ==>
-        {
-            &&& post.spec_index(c_ptr).view()
-                == pre.spec_index(c_ptr).view()
-            &&& post.spec_index(c_ptr).view_rodata()
-                == pre.spec_index(c_ptr).view_rodata()
-            &&& post.spec_index(c_ptr).view_ghost()
-                == pre.spec_index(c_ptr).view_ghost()
+        pre.dom().contains(c_ptr) ==> {
+            &&& post.spec_index(c_ptr).view() == pre.spec_index(c_ptr).view()
+            &&& post.spec_index(c_ptr).view_rodata() == pre.spec_index(c_ptr).view_rodata()
+            &&& post.spec_index(c_ptr).view_rodata().view().cpu_set == pre.spec_index(c_ptr).view_rodata().view().cpu_set
+            &&& post.spec_index(c_ptr).view_ghost() == pre.spec_index(c_ptr).view_ghost()
         }
 }
 
 /// Turn the pointwise postcondition of a container lock operation into the
 /// projection used by invariant framing.
-pub proof fn container_lock_op_preserves_invariant_fields(
-    pre: ContainerLockedMap,
-    post: ContainerLockedMap,
-    changed: RwLockContainerPtr,
-)
+pub proof fn container_lock_op_preserves_invariant_fields(pre: ContainerLockedMap, post: ContainerLockedMap, changed: RwLockContainerPtr)
     requires
         post.unchanged_except(&pre, changed),
-        post.spec_index(changed).view()
-            == pre.spec_index(changed).view(),
-        post.spec_index(changed).view_rodata()
-            == pre.spec_index(changed).view_rodata(),
-        post.spec_index(changed).view_ghost()
-            == pre.spec_index(changed).view_ghost(),
+        post.spec_index(changed).view() == pre.spec_index(changed).view(),
+        post.spec_index(changed).view_rodata() == pre.spec_index(changed).view_rodata(),
+        post.spec_index(changed).view_ghost() == pre.spec_index(changed).view_ghost(),
     ensures
         container_invariant_fields_unchanged(pre, post),
 {
@@ -64,9 +51,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
         post.memory_management_inv(),
 {
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by {
-        reveal(container_process_page_pagetable_wf);
-    };
+    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         reveal(container_process_allocator_quota_4k_wf);
@@ -105,15 +90,8 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
-    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
-        reveal(container_endpoint_wf);
-        reveal(thread_endpoint_ref_counter_wf);
-        reveal(container_thread_endpoint_wf);
-    };
-    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-        reveal(container_thread_wf);
-        reveal(container_thread_scheduler_wf);
-    };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_thread_endpoint_wf); };
+    assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_thread_scheduler_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
@@ -133,8 +111,5 @@ pub proof fn cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre: Kern
         post.cpu_tlb == pre.cpu_tlb,
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
-{
-    reveal(cpu_dirty_map_contains_container_processes);
-    reveal(container_cpu_wf);
-}
+{ reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); }
 }

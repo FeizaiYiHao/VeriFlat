@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::cpu_offline_check_spec::*;
 use super::cpu_offline_check_trace::*;
+#[cfg(verus_keep_ghost)]
 use super::cpu_offline_check_eof::cpu_went_off_eof;
 
 verus! {
@@ -38,7 +39,6 @@ fn cpu_offline_commit(
                 old(steps).snapshot_k().thr_mp.spec_index(t).locking_thread() is None
             } else { old(krnl).thr_mp.spec_index(t).locking_thread() == old(steps).snapshot_k().thr_mp.spec_index(t).locking_thread() },
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
-        old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr).locking_thread() is None,
         old(krnl).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, cpu_set_ptr),
         old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
         old(krnl).cpu_offline_mp.unchanged_except(&old(steps).snapshot_k().cpu_offline_mp, flags_ptr),
@@ -51,11 +51,11 @@ fn cpu_offline_commit(
         old(steps).nonlock_view().len() == 0,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
-        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
+        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
-        old(krnl).sched_mp.spec_index(scheduler_ptr).view().queue.view() == old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr).view().queue.view(),
+        scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr)),
         cpu_offline_requests_of(old(krnl).cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr)),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -70,11 +70,12 @@ fn cpu_offline_commit(
             None => Set::empty(),
         },
         old(lctx).endpoint_lock_map().dom().is_empty(),
-        old(lctx).scheduler_lock_map().dom() =~= set![scheduler_ptr],
+        old(lctx).scheduler_lock_map().dom() =~= set![(scheduler_ptr, cpu_id)],
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom() =~= set![cpu_set_ptr],
         old(lctx).pagetable_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
@@ -130,16 +131,16 @@ fn cpu_offline_commit(
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
-            &&& !old(krnl).sched_mp.spec_index(scheduler_ptr).view().queue.view().contains(thread_ptr)
+            &&& !old(krnl).sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(thread_ptr)
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
             &&& perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id
         },
-        typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), scheduler_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (scheduler_ptr, cpu_id), TypedLockMode::Write),
         scheduler_lock_perm.view().state() is WriteLock,
         scheduler_lock_perm.view().thread_id() == old(lctx).thread_id(),
-        scheduler_lock_perm.view().lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).locking_thread()->Write_lock_id,
+        scheduler_lock_perm.view().lock_id() == old(krnl).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), cpu_set_ptr, TypedLockMode::Write),
         cpu_set_lock_perm.view().state() is WriteLock,
         cpu_set_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -179,9 +180,9 @@ fn cpu_offline_commit(
         assert({
             &&& krnl.sched_mp.perms_wf()
             &&& krnl.sched_mp.spec_index(scheduler_ptr).inv()
-            &&& krnl.sched_mp.spec_index(scheduler_ptr).view().queue.wf()
-            &&& krnl.sched_mp.spec_index(scheduler_ptr).view().queue.view().len() == krnl.sched_mp.spec_index(scheduler_ptr).view().queue.len()
-            &&& krnl.sched_mp.spec_index(scheduler_ptr).view().queue.length <= NUM_PAGES
+            &&& krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf()
+            &&& krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().len() == krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.len()
+            &&& krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.length <= NUM_PAGES
             &&& krnl.cpu_set_mp.perms_wf()
             &&& krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()
             &&& krnl.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.view().contains(cpu_id)
@@ -193,7 +194,7 @@ fn cpu_offline_commit(
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
         }) by {
             reveal(scheduler_perms_wf); reveal(LinkedList::wf_value_list); reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_offline_flags_wf); reveal(cpu_array_wf);
-            scheduler_queue_len_bounded(&*krnl, scheduler_ptr);
+            scheduler_queue_len_bounded(&*krnl, scheduler_ptr, cpu_id);
         };
         if current_thread is Some { thread_perms_wf_at(krnl.thr_mp, current_thread.unwrap()); }
     }
@@ -206,14 +207,11 @@ fn cpu_offline_commit(
         let ghost old_prev_lock_id = krnl.thr_mp.lock_id_by_key(prev);
         let prev_perm = thread_lock_perm.as_ref().unwrap();
         let previous = krnl.thr_mp.borrow_mut_typed(prev, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(prev_perm.borrow()));
-        let (addr, perm) = previous.running_to_scheduled(prev, pt_regs);
-        let scheduler = krnl.sched_mp.borrow_mut_typed(scheduler_ptr, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
-        scheduler.enqueue_scheduled_thread(prev, addr, perm);
+        let (addr, perm) = previous.running_to_scheduled(prev, cpu_id, pt_regs);
+        let shard = krnl.sched_mp.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
+        shard.queue.push_tail(addr, perm);
         krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
-        proof {
-            lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
-            lctx.update_lock_id(KernelObjId::Thread(prev), old_prev_lock_id, krnl.thr_mp.lock_id_by_key(prev));
-        }
+        proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id)); lctx.update_lock_id(KernelObjId::Thread(prev), old_prev_lock_id, krnl.thr_mp.lock_id_by_key(prev)); }
     } else {
         proof {
             lctx.enter_kernel_view_release();
@@ -234,24 +232,24 @@ fn cpu_offline_commit(
     proof {
         lctx.update_lock_id(KernelObjId::Cpu(cpu_id), idle_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
         assert(cpu_went_off_transition(before, *krnl, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, *pt_regs)) by {
-            reveal(cpu_went_off_transition); reveal(thread_perms_wf); reveal(scheduler_perms_wf); reveal(cpu_set_perms_wf); reveal(pcid_needflush_wf); reveal(cpu_array_wf);
+            reveal(cpu_went_off_transition); reveal(scheduler_perms_wf); reveal(cpu_set_perms_wf); reveal(pcid_needflush_wf);
             assert(krnl.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(before.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(before, cpu_id))) by {
                 vstd::assert_maps_equal!(krnl.cpu_tlb.view(), cpu_tlb_after_cpu_went_off(before.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(before, cpu_id)), key => {});
             };
         };
         cpu_went_off_eof(before, *krnl, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, *pt_regs);
+        assert(scheduler_shards_of(krnl.sched_mp.spec_index(scheduler_ptr)) =~= match current_thread {
+            Some(prev) => scheduler_shards_of(before.sched_mp.spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(before.sched_mp.spec_index(scheduler_ptr))[cpu_id as int].push(prev)),
+            None => scheduler_shards_of(before.sched_mp.spec_index(scheduler_ptr)),
+        }) by { reveal(scheduler_shards_of); };
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         if current_thread is Some { process_thread_wf_at(before.prc_mp, before.thr_mp, current_thread.unwrap()); }
     }
     krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_perm));
-    krnl.wunlock_scheduler(scheduler_ptr, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(&mut *lctx), Tracked(cpu_set_lock_perm));
-    if let Some(perm) = thread_lock_perm {
-        krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm);
-    }
-    if let Some(perm) = process_lock_perm {
-        krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm);
-    }
+    if let Some(perm) = thread_lock_perm { krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm); }
+    if let Some(perm) = process_lock_perm { krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm); }
     krnl.wunlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), Tracked(flag_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
@@ -259,16 +257,11 @@ fn cpu_offline_commit(
         let ghost commit_before = steps.view();
         assert(kernel_cpu_went_off_fields(&steps.snapshot_k(), &*krnl, cpu_id, *pt_regs, flushed)) by {
             reveal(kernel_cpu_went_off_fields); reveal(cpu_went_off_transition); reveal(container_scheduler_wf); reveal(container_cpu_offline_flags_wf); reveal(cpu_offline_requests_of);
-            broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
         };
         steps.end_kernel_step_cpu_went_off(&*krnl, &*lctx, cpu_id, *pt_regs, flushed);
-        no_locks_held_imply_all_objects_unlocked(krnl, lctx);
         assert({
-            &&& cpu_offline_check_entry_trace(
-                steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl),
-                cpu_id, *pt_regs, true, flushed,
-            )
+            &&& cpu_offline_check_entry_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, *pt_regs, true, flushed)
             &&& cpu_offline_check_step_pre(steps.nonlock_view().last().old_u, cpu_id)
             &&& cpu_offline_check_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, *pt_regs, flushed)
         }) by {
@@ -283,9 +276,7 @@ fn cpu_offline_commit(
 /// thread, if any, is live, the cpu requeues that thread and goes Off; the trap layer then halts it.
 /// Otherwise the caller continues to `syscall_schedule`.
 #[verifier::spinoff_prover]
-pub fn cpu_offline_check(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
-) -> (ret: OfflineCheckResult)
+pub fn cpu_offline_check(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers) -> (ret: OfflineCheckResult)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
@@ -326,10 +317,7 @@ pub fn cpu_offline_check(
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),
 {
-    proof {
-        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-        steps.rebase_snapshot_k_if_unchanged(&*krnl);
-    }
+    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let state = cpu.state();
@@ -364,12 +352,7 @@ pub fn cpu_offline_check(
                 &&& krnl.thr_mp.spec_index(ptr).view().owning_container == container_ptr
             })
             &&& old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
-        }) by {
-            assert(krnl.cpu_arr.spec_index(cpu_id).view().inv()) by { reveal(cpu_array_wf); };
-            reveal(container_cpu_wf); reveal(container_perms_wf); reveal(thread_cpu_wf); reveal(process_cpu_wf); reveal(process_thread_wf);
-            reveal(container_pages_wf); reveal(container_cpu_offline_flags_wf); reveal(cpu_published_wf);
-        };
-        assert(lctx.held_lock_majors_lt(CPU_OFFLINE_FLAG_LOCK_MAJOR)) by { reveal(LockedArray::typed_lock_map_aligned); };
+        }) by { reveal(container_cpu_wf); reveal(container_perms_wf); reveal(thread_cpu_wf); reveal(process_cpu_wf); reveal(process_thread_wf); reveal(container_pages_wf); reveal(container_cpu_offline_flags_wf); };
     }
     let flags_ptr = container_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));
@@ -406,7 +389,6 @@ pub fn cpu_offline_check(
             release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
             proof {
                 assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
                     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
                 };
                 cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *pt_regs);
@@ -427,12 +409,11 @@ pub fn cpu_offline_check(
             release_cpu_and_process_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, process_lock_perm.unwrap(), Tracked(cpu_lock_perm));
             proof {
                 assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
                     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
                 };
                 cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *pt_regs);
                 assert(cpu_offline_check_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Continue) by {
-                    kernel_cpu_projection_at(old(krnl), cpu_id); kernel_process_projection_at(old(krnl), process_ptr); kernel_thread_projection_at(old(krnl), thread_ptr);
+                    kernel_cpu_projection_at(old(krnl), cpu_id); kernel_thread_projection_at(old(krnl), thread_ptr);
                 };
             }
             return OfflineCheckResult::Continue;
@@ -442,21 +423,11 @@ pub fn cpu_offline_check(
     let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr).borrow();
     let scheduler_ptr = container_ro.scheduler;
     let cpu_set_ptr = container_ro.cpu_set;
-    proof {
-        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
-        assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr)) by { reveal(container_cpu_set_wf); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert({
-            &&& krnl.sched_mp.spec_index(scheduler_ptr).view().queue.view() == steps.snapshot_k().sched_mp.spec_index(scheduler_ptr).view().queue.view()
-            &&& cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(steps.snapshot_k().cpu_offline_mp.spec_index(flags_ptr))
-        }) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    }
+    proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr)) by { reveal(container_cpu_set_wf); }; }
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(&mut *lctx));
-    let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
+    let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
     proof {
-        assert(current_thread is Some ==> !krnl.sched_mp.spec_index(scheduler_ptr).view().queue.view().contains(current_thread.unwrap())) by {
-            reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
-        };
+        assert(current_thread is Some ==> !krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap())) by { reveal(container_thread_scheduler_wf); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
     }
     cpu_offline_commit(

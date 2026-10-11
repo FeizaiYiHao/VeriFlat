@@ -6,12 +6,13 @@ verus! {
     pub open spec fn process_perms_wf(process_perms: ProcessLockedMap) -> bool {
         &&& process_perms.perms_wf()
         &&& process_tree_fields_wf(process_perms)
-        &&& forall|p_ptr: RwLockProcessPtr|
-            #![auto]
-            process_perms.dom().contains(p_ptr) ==> process_perms.spec_index(p_ptr).inv()
+        &&& forall|p_ptr: RwLockProcessPtr| #![auto] process_perms.dom().contains(p_ptr) ==> process_perms.spec_index(p_ptr).inv()
     }
 
-    pub proof fn process_perms_wf_map(process_perms: ProcessLockedMap) requires process_perms_wf(process_perms) ensures process_perms.perms_wf() { reveal(process_perms_wf); }
+    pub proof fn process_perms_wf_map(process_perms: ProcessLockedMap)
+        requires process_perms_wf(process_perms)
+        ensures process_perms.perms_wf()
+    { reveal(process_perms_wf); }
 
     pub proof fn process_perms_wf_at(process_perms: ProcessLockedMap, process_ptr: RwLockProcessPtr)
         requires
@@ -54,9 +55,7 @@ verus! {
                 &&& process_perms.spec_index(p_ptr).view_rodata().view().depth != 0
                 &&& process_perms.spec_index(p_ptr).view().parent_linkedlist_node.is_init() == false
             }
-        &&& forall|p_ptr: RwLockProcessPtr|
-            #![trigger process_tree_dom.contains(p_ptr)]
-            process_tree_dom.contains(p_ptr) && p_ptr != root_process ==> process_perms.spec_index(p_ptr).view_rodata().view().parent is Some
+        &&& forall|p_ptr: RwLockProcessPtr| #![trigger process_tree_dom.contains(p_ptr)] process_tree_dom.contains(p_ptr) && p_ptr != root_process ==> process_perms.spec_index(p_ptr).view_rodata().view().parent is Some
     }
 
     #[verifier::opaque]
@@ -82,9 +81,7 @@ verus! {
     pub open spec fn process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())]
-            process_tree_dom.contains(p_ptr) && p_ptr != root_process ==>
-                process_perms.spec_index(p_ptr).view_rodata().view().parent is Some
-                && process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())
+            process_tree_dom.contains(p_ptr) && p_ptr != root_process ==> process_perms.spec_index(p_ptr).view_rodata().view().parent is Some && process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
             process_tree_dom.contains(p_ptr) && p_ptr != root_process ==> {
@@ -98,9 +95,8 @@ verus! {
     pub open spec fn process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
-            process_tree_dom.contains(p_ptr) && p_ptr != root_process ==>
-            process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().spec_index(process_perms.spec_index(p_ptr).view_rodata().view().depth - 1)
-                == process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()
+            process_tree_dom.contains(p_ptr) && p_ptr != root_process
+                ==> process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().spec_index(process_perms.spec_index(p_ptr).view_rodata().view().depth - 1) == process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()
     }
 
     #[verifier::opaque]
@@ -131,8 +127,8 @@ verus! {
     pub open spec fn process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         forall|p_ptr: RwLockProcessPtr, sub_p_ptr: RwLockProcessPtr|
             #![trigger process_perms.spec_index(p_ptr).view_ghost().subtree_set.view().contains(sub_p_ptr), process_perms.spec_index(sub_p_ptr).view_ghost().uppertree_seq.view().contains(p_ptr)]
-            process_tree_dom.contains(p_ptr) && process_tree_dom.contains(sub_p_ptr) ==>
-            process_perms.spec_index(p_ptr).view_ghost().subtree_set.view().contains(sub_p_ptr) == process_perms.spec_index(sub_p_ptr).view_ghost().uppertree_seq.view().contains(p_ptr)
+            process_tree_dom.contains(p_ptr) && process_tree_dom.contains(sub_p_ptr)
+                ==> process_perms.spec_index(p_ptr).view_ghost().subtree_set.view().contains(sub_p_ptr) == process_perms.spec_index(sub_p_ptr).view_ghost().uppertree_seq.view().contains(p_ptr)
     }
 
     pub open spec fn process_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
@@ -174,31 +170,26 @@ verus! {
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger old_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq]
             #![trigger new_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq]
-            process_tree_dom.contains(p_ptr) ==>
-                new_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq == old_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq
+            process_tree_dom.contains(p_ptr) ==> new_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq == old_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)]
-            new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr) ==>
-                new_process_perms.spec_index(p_ptr).view_ghost().subtree_set.view() == old_process_perms.spec_index(p_ptr).view_ghost().subtree_set.view().insert(child_ptr)
+            new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                ==> new_process_perms.spec_index(p_ptr).view_ghost().subtree_set.view() == old_process_perms.spec_index(p_ptr).view_ghost().subtree_set.view().insert(child_ptr)
         &&& forall|p_ptr: RwLockProcessPtr|
             #![trigger process_tree_dom.contains(p_ptr)]
-            process_tree_dom.contains(p_ptr) && !new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr) ==>
-                new_process_perms.spec_index(p_ptr).view_ghost().subtree_set == old_process_perms.spec_index(p_ptr).view_ghost().subtree_set
+            process_tree_dom.contains(p_ptr) && !new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set().contains(p_ptr)
+                ==> new_process_perms.spec_index(p_ptr).view_ghost().subtree_set == old_process_perms.spec_index(p_ptr).view_ghost().subtree_set
         &&& new_process_perms.spec_index(parent_ptr).view_rodata() == old_process_perms.spec_index(parent_ptr).view_rodata()
         &&& new_process_perms.spec_index(parent_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(parent_ptr).view().parent_linkedlist_node
         &&& new_process_perms.spec_index(parent_ptr).view().children.view() == old_process_perms.spec_index(parent_ptr).view().children.view().push(child_ptr)
         &&& !old_process_perms.spec_index(parent_ptr).view().children.map().dom().contains(new_process_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr())
         &&& new_process_perms.spec_index(parent_ptr).view().children.map().dom().contains(new_process_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr())
         &&& new_process_perms.spec_index(parent_ptr).view().children.map().spec_index(new_process_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr()) == child_ptr
-        &&& new_process_perms.spec_index(parent_ptr).view().children.map()
-            == old_process_perms.spec_index(parent_ptr).view().children.map().insert(new_process_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr(), child_ptr)
+        &&& new_process_perms.spec_index(parent_ptr).view().children.map() == old_process_perms.spec_index(parent_ptr).view().children.map().insert(new_process_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr(), child_ptr)
     }
 
     #[verifier::spinoff_prover]
-    pub proof fn process_add_child_preserves_tree_wf(
-        root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap,
-        new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr,
-    )
+    pub proof fn process_add_child_preserves_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
         ensures
@@ -243,10 +234,7 @@ verus! {
         };
     }
 
-    pub proof fn process_insert_child_into_ancestor_subtree_sets(
-        tracked process_map: &mut ProcessLockedMap, ancestors: Seq<RwLockProcessPtr>, child_ptr: RwLockProcessPtr,
-        held_locks: Map<RwLockProcessPtr, TypedHeldLock>, thread_id: LockThreadId,
-    )
+    pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked process_map: &mut ProcessLockedMap, ancestors: Seq<RwLockProcessPtr>, child_ptr: RwLockProcessPtr, held_locks: Map<RwLockProcessPtr, TypedHeldLock>, thread_id: LockThreadId)
         requires
             old(process_map).perms_wf(),
             ancestors.to_set().subset_of(old(process_map).dom()),
@@ -268,6 +256,8 @@ verus! {
                 old(process_map).dom().contains(p) ==> final(process_map).spec_index(p).view_rodata() == old(process_map).spec_index(p).view_rodata(),
             forall|p: RwLockProcessPtr| #![trigger final(process_map).spec_index(p).view_ghost().uppertree_seq]
                 old(process_map).dom().contains(p) ==> final(process_map).spec_index(p).view_ghost().uppertree_seq == old(process_map).spec_index(p).view_ghost().uppertree_seq,
+            forall|p: RwLockProcessPtr| #![trigger final(process_map).spec_index(p).view_ghost().owned_pci_functions]
+                old(process_map).dom().contains(p) ==> final(process_map).spec_index(p).view_ghost().owned_pci_functions == old(process_map).spec_index(p).view_ghost().owned_pci_functions,
             forall|p: RwLockProcessPtr| #![trigger final(process_map).spec_index(p).locking_thread()]
                 old(process_map).dom().contains(p) ==> final(process_map).spec_index(p).locking_thread() == old(process_map).spec_index(p).locking_thread(),
             forall|p: RwLockProcessPtr| #![trigger final(process_map).spec_index(p).being_killed()]
@@ -279,10 +269,8 @@ verus! {
         if ancestors.len() > 0 {
             let p0 = ancestors.spec_index(0);
             assert(ancestors.to_set().contains(p0)) by { ancestors.to_set_ensures(); };
-            process_map.update_ghost(p0, ProcessGhost {
-                uppertree_seq: process_map.spec_index(p0).view_ghost().uppertree_seq,
-                subtree_set: Ghost(process_map.spec_index(p0).view_ghost().subtree_set.view().insert(child_ptr)),
-            });
+            process_map.update_ghost(p0, ProcessGhost { uppertree_seq: process_map.spec_index(p0).view_ghost().uppertree_seq,
+                subtree_set: Ghost(process_map.spec_index(p0).view_ghost().subtree_set.view().insert(child_ptr)), owned_pci_functions: process_map.spec_index(p0).view_ghost().owned_pci_functions });
             assert(process_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(ancestors.drop_first().to_set().subset_of(process_map.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
             process_insert_child_into_ancestor_subtree_sets(process_map, ancestors.drop_first(), child_ptr, held_locks, thread_id);
@@ -300,28 +288,26 @@ verus! {
                 #![trigger process_tree_wf(root_process, process_tree_dom, old_process_perms), process_tree_wf(root_process, process_tree_dom, new_process_perms)]
                 (process_tree_wf(root_process, process_tree_dom, old_process_perms) && process_tree_dom.subset_of(new_process_perms.dom()) && forall|p_ptr: RwLockProcessPtr|
                     #![trigger new_process_perms.spec_index(p_ptr)]
-                    process_tree_dom.contains(p_ptr) ==>
-                        new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
+                    process_tree_dom.contains(p_ptr)
+                        ==> new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
                         && new_process_perms.spec_index(p_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(p_ptr).view().parent_linkedlist_node
                         && new_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq == old_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq
                         && new_process_perms.spec_index(p_ptr).view_ghost().subtree_set == old_process_perms.spec_index(p_ptr).view_ghost().subtree_set
-                        && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata()) ==>
-                process_tree_wf(root_process, process_tree_dom, new_process_perms),
+                        && new_process_perms.spec_index(p_ptr).view_rodata() == old_process_perms.spec_index(p_ptr).view_rodata())
+                ==> process_tree_wf(root_process, process_tree_dom, new_process_perms),
     {
         reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); reveal(process_children_depth_wf);
         reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
     }
 
-    pub proof fn per_container_process_tree_wf_preserved_for_tree_fields_eq(
-        container_perms: ContainerLockedMap, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap,
-    )
+    pub proof fn per_container_process_tree_wf_preserved_for_tree_fields_eq(container_perms: ContainerLockedMap, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap)
         requires
             per_container_process_tree_wf(container_perms, old_process_perms),
             container_process_wf(container_perms, old_process_perms),
             old_process_perms.dom() == new_process_perms.dom(),
             forall|p_ptr: RwLockProcessPtr| #![trigger new_process_perms.spec_index(p_ptr)]
-                old_process_perms.dom().contains(p_ptr) ==>
-                    new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
+                old_process_perms.dom().contains(p_ptr)
+                    ==> new_process_perms.spec_index(p_ptr).view().children == old_process_perms.spec_index(p_ptr).view().children
                     && new_process_perms.spec_index(p_ptr).view().parent_linkedlist_node == old_process_perms.spec_index(p_ptr).view().parent_linkedlist_node
                     && new_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq == old_process_perms.spec_index(p_ptr).view_ghost().uppertree_seq
                     && new_process_perms.spec_index(p_ptr).view_ghost().subtree_set == old_process_perms.spec_index(p_ptr).view_ghost().subtree_set
@@ -329,16 +315,13 @@ verus! {
         ensures
             per_container_process_tree_wf(container_perms, new_process_perms),
     {
-        reveal(per_container_process_tree_wf); reveal(container_process_wf); reveal(process_root_wf); reveal(process_children_parent_wf);
+        reveal(per_container_process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf);
         reveal(process_linkedlist_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
     }
 
 #[verifier::spinoff_prover]
 #[verifier::loop_isolation(false)]
-pub fn process_tree_check_is_ancestor(
-    root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &ProcessLockedMap,
-    a_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr,
-) -> (ret: bool)
+pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &ProcessLockedMap, a_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr) -> (ret: bool)
     requires
         process_perms_wf(*process_perms),
         process_tree_wf(root_process, process_tree_dom.view(), *process_perms),
@@ -351,7 +334,7 @@ pub fn process_tree_check_is_ancestor(
 {
     proof {
         reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf);
-        reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
+        reveal(process_uppertree_seq_wf);
         assert(process_perms.perms_wf()) by { reveal(process_perms_wf); };
         assert(process_tree_fields_wf(*process_perms)) by { reveal(process_perms_wf); };
         assert(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().len() == process_perms.spec_index(child_ptr).view_rodata().view().depth) by { reveal(process_perms_wf); };
@@ -359,8 +342,7 @@ pub fn process_tree_check_is_ancestor(
     let depth = process_perms.borrow_rodata(child_ptr).borrow().depth;
     if depth == 0 {
         assert(child_ptr == root_process) by { reveal(process_root_wf); };
-        assert(process_perms.dom().contains(child_ptr)) by { reveal(process_root_wf); };
-        assert(process_perms.spec_index(child_ptr).view_rodata().view().depth == 0) by { reveal(process_perms_wf); };
+        assert(process_perms.spec_index(child_ptr).view_rodata().view().depth == 0);
         return false;
     }
     let mut current_p_ptr = child_ptr;
@@ -382,9 +364,7 @@ pub fn process_tree_check_is_ancestor(
         let next_parent_ptr = current_ro.borrow().parent.unwrap();
         assert(process_perms.spec_index(current_p_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1) == next_parent_ptr) by { reveal(process_children_depth_wf); };
         assert(next_parent_ptr == process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1)) by {
-            if i == 0 {
-                assert(next_parent_ptr == process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1)) by { reveal(process_children_depth_wf); };
-            } else {
+            if i == 0 { } else {
                 assert(process_perms.spec_index(current_p_ptr).view_ghost().uppertree_seq.view() == process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().subrange(0, depth - i)) by {
                     reveal(process_uppertree_seq_wf); process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(depth - i);
                 };

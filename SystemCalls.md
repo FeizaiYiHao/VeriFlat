@@ -91,11 +91,11 @@ pres name `cpu.current_process` and `cpu.owning_container` directly instead of
 - `Unlocked(x)` for every U-visible object the step newly acquires;
 - the phase condition (for example `mapped < len`).
 
-**R5 Locks outside U.** Allocator quota/cache/pool, scheduler, PCID
+**R5 Locks outside U.** Allocator quota/cache/pool, scheduler shard, PCID
 allocator, PCID-needflush, and page locks are invisible in U. The U fields
 they guard are container `quota_*` (allocator quota), container `scheduler`
-(scheduler), container `free_pcids` (PCID allocator), and `cpu_tlb` (PCID
-needflush). The CPU-set lock is visible as `ContainerU.cpu_set_lock` (`CS(c)`)
+(one run queue per cpu, `scheduler[c]` guarded by shard `c`), container
+`free_pcids` (PCID allocator), and `cpu_tlb` (PCID needflush). The CPU-set lock is visible as `ContainerU.cpu_set_lock` (`CS(c)`)
 and guards the `owning_container` of the container's Off CPUs.
 
 - A step may change such a field without a U-visible lock only when the
@@ -115,13 +115,16 @@ empty and `post == pre`. A rejection with a visible effect is an explicit step
 **R7 Traces.** A `*_syscall_trace` is the first step, the phase steps with
 exact length bounds, and the exit step, each with its pre and transition.
 
-## 3. alloc_quota_4k — one step
+## 3. alloc_quota_4k, alloc_quota_2m — one step each
 
-Status: conforms (focused run #27373).
+Status: conforms (alloc_quota_4k focused run #27373; alloc_quota_2m workspace
+run #28754, monolith run #28755, noninterference run #28756).
 
 - Arguments: `amount`. A zero amount succeeds with no step.
 - U locks acquired and released in the step: `cpu`, container `cpu.owning_container`,
   process `cpu.current_process`. Non-U: the container's 4K allocator quota.
+- alloc_quota_2m is the same step over `quota_2m`
+  (`kernel_u_only_process_quota_2m_changed`) with the same locks and stutters.
 
 **Step**
 
@@ -135,69 +138,118 @@ Status: conforms (focused run #27373).
 Stutters: ContainerKilled, ProcessKilled, ContainerQuotaInsufficient,
 ProcessQuotaOverflow.
 
+## 3a. alloc_thread_quota_4k, alloc_thread_quota_2m — one step each
+
+Status: conforms (alloc_thread_quota_4k workspace run #28692, noninterference
+run #28688; alloc_thread_quota_2m workspace run #28754, monolith run #28755,
+noninterference run #28756).
+
+- Arguments: `amount`. A zero amount succeeds with no step.
+- U locks acquired and released in the step: `cpu`, process `cpu.current_process`,
+  thread `cpu.current_thread`. The container is not locked.
+- alloc_thread_quota_2m is the same step over `quota_2m`
+  (`kernel_u_only_process2thread_quota_2m_changed`) with the same locks and
+  stutters.
+
+**Step**
+
+- Pre: `index_valid`, `cpu.state is Running`, `cpu.current_process is Some`,
+  `cpu.current_thread is Some`, both objects present; `!killed` for the process
+  and thread; `Unlocked` for `cpu`, the process, and the thread;
+  `process.quota_4k >= amount`; `thread.quota_4k + amount <= usize::MAX`;
+  `amount > 0`.
+- Effect: the process's `quota_4k` decreases by `amount` and the thread's
+  increases by it (`kernel_u_only_process2thread_quota_4k_changed`).
+
+Stutters: ProcessKilled, ThreadKilled, NoQuota, ThreadQuotaOverflow.
+
 ## 4. schedule — one step
 
 Status: conforms (focused run #27374).
 
 - Arguments: entry `regs`. K-internal label: `flushed_pcid`.
 - U locks acquired and released in the step: `cpu`, the current process and
-  thread when present, and the next thread. Non-U: the container scheduler and
-  the PCID-needflush entry.
+  thread when present, and the next thread. Non-U: shard `cpu_id` of the
+  container scheduler and the PCID-needflush entry.
 
 **Step**
 
-- Pre: `!(cpu.state is Off)`; the container of `cpu` has a non-empty
-  scheduler whose head `next` is present, `!next.killed`, `SCHEDULED`, owned
+- Pre: `!(cpu.state is Off)`; shard `cpu_id` of the container's scheduler is
+  non-empty and its head `next` is present, `!next.killed`, `SCHEDULED`, owned
   by that container, and whose process is present; `current_process is Some`
   iff `current_thread is Some`; when a thread runs: it differs from `next`,
   is `RUNNING { cpu_id }`, `!killed`, belongs to the current process, and that
   process is present and `!killed`; `Unlocked` for `cpu`, `next`, and the
   running thread and process when present.
-- Effect: `kernel_u_context_switch_changed`: `cpu` runs `next`, the previous
-  thread is requeued at the tail, and at most the `(cpu_id, flushed_pcid)`
-  TLB entry is flushed.
+- Effect: `kernel_u_context_switch_changed`: `cpu` runs `next` with
+  `next.last_cpu = cpu_id`, the previous thread is requeued at the tail of
+  shard `cpu_id` as `SCHEDULED { cpu_id }`, and at most the
+  `(cpu_id, flushed_pcid)` TLB entry is flushed.
 
-Stutters: Off, a killed running process or thread (Continue), an empty
-scheduler or a killed head (Idle or Continue).
+Stutters: Off, a killed running process or thread (Continue), an empty shard
+`cpu_id` or a killed head (Idle or Continue). After Idle the trap layer runs
+`rebalance_pull` (§4c).
 
-## 4a. cpu_offline_request, cpu_online — one step each
+## 4a. cpu_offline_request, cpu_online, and their child variants — one step each
 
-Status: conforms (workspace run #28133, noninterference run #28132).
+Status: conforms (own variants workspace run #28133, noninterference run
+#28132; child variants workspace run #28754, monolith run #28755,
+noninterference run #28756).
 
-Both are issued by a running thread on behalf of its container `C`
-(`cpu.owning_container`); no permission check beyond container ownership of
-`target`. Neither is issued under a syscall progress, so their pres name
-`cpu.owning_container` directly (R3).
+All four are issued by a running thread of container `P`
+(`cpu.owning_container`). The own variants `cpu_offline_request(target)` and
+`cpu_online(target)` act on a cpu of `C = P`. The child variants
+`cpu_offline_request_child(i, target)` and `cpu_online_child(i, target)` act on
+a cpu of `P`'s direct child `C = P.children[i]`; a grandchild's cpu is
+rejected. There is no other permission check. None is issued under a syscall
+progress, so their pres name `cpu.owning_container` directly (R3).
 
-- Arguments: `target`. An invalid `target` rejects before any lock.
-- U locks acquired and released in the step: `cpu` and `CS(C)`; cpu_online
-  also acquires `cpu_array[target]` (Off, terminal lock major). Non-U:
-  cpu_offline_request holds the request cell `F(C, target)` of `C`'s offline
-  request table (lock major 3) across the step.
+- Arguments: `target`, and the child index `i` for the child variants. An
+  invalid `target` rejects before any lock.
+- Each call is one atomic section with two-phase locking. In lock order:
+  - `cpu`;
+  - on the child variants, `P` (`wlock_container_unless_killed`), which keeps
+    `P.children` stable;
+  - on cpu_offline_request, the non-U request cell `F(C, target)` of `C`'s
+    offline request table (lock major 104);
+  - `CS(C)`;
+  - on cpu_online, `cpu_array[target]` (Off, terminal lock major).
 
-**cpu_offline_request step**
+  The request cell, `CS(C)`, `P`, and `cpu` are all released inside the step.
+
+**cpu_offline_request step** (`cpu_offline_request_step`,
+`cpu_offline_request_child_step`)
 
 - Pre: `index_valid` for `cpu_id` and `target`, `cpu.state is Running`, `C`
   present, `Unlocked(cpu)`, `Unlocked(CS(C))`;
   `cpu_array[target].owning_container == C`; `!(cpu_array[target].state is Off)`;
   `!C.cpu_offline_requests[target]`.
+- The child pre names `C` as `cpu_array[target].owning_container` and adds:
+  `P` present, `Unlocked(P)`, `!P.killed`, and `C.parent == Some(P)`.
 - Effect: `C.cpu_offline_requests[target] = true`
-  (`kernel_u_cpu_offline_request_changed`). The requester then sends an IPI to
+  (`kernel_u_cpu_offline_request_changed`). On the child variant, the lock of
+  `P` is released inside the step, so `P` is unchanged in U. The requester then sends an IPI to
   `target` (no U effect); the target's own check step (§4b) consumes the bit.
 
-Stutters: CpuOwnerMismatch (invalid or foreign `target`), CpuAlreadyOff, and
-Success when the bit was already set.
+Stutters:
+- CpuOwnerMismatch: an invalid or foreign `target`; on the child variant also
+  `i >= P.children.len()` or a `target` that `P.children[i]` does not own;
+- ContainerKilled: child variant only, when `P` is killed;
+- CpuAlreadyOff;
+- Success, when the bit was already set.
 
-**cpu_online step**
+**cpu_online step** (`cpu_online_step`, `cpu_online_child_step`)
 
 - Pre: `index_valid` for `cpu_id` and `target`, `cpu.state is Running`, `C`
   present, `Unlocked(cpu)`, `Unlocked(CS(C))`, `Unlocked(cpu_array[target])`;
   `cpu_array[target].owning_container == C`; `cpu_array[target].state is Off`.
+  The child pre adds the same `P` conditions as the child request.
 - Effect: `cpu_array[target].state = Idle` (`kernel_u_cpu_online_changed`);
   the request bit of an Off cpu is already clear. The caller then sends an IPI
   to `target` (no U effect).
 
-Stutters: CpuOwnerMismatch, CpuNotOff.
+Stutters: CpuOwnerMismatch (with the same child cases), ContainerKilled (child
+variant), CpuNotOff.
 
 ## 4b. cpu_offline_check — one step before each schedule
 
@@ -211,8 +263,9 @@ entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
 
 - U locks acquired and released in the step: `cpu`, `CS(C)`, and when the cpu
   is Running also `current_process` and `current_thread`. Non-U: the request
-  cell `F(C, cpu_id)` (lock major 3) is held from the read through the whole
-  offline, then `C`'s scheduler and `(cpu_id, KERNEL_DEFAULT_PCID)` needflush.
+  cell `F(C, cpu_id)` (lock major 104) is held from the read through the whole
+  offline, then shard `cpu_id` of `C`'s scheduler and
+  `(cpu_id, KERNEL_DEFAULT_PCID)` needflush.
 
 **cpu_offline_check step** (`cpu_offline_check_step`, label
 `flushed_default_pcid`)
@@ -225,8 +278,8 @@ entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
 - Effect (`kernel_u_cpu_went_off_changed`): `cpu.state = Off`,
   `cpu.current_process = cpu.current_thread = None`;
   `C.cpu_offline_requests[cpu_id] = false`; `prev`, if any, becomes
-  `SCHEDULED` with `error_code = None`, `trap_frame = Some(pt_regs)` and is
-  pushed on `C.scheduler`; `cpu_tlb` keeps its domain, every `(cpu_id, p)`
+  `SCHEDULED { cpu_id }` with `error_code = None`, `trap_frame = Some(pt_regs)`
+  and is pushed on `C.scheduler[cpu_id]`; `cpu_tlb` keeps its domain, every `(cpu_id, p)`
   entry with `p != KERNEL_DEFAULT_PCID` becomes empty, and
   `(cpu_id, KERNEL_DEFAULT_PCID)` is reset to empty exactly when the label
   `flushed_default_pcid` holds (the cpu was Running and its default-PCID
@@ -250,13 +303,72 @@ and returns to the idle loop (`Resumed`), where the trap layer runs
 `cpu_offline_check` and `syscall_schedule` as usual. U is unchanged in both
 outcomes (`hw_halted` is not projected).
 
+## 4c. rebalance_pull — one step
+
+Status: conforms (focused run #28512).
+
+Entry `rebalance_pull(cpu_id) -> RebalanceResult { Nothing, Pulled { thread_ptr } }`
+is run by the trap layer on an Idle cpu after `syscall_schedule` returns Idle.
+It is not a syscall: no `Caller`, and `C` is `cpu.owning_container`. Let
+`Q = C.scheduler` and `v = first_nonempty_shard(Q, 0, cpu_id)`, the lowest
+shard other than `cpu_id` whose queue is non-empty.
+
+- U locks acquired and released in the step: `cpu` and the moved thread.
+  Non-U: shards `0..=v` of `C`'s scheduler in cpu-id order, and shard `cpu_id`
+  when `v < cpu_id`.
+
+**Step** (`rebalance_pull_step_pre`, `rebalance_pull_step`)
+
+- Pre: `cpu.state is Idle`, `C` present, `Q[cpu_id]` empty, `v is Some`,
+  `t = Q[v][0]` present, `!t.killed`, `t.state == SCHEDULED { v }`, owned by
+  `C`; `Unlocked(cpu)`, `Unlocked(t)`.
+- Effect (`kernel_u_rebalance_pull_changed`): `Q[v] = Q[v].skip(1)`,
+  `Q[cpu_id] = seq![t]`, `t.state = SCHEDULED { cpu_id }`; nothing else
+  changes.
+- Result: `rebalance_pull_syscall_result(u, cpu_id)` is `Pulled { t }` exactly
+  when the step pre's non-lock conditions hold; the trace predicate
+  `rebalance_pull_syscall_trace` records whether it pulled. After `Pulled` the
+  trap layer runs `syscall_schedule` again; after `Nothing` it halts until an
+  IPI or tick and retries.
+
+Stutters (`Nothing`, no U step): the cpu is not Idle; `Q[cpu_id]` is
+non-empty; every other shard is empty; the head `Q[v][0]` is killed.
+
+## 4d. pci_attach_dma — one step
+
+Status: conforms (workspace run #28638).
+
+Issued by a running thread for its process `P` (`cpu.current_process`);
+the B/D/F `(bus, device, function)` must name a PCI function `P` owns, and
+`P` must have an IOMMU table. There is no detach syscall: a transfer (§11)
+detaches.
+
+- Arguments: `bus`, `device`, `function`; the trap layer guarantees
+  `pci_bdf_valid`.
+- U locks acquired and released in the step: `cpu`, `P`. Non-U: the root
+  table lock (major `IOMMU_ROOT_TABLE_LOCK_MAJOR`), taken after `P` and held
+  across the checks and the attach.
+- Pre: `index_valid(cpu_id)`, `cpu.state is Running`, `P` present,
+  `Unlocked(cpu)`, `Unlocked(P)`, `!P.killed`,
+  `P.owned_pci_functions.contains((bus, device, function))`,
+  `P.iommu_table is Some`, `!iommu_root_table.attached[bus][device][function]`.
+- Effect: `iommu_root_table.attached[bus][device][function] = true`
+  (`kernel_u_pci_attach_changed`). In K the context entry points at the root
+  of `P`'s IOMMU table (`ProcessRO.iommu_cr3`), in the BDF-encoded VT-d
+  domain `pci_bdf_did`; that IOTLB domain is already empty, because a
+  detached function's domain is empty.
+
+Stutters (in this order): ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
+PciAlreadyAttached.
+
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
 
 Status: conforms (focused run #27397).
 
 - Arguments: `regs`; for the endpoint variant, `endpoint_index`.
 - U locks retained from enter to finish: `cpu`, `P`, `T`, and `E(endpoint_index)`
-  for the endpoint variant. Non-U: the container scheduler and the new page.
+  for the endpoint variant. Non-U: shard `cpu_id` of the container scheduler
+  and the new page.
 - Progress: `NewThread { regs, endpoint_index }` between enter and finish.
 - Derivation: enter and finish read `P` as `cpu.current_process->Some_0` and
   `C` as `cpu.owning_container`; `W(cpu)` keeps both stable until finish.
@@ -276,12 +388,45 @@ Status: conforms (focused run #27397).
 - Pre: `prog is NewThread`; `W` for `cpu`, `P`, `T`, and the endpoint at the
   recorded `endpoint_index`.
 - Effect: `kernel_u_new_thread_changed`: one 4K quota of `T` funds a new
-  `SCHEDULED` thread (the last of `new_u.process_map[P].owned_threads`) with
-  the recorded `regs` and optional endpoint; it joins `C`'s thread set and
-  scheduler.
+  `SCHEDULED { cpu_id }` thread (the last of `new_u.process_map[P].owned_threads`)
+  with `last_cpu = cpu_id`, the recorded `regs` and optional endpoint; it joins
+  `C`'s thread set and the tail of `C.scheduler[cpu_id]`.
   The step unlocks `cpu`, `P`, `T`, and the endpoint and clears `prog`.
 
 Stutters: ProcessKilled, ThreadKilled, NoQuota, a missing endpoint descriptor.
+
+## 5a. new_endpoint — enter, finish
+
+Status: conforms (workspace run #28754, monolith run #28755, noninterference run
+#28756).
+
+- Arguments: `endpoint_index`.
+- U locks retained from enter to finish: `cpu`, `C`, `P`, and `T`. Non-U: the
+  new page. The new endpoint is created write-locked and unlocked inside finish.
+- Progress: `NewEndpoint { slot }` between enter and finish.
+- Derivation: enter and finish read `C` as `cpu.owning_container`, `P` as
+  `cpu.current_process->Some_0`, and `T` as `cpu.current_thread->Some_0`;
+  `W(cpu)` keeps them stable until finish.
+
+**Enter**
+
+- Pre: `Caller`, `prog is None`, `cpu.current_process == Some(P)`,
+  `thr.owning_proc == P`, `thr.owning_container == C`,
+  `thr.state == RUNNING { cpu_id }`, `!C.killed`, `!P.killed`, `!thr.killed`,
+  `edp_idx_valid(endpoint_index)`, `thr.endpoint_descriptors[endpoint_index] is None`,
+  `thr.quota_4k >= 1`; `Unlocked` for `cpu`, `C`, `P`, and `T`.
+- Effect: write-locks those objects and records `NewEndpoint { slot: endpoint_index }`.
+
+**Finish**
+
+- Pre: `prog is NewEndpoint` with a valid `slot`; `W` for `cpu`, `C`, `P`, and `T`.
+- Effect: `kernel_u_new_endpoint_changed`: one 4K quota of `T` funds a fresh,
+  unlocked endpoint `E` of `C` with an empty queue in state `RECEIVE`, held
+  only at `(T, slot)`; `T.endpoint_descriptors[slot] = Some(E)` and `E` joins
+  `C.owned_endpoints`. The step unlocks `cpu`, `C`, `P`, and `T` and clears `prog`.
+
+Stutters: ContainerKilled, ProcessKilled, ThreadKilled, an occupied descriptor
+(IpcEndpointTargetInUse), NoQuota.
 
 ## 6. mmap_4k — enter, directory/leaf steps, exit
 
@@ -471,19 +616,23 @@ Stutters: argument errors, NoPcid, ProcessKilled, ThreadKilled, a missing
 endpoint, NoQuota, and an unmapped or kernel-range source VA. new_process does
 not check whether `C` is killed.
 
-## 10. new_container — enter, publish, share steps, finish
+## 10. new_container, new_container_with_endpoint — enter, publish, share steps, finish
 
-Status: conforms (workspace run #27748).
+Status: conforms (new_container workspace run #27748; new_container_with_endpoint
+workspace run #28754, monolith run #28755, noninterference run #28756).
 
-- Arguments: `va`, `range`, `funding`, `process_quota`, `transfer_cpu`, `regs`.
-- U locks: enter write-locks `cpu`, `C`, `CS(C)`, `P`, `PT(P)`, `T`. Publish
+- Arguments: `va`, `range`, `funding`, `process_quota`, `transfer_cpu`, `regs`;
+  for the endpoint variant, `endpoint_index`.
+- U locks: enter write-locks `cpu`, `C`, `CS(C)`, `P`, `PT(P)`, `T`, and
+  `E(endpoint_index)` for the endpoint variant. Publish
   acquires and releases `transfer_cpu`, releases `CS(C)`, and creates the
   child container `CC` (with `CS(CC)` unlocked), its root process `D`, and
   `PT(D)` write-locked. Finish releases the rest. Non-U: the PCID allocator
   and 2M tails, the schedulers, and the staged pages.
 - Progress: `NewContainer(NewContainerProgress { range, funding,
-  process_quota, transfer_cpu, regs, child_container: None })`, then `Share4k`
-  whose origin is the same record with `child_container: Some(CC)`.
+  process_quota, transfer_cpu, regs, endpoint_index, child_container: None })`,
+  then `Share4k` whose origin is the same record with
+  `child_container: Some(CC)`.
 
 **Enter**
 
@@ -494,6 +643,8 @@ Status: conforms (workspace run #27748).
   `C.depth < MAX_CONTAINER_TREE_DEPTH`;
   `thr.quota_4k >= 9 + funding + 3 * R.len` and `thr.quota_2m >= 2`; every VA
   of `R` is mapped in `PT(P)`; `cpu_array[transfer_cpu]` is Off and owned by `C`.
+  For the endpoint variant, `edp_idx_valid(endpoint_index)`, the descriptor
+  is present, and `Unlocked(E(endpoint_index))`.
 - Effect: write-locks those objects; records `NewContainer`.
 
 **Publish**
@@ -514,28 +665,34 @@ Status: conforms (workspace run #27748).
 **Finish**
 
 - Pre: `prog is Share4k` with origin NewContainer and `shared == R.len`; `W`
-  for `cpu`, `C`, `CC`, `P`, `PT(P)`, `D`, `PT(D)`, `T`.
+  for `cpu`, `C`, `CC`, `P`, `PT(P)`, `D`, `PT(D)`, `T`, and the endpoint at
+  the recorded `endpoint_index`.
 - Effect: `kernel_u_new_thread_changed`: creates the root thread
-  `D.owned_threads.last()` with `regs`, adds it to `CC.owned_threads` and the
-  tail of `CC.scheduler`, and charges `T` one 4K quota; unlocks `cpu`, `C`,
-  `CC`, `P`, `PT(P)`, `D`, `PT(D)`, `T`; clears `prog`.
+  `D.owned_threads.last()` with `regs` and, for the endpoint variant, the
+  endpoint in descriptor 0. It adds the thread to `CC.owned_threads` and the
+  tail of `CC.scheduler[cpu_id]` (the caller's cpu id; `CC`'s own cpu
+  `transfer_cpu` takes it with `rebalance_pull`, §4c), and charges `T` one 4K
+  quota; unlocks `cpu`, `C`, `CC`, `P`, `PT(P)`, `D`, `PT(D)`, `T`, and the
+  endpoint; clears `prog`.
 
 Trace: `range + 3 <= len <= 4 * range + 3`.
 
 Stutters: argument errors, ContainerKilled, depth overflow, ProcessKilled,
-ThreadKilled, NoQuota, a bad source range, CpuOwnerMismatch, CpuNotOff.
+ThreadKilled, a missing endpoint descriptor (Error), NoQuota, a bad source
+range, IpcCpuOwnerMismatch, IpcCpuNotOff.
 
-## 11. IPC ordinary: send/receive empty, no_block, cpu — one step
+## 11. IPC ordinary: send/receive empty, no_block, cpu, pci — one step
 
-Status: conforms (workspace run #27751).
+Status: conforms (workspace run #27751; Pci payload workspace run #28638).
 
 - Arguments: `endpoint_index`, the payload, the waiting direction fixed by the
   entry point, `regs`; K-internal label `flushed_default_pcid`.
 - `IpcCaller(u, cpu_id, i)`: `Caller`, `prog is None`,
   `cpu.current_process == Some(P)`, `thr.state == RUNNING { cpu_id }`,
-  `!thr.killed`, `!P.killed`, `edp_idx_valid(i)`, `E(i)` present,
-  `T` not in `E(i).queue`, and `Unlocked` for `cpu`, `P`, `T`, `E(i)`.
-- Stutters: ProcessKilled, ThreadKilled, InvalidEndpoint, PeerKilled (a killed
+  `!thr.killed`, `edp_idx_valid(i)`, `E(i)` present,
+  `T` not in `E(i).queue`, and `Unlocked` for `cpu`, `T`, `E(i)`. `P` is never
+  locked: a killed caller process is caught by its killed thread.
+- Stutters: ThreadKilled, InvalidEndpoint, PeerKilled (a killed
   peer stays queued), and for no_block the NoPeer and SameDirection results.
 
 **Block** (blocking entry points)
@@ -558,21 +715,125 @@ Status: conforms (workspace run #27751).
   CpuOwnerMismatch (the CPU is not the sender container's), CpuNotOff, then
   Success for the sender and SuccessUsize for the receiver; for Endpoint,
   EndpointSourceInvalid, EndpointTargetInUse; for Pages, TypeMismatch on
-  unequal lengths and SameProcess. Success on an Endpoint or Pages payload
+  unequal lengths and SameProcess; for Pci, TypeMismatch unless both sides
+  name the same B/D/F, SameProcess, IpcPciOwnerMismatch (the B/D/F is not in
+  the sender process's `owned_pci_functions`), then Success for both sides.
+  Success on an Endpoint or Pages payload
   takes no step here and enters §12 or §13; otherwise the syscall returns
   this result.
 - Effect: `kernel_u_ipc_rendezvous_changed`: `peer` is dequeued and scheduled
-  with `ipc_peer_result`. For a CPU payload whose checks pass, the Off CPU
-  moves to the receiver's container.
+  with `ipc_peer_result` on the wake shard `w`: `cpu_id` when `peer` is in
+  `T`'s container, otherwise `peer.last_cpu`; it becomes `SCHEDULED { w }` at
+  the tail of `scheduler[w]` of its container. The same wake shard rule
+  applies to the §12 and §13 finish steps. For a CPU payload whose checks pass, the Off CPU
+  moves to the receiver's container. For a Pci payload whose checks pass, the
+  B/D/F moves from the sender process's `owned_pci_functions` to the
+  receiver process's, its root-table owner becomes the receiver process, its
+  `attached` bit is cleared, and its IOTLB domain `pci_bdf_did(bdf)` is
+  emptied, whether or not it was attached. The root table lock (non-U) is
+  taken after the peer thread once SameProcess has passed and is released in
+  the step.
+
+## 11a. IPC call: call, call_usize, receive_call, reply_and_receive, reply_and_receive_usize — one step
+
+Status: conforms (focused runs #28796–#28804; handoff: workspace #28805, monolith #28806, noninterference #28807, all 0 errors).
+
+Synchronous call/reply over an endpoint between threads of one container,
+with the CPU handed directly between caller and callee. `call` enters `E(i)`
+in the CALLING direction, `receive_call` and `reply_and_receive` in the
+RECEIVING_CALL direction (`is_endpoint_send_waiting`: CALLING sends,
+RECEIVING_CALL receives; the queue direction is SEND for queued senders and
+callers, RECEIVE for queued receivers and receive-callers).
+
+- Arguments: `endpoint_index`, the payload (`Empty` for `call`,
+  `receive_call`, and `reply_and_receive`; `Usize { value }` for the
+  `_usize` entries), `regs`; K-internal label `flushed_pcid`, as §4.
+- Payloads are not type-checked between a call and its acceptance: a
+  `call` and a `call_usize` are both accepted by `receive_call`. A delivered
+  `Empty` returns Success and `Usize { value }` returns
+  `SuccessUsize { value }` (`ipc_call_result`). A reply value is never
+  queued: it is written into the caller's frame by the trap layer when the
+  CPU is handed back.
+- Entry (`ipc_entry_result` with the call directions, and
+  `ipc_reply_entry_result` for `reply_and_receive`): ThreadKilled;
+  ReplyOutOfPhase when a RECEIVING_CALL entry already records a caller, or a
+  `reply_and_receive` records none; InvalidEndpoint; then block for `call`
+  and `receive_call`, and SameDirection for `reply_and_receive` when
+  `E(i).queue` holds senders or callers; PeerKilled (the killed head, or the
+  killed recorded caller, stays where it is).
+- Five user entries share three exec functions: `syscall_call` (`call`,
+  `call_usize`), `syscall_receive_call`, and `syscall_reply_and_receive`
+  (`reply_and_receive`, `reply_and_receive_usize`).
+
+**Block** (`call`, `receive_call`)
+
+- As §11 Block with waiting state CALLING or RECEIVING_CALL; a
+  `receive_call` queues with the `Empty` payload.
+
+**Rendezvous error** (`call`, `receive_call`)
+
+- Pre: as §11 Rendezvous.
+- Result (`ipc_rendezvous_result`): a `call` meeting a RECEIVING_CALL head,
+  or a `receive_call` meeting a CALLING head, returns CallAcrossContainers
+  (the handoff below applies when the head is of the caller's container);
+  any other head returns TypeMismatch. Both sides get the result.
+- Effect: `kernel_u_ipc_rendezvous_changed`, as §11.
+
+**IpcCallHandoff** (`call`)
+
+- Pre (`ipc_call_handoff_step_pre`): `IpcCaller`, `T.callee is None`, the
+  head `S = E(i).queue[0]` waits in the RECEIVE direction, differs from `T`,
+  is present and unlocked, `!S.killed`, `S.state is RECEIVING_CALL`,
+  `S.caller is None`, `S.callee is None`, `S` blocks on `E(i)`, `S` is of
+  `T`'s container, and `S.owning_proc` is present.
+- Effect: `kernel_u_ipc_call_handoff_changed`: `S` is dequeued, becomes
+  `RUNNING { cpu_id }` with `caller = Some(T)`, `last_cpu = cpu_id`, no
+  blocking endpoint, and no saved frame; `T` saves `regs`, becomes
+  WAITING_REPLY with `callee = Some(S)`; the CPU's current process and
+  thread become `S`'s; the `(cpu_id, pcid)` TLB entry is flushed when
+  `flushed_pcid` is `Some(pcid)`. The syscall returns `ipc_call_result` of
+  the call payload, delivered to `S`.
+
+**IpcAcceptCall** (`receive_call`)
+
+- Pre (`ipc_accept_call_step_pre`): `IpcCaller`, `S.caller is None`,
+  `S.callee is None`, the head `T = E(i).queue[0]` waits in the SEND
+  direction, differs from `S`, is present and unlocked, `!T.killed`,
+  `T.state is CALLING`, `T.callee is None`, `T` blocks on `E(i)`, and `T` is
+  of `S`'s container.
+- Effect: `kernel_u_ipc_accept_call_changed`: `T` is dequeued, becomes
+  WAITING_REPLY with `callee = Some(S)` and no blocking endpoint, and is not
+  scheduled; `S` records `caller = Some(T)` and keeps running. The syscall
+  returns `ipc_accept_call_result`: `ipc_call_result` of `T`'s payload.
+
+**IpcReplyHandoff** (`reply_and_receive`)
+
+- Pre (`ipc_reply_handoff_step_pre`): `IpcCaller`, `S.caller == Some(T)`,
+  `S.callee is None`, `E(i).queue` is empty or waits in the RECEIVE
+  direction, `T` differs from `S`, is present and unlocked, `!T.killed`,
+  `T.state is WAITING_REPLY`, `T.callee == Some(S)`, `T` is of `S`'s
+  container, and `T.owning_proc` is present.
+- Effect: `kernel_u_ipc_reply_handoff_changed`: `T` becomes
+  `RUNNING { cpu_id }` with `callee = None`, `last_cpu = cpu_id`, and no
+  saved frame; `S` saves `regs`, becomes RECEIVING_CALL with
+  `caller = None` and the `Empty` payload, and is queued at the tail of
+  `E(i)`, whose direction becomes RECEIVE when it was empty; the CPU's
+  current process and thread become `T`'s; the `(cpu_id, pcid)` TLB entry
+  is flushed when `flushed_pcid` is `Some(pcid)`. The syscall returns
+  `ipc_call_result` of the reply payload, delivered to `T`.
+
+Locks: `cpu`, then the current thread, then `E(i)`, then the peer (the head
+or the recorded caller; a WAITING_REPLY caller is locked under its callee's
+thread lock), then `pcid_needflush` for a handoff. No process lock.
 
 ## 12. IPC endpoint — transit, finish
 
 Status: conforms (workspace run #27613, monolith run #27612).
 
 - Arguments: `endpoint_index` (the channel), `payload_index`, the direction.
-- U locks: transit acquires `cpu`, `P`, `T`, `peer` (retained) and the channel
+- U locks: transit acquires `cpu`, `T`, `peer` (retained) and the channel
   (released inside the step). Finish acquires and releases the payload
-  endpoint. Non-U: the peer's scheduler.
+  endpoint. Non-U: the wake shard (§11) of the peer's scheduler.
 - Progress: `IpcEndpoint { peer, caller_sends, payload_index }`. The sender is
   `T` when `caller_sends`, otherwise `peer`; the receiver is the other one. The
   source index is `payload_index` on the caller's side and the peer's
@@ -585,20 +846,21 @@ Status: conforms (workspace run #27613, monolith run #27612).
 - Pre: the §11 rendezvous pre for the channel; `edp_idx_valid(payload_index)`;
   the peer waits in the opposite direction with an Endpoint payload; the
   source descriptor is present and the target descriptor is empty.
-- Effect: write-locks `cpu`, `P`, `T`, `peer`; dequeues `peer` into
+- Effect: write-locks `cpu`, `T`, `peer`; dequeues `peer` into
   `IPC_ENDPOINT_TRANSIT` with no blocking endpoint; records `IpcEndpoint`.
 
 **Finish**
 
-- Pre: `prog is IpcEndpoint`; `W` for `cpu`, `P`, `T`, `peer`; the payload
+- Pre: `prog is IpcEndpoint`; `W` for `cpu`, `T`, `peer`; the payload
   endpoint is present and `Unlocked`.
 - Result (`ipc_endpoint_finish_result`): Success when the payload endpoint's
   container is the receiver's container or in its `uppertree_seq`, otherwise
   EndpointOwnerMismatch. The syscall returns this result.
 - Effect: on Success the receiver's descriptor at the target index becomes the
   payload endpoint and the endpoint gains that owner. `peer` is scheduled with
-  the result and an Empty payload and joins its container's scheduler. The
-  step unlocks `cpu`, `P`, `T`, `peer`, and the payload endpoint and clears
+  the result and an Empty payload and joins the wake shard (§11) of its
+  container's scheduler. The
+  step unlocks `cpu`, `T`, `peer`, and the payload endpoint and clears
   `prog`.
 
 Single rendezvous error steps (§11): EndpointSourceInvalid,
@@ -612,7 +874,7 @@ Status: conforms (workspace run #27816).
   point fixes the direction. `R = VaRange4K { start: va, len: range }` is the
   caller's payload. `regs` and the K-internal `flushed_default_pcid` serve only
   the §11 block step. Every later step takes only `cpu_id`.
-- U locks: enter write-locks `cpu`, `P`, `T`, `peer`, and the channel
+- U locks: enter write-locks `cpu`, `T`, `peer`, and the channel
   `E(endpoint_index)`. Lock tables write-locks both processes' page tables; a
   failed check or unlock tables releases them; finish releases the rest.
   Non-U: the peer's scheduler, and the receiver container's allocator and the
@@ -650,7 +912,7 @@ Status: conforms (workspace run #27816).
   `ipc_rendezvous_result` is Success: `peer` waits in the opposite direction
   with a Pages payload of the same length, and the sender's and receiver's
   processes differ.
-- Effect: write-locks `cpu`, `P`, `T`, `peer`, and the channel;
+- Effect: write-locks `cpu`, `T`, `peer`, and the channel;
   `prog = IpcPages { source_range, target_range, peer, locked: false, released: None }`, where
   the caller's `R` is the source range when it sends and the target range
   otherwise, and `peer.ipc_payload`'s range is the other.
@@ -696,7 +958,7 @@ Status: conforms (workspace run #27816).
   with head `peer`, and `peer`'s container is present.
 - Effect: `peer` becomes SCHEDULED with no blocking endpoint, an Empty payload,
   and the recorded result as `error_code`; it leaves the channel queue and
-  joins its container's scheduler. The step unlocks `cpu`, `P`, `T`, `peer`,
+  joins the wake shard (§11) of its container's scheduler. The step unlocks `cpu`, `T`, `peer`,
   and the channel and clears `prog`. The syscall returns the same result.
 
 Trace (`ipc_pages_syscall_trace`): CpuIdle is the §11 block step; SameProcess
@@ -710,26 +972,32 @@ result. Every step changes a non-lock field (`prog`, or the receiver's
 `quota_4k` in a directory step), so the nonlock view has `len + 5` to
 `4 * len + 5` steps on success and 4 on a failed check.
 
-Stutters: argument errors (Error before any step), ProcessKilled,
-ThreadKilled, InvalidEndpoint, and PeerKilled.
+Stutters: argument errors (Error before any step), ThreadKilled,
+InvalidEndpoint, and PeerKilled.
 
 ## 14. Syscall entry list
 
 | Entry point | Section |
 |---|---|
-| `syscall_alloc_quota_4k` | §3 |
+| `syscall_alloc_quota_4k`, `syscall_alloc_quota_2m` | §3 |
+| `syscall_alloc_thread_quota_4k`, `syscall_alloc_thread_quota_2m` | §3a |
 | `syscall_schedule` | §4 |
-| `syscall_cpu_offline_request`, `syscall_cpu_online` | §4a |
+| `syscall_cpu_offline_request`, `syscall_cpu_online`, `syscall_cpu_offline_request_child`, `syscall_cpu_online_child` | §4a |
 | `cpu_offline_check` (trap-layer entry, before every `syscall_schedule`) | §4b |
 | `cpu_online_resume` (trap-layer IPI entry of a halted cpu) | §4b |
+| `rebalance_pull` (trap-layer entry of an Idle cpu after `syscall_schedule` returns Idle) | §4c |
 | `syscall_new_thread`, `syscall_new_thread_with_endpoint` | §5 |
+| `syscall_new_endpoint` | §5a |
 | `syscall_mmap_4k` | §6 |
 | `syscall_unmap_4k` | §7 |
 | `syscall_new_process`, `syscall_new_process_with_endpoint`, `syscall_new_process_with_iommu_and_endpoint` | §9 |
-| `syscall_new_container` | §10 |
+| `syscall_new_container`, `syscall_new_container_with_endpoint` | §10 |
 | `syscall_send_empty`, `syscall_receive_empty`, `syscall_send_empty_no_block`, `syscall_receive_empty_no_block`, `syscall_send_cpu`, `syscall_receive_cpu` | §11 |
 | `syscall_send_endpoint`, `syscall_receive_endpoint` | §11, §12 |
 | `syscall_send_pages`, `syscall_receive_pages` | §11, §13 |
+| `syscall_send_pci`, `syscall_receive_pci` | §11 |
+| `syscall_call` (`call`, `call_usize`), `syscall_receive_call`, `syscall_reply_and_receive` (`reply_and_receive`, `reply_and_receive_usize`) | §11a |
+| `syscall_pci_attach_dma` | §4d |
 
 ## 15. Approved representation changes
 
@@ -738,8 +1006,9 @@ These changes were approved on 2026-09-29 and are all applied.
 | Variant | Current | Approved | Needed by |
 |---|---|---|---|
 | `NewThread` | applied | `{ regs, endpoint_index: Option<EndpointIdx> }` | new_thread finish (R1, R4) |
+| `NewEndpoint` | applied | `{ slot: EndpointIdx }` (added 2026-10-10 with new_endpoint) | new_endpoint finish |
 | `NewProcess` | applied | `NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: Option })` | publish, finish |
-| `NewContainer` | applied | `NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, child_container: Option })` | publish, finish |
+| `NewContainer` | applied | `NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index: Option<EndpointIdx>, child_container: Option })` (`endpoint_index` added with new_container_with_endpoint) | publish, finish |
 | `Share4k` | applied | adds `origin: NewProcess(NewProcessProgress) \| NewContainer(NewContainerProgress) \| IpcPages { peer }` | share steps, finish, IPC pages unlock tables |
 | `IpcEndpoint` | applied | `{ peer, caller_sends, payload_index }` | finish |
 | `IpcPages` | applied | `{ source_range, target_range, peer, locked: bool, released: Option<RetValueType> }` (`locked` approved 2026-09-30) | lock tables, check, unlock tables, finish |
@@ -751,22 +1020,39 @@ CPU-set lock mode; new_container (§10) and IPC Cpu (§11) state it.
 hotplug plan) projects the container's per-cpu offline request table
 (`cpu_offline_requests_of(cpu_offline_mp[cpu_offline_flags_ptr(c)])`); the
 table lives in the second 4K of the container's 2M page, its cells are locked
-per cpu (major 3) and are not U-visible. new_container publishes it all-false
-(§10); cpu_offline_request sets one bit (§4a); cpu_offline_check clears it
-when the cpu goes Off (§4b).
+per cpu (major 104) and are not U-visible. new_container publishes it all-false
+(§10); cpu_offline_request and cpu_offline_request_child set one bit (§4a);
+cpu_offline_check clears it when the cpu goes Off (§4b).
 
 Kernel representation changes for cpu hotplug (approved 2026-10-03, applied):
 `KernelK.cpu_offline_mp: UnLockedMap<RwLockCpuOfflineFlagsPtr, CpuOfflineFlags>`
 holds every container's table at `cpu_offline_flags_ptr(c) = c + 4096`, with
 `cpu_offline_flags_wf` (cells aligned, `Off ⇒ !requested`) and
 `container_cpu_offline_flags_wf` (container ↔ table); the cell locks form the
-new family `CPU_OFFLINE_FLAG_LOCK_MAJOR = 3` (`KernelObjId::CpuOfflineFlag`,
-`LocalContext.cpu_offline_flag_lock_map`). `Cpu.hw_halted: Ghost<bool>`
+new family `CPU_OFFLINE_FLAG_LOCK_MAJOR = 104` (`KernelObjId::CpuOfflineFlag`,
+`LocalContext.cpu_offline_flag_lock_map`). The major lies above the container
+(101) and PCID allocator (102) locks and below the process lock (105), so a
+parent's container lock precedes a child's request cell (§4a), and the
+container and PCID allocator locks now require that no request cell is held.
+`Cpu.hw_halted: Ghost<bool>`
 (`CpuView.hw_halted`) records whether the hardware is halted: set when the cpu
 publishes Off (§4b), cleared by `cpu_online_resume`; it is not U-visible and
 no invariant depends on it. Trusted primitives: `CpuTLB::flush_all_local_pcids`
 (external_body; empties every TLB entry of the calling cpu except
 `KERNEL_DEFAULT_PCID`), `send_ipi`, `halt_until_ipi` (empty stubs).
+
+Per-cpu scheduler shards (approved 2026-10-07, applied):
+`ContainerU.scheduler: Seq<Seq<RwLockThreadPtr>>` has one run queue per cpu id
+(`scheduler_shards_of(sched_mp[c.scheduler])`); `ThreadState::SCHEDULED { cpu_id }`
+names the shard holding the thread; `Thread.last_cpu` / `ThreadU.last_cpu`
+records the cpu that last ran it (new_thread sets the creating cpu, boot root
+0). In K, `Scheduler { shards: LockedArray<SchedulerShard, NUM_CPUS>, owning_container }`
+lives in `KernelK.sched_mp: SchedulerUnLockedMap`; shard `c` is locked with
+major `SCHEDULER_LOCK_MAJOR` and minor `c` (`KernelObjId::SchedulerShard(s, c)`,
+`LocalContext.scheduler_lock_map`), so one container's shards are taken in
+cpu-id order. `container_thread_scheduler_wf` aligns
+`t.state == SCHEDULED { c }` with membership in shard `c` of `t`'s container;
+it says nothing about Off or unowned cpus.
 
 Kernel representation change (applied): `Container.owned_processes` moved to
 the lock-free `ContainerGhost`, so new_process publishes a child without the
@@ -784,16 +1070,70 @@ U projection changes:
   comparison would differ, because `spec_va_4k_valid` does not bound the bits
   above 47 that `spec_v2l4index` masks off.
 
+PCI device ownership (approved 2026-10-08, applied):
+`KernelK.irt: IommuRootTableLock = RwLock<IommuRootTable, (), (), NO_KILL_STATE>`
+locks the whole root table with the new family
+`IOMMU_ROOT_TABLE_LOCK_MAJOR = IOMMU_TABLE_LOCK_MAJOR + 1`
+(`KernelObjId::IommuRootTable(table_base)`,
+`LocalContext.iommu_root_table_lock_map`); the lock is taken and released
+inside one step and is not U-visible. It also serializes the IOTLB and each
+process's reverse set: `ProcessGhost.owned_pci_functions` (lock-free ghost;
+the exec `pci_function_ref_counter` is gone) is aligned with the root table's
+owners by `process_pci_function_ownership_wf`, which also keeps a zombie's set
+empty. `ProcessRO.iommu_cr3` mirrors the root of the process's IOMMU table
+(`process_iommu_table_match`), so attach never locks that table. New exec
+root-table operations: `set_owner`, `attach`, `detach`, `is_attached`.
+Trusted primitive: `IommuTLB::invalidate_domain` (external_body; empties one
+VT-d domain under the root table lock). New results: `ErrorIpcPciOwnerMismatch`,
+`ErrorPciOwnerMismatch`, `ErrorPciNoIommuTable`, `ErrorPciAlreadyAttached`.
+
 ## 16. Decisions
 
 1. Later steps read syscall arguments from `prog` (R1), using the §15 fields.
 2. The unmap flush PCID comes from `ProcessU.pcid`.
 3. The user-VA bound is `KernelU.kernel_l4_end`, compared through `UserVa`.
 4. CPU hotplug (2026-10-03): offline requests are per-container cells locked
-   per cpu (major 3, held through the whole offline); no permission check
+   per cpu (major 104, held through the whole offline); no permission check
    beyond container ownership of the target; the target cpu offlines itself in
    `cpu_offline_check` right before each schedule, requeueing its running
    thread and deferring to `syscall_schedule` when that thread or its process
    is killed; `syscall_cpu_online` publishes Idle and sends the IPI, and the
    woken cpu only clears `hw_halted` (re-halting while still Off); there is no
    `Offlining` state.
+5. Scheduler shards (2026-10-07): every enqueue goes to the acting cpu's shard
+   (schedule requeue, new_thread, cpu_offline_check, same-container IPC wake,
+   new_container's root thread); a cross-container IPC wake goes to the peer's
+   `last_cpu` shard; an Idle cpu pulls only the head of the lowest other
+   non-empty shard of its container and stutters on a killed head. Shards of
+   Off or unowned cpus may hold threads; they drain only through
+   `rebalance_pull`.
+6. PCI devices (2026-10-08): the root table is one lock that also guards the
+   IOTLB and the per-process PCI sets; it never crosses a step boundary, so it
+   is not U-visible. An IPC Pci transfer needs both sides to name the same
+   B/D/F, is not restricted to one container (the endpoint is the
+   authority), and always detaches the function and empties its IOTLB domain.
+   `syscall_pci_attach_dma` attaches a function to its owner's IOMMU table;
+   there is no detach syscall.
+7. Parent cpu hotplug (2026-10-10): a container may offline or online a cpu of
+   a direct child, named by its index in `children`, through
+   `syscall_cpu_offline_request_child` and `syscall_cpu_online_child`; deeper
+   descendants are not supported. Each call is one two-phase-locked section
+   that locks `cpu`, then the caller's container (rejecting a killed one),
+   then the child's request cell and CPU-set lock, as the own variants do.
+   The own variants are unchanged.
+8. Endpoint creation (2026-10-10): `syscall_new_endpoint` creates an empty
+   receive endpoint of the caller's container at an empty descriptor of the
+   caller, funded by one 4K quota of the calling thread; an occupied
+   descriptor returns the existing `ErrorIpcEndpointTargetInUse`. It holds the
+   container lock while the page is allocated, as new_container does.
+9. Synchronous call (2026-10-11): `call`, `receive_call`, and
+   `reply_and_receive` hand the CPU directly between a caller and a callee of
+   one container (§11a); a cross-container call meets a rendezvous error
+   (CallAcrossContainers) rather than a handoff. Payloads are `Empty` or one
+   usize, not type-checked between call and acceptance; the reply value goes
+   straight into the caller's frame. `reply_and_receive` with no recorded
+   caller stutters with ReplyOutOfPhase, with queued senders or callers with
+   SameDirection (keeping its caller), and with a killed caller with
+   PeerKilled. There is no plain reply: a server leaves its receive-call wait
+   only by being called or by a rendezvous error. The call entries hold no
+   process lock; a WAITING_REPLY caller is locked under its callee's lock.

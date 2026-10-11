@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
 use super::syscall_new_process_spec::{new_process_publish_step, new_process_publish_step_pre};
+#[cfg(verus_keep_ghost)]
 use super::syscall_new_process_trace::new_process_publish_step_from_u;
 
 verus! {
@@ -20,8 +22,8 @@ pub(super) fn publish_staged_process(
         old(lctx).kernel_view_locking_state() is Acquire,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
-        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
+        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -93,6 +95,7 @@ pub(super) fn publish_staged_process(
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
         old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -105,7 +108,8 @@ pub(super) fn publish_staged_process(
         new_process_publish_step_pre(final(steps).view().last().old_u, cpu_id),
         new_process_publish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
         pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, ret.1, final(krnl).pt_mp.spec_index(ret.1).view()),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()) ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, final(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view())
+            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, final(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
@@ -133,6 +137,7 @@ pub(super) fn publish_staged_process(
         final(lctx).cpu_set_lock_map().dom().is_empty(),
         final(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, ret.1],
         final(lctx).iommu_table_lock_map().dom().is_empty(),
+        final(lctx).iommu_root_table_lock_map().dom().is_empty(),
         final(lctx).pcid_needflush_lock_map().dom().is_empty(),
         final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
@@ -200,17 +205,11 @@ pub(super) fn publish_staged_process(
         assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
             let uppers = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
             assert(uppers.no_duplicates() && uppers.len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
-            assert(uppers.len() <= NUM_PAGES) by {
-                reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf);
-                lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
-            };
+            assert(uppers.len() <= NUM_PAGES) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers); };
         };
-        assert(
-            page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(l4_page_ptr)
-                && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(l4_page_ptr)
-        ) by {
-            page_ptr2page_index_neq(process_page_ptr, pagetable_page_ptr);
-            page_ptr2page_index_neq(process_page_ptr, l4_page_ptr);
+        assert(page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(l4_page_ptr)
+            && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(l4_page_ptr)) by {
+            page_ptr2page_index_neq(process_page_ptr, pagetable_page_ptr); page_ptr2page_index_neq(process_page_ptr, l4_page_ptr);
             page_ptr2page_index_neq(pagetable_page_ptr, l4_page_ptr);
         };
     }
@@ -223,9 +222,7 @@ pub(super) fn publish_staged_process(
     krnl.wunlock_page(page_ptr2page_index(l4_page_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(pagetable_page_ptr), Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(process_page_ptr), Tracked(&mut *lctx), Tracked(process_page_lock_perm));
-    proof {
-        assert(krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0) by { reveal(Seq::contains); reveal(process_thread_wf); };
-    }
+    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0) by { reveal(Seq::contains); reveal(process_thread_wf); }; }
     krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
     krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
     let ghost sharing = Some(SyscallProgress::Share4k {

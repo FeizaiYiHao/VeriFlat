@@ -1,12 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
 use super::allocate_free_4k_page_pop_eof::pop_stage_4k_page_transition_framing;
 
 verus! {
-pub(super) proof fn eof_pop_4k_postconditions(
-    pre: KernelK, post: KernelK, pre_lctx: LocalContext, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr,
-    container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>,
-)
+pub(super) proof fn eof_pop_4k_postconditions(pre: KernelK, post: KernelK, pre_lctx: LocalContext, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
         pre.inv(),
         typed_lock_maps_aligned(&pre, &pre_lctx),
@@ -27,9 +25,7 @@ pub(super) proof fn eof_pop_4k_postconditions(
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
         post.thr_mp.spec_index(thread).being_killed() == false,
-        post.thr_mp.spec_index(thread).view() == (Thread {
-            temp_alloc_cache_4k: post.thr_mp.spec_index(thread).view().temp_alloc_cache_4k, ..pre.thr_mp.spec_index(thread).view()
-        }),
+        post.thr_mp.spec_index(thread).view() == (Thread { temp_alloc_cache_4k: post.thr_mp.spec_index(thread).view().temp_alloc_cache_4k, ..pre.thr_mp.spec_index(thread).view() }),
         post.thr_mp.unchanged_except(&pre.thr_mp, thread),
         held_threads_unchanged_except(pre.thr_mp, post.thr_mp, &pre_lctx, set![thread]),
         post.thr_mp.lock_id_by_key(thread) == pre.thr_mp.lock_id_by_key(thread),
@@ -44,10 +40,8 @@ pub(super) proof fn eof_pop_4k_postconditions(
     assert(held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)])) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-        kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, post.pt_mp);
-        kernel_iommu_table_nonlock_fields_unchanged_for_equal(pre.it_mp, post.it_mp);
-        kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
-        kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
+        kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, post.pt_mp); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.it_mp, post.it_mp);
+        kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr); kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };

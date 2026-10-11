@@ -20,21 +20,10 @@ pub tracked struct LockPerm {
     state: LockState,
 }
 
-impl LockPerm{
-    pub closed spec fn lock_id(&self) -> LockToken{
-        self.lock_id
-    }
-
-    pub closed spec fn ordering_lock_id(&self) -> LockId {
-        self.ordering_lock_id
-    }
-
-    pub closed spec fn thread_id(&self) -> LockThreadId{
-        self.local_thread_id
-    }
-
-    pub closed spec fn state(&self) -> LockState{
-        self.state
-    }
+impl LockPerm {
+    pub closed spec fn lock_id(&self) -> LockToken { self.lock_id }
+    pub closed spec fn ordering_lock_id(&self) -> LockId { self.ordering_lock_id }
+    pub closed spec fn thread_id(&self) -> LockThreadId { self.local_thread_id }
+    pub closed spec fn state(&self) -> LockState { self.state }
 }
 }

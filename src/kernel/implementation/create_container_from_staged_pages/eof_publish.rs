@@ -4,13 +4,11 @@ use super::*;
 
 verus! {
 pub(super) proof fn eof_publish_postconditions(
-    pre: KernelK, post: KernelK, pre_lctx: LocalContext, parent_container_ptr: RwLockContainerPtr,
-    current_thread_ptr: RwLockThreadPtr, container_page: PagePtr, pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr,
-    allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr, cpu_set_page: PagePtr,
-    process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
-    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
-    parent_container_lock_perm: LockPerm, current_thread_lock_perm: LockPerm,
-    post_lctx: LocalContext, funding_page_lock_perms: Map<PagePtr, LockPerm>,
+    pre: KernelK, post: KernelK, pre_lctx: LocalContext, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr,
+    container_page: PagePtr, pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize, parent_container_lock_perm: LockPerm,
+    current_thread_lock_perm: LockPerm, post_lctx: LocalContext, funding_page_lock_perms: Map<PagePtr, LockPerm>,
 )
     requires
         typed_lock_maps_aligned(&pre, &pre_lctx),
@@ -60,16 +58,13 @@ pub(super) proof fn eof_publish_postconditions(
         post.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq == pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq,
         post.ctn_mp.spec_index(parent_container_ptr).view_rodata() == pre.ctn_mp.spec_index(parent_container_ptr).view_rodata(),
         post.ctn_mp.spec_index(container_page).view_rodata().view().cpu_set == cpu_set_page,
-        !post.sched_mp.spec_index(scheduler_page).being_killed(),
         post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![thread_page],
         post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g,
         post.thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_fields_equal(&pre.thr_mp.spec_index(current_thread_ptr).view(),),
         post.thr_mp.spec_index(current_thread_ptr).view() == (Thread {
-            quota_4k: post.thr_mp.spec_index(current_thread_ptr).view().quota_4k,
-            quota_2m: post.thr_mp.spec_index(current_thread_ptr).view().quota_2m,
-            temp_alloc_cache_4k: post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k,
-            temp_alloc_cache_2m: post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m,
+            quota_4k: post.thr_mp.spec_index(current_thread_ptr).view().quota_4k, quota_2m: post.thr_mp.spec_index(current_thread_ptr).view().quota_2m,
+            temp_alloc_cache_4k: post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k, temp_alloc_cache_2m: post.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m,
             ..pre.thr_mp.spec_index(current_thread_ptr).view()
         }),
         post.thr_mp.spec_index(current_thread_ptr).view().owning_container == pre.thr_mp.spec_index(current_thread_ptr).view().owning_container,
@@ -101,8 +96,7 @@ pub(super) proof fn eof_publish_postconditions(
         held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx),
         held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &pre_lctx),
         post.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view() == pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().difference(
-            new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page,
-                scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set()),
+            new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set()),
         ),
         parent_container_lock_perm.lock_id() == post.ctn_mp.spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
         current_thread_lock_perm.lock_id() == post.thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
@@ -118,16 +112,9 @@ pub(super) proof fn eof_publish_postconditions(
             },
 {
     reveal(publish_staged_container_root_kernel_state_framing);
-    assert(staged_4k_page_chain(post.pg_arr, funding_pages)) by { broadcast use page_ptr_sequence_index_in_equal_set; };
     assert(held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, &pre_lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-    assert(held_processes_unchanged(pre.prc_mp, post.prc_mp, &pre_lctx)) by {
-        pre.prc_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.process_lock_map(), pre_lctx.thread_id());
-    };
-    assert(held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx)) by {
-        pre.pt_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id());
-    };
-    assert(held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &pre_lctx)) by {
-        pre.cpu_set_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.cpu_set_lock_map(), pre_lctx.thread_id());
-    };
+    assert(held_processes_unchanged(pre.prc_mp, post.prc_mp, &pre_lctx)) by { pre.prc_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.process_lock_map(), pre_lctx.thread_id()); };
+    assert(held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx)) by { pre.pt_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id()); };
+    assert(held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &pre_lctx)) by { pre.cpu_set_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.cpu_set_lock_map(), pre_lctx.thread_id()); };
 }
 }

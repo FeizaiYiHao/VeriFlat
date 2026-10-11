@@ -1,63 +1,28 @@
 use vstd::prelude::*;
 
+// Platform implementation: queue a domain-selective IOTLB invalidation for the
+// VT-d domain `did` on the remapping unit and wait for its completion.
+unsafe extern "C" {
+    fn veriflat_iommu_invalidate_domain(did: usize);
+}
+
 verus! {
 use crate::*;
 
-/// TODO just use va
-pub type Iova = usize;
 pub type VtdDomainId = usize;
 
 /// The current kernel model has one VT-d remapping unit and therefore one
 /// global IOTLB.  Generalizing this becomes an array indexed by unit id.
 pub const VTD_DOMAIN_COUNT: usize = 65_536;
 
-pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool {
-    did < VTD_DOMAIN_COUNT
-}
-
-
-/// Cached translations for one VT-d domain.  As with the CPU TLB model, the
-/// three maps retain the page size of the translation from which an entry was
-/// filled.
-pub ghost struct SingleIotlb {
-    pub entries_4k: Map<Iova, TLBEntry>,
-    pub entries_2m: Map<Iova, TLBEntry>,
-    pub entries_1g: Map<Iova, TLBEntry>,
-}
-
-impl SingleIotlb {
-    pub open spec fn entries_4k(&self) -> Map<Iova, TLBEntry> {
-        self.entries_4k
-    }
-
-    pub open spec fn entries_2m(&self) -> Map<Iova, TLBEntry> {
-        self.entries_2m
-    }
-
-    pub open spec fn entries_1g(&self) -> Map<Iova, TLBEntry> {
-        self.entries_1g
-    }
-
-    pub open spec fn is_empty(&self) -> bool {
-        &&& self.entries_4k().dom() == Set::<Iova>::empty()
-        &&& self.entries_2m().dom() == Set::<Iova>::empty()
-        &&& self.entries_1g().dom() == Set::<Iova>::empty()
-    }
-
-    /// Invalidation may be performed at a coarser granularity than requested,
-    /// so its abstract effect is monotonic removal, not exact map equality.
-    pub open spec fn submap_of(&self, old: &Self) -> bool {
-        &&& self.entries_4k().submap_of(old.entries_4k())
-        &&& self.entries_2m().submap_of(old.entries_2m())
-        &&& self.entries_1g().submap_of(old.entries_1g())
-    }
-}
+pub open spec fn vtd_domain_id_valid(did: VtdDomainId) -> bool { did < VTD_DOMAIN_COUNT }
 
 /// One logical IOTLB for the single VT-d remapping unit currently modeled by
-/// VeriFlat.  Entries are tagged by DID, not by CPU.  The VT-d context cache
-/// and endpoint ATS/device-TLB caches are intentionally separate future state.
+/// VeriFlat.  Entries are tagged by DID, not by CPU; each domain reuses the CPU
+/// `SingleTLB` shape keyed by IOVA.  The VT-d context cache and endpoint
+/// ATS/device-TLB caches are intentionally separate future state.
 pub struct IommuTLB {
-    pub domain_tlbs: Ghost<Map<VtdDomainId, SingleIotlb>>,
+    pub domain_tlbs: Ghost<Map<VtdDomainId, SingleTLB>>,
 }
 
 impl IommuTLB {
@@ -69,27 +34,30 @@ impl IommuTLB {
                 vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
     {
         let ghost domain_ids = Set::range(0usize, VTD_DOMAIN_COUNT);
-        let ret = Self {
-            domain_tlbs: Ghost(Map::new(
-                domain_ids,
-                |_did: VtdDomainId| SingleIotlb {
-                    entries_4k: Map::empty(),
-                    entries_2m: Map::empty(),
-                    entries_1g: Map::empty(),
-                },
-            )),
-        };
-        assert(ret.inv()) by {
-            reveal(IommuTLB::inv);
-        }
+        let ret = Self { domain_tlbs: Ghost(Map::new(domain_ids, |_did: VtdDomainId| SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })) };
+        assert(ret.inv()) by { reveal(IommuTLB::inv); }
         ret
     }
 
-    pub open spec fn view(&self) -> Map<VtdDomainId, SingleIotlb> {
-        self.domain_tlbs.view()
+    /// Domain-selective invalidation; the root-table lock serializes it with
+    /// the context-entry update that makes it necessary.
+    #[verifier::external_body]
+    pub fn invalidate_domain(&mut self, did: VtdDomainId, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(self).inv(),
+            vtd_domain_id_valid(did),
+            !lctx.iommu_root_table_lock_map().dom().is_empty(),
+        ensures
+            final(self).inv(),
+            final(self).view() == old(self).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+    {
+        unsafe { veriflat_iommu_invalidate_domain(did); }
+        self.domain_tlbs = Ghost(self.domain_tlbs.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
     }
 
-    pub open spec fn spec_index(&self, did: VtdDomainId) -> SingleIotlb
+    pub open spec fn view(&self) -> Map<VtdDomainId, SingleTLB> { self.domain_tlbs.view() }
+
+    pub open spec fn spec_index(&self, did: VtdDomainId) -> SingleTLB
         recommends
             self.inv(),
             vtd_domain_id_valid(did),
@@ -103,41 +71,5 @@ impl IommuTLB {
             #![trigger self.view().dom().contains(did)]
             self.view().dom().contains(did) <==> vtd_domain_id_valid(did)
     }
-
-    pub open spec fn invalidation_only_removes(&self, old: &Self) -> bool {
-        &&& self.inv()
-        &&& old.inv()
-        &&& forall|did: VtdDomainId|
-            #![trigger self.spec_index(did)]
-            vtd_domain_id_valid(did)
-            ==> self.spec_index(did).submap_of(&old.spec_index(did))
-    }
-
-    pub open spec fn page_invalidation_target_absent(
-        &self,
-        did: VtdDomainId,
-        iova: Iova,
-        page_size: PageSize,
-    ) -> bool
-        recommends
-            self.inv(),
-            vtd_domain_id_valid(did),
-    {
-        match page_size {
-            PageSize::SZ4k => {
-                &&& iova_4k_valid(iova)
-                &&& !self.spec_index(did).entries_4k().dom().contains(iova)
-            },
-            PageSize::SZ2m => {
-                &&& iova_2m_valid(iova)
-                &&& !self.spec_index(did).entries_2m().dom().contains(iova)
-            },
-            PageSize::SZ1g => {
-                &&& iova_1g_valid(iova)
-                &&& !self.spec_index(did).entries_1g().dom().contains(iova)
-            },
-        }
-    }
-
 }
 }

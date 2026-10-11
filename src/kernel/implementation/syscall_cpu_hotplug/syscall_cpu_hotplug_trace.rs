@@ -8,6 +8,7 @@ pub(super) proof fn cpu_offline_request_step_from_u(pre: KernelU, post: KernelU,
         kernel_u_cpu_offline_request_changed(pre, post, cpu_id, container_ptr, target),
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
         pre.container_map[container_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container == container_ptr,
     ensures
         cpu_offline_request_step_pre(pre, cpu_id, target),
         cpu_offline_request_step(pre, post, cpu_id, target),
@@ -40,6 +41,7 @@ pub(super) proof fn cpu_online_step_from_u(pre: KernelU, post: KernelU, cpu_id: 
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
         pre.cpu_array[target as int].lock_state is Unlocked,
         pre.container_map[container_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container == container_ptr,
     ensures
         cpu_online_step_pre(pre, cpu_id, target),
         cpu_online_step(pre, post, cpu_id, target),
@@ -63,4 +65,70 @@ pub(super) proof fn cpu_online_trace_stutter(trace: Seq<KernelStep>, pre: Kernel
     ensures
         cpu_online_syscall_trace(trace, pre, pre, cpu_id, target, ret),
 { reveal(cpu_online_syscall_trace); }
+
+/// The request wrapper's user-view facts on the child path are exactly the child request step on `pre`/`post`.
+pub(super) proof fn cpu_offline_request_child_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId)
+    requires
+        kernel_u_cpu_offline_request_changed(pre, post, cpu_id, container_ptr, target),
+        pre.cpu_array[cpu_id as int].lock_state is Unlocked,
+        pre.container_map[container_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container != container_ptr,
+        pre.container_map[pre.cpu_array[cpu_id as int].owning_container].lock_state is Unlocked,
+    ensures
+        cpu_offline_request_child_step_pre(pre, cpu_id, target),
+        cpu_offline_request_child_step(pre, post, cpu_id, target),
+{ reveal(cpu_offline_request_child_step_pre); reveal(kernel_u_cpu_offline_request_changed); }
+
+/// The one step pushed since `before` is the complete successful child request trace.
+pub(super) proof fn cpu_offline_request_child_trace_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, target: CpuId)
+    requires
+        steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
+        !cpu_offline_request_child_pending(pre, target),
+        cpu_offline_request_child_step_pre(pre, cpu_id, target),
+        cpu_offline_request_child_step(pre, post, cpu_id, target),
+    ensures
+        cpu_offline_request_child_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, target, RetValueType::Success),
+{ reveal(cpu_offline_request_child_syscall_trace); }
+
+/// A rejected or already pending child request records no step.
+pub(super) proof fn cpu_offline_request_child_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, target: CpuId, ret: RetValueType)
+    requires
+        trace.len() == 0,
+        !(ret is Success && !cpu_offline_request_child_pending(pre, target)),
+    ensures
+        cpu_offline_request_child_syscall_trace(trace, pre, pre, cpu_id, target, ret),
+{ reveal(cpu_offline_request_child_syscall_trace); }
+
+/// The online wrapper's user-view facts on the child path are exactly the child online step on `pre`/`post`.
+pub(super) proof fn cpu_online_child_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId)
+    requires
+        kernel_u_cpu_online_changed(pre, post, cpu_id, container_ptr, target),
+        pre.cpu_array[cpu_id as int].lock_state is Unlocked,
+        pre.cpu_array[target as int].lock_state is Unlocked,
+        pre.container_map[container_ptr].cpu_set_lock is Unlocked,
+        pre.cpu_array[cpu_id as int].owning_container != container_ptr,
+        pre.container_map[pre.cpu_array[cpu_id as int].owning_container].lock_state is Unlocked,
+    ensures
+        cpu_online_child_step_pre(pre, cpu_id, target),
+        cpu_online_child_step(pre, post, cpu_id, target),
+{ reveal(cpu_online_child_step_pre); reveal(kernel_u_cpu_online_changed); }
+
+/// The one step pushed since `before` is the complete successful child online trace.
+pub(super) proof fn cpu_online_child_trace_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, target: CpuId)
+    requires
+        steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
+        cpu_online_child_step_pre(pre, cpu_id, target),
+        cpu_online_child_step(pre, post, cpu_id, target),
+    ensures
+        cpu_online_child_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, target, RetValueType::Success),
+{ reveal(cpu_online_child_syscall_trace); }
+
+/// A rejected child online call records no step.
+pub(super) proof fn cpu_online_child_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, target: CpuId, ret: RetValueType)
+    requires
+        trace.len() == 0,
+        !(ret is Success),
+    ensures
+        cpu_online_child_syscall_trace(trace, pre, pre, cpu_id, target, ret),
+{ reveal(cpu_online_child_syscall_trace); }
 } // verus!

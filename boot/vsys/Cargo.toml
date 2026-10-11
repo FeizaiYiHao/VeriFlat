@@ -1,0 +1,9 @@
+[package]
+name = "vsys"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+astd = { path = "../astd" }
+log = "0.4.19"

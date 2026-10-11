@@ -20,7 +20,7 @@ pub open spec fn cpu_offline_check_flushed_default_pcid(pre: KernelK, cpu_id: Cp
 }
 
 /// Operation-state summary of the committed offline of `cpu_id` under every lock the check acquired: the
-/// running thread, if any, is requeued at the tail of `scheduler_ptr`, the cpu publishes the default page
+/// running thread, if any, is requeued at the tail of shard `cpu_id` of `scheduler_ptr`, the cpu publishes the default page
 /// table and goes Off with an empty dirty map, its TLB entries are flushed, its slot in `cpu_set_ptr` is
 /// closed, and its request cell in `flags_ptr` is cleared.
 #[verifier::opaque]
@@ -36,8 +36,10 @@ pub open spec fn cpu_went_off_transition(
     let flush_default = old_cpu.state is Running && pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush;
     let scheduler_before = pre.sched_mp.spec_index(scheduler_ptr);
     let scheduler_after = post.sched_mp.spec_index(scheduler_ptr);
-    let queue_before = scheduler_before.view().queue;
-    let queue_after = scheduler_after.view().queue;
+    let shard_before = scheduler_before.shards.spec_index(cpu_id).view();
+    let shard_after = scheduler_after.shards.spec_index(cpu_id).view();
+    let queue_before = shard_before.view().queue;
+    let queue_after = shard_after.view().queue;
     let needflush_before = pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
     let cpu_set_before = pre.cpu_set_mp.spec_index(cpu_set_ptr);
@@ -71,8 +73,7 @@ pub open spec fn cpu_went_off_transition(
         sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..pre
     })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
-    &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)]
-        index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
+    &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
     &&& cpu_after.view_rodata() == cpu_before.view_rodata()
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
@@ -96,27 +97,21 @@ pub open spec fn cpu_went_off_transition(
             &&& after.view_ghost() == before.view_ghost()
             &&& after.being_killed() == before.being_killed()
             &&& after.locking_thread() == before.locking_thread()
-            &&& after.view() == (Thread { state: ThreadState::SCHEDULED, error_code: None, trap_frame: after.view().trap_frame, scheduler_linkedlist_node: after.view().scheduler_linkedlist_node, ..before.view() })
+            &&& after.view() == (Thread { state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: after.view().trap_frame, scheduler_linkedlist_node: after.view().scheduler_linkedlist_node, ..before.view() })
             &&& after.view().scheduler_linkedlist_node.addr() == before.view().scheduler_linkedlist_node.addr()
             &&& !after.view().scheduler_linkedlist_node.is_init()
             &&& after.view().trap_frame.is_some()
             &&& *after.view().trap_frame.get_some_0() == entry_regs
         })
     })
-    &&& post.sched_mp.dom() == pre.sched_mp.dom()
-    &&& (forall|ptr: RwLockSchedulerPtr| #![trigger pre.sched_mp.spec_index(ptr)] #![trigger post.sched_mp.spec_index(ptr)] pre.sched_mp.dom().contains(ptr) ==> {
-        &&& post.sched_mp.view().spec_index(ptr).is_init() == pre.sched_mp.view().spec_index(ptr).is_init()
-        &&& post.sched_mp.view().spec_index(ptr).addr() == pre.sched_mp.view().spec_index(ptr).addr()
-        &&& (ptr != scheduler_ptr ==> post.sched_mp.spec_index(ptr) == pre.sched_mp.spec_index(ptr))
-    })
-    &&& scheduler_after.is_init() == scheduler_before.is_init()
-    &&& scheduler_after.view_rodata() == scheduler_before.view_rodata()
-    &&& scheduler_after.view_ghost() == scheduler_before.view_ghost()
-    &&& scheduler_after.being_killed() == scheduler_before.being_killed()
-    &&& scheduler_after.locking_thread() == scheduler_before.locking_thread()
-    &&& scheduler_after.view() == (Scheduler { queue: queue_after, ..scheduler_before.view() })
-    &&& queue_after.container_depth == queue_before.container_depth
-    &&& queue_after.lock_minor() == queue_before.lock_minor()
+    &&& post.sched_mp.unchanged_except(&pre.sched_mp, scheduler_ptr)
+    &&& scheduler_after.owning_container == scheduler_before.owning_container
+    &&& scheduler_after.shards.entries_unchanged_except(&scheduler_before.shards, cpu_id)
+    &&& shard_after.is_init() == shard_before.is_init()
+    &&& shard_after.view_rodata() == shard_before.view_rodata()
+    &&& shard_after.view_ghost() == shard_before.view_ghost()
+    &&& shard_after.being_killed() == shard_before.being_killed()
+    &&& shard_after.locking_thread() == shard_before.locking_thread()
     &&& queue_after.view() == match previous { Some(prev) => queue_before.view().push(prev), None => queue_before.view() }
     &&& queue_after.length as int == queue_before.length as int + if previous is Some { 1int } else { 0int }
     &&& queue_after.map() == match previous { Some(prev) => queue_before.map().insert(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr(), prev), None => queue_before.map() }
@@ -133,8 +128,7 @@ pub open spec fn cpu_went_off_transition(
     &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
     &&& post.cpu_published[cpu_id as int].inv()
     &&& post.cpu_published[cpu_id as int].view() == (pre.dflt_pt.view().cr3, KERNEL_DEFAULT_PCID)
-    &&& (forall|c: CpuId| #![trigger pre.cpu_published[c as int]] #![trigger post.cpu_published[c as int]]
-        index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int])
+    &&& (forall|c: CpuId| #![trigger pre.cpu_published[c as int]] #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int])
     &&& post.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, flush_default)
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> if c == cpu_id && (p != KERNEL_DEFAULT_PCID || flush_default) {

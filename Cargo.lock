@@ -172,6 +172,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_pci"
+version = "0.1.0"
+dependencies = [
+ "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
 name = "veriflat_syscall_schedule"
 version = "0.1.0"
 dependencies = [

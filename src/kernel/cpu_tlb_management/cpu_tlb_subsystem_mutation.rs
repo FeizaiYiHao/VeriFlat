@@ -2,10 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-pub fn pcid_needflush_array_clear(
-    needflush: &mut PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid,
-    Tracked(lctx): Tracked<&LocalContext>, Tracked(needflush_lock_perm): Tracked<&LockPerm>,
-)
+pub fn pcid_needflush_array_clear(needflush: &mut PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, Tracked(needflush_lock_perm): Tracked<&LockPerm>)
     requires
         pcid_needflush_wf(*old(needflush)),
         index_valid(NUM_CPUS, cpu_id),
@@ -26,21 +23,21 @@ pub fn pcid_needflush_array_clear(
         final(needflush).spec_index(cpu_id, pcid).view_rodata() == old(needflush).spec_index(cpu_id, pcid).view_rodata(),
         final(needflush).spec_index(cpu_id, pcid).being_killed() == old(needflush).spec_index(cpu_id, pcid).being_killed(),
         forall|c: CpuId, p: Pcid| #![trigger final(needflush).spec_index(c, p)] #![trigger old(needflush).spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(needflush).spec_index(c, p) == old(needflush).spec_index(c, p),
-        forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write) ==> final(needflush).spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost(),
+        forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)
+            ==> final(needflush).spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost(),
 {
     assert(needflush.spec_index(cpu_id, pcid).is_init()) by { reveal(pcid_needflush_wf); };
     let entry = needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), Tracked(needflush_lock_perm));
     entry.set(false);
     proof {
         assert(pcid_needflush_wf(*needflush) && needflush.lock_id_by_index(cpu_id, pcid) == old(needflush).lock_id_by_index(cpu_id, pcid)) by { reveal(pcid_needflush_wf); };
-        assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id()) && forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write) ==> needflush.spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost()) by { reveal(LockedArray2D::typed_lock_map_aligned); };
+        assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())
+            && forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)
+            ==> needflush.spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost()) by { reveal(LockedArray2D::typed_lock_map_aligned); };
     }
 }
 
-pub fn cpu_array_flush_current_tlb(
-    cpu_array: &mut CpuLockedArray, cpu_tlb: &mut CpuTLB, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid,
-    Tracked(lctx): Tracked<&LocalContext>, Tracked(cpu_lock_perm): Tracked<&LockPerm>,
-)
+pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut CpuTLB, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, Tracked(cpu_lock_perm): Tracked<&LockPerm>)
     requires
         old(cpu_array).inv(),
         index_valid(NUM_CPUS, cpu_id),
@@ -76,6 +73,5 @@ pub fn cpu_array_flush_current_tlb(
 {
     let cpu = cpu_array.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(lctx), Tracked(cpu_lock_perm));
     cpu.flush_current_tlb(cpu_id, cr3, pcid, cpu_tlb, Tracked(lctx));
-    proof { assert(cpu_array.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); }; }
 }
 }

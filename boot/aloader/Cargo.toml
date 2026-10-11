@@ -1,0 +1,30 @@
+[package]
+name = "aloader"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+aelf = { path = "../aelf" }
+astd = { path = "../astd", features = ["kernel"] }
+ns16550a = { path = "../ns16550a" }
+kernel-logger = { path = "../kernel-logger" }
+
+bit_field = "0.10.2"
+cfg-match = "0.2.1"
+displaydoc = { version = "0.2.4", default-features = false }
+log = "0.4.19"
+num-derive = "0.3.3"
+num-traits = { version = "0.2.15", default-features = false }
+x86 = "0.52.0"
+
+plain = "0.2.3"
+acpi = { version = "5.0.0", default-features = false }
+
+[dependencies.goblin]
+version = "0.7.1"
+default-features = false
+features = ["elf64"]
+
+[build-dependencies]
+nasm-rs = "0.2.5"

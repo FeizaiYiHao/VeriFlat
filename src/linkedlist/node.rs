@@ -3,31 +3,25 @@ use core::mem::MaybeUninit;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 verus! {
-pub struct Node<T>{
+pub struct Node<T> {
     pub value: T,
     pub next: Option<usize>,
     pub prev: Option<usize>,
 }
 
-pub struct ExternalNode<T>{
+pub struct ExternalNode<T> {
     storage: Node<T>,
     is_init: Ghost<bool>,
     addr: Ghost<usize>,
 }
 
-impl<T> Node<T>{
-    pub open spec fn view(&self) -> T {
-        self.value
-    }
+impl<T> Node<T> {
+    pub open spec fn view(&self) -> T { self.value }
 }
 
-impl<T> ExternalNode<T>{
-    pub closed spec fn spec_addr(&self) -> usize {
-        self.addr.view()
-    }
-    pub closed spec fn is_init(&self) -> bool {
-        self.is_init.view()
-    }
+impl<T> ExternalNode<T> {
+    pub closed spec fn spec_addr(&self) -> usize { self.addr.view() }
+    pub closed spec fn is_init(&self) -> bool { self.is_init.view() }
 
     /// Create a fresh (init) ExternalNode with a dummy value.
     /// The address is determined by where this node is placed in memory.
@@ -37,20 +31,12 @@ impl<T> ExternalNode<T>{
         ensures
             ret.is_init(),
     {
-        Self {
-            storage: Node {
-                value,
-                next: None,
-                prev: None,
-            },
-            is_init: Ghost(true),
-            addr: Ghost(0),
-        }
+        Self { storage: Node { value, next: None, prev: None }, is_init: Ghost(true), addr: Ghost(0) }
     }
 
     #[verifier(when_used_as_spec(spec_addr))]
     #[verifier(external_body)]
-    pub fn addr(&self) -> (ret:usize)
+    pub fn addr(&self) -> (ret: usize)
         ensures
             ret == self.addr()
     {
@@ -58,7 +44,7 @@ impl<T> ExternalNode<T>{
     }
 
     #[verifier(external_body)]
-    pub fn take(&mut self) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))
+    pub fn take(&mut self) -> (ret: (usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).is_init(),
         ensures
@@ -84,19 +70,17 @@ impl<T> ExternalNode<T>{
 }
 
 #[verifier(external_body)]
-pub proof fn node_perm_disjoint<T,K,V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
+pub proof fn node_perm_disjoint<T, K, V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
     ensures
-        forall|k:K|
+        forall|k: K|
             #![trigger others.spec_index(k).addr()]
-            others.dom().contains(k)
-            ==>
-            final(this).addr() != others.spec_index(k).addr(),
+            others.dom().contains(k) ==> final(this).addr() != others.spec_index(k).addr(),
         *final(this) == *old(this),
 {
 }
 
 #[verifier(external_body)]
-pub fn node_update_value<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, value: T)
+pub fn node_update_value<T>(addr: usize, perm: &mut Tracked<PointsTo<Node<T>>>, value: T)
     requires
         old(perm).view().addr() == addr,
         old(perm).view().is_init(),
@@ -114,7 +98,7 @@ pub fn node_update_value<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, v
 }
 
 #[verifier(external_body)]
-pub fn node_update_prev<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, prev: Option<usize>)
+pub fn node_update_prev<T>(addr: usize, perm: &mut Tracked<PointsTo<Node<T>>>, prev: Option<usize>)
     requires
         old(perm).view().addr() == addr,
         old(perm).view().is_init(),
@@ -132,7 +116,7 @@ pub fn node_update_prev<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, pr
 }
 
 #[verifier(external_body)]
-pub fn node_update_next<T>(addr:usize, perm: &mut Tracked<PointsTo<Node<T>>>, next: Option<usize>)
+pub fn node_update_next<T>(addr: usize, perm: &mut Tracked<PointsTo<Node<T>>>, next: Option<usize>)
     requires
         old(perm).view().addr() == addr,
         old(perm).view().is_init(),

@@ -6,4 +6,6 @@ mod cpu_offline_check_trace;
 pub mod syscall_cpu_hotplug_spec;
 pub(crate) mod syscall_cpu_hotplug_trace;
 pub mod syscall_cpu_offline_request;
+pub mod syscall_cpu_offline_request_child;
 pub mod syscall_cpu_online;
+pub mod syscall_cpu_online_child;

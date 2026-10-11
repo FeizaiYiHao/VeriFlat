@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-#[verifier::opaque]
 /// Moves one Off CPU owned by the parent container into the new child container's
 /// CPU set. Every other kernel object is unchanged.
+#[verifier::opaque]
 pub open spec fn new_container_cpu_transfer_transition(
     pre: KernelK, post: KernelK, parent_container: RwLockContainerPtr, child_container: RwLockContainerPtr,
     parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, thread_id: LockThreadId,
@@ -39,6 +39,7 @@ pub open spec fn new_container_cpu_transfer_transition(
         &&& after.locking_thread() is Write
         &&& after.locking_thread()->Write_thread_id == thread_id
         &&& after.view().view() == CpuView { owning_container: child_container, container_depth: pre.ctn_mp.spec_index(child_container).view_rodata().view().depth, ..before.view().view() }
+        &&& after.view().wf()
     }
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& forall|key: RwLockCpuSetPtr|

@@ -3,11 +3,7 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub fn wlock_cpu_set(
-        &mut self,
-        cpu_set_ptr: RwLockCpuSetPtr,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-    ) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_cpu_set(&mut self, cpu_set_ptr: RwLockCpuSetPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).cpu_set_mp.dom().contains(cpu_set_ptr),
@@ -44,7 +40,7 @@ impl KernelK {
     {
         assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(cpu_set_perms_wf); };
         assert(old(lctx).lock_id_acyclic(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr))) by {
-            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
+            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
             reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
         };
         assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(old(lctx).thread_id())) by {
@@ -58,6 +54,7 @@ impl KernelK {
             assert(cpu_set_perms_wf(self.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by { reveal(cpu_set_pages_wf); };
+            assert(cpu_set_invariant_fields_unchanged(old(self).cpu_set_mp, self.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(old(self).cpu_set_mp, self.cpu_set_mp, cpu_set_ptr); };
             assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -67,12 +64,7 @@ impl KernelK {
         ret
     }
 
-    pub fn wunlock_cpu_set(
-        &mut self,
-        cpu_set_ptr: RwLockCpuSetPtr,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        lock_perm: Tracked<LockPerm>,
-    )
+    pub fn wunlock_cpu_set(&mut self, cpu_set_ptr: RwLockCpuSetPtr, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).cpu_set_mp.dom().contains(cpu_set_ptr),
@@ -106,6 +98,7 @@ impl KernelK {
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(cpu_set_pages_wf(self.cpu_set_mp, self.pg_arr)) by { reveal(cpu_set_pages_wf); };
             assert(container_cpu_set_wf(self.ctn_mp, self.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+            assert(cpu_set_invariant_fields_unchanged(old(self).cpu_set_mp, self.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(old(self).cpu_set_mp, self.cpu_set_mp, cpu_set_ptr); };
             assert(container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
             assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

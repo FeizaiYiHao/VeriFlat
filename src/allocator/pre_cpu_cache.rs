@@ -39,8 +39,6 @@ impl AllocatorCache {
     pub open spec fn view(&self) -> Seq<PagePtr> { self.linked_list.view() }
     pub open spec fn dom(&self) -> Set<PagePtr> { self.linked_list.dom() }
     pub open spec fn map(&self) -> Map<usize, PagePtr> { self.linked_list.map() }
-    pub open spec fn watermark_wf(&self) -> bool {
-        ALLOCATOR_MIN_WATERMARK <= self.linked_list.view().len() <= ALLOCATOR_MAX_WATERMARK
-    }
+    pub open spec fn watermark_wf(&self) -> bool { ALLOCATOR_MIN_WATERMARK <= self.linked_list.view().len() <= ALLOCATOR_MAX_WATERMARK }
 }
 }

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
 use vstd::set::lemma_set_remove_len;
 
 verus! {
@@ -9,11 +10,7 @@ use super::mmap_4k_build_structure_spec::*;
 /// exactly one already-initialized child table: L4 installs an L3 table, L3
 /// installs an L2 table, and L2 installs the L1 table that will hold the leaf.
 #[derive(Clone, Copy)]
-pub(super) enum MissingPageTableLevel {
-    L4,
-    L3,
-    L2,
-}
+pub(super) enum MissingPageTableLevel { L4, L3, L2 }
 
     /// Consume one staged 4K page and publish it as exactly one page-table
     /// structure page.  The parent pointer is intentionally recovered from the
@@ -25,7 +22,11 @@ pub(super) enum MissingPageTableLevel {
     /// topology is absent from `PageTableU`, while the consumed quota is visible
     /// through `ThreadU` at the following boundary.
     #[verifier::spinoff_prover]
-    pub(super) fn install_staged_4k_page_table_page(krnl: &mut KernelK, level: MissingPageTableLevel, page_ptr: PagePtr, quota_thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), Tracked(lctx): Tracked<&mut LocalContext>, page_lock_perm: Tracked<&LockPerm>, quota_thread_lock_perm: Tracked<&LockPerm>, pagetable_lock_perm: Tracked<&LockPerm>)
+    pub(super) fn install_staged_4k_page_table_page(
+        krnl: &mut KernelK, level: MissingPageTableLevel, page_ptr: PagePtr, quota_thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
+        pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), Tracked(lctx): Tracked<&mut LocalContext>, page_lock_perm: Tracked<&LockPerm>,
+        quota_thread_lock_perm: Tracked<&LockPerm>, pagetable_lock_perm: Tracked<&LockPerm>,
+    )
         requires
             old(krnl).inv(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -59,8 +60,7 @@ pub(super) enum MissingPageTableLevel {
             pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
             pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             match level {
-                MissingPageTableLevel::L4 =>
-                    old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(indices.0) is None,
+                MissingPageTableLevel::L4 => old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(indices.0) is None,
                 MissingPageTableLevel::L3 => {
                     &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(indices.0) is Some
                     &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is None
@@ -75,9 +75,8 @@ pub(super) enum MissingPageTableLevel {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-                old(lctx).pagetable_lock_map().dom().contains(pt)
-                && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+                old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                    ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write, }),
@@ -91,10 +90,8 @@ pub(super) enum MissingPageTableLevel {
             pagetable_lock_perm.view().lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view() == (Thread {
-                quota_4k: final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k,
-                temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k,
-                syscall_progress: final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress,
-                ..old(krnl).thr_mp.spec_index(quota_thread_ptr).view()
+                quota_4k: final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k, temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k,
+                syscall_progress: final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(quota_thread_ptr).view()
             }),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view(), level),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view().remove(page_ptr),
@@ -118,12 +115,7 @@ pub(super) enum MissingPageTableLevel {
             final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, quota_thread_ptr),
-            *final(krnl) == (KernelK {
-                pt_mp: final(krnl).pt_mp,
-                pg_arr: final(krnl).pg_arr,
-                thr_mp: final(krnl).thr_mp,
-                ..*old(krnl)
-            }),
+            *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![quota_thread_ptr]),
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k(),
@@ -154,26 +146,15 @@ pub(super) enum MissingPageTableLevel {
             },
     {
         let page_index = page_ptr2page_index(page_ptr);
-        assert(
-            krnl.pt_mp.perms_wf()
-                && krnl.pt_mp.spec_index(pagetable_ptr).inv()
-                && krnl.thr_mp.perms_wf()
-                && krnl.thr_mp.spec_index(quota_thread_ptr).inv()
-        ) by {
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
-            thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr);
+        assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(quota_thread_ptr).inv()) by {
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr);
         };
-        assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().is_init() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().inv() && krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by {
-            page_ptr_valid_imply_page_index_valid();
-            page_array_wf_at(krnl.pg_arr, page_index);
+        assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().is_init() && krnl.pg_arr.spec_index(page_index).view().inv()
+            && krnl.pg_arr.spec_index(page_index).view().view().inv() && krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by {
+            page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index);
         };
-        assert(!krnl.pt_mp.spec_index(pagetable_ptr).view()
-            .page_closure().contains(page_ptr)) by {
-            if krnl.pt_mp.spec_index(pagetable_ptr).view()
-                .page_closure().contains(page_ptr)
-            {
-                pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable_ptr, page_ptr);
-            }
+        assert(!krnl.pt_mp.spec_index(pagetable_ptr).view().page_closure().contains(page_ptr)) by {
+            if krnl.pt_mp.spec_index(pagetable_ptr).view().page_closure().contains(page_ptr) { pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable_ptr, page_ptr); }
         };
 
         let parent_page_map_ptr;
@@ -181,8 +162,7 @@ pub(super) enum MissingPageTableLevel {
             let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_lock_perm);
             parent_page_map_ptr = match level {
                 MissingPageTableLevel::L4 => pagetable.cr3,
-                MissingPageTableLevel::L3 =>
-                    pagetable.get_entry_l4(indices.0).unwrap().addr,
+                MissingPageTableLevel::L3 => pagetable.get_entry_l4(indices.0).unwrap().addr,
                 MissingPageTableLevel::L2 => {
                     let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
                     pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap().addr
@@ -194,7 +174,7 @@ pub(super) enum MissingPageTableLevel {
         let (page_map_ptr, Tracked(page_map_perm)) = {
             let page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), page_lock_perm);
             let Tracked(page_perm) = take_perm_4k(page);
-            page.state = PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: pagetable_ptr } };
+            page.state = PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: pagetable_ptr, table_type: PT_TYPE } };
             page_perm_to_page_map(page_ptr, Tracked(page_perm))
         };
 
@@ -206,9 +186,9 @@ pub(super) enum MissingPageTableLevel {
         } {
             let pagetable = krnl.pt_mp.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_lock_perm);
             match level {
-                MissingPageTableLevel::L4 => { pagetable.create_entry_l4(indices.0,indices.1,page_map_ptr,Tracked(page_map_perm),Tracked(&mut *lctx)); },
-                MissingPageTableLevel::L3 => { pagetable.create_entry_l3(indices.0,indices.1,indices.2,parent_page_map_ptr,page_map_ptr,Tracked(page_map_perm),Tracked(&mut *lctx)); },
-                MissingPageTableLevel::L2 => { pagetable.create_entry_l2(indices.0,indices.1,indices.2,parent_page_map_ptr,page_map_ptr,Tracked(page_map_perm),Tracked(&mut *lctx)); },
+                MissingPageTableLevel::L4 => { pagetable.create_entry_l4(indices.0, indices.1, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx)); },
+                MissingPageTableLevel::L3 => { pagetable.create_entry_l3(indices.0, indices.1, indices.2, parent_page_map_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx)); },
+                MissingPageTableLevel::L2 => { pagetable.create_entry_l2(indices.0, indices.1, indices.2, parent_page_map_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx)); },
             }
         }
 
@@ -220,7 +200,6 @@ pub(super) enum MissingPageTableLevel {
                 assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
                 assert(thread_perms_wf(krnl.thr_mp)) by {
                     reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
-                    lemma_set_remove_len(old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view(), page_ptr);
                 };
             };
             assert(krnl.memory_management_inv()) by {
@@ -233,20 +212,13 @@ pub(super) enum MissingPageTableLevel {
                 assert(container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(hugepage_2m_wf(krnl.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
                 assert(hugepage_1g_wf(krnl.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
-                assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by {
-                    reveal(pagetable_perms_wf);
-                    reveal(mapped_4k_page_pagetable_wf);
-                    reveal(mapped_2m_page_pagetable_wf);
-                    reveal(mapped_1g_page_pagetable_wf);
-                };
+                assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
                 assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
-                assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by {
-                    reveal(container_process_page_pagetable_wf);
-                };
+                assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
                 assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
-                assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(iommu_table_pages_wf); };
+                assert(pagetable_pages_wf(krnl.it_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).it_mp, krnl.it_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(old(krnl).sched_mp, krnl.sched_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).pcid_allc_mp, krnl.pcid_allc_mp); };

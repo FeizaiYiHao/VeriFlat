@@ -3,9 +3,9 @@ verus! {
 use core::mem::MaybeUninit;
 
 #[repr(C)]
-pub struct Array<A, const N: usize>{
+pub struct Array<A, const N: usize> {
     pub seq: Ghost<Seq<A>>,
-    pub ar: [A;N]
+    pub ar: [A; N]
 }
 
 impl<A, const N: usize> Array<A, N> {
@@ -14,12 +14,9 @@ impl<A, const N: usize> Array<A, N> {
         ensures
             ret.wf(),
     {
-        unsafe{
-        let ret = Self {
-            ar: MaybeUninit::uninit().assume_init(),
-            seq: Ghost(Seq::empty()),
-        };
-        ret
+        unsafe {
+            let ret = Self { ar: MaybeUninit::uninit().assume_init(), seq: Ghost(Seq::empty()) };
+            ret
         }
     }
 
@@ -36,20 +33,16 @@ impl<A, const N: usize> Array<A, N> {
 
     #[verifier(inline)]
     pub open spec fn spec_index(self, i: usize) -> A
-        recommends self.view().len() == N,
+        recommends
+            self.view().len() == N,
             0 <= i < N,
     {
         self.view().spec_index(i as int)
     }
 
     #[verifier(inline)]
-    pub open spec fn view(&self) -> Seq<A>{
-        self.seq.view()
-    }
-
-    pub open spec fn wf(&self) -> bool{
-        self.seq.view().len() == N
-    }
+    pub open spec fn view(&self) -> Seq<A> { self.seq.view() }
+    pub open spec fn wf(&self) -> bool { self.seq.view().len() == N }
 }
 
 impl<A, const N: usize> Array<A, N> {
@@ -72,18 +65,18 @@ impl<const N: usize> Array<u8, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
+            forall|index: int| 0 <= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
             final(self).wf(),
     {
         let mut i = 0;
         for i in 0..N
             invariant
                 N <= usize::MAX,
-                0<=i<=N,
+                0 <= i <= N,
                 self.wf(),
-                forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0,
+                forall|j: int| #![auto] 0 <= j < i ==> self.view().spec_index(j) == 0,
         {
-            self.set(i,0);
+            self.set(i, 0);
         }
     }
 }
@@ -94,18 +87,18 @@ impl<const N: usize> Array<usize, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
+            forall|index: int| 0 <= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
             final(self).wf(),
     {
         let mut i = 0;
         for i in 0..N
             invariant
                 N <= usize::MAX,
-                0<=i<=N,
+                0 <= i <= N,
                 self.wf(),
-                forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) == 0,
+                forall|j: int| #![auto] 0 <= j < i ==> self.view().spec_index(j) == 0,
         {
-            self.set(i,0);
+            self.set(i, 0);
         }
     }
 }
@@ -116,32 +109,29 @@ impl<T: Copy, const N: usize> Array<Option<T>, N> {
             old(self).wf(),
             N <= usize::MAX,
         ensures
-            forall|index:int| 0<= index < N ==> #[trigger] final(self).view().spec_index(index) is None,
+            forall|index: int| 0 <= index < N ==> #[trigger] final(self).view().spec_index(index) is None,
             final(self).wf(),
     {
         let mut i = 0;
         for i in 0..N
             invariant
                 N <= usize::MAX,
-                0<=i<=N,
+                0 <= i <= N,
                 self.wf(),
-                forall|j:int| #![auto] 0<=j<i ==> self.view().spec_index(j) is None,
+                forall|j: int| #![auto] 0 <= j < i ==> self.view().spec_index(j) is None,
         {
-            self.set(i,None);
+            self.set(i, None);
         }
     }
 }
 
-impl<A:Copy, const N: usize> Array<A, N> {
-    pub fn new_with_init_value(v:A) -> (ret: Self)
+impl<A: Copy, const N: usize> Array<A, N> {
+    pub fn new_with_init_value(v: A) -> (ret: Self)
         ensures
             ret.wf(),
-            ret.view() == Seq::new(N as nat, |i:int|{v}),
+            ret.view() == Seq::new(N as nat, |i: int| { v }),
     {
-        let ret = Self {
-            ar: [v;N],
-            seq: Ghost(Seq::new(N as nat, |i: int| v)),
-        };
+        let ret = Self { ar: [v; N], seq: Ghost(Seq::new(N as nat, |i: int| v)) };
         ret
     }
 }
