@@ -1,5 +1,3 @@
-use std::num::NonZero;
-
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
@@ -9,7 +7,7 @@ use super::*;
 
 verus! {
 #[verifier::reject_recursive_types(T)]
-pub struct LinkedList<T, const MAJOR: LockMajorId>{
+pub struct LinkedList<T, const MAJOR: LockMajorId> {
     pub perms: Tracked<Map<usize, PointsTo<Node<T>>>>,
     pub addr_list: Ghost<Seq<usize>>,
     pub value_list: Ghost<Seq<T>>,
@@ -18,83 +16,47 @@ pub struct LinkedList<T, const MAJOR: LockMajorId>{
     pub tail: Option<usize>,
     pub map: Ghost<Map<usize, T>>,
 
-    pub container_depth: Option<usize>,
+    /// Lock-ordering metadata only; never read by exec code.
+    pub container_depth: Ghost<Option<usize>>,
 
-    pub minor: Option<usize>,
+    pub minor: Ghost<Option<usize>>,
 }
 
-impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR>{
-    open spec fn container_depth(&self) -> LockOwnerId {
-        LockOwnerId::NotApp
-    }
-
-    open spec fn process_depth(&self) -> LockOwnerId {
-        LockOwnerId::NotApp
-    }
+impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR> {
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
-impl<T, const MAJOR: LockMajorId> LockInvTrait for LinkedList<T, MAJOR>{
-    open spec fn inv(&self) -> bool {
-        self.wf()
-    }
+impl<T, const MAJOR: LockMajorId> LockInvTrait for LinkedList<T, MAJOR> {
+    open spec fn inv(&self) -> bool { self.wf() }
 }
 
-impl<T, const MAJOR: LockMajorId> LockMajorTrait for LinkedList<T, MAJOR>{
-    open spec fn lock_major_1(&self) -> LockMajorId {
-        MAJOR
-    }
-
-    open spec fn lock_major_2(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_3(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        233
-    }
-
-    open spec fn lock_major_1_predicate(&self) -> bool {
-        true
-    }
-
-    open spec fn lock_major_2_predicate(&self) -> bool {
-        false
-    }
-
-    open spec fn lock_major_3_predicate(&self) -> bool {
-        false
-    }
-
-    open spec fn lock_major_default_predicate(&self) -> bool {
-        false
-    }
+impl<T, const MAJOR: LockMajorId> LockMajorTrait for LinkedList<T, MAJOR> {
+    open spec fn lock_major_1(&self) -> LockMajorId { MAJOR }
+    open spec fn lock_major_2(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_3(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_default(&self) -> LockMajorId { 233 }
+    open spec fn lock_major_1_predicate(&self) -> bool { true }
+    open spec fn lock_major_2_predicate(&self) -> bool { false }
+    open spec fn lock_major_3_predicate(&self) -> bool { false }
+    open spec fn lock_major_default_predicate(&self) -> bool { false }
 }
 
-impl<T, const MAJOR: LockMajorId> LockMinorTrait for LinkedList<T, MAJOR>{
+impl<T, const MAJOR: LockMajorId> LockMinorTrait for LinkedList<T, MAJOR> {
     open spec fn lock_minor(&self) -> LockMinorId {
-        if self.minor is Some{
-            self.minor.unwrap()
-        }else{
-            233
-        }
+        if self.minor.view() is Some { self.minor.view().unwrap() }
+        else { 233 }
     }
 }
 
-impl <T, const MAJOR: LockMajorId> LockUserVisibilityTrait for LinkedList<T, MAJOR>{
-    open spec fn is_user_visible() -> bool {
-        false
-    }
+impl<T, const MAJOR: LockMajorId> LockUserVisibilityTrait for LinkedList<T, MAJOR> {
+    open spec fn is_user_visible() -> bool { false }
 }
 
 //spec
-impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
-    pub open spec fn view(&self) -> Seq<T>{
-        self.value_list.view()
-    }
+impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
+    pub open spec fn view(&self) -> Seq<T> { self.value_list.view() }
 
-    pub open spec fn spec_index(&self, index:usize) -> T
+    pub open spec fn spec_index(&self, index: usize) -> T
         recommends
             index < self.length,
     {
@@ -106,24 +68,17 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         self.perms.view().dom()
     }
 
-    pub open spec fn map(&self) -> Map<usize, T>{
-        self.map.view()
-    }
-
-    pub open spec fn spec_len(&self) -> usize{
-        self.view().len() as usize
-    }
+    pub open spec fn map(&self) -> Map<usize, T> { self.map.view() }
+    pub open spec fn spec_len(&self) -> usize { self.view().len() as usize }
 
     #[verifier(when_used_as_spec(spec_len))]
-    pub fn len(&self) -> (ret:usize)
+    pub fn len(&self) -> (ret: usize)
         requires
             self.wf()
         ensures
             ret == self.len()
     {
-        proof{
-            reveal(LinkedList::wf_value_list);
-        }
+        proof { reveal(LinkedList::wf_value_list); }
         self.length
     }
 
@@ -155,148 +110,107 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         ensures
             a == b,
     {
-        assert(
-            self.perms.view().dom().contains(a) && self.perms.view().dom().contains(b) && self.addr_list.view().contains(a) && self.addr_list.view().contains(b)
-        ) by { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_map); };
+        assert(self.perms.view().dom().contains(a) && self.perms.view().dom().contains(b) && self.addr_list.view().contains(a) && self.addr_list.view().contains(b)) by { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_map); };
         let ia = self.addr_list.view().index_of(a);
         let ib = self.addr_list.view().index_of(b);
-        assert(
-            self.view().len() == self.length && 0 <= ia < self.length && 0 <= ib < self.length
-            && self.addr_list.view().spec_index(ia) == a && self.addr_list.view().spec_index(ib) == b
-        ) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); };
-        assert(
-            self.view().spec_index(ia) == self.perms.view().spec_index(a).value().view() && self.view().spec_index(ib) == self.perms.view().spec_index(b).value().view()
-            && self.map().spec_index(a) == self.perms.view().spec_index(a).value().view() && self.map().spec_index(b) == self.perms.view().spec_index(b).value().view()
-        ) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); };
+        assert(self.view().len() == self.length && 0 <= ia < self.length && 0 <= ib < self.length
+            && self.addr_list.view().spec_index(ia) == a && self.addr_list.view().spec_index(ib) == b) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); };
+        assert(self.view().spec_index(ia) == self.perms.view().spec_index(a).value().view() && self.view().spec_index(ib) == self.perms.view().spec_index(b).value().view()
+            && self.map().spec_index(a) == self.perms.view().spec_index(a).value().view() && self.map().spec_index(b) == self.perms.view().spec_index(b).value().view()) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); };
         assert(ia == ib) by { reveal(LinkedList::value_list_unique); };
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_perms(&self) -> bool{
-        &&&
-        forall|addr:usize|
+    pub open spec fn wf_perms(&self) -> bool {
+        &&& forall|addr: usize|
             #![trigger self.perms.view().spec_index(addr).is_init()]
             #![trigger self.perms.view().spec_index(addr).addr()]
             #![trigger self.perms.view().dom().contains(addr)]
-            self.perms.view().dom().contains(addr) ==>
-            self.perms.view().spec_index(addr).is_init() && self.perms.view().spec_index(addr).addr() == addr
-        &&&
-        forall|addr:usize|
+            self.perms.view().dom().contains(addr) ==> self.perms.view().spec_index(addr).is_init() && self.perms.view().spec_index(addr).addr() == addr
+        &&& forall|addr: usize|
             #![trigger self.perms.view().dom().contains(addr)]
             #![trigger self.addr_list.view().contains(addr)]
-        self.perms.view().dom().contains(addr) == self.addr_list.view().contains(addr)
+            self.perms.view().dom().contains(addr) == self.addr_list.view().contains(addr)
     }
 
     #[verifier::opaque]
     pub open spec fn wf_value_list(&self) -> bool {
-        &&&
-        self.len() == self.length
-        &&&
-        self.value_list.view().len() == self.length
-        &&&
-        forall|i:int|
+        &&& self.len() == self.length
+        &&& self.value_list.view().len() == self.length
+        &&& forall|i: int|
             #![trigger self.value_list.view().spec_index(i)]
             #![trigger self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().view()]
-            0<=i<self.length ==>
-            self.value_list.view().spec_index(i) == self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().view()
+            0 <= i < self.length ==> self.value_list.view().spec_index(i) == self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().view()
     }
 
     #[verifier::opaque]
     pub open spec fn value_list_unique(&self) -> bool {
-        &&&
-        forall|i:int, j:int|
-            #![trigger self.value_list.view().spec_index(i), self.value_list.view().spec_index(j) ]
-            0<=i<self.length && 0<=j<self.length && i != j ==>
-            self.value_list.view().spec_index(i) != self.value_list.view().spec_index(j)
+        &&& forall|i: int, j: int|
+            #![trigger self.value_list.view().spec_index(i), self.value_list.view().spec_index(j)]
+            0 <= i < self.length && 0 <= j < self.length && i != j ==> self.value_list.view().spec_index(i) != self.value_list.view().spec_index(j)
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_addr_list(&self) -> bool{
-        &&&
-        self.addr_list.view().len() == self.length
-        &&&
-        self.addr_list.view().no_duplicates()
+    pub open spec fn wf_addr_list(&self) -> bool {
+        &&& self.addr_list.view().len() == self.length
+        &&& self.addr_list.view().no_duplicates()
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_head(&self) -> bool{
-        &&&
-        self.length == 0 <==> self.head is None
-        &&&
-        self.head is Some ==>
-        self.addr_list.view().spec_index(0) == self.head.unwrap() && self.perms.view().spec_index(self.head.unwrap()).value().prev is None
+    pub open spec fn wf_head(&self) -> bool {
+        &&& self.length == 0 <==> self.head is None
+        &&& self.head is Some ==> self.addr_list.view().spec_index(0) == self.head.unwrap() && self.perms.view().spec_index(self.head.unwrap()).value().prev is None
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_tail(&self) -> bool{
-        &&&
-        self.length == 0 <==> self.tail is None
-        &&&
-        self.tail is Some ==>
-            self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap() && self.perms.view().spec_index(self.tail.unwrap()).value().next is None
+    pub open spec fn wf_tail(&self) -> bool {
+        &&& self.length == 0 <==> self.tail is None
+        &&& self.tail is Some ==> self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap() && self.perms.view().spec_index(self.tail.unwrap()).value().next is None
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_prev(&self) -> bool{
-        &&&
-        forall|i:int|
+    pub open spec fn wf_prev(&self) -> bool {
+        &&& forall|i: int|
             #![trigger self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev]
-            1<=i<self.length ==>
-            self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev is Some &&
-            self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev.unwrap() == self.addr_list.view().spec_index(i - 1)
+            1 <= i < self.length
+                ==> self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev is Some && self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().prev.unwrap() == self.addr_list.view().spec_index(i - 1)
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_next(&self) -> bool{
-        &&&
-        forall|i:int|
+    pub open spec fn wf_next(&self) -> bool {
+        &&& forall|i: int|
             #![trigger self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next]
-            0<=i<self.length -1 ==>
-            self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next is Some &&
-            self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next.unwrap() == self.addr_list.view().spec_index(i + 1)
+            0 <= i < self.length - 1
+                ==> self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next is Some && self.perms.view().spec_index(self.addr_list.view().spec_index(i)).value().next.unwrap() == self.addr_list.view().spec_index(i + 1)
     }
 
     #[verifier::opaque]
-    pub open spec fn wf_map(&self) -> bool{
-        &&&
-        self.map().dom() == self.perms.view().dom()
-        &&&
-        forall|addr:usize|
+    pub open spec fn wf_map(&self) -> bool {
+        &&& self.map().dom() == self.perms.view().dom()
+        &&& forall|addr: usize|
             #![trigger self.map().spec_index(addr)]
             #![trigger self.perms.view().spec_index(addr)]
-        self.map().dom().contains(addr) ==>
-        self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
-        &&&
-        forall|i:usize, j:usize|
+            self.map().dom().contains(addr) ==> self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
+        &&& forall|i: usize, j: usize|
             #![trigger self.map().spec_index(i), self.map().spec_index(j)]
-            self.map().dom().contains(i) && self.map().dom().contains(j) && i != j ==>
-            self.map().spec_index(i) != self.map().spec_index(j)
+            self.map().dom().contains(i) && self.map().dom().contains(j) && i != j ==> self.map().spec_index(i) != self.map().spec_index(j)
     }
 
-    pub open spec fn wf(&self) -> bool{
-        &&&
-        self.wf_perms()
-        &&&
-        self.wf_addr_list()
-        &&&
-        self.wf_value_list()
-        &&&
-        self.wf_head()
-        &&&
-        self.wf_tail()
-        &&&
-        self.wf_prev()
-        &&&
-        self.wf_next()
-        &&&
-        self.wf_map()
-        &&&
-        self.value_list_unique()
+    pub open spec fn wf(&self) -> bool {
+        &&& self.wf_perms()
+        &&& self.wf_addr_list()
+        &&& self.wf_value_list()
+        &&& self.wf_head()
+        &&& self.wf_tail()
+        &&& self.wf_prev()
+        &&& self.wf_next()
+        &&& self.wf_map()
+        &&& self.value_list_unique()
     }
 }
 
 // exec
-impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
+impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
     pub fn new(container_depth: Option<usize>, minor: Option<usize>) -> (ret: Self)
         ensures
             ret.wf(),
@@ -304,19 +218,12 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             ret.dom() == Set::<usize>::empty(),
             ret.map() == Map::<usize, T>::empty(),
             ret.length == 0,
-            ret.container_depth == container_depth,
-            ret.minor == minor,
+            ret.container_depth.view() == container_depth,
+            ret.minor.view() == minor,
     {
         let ret = Self {
-            perms: Tracked(Map::<usize, PointsTo<Node<T>>>::tracked_empty()),
-            addr_list: Ghost(Seq::empty()),
-            value_list: Ghost(Seq::empty()),
-            length: 0,
-            head: None,
-            tail: None,
-            map: Ghost(Map::empty()),
-            container_depth: container_depth,
-            minor:minor,
+            perms: Tracked(Map::<usize, PointsTo<Node<T>>>::tracked_empty()), addr_list: Ghost(Seq::empty()), value_list: Ghost(Seq::empty()),
+            length: 0, head: None, tail: None, map: Ghost(Map::empty()), container_depth: Ghost(container_depth), minor: Ghost(minor),
         };
         assert(ret.wf()) by {
             reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_tail);
@@ -346,9 +253,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             old(self).dom().contains(addr) == false,
             old(self).map().dom().contains(addr) == false,
     {
-        proof{
-            reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_map);
-        }
+        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_map); }
         let mut perm = perm;
         if self.length == 0 {
             self.length = self.length + 1;
@@ -359,18 +264,12 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.tail = Some(addr);
             self.head = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            proof{
-                self.perms.borrow_mut().tracked_insert(addr, perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof{
-                seq_push_lemma::<usize>();
-            }
+            proof { seq_push_lemma::<usize>(); }
             assert(self.wf()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
-        }else {
-            proof{
-                node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut());
-            }
+        } else {
+            proof { node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut()); }
             self.length = self.length + 1;
             self.addr_list = Ghost(self.addr_list.view().push(addr));
             self.value_list = Ghost(self.value_list.view().push(perm.view().value().view()));
@@ -380,22 +279,15 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             let old_tail_addr = self.tail.unwrap();
             let mut old_tail_perm = Tracked(self.perms.borrow_mut().tracked_remove(old_tail_addr));
             node_update_next::<T>(old_tail_addr, &mut old_tail_perm, Some(addr));
-            proof{
-                self.perms.borrow_mut().tracked_insert(old_tail_addr, old_tail_perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(old_tail_addr, old_tail_perm.get()); }
 
             self.tail = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            proof{
-                self.perms.borrow_mut().tracked_insert(addr, perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof{
-                seq_push_lemma::<usize>();
-                seq_push_lemma::<T>();
-                seq_push_unique_lemma::<usize>();
-            }
+            proof { seq_push_lemma::<usize>(); seq_push_lemma::<T>(); seq_push_unique_lemma::<usize>(); }
 
+            assert(self.wf_head() && self.wf_tail()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
             assert(self.wf()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
         }
     }
@@ -410,7 +302,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         ensures
             final(self).wf(),
             final(self).length == old(self).length + 1,
-            final(self).view() == old(self).view().insert(0,perm.view().value().view()),
+            final(self).view() == old(self).view().insert(0, perm.view().value().view()),
             final(self).dom() == old(self).dom().insert(addr),
             final(self).map() == old(self).map().insert(addr, perm.view().value().view()),
             final(self).container_depth == old(self).container_depth,
@@ -418,9 +310,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             old(self).dom().contains(addr) == false,
             old(self).map().dom().contains(addr) == false,
     {
-        proof{
-            reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map);
-        }
+        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map); }
         let mut perm = perm;
         if self.length == 0 {
             self.length = self.length + 1;
@@ -431,18 +321,12 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.tail = Some(addr);
             self.head = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            proof{
-                self.perms.borrow_mut().tracked_insert(addr, perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof{
-                seq_push_lemma::<usize>();
-            }
+            proof { seq_push_lemma::<usize>(); }
             assert(self.wf()) by { reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
-        }else {
-            proof{
-                node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut());
-            }
+        } else {
+            proof { node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut()); }
             self.length = self.length + 1;
             self.addr_list = Ghost(self.addr_list.view().insert(0, addr));
             self.value_list = Ghost(self.value_list.view().insert(0, perm.view().value().view()));
@@ -452,21 +336,13 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             let old_head_addr = self.head.unwrap();
             let mut old_head_perm = Tracked(self.perms.borrow_mut().tracked_remove(old_head_addr));
             node_update_prev::<T>(old_head_addr, &mut old_head_perm, Some(addr));
-            proof{
-                self.perms.borrow_mut().tracked_insert(old_head_addr, old_head_perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(old_head_addr, old_head_perm.get()); }
 
             self.head = Some(addr);
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
-            proof{
-                self.perms.borrow_mut().tracked_insert(addr, perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof{
-                seq_push_head_lemma::<usize>();
-                seq_push_head_lemma::<T>();
-                seq_push_head_unique_lemma::<usize>();
-            }
+            proof { seq_push_head_lemma::<usize>(); seq_push_head_lemma::<T>(); seq_push_head_unique_lemma::<usize>(); }
 
             assert(self.wf()) by {
                 assert({
@@ -500,9 +376,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.view().contains(ret.1),
             ret.1 == self.map().spec_index(ret.0),
     {
-        proof{
-            reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map);
-        }
+        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map); }
         let head_addr = self.head.unwrap();
         let tracked head_perm = self.perms.borrow().tracked_borrow(head_addr);
         let node: &Node<T> = PPtr::<Node<T>>::from_usize(head_addr).borrow(Tracked(head_perm));
@@ -516,6 +390,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             index < self.len(),
         ensures
             ret == self.view().spec_index(index as int),
+            self.view().contains(ret),
     {
         proof { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); }
         let mut current = self.head.unwrap();
@@ -540,7 +415,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
         node.value
     }
 
-    pub fn pop_head(&mut self) -> (ret:(usize, Tracked<PointsTo<Node<T>>>))
+    pub fn pop_head(&mut self) -> (ret: (usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).wf(),
             old(self).len() != 0,
@@ -564,7 +439,6 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
                     &&& final(self).map().dom().contains(old_addr)
                     &&& final(self).map().spec_index(old_addr) == old(self).map().spec_index(old_addr)
                 },
-
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
             ret.1.view().value().view() == old(self).view().spec_index(0),
@@ -576,17 +450,9 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
     {
-        proof{
-            reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list);
-            reveal(LinkedList::wf_head); reveal(LinkedList::wf_next); reveal(LinkedList::wf_map);
-        }
+        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_next); reveal(LinkedList::wf_map); }
         if self.length != 1 {
-            proof{
-                seq_skip_lemma::<usize>();
-                seq_skip_lemma::<T>();
-                seq_skip_index_of_lemma::<usize>();
-                seq_skip_index_of_lemma::<T>();
-            }
+            proof { seq_skip_lemma::<usize>(); seq_skip_lemma::<T>(); seq_skip_index_of_lemma::<usize>(); seq_skip_index_of_lemma::<T>(); }
             let old_head_addr = self.head.unwrap();
             let tracked old_head_perm = self.perms.borrow_mut().tracked_remove(old_head_addr);
             let old_head: &Node<T> = PPtr::<Node<T>>::from_usize(old_head_addr).borrow(Tracked(&old_head_perm));
@@ -595,9 +461,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             self.length = self.length - 1;
             let mut new_head_perm = Tracked(self.perms.borrow_mut().tracked_remove(new_head_addr));
             node_update_prev::<T>(new_head_addr, &mut new_head_perm, None);
-            proof{
-                self.perms.borrow_mut().tracked_insert(new_head_addr, new_head_perm.get());
-            }
+            proof { self.perms.borrow_mut().tracked_insert(new_head_addr, new_head_perm.get()); }
             self.addr_list = Ghost(self.addr_list.view().skip(1));
             self.value_list = Ghost(self.value_list.view().skip(1));
             self.map = Ghost(self.map.view().remove(old_head_addr));
@@ -605,7 +469,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
             assert(self.wf()) by { reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::value_list_unique); };
 
             (old_head_addr, Tracked(old_head_perm))
-        }else{
+        } else {
             let old_head_addr = self.head.unwrap();
             let tracked old_head_perm = self.perms.borrow_mut().tracked_remove(old_head_addr);
             self.addr_list = Ghost(Seq::empty());
@@ -647,12 +511,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
     {
         hide(Seq::no_duplicates);
         proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_next); }
-        proof {
-            seq_subrange_split_lemma::<usize>();
-            seq_subrange_split_lemma::<T>();
-            seq_to_set_lemma::<usize>();
-            seq_to_set_lemma::<T>();
-        }
+        proof { seq_subrange_split_lemma::<usize>(); seq_subrange_split_lemma::<T>(); seq_to_set_lemma::<usize>(); seq_to_set_lemma::<T>(); }
 
         let ghost prefix_set = old(self).addr_list.view().subrange(0, i as int).to_set();
         let head0 = self.head;
@@ -705,26 +564,14 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR>{
 
         // build ret (prefix)
         let ret = LinkedList::<T, MAJOR> {
-            perms: Tracked(prefix_perms),
-            addr_list: Ghost(old(self).addr_list.view().subrange(0, i as int)),
-            value_list: Ghost(old(self).value_list.view().subrange(0, i as int)),
-            length: i,
-            head: head0,
-            tail: Some(prefix_tail_addr),
-            map: Ghost(old(self).map.view().restrict(prefix_set)),
-            container_depth: self.container_depth,
-            minor: self.minor,
+            perms: Tracked(prefix_perms), addr_list: Ghost(old(self).addr_list.view().subrange(0, i as int)),
+            value_list: Ghost(old(self).value_list.view().subrange(0, i as int)), length: i, head: head0, tail: Some(prefix_tail_addr),
+            map: Ghost(old(self).map.view().restrict(prefix_set)), container_depth: self.container_depth, minor: self.minor,
         };
 
-        // ---- ret.wf() ----
-        assert(ret.wf()) by {
-            reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_map); reveal(LinkedList::value_list_unique);
-        };
+        assert(ret.wf()) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_map); reveal(LinkedList::value_list_unique); };
 
-        // ---- self.wf() (suffix) ----
-        assert(self.wf()) by {
-            reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_map); reveal(LinkedList::value_list_unique);
-        };
+        assert(self.wf()) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_map); reveal(LinkedList::value_list_unique); };
 
         ret
     }

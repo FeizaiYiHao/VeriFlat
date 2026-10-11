@@ -1,6 +1,7 @@
 mod locker_unlocker_cpu;
 mod locker_unlocker_container;
 mod locker_unlocker_quota_4k;
+mod locker_unlocker_quota_2m;
 mod locker_unlocker_process;
 mod locker_unlocker_thread;
 mod locker_unlocker_allocator_cache;
@@ -13,6 +14,7 @@ mod locker_unlocker_pcid_allocator;
 mod locker_unlocker_endpoint;
 mod locker_unlocker_pagetable;
 mod locker_unlocker_iommu_table;
+mod locker_unlocker_iommu_root_table;
 mod locker_unlocker_cpu_set;
 mod locker_unlocker_pcid_needflush;
 mod locker_unlocker_cpu_offline_flag;

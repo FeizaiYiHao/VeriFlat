@@ -3,6 +3,7 @@ use crate::*;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
+#[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
@@ -66,17 +67,12 @@ pub open spec fn new_thread_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: C
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map.spec_index(process_ptr) }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..thread }),
         endpoint_map: match endpoint_index {
-            Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU {
-                lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map.spec_index(thread.endpoint_descriptors[i as int]->Some_0)
-            }),
+            Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map.spec_index(thread.endpoint_descriptors[i as int]->Some_0) }),
             None => old_u.endpoint_map,
         },
         ..old_u
     };
-    new_u == (KernelU {
-        thread_map: locked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::NewThread { regs, endpoint_index }), ..locked.thread_map[thread_ptr] }),
-        ..locked
-    })
+    new_u == (KernelU { thread_map: locked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::NewThread { regs, endpoint_index }), ..locked.thread_map[thread_ptr] }), ..locked })
 }
 
 /// Finishing runs while the running thread records a thread creation with a valid endpoint index and
@@ -126,7 +122,7 @@ pub open spec fn new_thread_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: 
             None => old_u.endpoint_map,
         },
         ..old_u
-    }, new_u, process_ptr, thread_ptr, cpu.owning_container, new_u.process_map.spec_index(process_ptr).owned_threads.last(), progress->NewThread_regs, endpoint, None)
+    }, new_u, process_ptr, thread_ptr, cpu.owning_container, cpu_id, new_u.process_map.spec_index(process_ptr).owned_threads.last(), progress->NewThread_regs, endpoint, None)
 }
 
 /// The partial trace after entering: one enter step from `pre`.
@@ -140,9 +136,7 @@ pub open spec fn new_thread_trace_after_enter(trace: Seq<KernelStep>, pre: Kerne
 
 /// Complete trace of the call: the enter and finish steps on success, a stutter otherwise.
 #[verifier::opaque]
-pub open spec fn new_thread_syscall_trace(
-    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>, success: bool,
-) -> bool {
+pub open spec fn new_thread_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>, success: bool) -> bool {
     if success {
         &&& trace.len() == 2
         &&& trace[0].old_u == pre

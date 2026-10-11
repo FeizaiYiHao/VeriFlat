@@ -1,0 +1,17 @@
+[package]
+name = "aelf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+astd = { path = "../astd" }
+cfg-match = "0.2.1"
+displaydoc = { version = "0.2.4", default-features = false }
+log = "0.4.19"
+x86 = "0.52.0"
+plain = "0.2.3"
+
+[dependencies.goblin]
+version = "0.7.1"
+default-features = false
+features = ["elf64"]

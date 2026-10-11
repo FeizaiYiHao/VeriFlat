@@ -14,7 +14,8 @@ impl TrustedAtomicUsize {
     pub closed spec fn owner_cpu(&self) -> CpuId { self.owner_cpu.view() }
 
     pub fn new(value: usize, Ghost(owner_cpu): Ghost<CpuId>) -> (ret: Self)
-        requires index_valid(NUM_CPUS, owner_cpu),
+        requires
+            index_valid(NUM_CPUS, owner_cpu),
         ensures
             ret.view() == value,
             ret.owner_cpu() == owner_cpu,
@@ -26,7 +27,8 @@ impl TrustedAtomicUsize {
     /// closes Acquire before permitting another shared-state observation.
     #[verifier::external_body]
     pub fn load(&self, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: usize)
-        requires old(lctx).kernel_view_locking_state() is Acquire,
+        requires
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             ret == self.view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),

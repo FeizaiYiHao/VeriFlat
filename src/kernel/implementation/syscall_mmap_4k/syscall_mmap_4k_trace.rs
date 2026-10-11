@@ -83,12 +83,8 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id
                 pre.process_map.dom().contains(p) && pre.process_map[p].pagetable is Some && pre.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
                 ==> pre.process_map[p].pagetable->Some_0.mapping_4k[v].addr != entry.addr
             &&& post == (KernelU {
-                thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                    quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_4k_progress_after_leaf(thread.syscall_progress), ..thread
-                }),
-                process_map: pre.process_map.insert(process_ptr, ProcessU {
-                    pagetable: Some(PageTableU { mapping_4k: process.pagetable->Some_0.mapping_4k.insert(va, entry), ..process.pagetable->Some_0 }), ..process
-                }),
+                thread_map: pre.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_4k_progress_after_leaf(thread.syscall_progress), ..thread }),
+                process_map: pre.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { mapping_4k: process.pagetable->Some_0.mapping_4k.insert(va, entry), ..process.pagetable->Some_0 }), ..process }),
                 ..pre
             })
         },

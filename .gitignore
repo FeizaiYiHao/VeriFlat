@@ -21,3 +21,6 @@ tmp.rs
 
 # Session-scoped style-gate snapshots (shared by Codex and Claude hooks).
 .codex/.style-gate/
+
+# Bare-metal boot workspace build output.
+/boot/target/

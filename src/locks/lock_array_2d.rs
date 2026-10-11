@@ -9,7 +9,8 @@ pub struct LockedArray2D<T, ROT, GhostT, const ROWS: usize, const COLS: usize> {
 
 impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS> {
     pub fn from_array(array: [[RwLock<T, ROT, GhostT, NO_KILL_STATE>; COLS]; ROWS]) -> (ret: Self)
-        ensures ret.view() == array,
+        ensures
+            ret.view() == array,
     {
         Self { array }
     }
@@ -17,7 +18,9 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
     pub closed spec fn view(&self) -> [[RwLock<T, ROT, GhostT, NO_KILL_STATE>; COLS]; ROWS] { self.array }
 
     pub open spec fn spec_index(&self, row: usize, col: usize) -> RwLock<T, ROT, GhostT, NO_KILL_STATE>
-        recommends index_valid(ROWS, row), index_valid(COLS, col),
+        recommends
+            index_valid(ROWS, row),
+            index_valid(COLS, col),
     {
         self.view()[row as int][col as int]
     }
@@ -40,7 +43,9 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
 
 impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS> {
     pub open spec fn lock_id_by_index(&self, row: usize, col: usize) -> LockId
-        recommends index_valid(ROWS, row), index_valid(COLS, col),
+        recommends
+            index_valid(ROWS, row),
+            index_valid(COLS, col),
     {
         let value = self.spec_index(row, col).view();
         LockId { container: value.container_depth(), process: value.process_depth(), major: value.current_lock_major(), minor: value.lock_minor() }
@@ -107,7 +112,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
             typed_lock_map_contains_mode(held, (row, col), TypedLockMode::Write),
             lp.view().state() is WriteLock,
             lp.view().lock_id() == self.spec_index(row, col).locking_thread()->Write_lock_id,
-        ensures *ret == self.spec_index(row, col).view(),
+        ensures
+            *ret == self.spec_index(row, col).view(),
     {
         assert(self.spec_index(row, col).write_lock_perm_match(lp.view())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
         self.array[row][col].borrow(lp)

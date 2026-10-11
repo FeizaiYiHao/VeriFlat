@@ -7,10 +7,7 @@ use super::syscall_new_thread_with_endpoint_helpers::add_new_thread_with_endpoin
 verus! {
         /// Create a thread sharing the running thread's `endpoint_index`. The result is
         /// `new_thread_syscall_result` of the state at entry.
-        pub fn syscall_new_thread_with_endpoint(
-            krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
-            cpu_id: CpuId, endpoint_index: EndpointIdx, initial_regs: &Registers,
-        ) -> (ret: RetValueType)
+        pub fn syscall_new_thread_with_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, endpoint_index: EndpointIdx, initial_regs: &Registers) -> (ret: RetValueType)
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 cpu_id == old(lctx).cpu_id(),
@@ -69,12 +66,8 @@ verus! {
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
                 release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
-                proof {
-                    assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); };
-                }
-                proof {
-                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
-                }
+                proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }
+                proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index)); }
                 proof {
                     assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorProcessKilled) by {
                         kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
@@ -96,22 +89,16 @@ verus! {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
-                release_cpu_and_process_and_finish_syscall(
-                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm),
-                );
+                release_cpu_and_process_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, Tracked(process_lock_perm), Tracked(cpu_lock_perm));
                 proof {
                     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
                         broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
                         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
                     };
                 }
+                proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index)); }
                 proof {
-                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
-                }
-                proof {
-                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorThreadKilled) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
-                    };
+                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorThreadKilled) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); };
                 }
                 return RetValueType::ErrorThreadKilled;
             }
@@ -123,24 +110,15 @@ verus! {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
-                release_cpu_and_process_and_thread_and_finish_syscall(
-                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr,
-                    Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm),
-                );
+                release_cpu_and_process_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));
                 proof {
                     assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
                         broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
                         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
                     };
                 }
-                proof {
-                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
-                }
-                proof {
-                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorNoQuota) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
-                    };
-                }
+                proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index)); }
+                proof { assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is ErrorNoQuota) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); }; }
                 return RetValueType::ErrorNoQuota;
             }
 
@@ -151,38 +129,25 @@ verus! {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
-                    release_cpu_and_process_and_thread_and_finish_syscall(
-                        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr,
-                        Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm),
-                    );
+                    release_cpu_and_process_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));
                     proof {
                         assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
                             broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
                             kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
                         };
                     }
-                    proof {
-                        new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index));
-                    }
-                    proof {
-                        assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Error) by {
-                            kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
-                        };
-                    }
+                    proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, Some(endpoint_index)); }
+                    proof { assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Error) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); }; }
                     return RetValueType::Error;
                 },
             };
 
             proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { reveal(thread_endpoint_ref_counter_wf); }; }
-            proof {
-                assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Success) by {
-                    kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None);
-                };
-            }
+            proof { assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Success) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); }; }
             let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
 
             assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); };
-            let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler(scheduler_ptr, Tracked(&mut *lctx));
+            let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
 
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };

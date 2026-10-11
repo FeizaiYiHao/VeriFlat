@@ -35,9 +35,10 @@ impl KernelK {
         &&& forall|iommu_root: RwLockPageTableRoot|
             #![trigger self.it_mp.spec_index(iommu_root).locked_by_thread(lctx.thread_id())]
             self.it_mp.dom().contains(iommu_root) ==> self.it_mp.spec_index(iommu_root).locked_by_thread(lctx.thread_id()) == false
-        &&& forall|s_ptr: RwLockSchedulerPtr|
-            #![trigger self.sched_mp.spec_index(s_ptr).locked_by_thread(lctx.thread_id())]
-            self.sched_mp.dom().contains(s_ptr) ==> self.sched_mp.spec_index(s_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& self.irt.locked_by_thread(lctx.thread_id()) == false
+        &&& forall|s_ptr: RwLockSchedulerPtr, cpu_i: CpuId|
+            #![trigger self.sched_mp.spec_index(s_ptr).shards.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
+            self.sched_mp.dom().contains(s_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.sched_mp.spec_index(s_ptr).shards.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
         &&& forall|cpu_set_ptr: RwLockCpuSetPtr|
             #![trigger self.cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(lctx.thread_id())]
             self.cpu_set_mp.dom().contains(cpu_set_ptr) ==> self.cpu_set_mp.spec_index(cpu_set_ptr).locked_by_thread(lctx.thread_id()) == false

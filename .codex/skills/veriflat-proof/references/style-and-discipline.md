@@ -76,11 +76,14 @@
   in [proof-debugging.md](proof-debugging.md).
 - Do not add `#[verifier::external_body]`
   outside the explicitly approved page-retype TCB boundary:
-  `retype_4k_page_perm_to_allocator` and
-  `retype_page_perm_2m_to_rwlock`. Keep those primitives limited to consuming
+  `retype_4k_page_perm_to_allocator`, `retype_4k_page_perm_to_scheduler`,
+  `retype_page_perm_2m_to_rwlock`, `retype_page_perm_to_rwlock`, and
+  `retype_container_page_tail_to_offline_flags`. Keep those primitives limited to consuming
   an owned page permission and constructing the corresponding kernel object;
-  new variants or callers require explicit authorization. Authorized temporary
-  diagnostics must be removed immediately.
+  new variants or callers require explicit authorization. The other approved
+  trusted primitives are the hardware TLB invalidations
+  `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`.
+  Authorized temporary diagnostics must be removed immediately.
 - Treat existing `external_body` contracts, mathematical axioms, and permission
   construction with `Tracked::assume_new()` as trust boundaries. Do not replace
   a failed proof with these mechanisms or `assume_specification`. Changes to
@@ -100,13 +103,15 @@
 - Do not add `assert forall`. Fix the producer trigger/contract instead.
   Exceptions are the approved linked-list/fold patterns and the existing
   quantified lift in
-  `lemma_no_change_imply_memory_management_inv_for_page_fields_forall`.
+  `lemma_memory_management_inv_preserved_for_page_invariant_fields_forall`.
 - Approved folds are
   `lemma_{process,thread}_effective_quota_4k_fold_{sum_eq,change_by}_forall`,
   `lemma_process_effective_quota_{2m,1g}_fold_sum_eq_forall`,
   `lemma_thread_effective_quota_2m_fold_{sum_eq,change_by}_forall`,
-  `lemma_thread_pending_{4k,2m}_folds_eq_forall`,
-  `lemma_container_thread_quota_folds_insert_zero_forall`, and the closure
+  `lemma_thread_effective_quota_1g_fold_sum_eq_forall`,
+  `lemma_thread_pending_{4k,2m,1g}_folds_eq_forall`,
+  `lemma_thread_pending_4k_folds_change_by_forall`,
+  `lemma_container_process_thread_quota_folds_insert_zero_forall`, and the closure
   bridges `lemma_process_effective_quota_folds_singleton`,
   `lemma_thread_quota_folds_empty`, and
   `lemma_process_effective_quota_folds_insert_zero` (they absorb the

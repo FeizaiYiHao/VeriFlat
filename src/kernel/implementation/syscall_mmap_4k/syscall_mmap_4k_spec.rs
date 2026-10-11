@@ -4,15 +4,13 @@ use crate::*;
 verus! {
 /// User-visible and physical result of a successful anonymous 4K mmap.
 pub open spec fn mmap_4k_syscall_range_mapped(pagetable: PageTable<PT_TYPE>, va: VAddr, len: usize) -> bool {
-    forall|i: usize|
-        #![trigger pagetable.mapping_4k().dom().contains(spec_va_add_range(va, i))]
-        i < len ==> {
-            let mapped_va = spec_va_add_range(va, i);
-            &&& pagetable.mapping_4k().dom().contains(mapped_va)
-            &&& pagetable.mapping_4k().spec_index(mapped_va).present
-            &&& pagetable.mapping_4k().spec_index(mapped_va).write
-            &&& !pagetable.mapping_4k().spec_index(mapped_va).execute_disable
-        }
+    forall|i: usize| #![trigger pagetable.mapping_4k().dom().contains(spec_va_add_range(va, i))] i < len ==> {
+        let mapped_va = spec_va_add_range(va, i);
+        &&& pagetable.mapping_4k().dom().contains(mapped_va)
+        &&& pagetable.mapping_4k().spec_index(mapped_va).present
+        &&& pagetable.mapping_4k().spec_index(mapped_va).write
+        &&& !pagetable.mapping_4k().spec_index(mapped_va).execute_disable
+    }
 }
 
 /// The page-aligned VA sequence requested by `syscall_mmap_4k`.
@@ -36,8 +34,7 @@ pub open spec fn mmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, 
     else if !user_va_range(pre, va_range) { RetValueType::Error }
     else if (forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger pagetable.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
         pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(start, (l4i, l3i, l2i, l1i)) && spec_l4_index_path_le((l4i, l3i, l2i, l1i), end)
-        ==> !pagetable.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))))
-        && (forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> {
+        ==> !pagetable.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))) && (forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> {
             let idx = spec_va2index(va_range.view()[j]);
             &&& !pagetable.mapping_1g.dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
             &&& !pagetable.mapping_2m.dom().contains(spec_index2va((idx.0, idx.1, idx.2, 0)))
@@ -97,10 +94,7 @@ pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }),
-            ..process
-        }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
 }
@@ -138,10 +132,7 @@ pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
         ==> old_u.process_map[p].pagetable->Some_0.mapping_4k[v].addr != entry.addr
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_4k_progress_after_leaf(thread.syscall_progress), ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.insert(va, entry), ..pagetable }),
-            ..process
-        }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.insert(va, entry), ..pagetable }), ..process }),
         ..old_u
     })
 }
@@ -167,10 +158,7 @@ pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.pagetable->Some_0 }),
-            ..process
-        }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
 }

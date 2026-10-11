@@ -3,15 +3,13 @@ use crate::*;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
+#[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 use super::syscall_new_process_common::syscall_new_process_common;
 use super::syscall_new_process_spec::*;
 
 verus! {
-pub fn syscall_new_process(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr,
-    range: usize, initial_regs: &Registers,
-) -> (ret: RetValueType)
+pub fn syscall_new_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, initial_regs: &Registers) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
@@ -46,17 +44,12 @@ pub fn syscall_new_process(
             &&& final(steps).nonlock_view().len() as int <= 4 * range as int + 3
             &&& final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& source_range.wf()
-            &&& kernel_u_new_thread_changed(
-                final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, child_ptr,
-                current_thread_ptr, container_ptr, thread_ptr, *initial_regs, None, None,
-            )
+            &&& kernel_u_new_thread_changed(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, child_ptr, current_thread_ptr, container_ptr, cpu_id, thread_ptr, *initial_regs, None, None)
             &&& final(krnl).thr_mp.dom().contains(thread_ptr)
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state is SCHEDULED
             &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == child_ptr
         },
         (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false) is Success),
         !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false),
-{
-    syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, None, false, initial_regs)
-}
+{ syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, None, false, initial_regs) }
 }

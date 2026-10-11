@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+  "aelf",
+  "aloader",
+  "astd",
+  "dom0",
+  "kernel",
+  "kernel-logger",
+  "ns16550a",
+  "vsys",
+]
+
+[profile.dev]
+panic = "abort"
+opt-level = 1
+
+[profile.release]
+panic = "abort"
+debug = true

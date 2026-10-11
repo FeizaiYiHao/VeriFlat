@@ -3,15 +3,7 @@ verus! {
 use crate::*;
 
 impl KernelK {
-    pub fn retype_page_to_process_and_insert(
-        &mut self,
-        page_ptr: PagePtr,
-        process_value: Process,
-        rodata: ReadOnlyNode<ProcessRO>,
-        process_ghost: ProcessGhost,
-        Tracked(page_perm): Tracked<PagePerm4k>,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-    ) -> (ret: Tracked<LockPerm>)
+    pub fn retype_page_to_process_and_insert(&mut self, page_ptr: PagePtr, process_value: Process, rodata: ReadOnlyNode<ProcessRO>, process_ghost: ProcessGhost, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).prc_mp.perms_wf(),
             !old(self).prc_mp.dom().contains(page_ptr),
@@ -71,29 +63,17 @@ impl KernelK {
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).prc_mp.lock_id_by_key(page_ptr),
-            final(self).prc_mp.lock_id_by_key(page_ptr) == (LockId {
-                container: rodata.container_depth(),
-                process: rodata.process_depth(),
-                major: process_value.current_lock_major(),
-                minor: page_ptr,
-            }),
+            final(self).prc_mp.lock_id_by_key(page_ptr) == (LockId { container: rodata.container_depth(), process: rodata.process_depth(), major: process_value.current_lock_major(), minor: page_ptr }),
             final(self).prc_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(page_ptr), TypedHeldLock {
-                lock_id: final(self).prc_mp.lock_id_by_key(page_ptr),
-                mode: TypedLockMode::Write,
-            }),
+            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(page_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
             typed_lock_maps_aligned(final(self), final(lctx)),
     {
         let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_page_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>(
-            page_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(page_ptr)),
-        );
+            page_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(page_ptr)));
         self.prc_mp.insert_with_perm(page_ptr, Tracked(process_rwlock_perm));
-        proof {
-            assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        }
+        proof { assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); }; assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         Tracked(process_perm)
     }
 }

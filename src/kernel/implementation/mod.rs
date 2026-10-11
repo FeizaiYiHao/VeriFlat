@@ -5,6 +5,8 @@ pub mod syscall_new_thread;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_thread_with_endpoint;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_new_endpoint;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_process;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_container;
@@ -17,10 +19,15 @@ pub mod syscall_ipc;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_schedule;
 #[cfg(not(feature = "split-crates"))]
+pub mod rebalance_pull;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_cpu_hotplug;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_pci;
 pub mod locker_unlocker;
 pub mod attach_endpoint_reference_and_unlock;
 pub mod create_thread_from_staged_page;
+pub mod create_endpoint_from_staged_page;
 pub mod create_process_from_staged_pages;
 pub mod create_process_with_iommu_from_staged_pages;
 pub mod create_container_from_staged_pages;

@@ -4,40 +4,21 @@ use crate::*;
 verus! {
     #[verifier::opaque]
     pub open spec fn thread_cpu_wf(thread_map: ThreadLockedMap, cpu_array:CpuLockedArray) -> bool {
-        &&&
-        forall|cpu_i:CpuId|
+        &&& forall|cpu_i:CpuId|
             #![trigger cpu_array.spec_index(cpu_i).view().view().view().current_thread]
-            index_valid(NUM_CPUS, cpu_i)
-            &&
-            cpu_array.spec_index(cpu_i).view().view().view().state is Running
-            ==>
-            {
-                &&&
-                cpu_array.spec_index(cpu_i).view().view().view().current_thread is Some
-                &&&
-                thread_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap())
-                &&&
-                thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING{cpu_id: cpu_i})
-                &&&
-                cpu_array.spec_index(cpu_i).view().view().view().current_process is Some
-                &&&
-                thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap()).view().owning_proc
-                    == cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap()
+            index_valid(NUM_CPUS, cpu_i) && cpu_array.spec_index(cpu_i).view().view().view().state is Running ==> {
+                &&& cpu_array.spec_index(cpu_i).view().view().view().current_thread is Some
+                &&& thread_map.dom().contains(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap())
+                &&& thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING{cpu_id: cpu_i})
+                &&& cpu_array.spec_index(cpu_i).view().view().view().current_process is Some
+                &&& thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap()).view().owning_proc == cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap()
             }
-        &&&
-        forall|t_ptr:RwLockThreadPtr|
+        &&& forall|t_ptr:RwLockThreadPtr|
             #![trigger thread_map.spec_index(t_ptr).view().state]
-            thread_map.dom().contains(t_ptr)
-            &&
-            thread_map.spec_index(t_ptr).view().state is RUNNING
-            ==>
-            {
-                &&&
-                index_valid(NUM_CPUS, thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id)
-                &&&
-                cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().state is Running
-                &&&
-                cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().current_thread == Some(t_ptr)
+            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().state is RUNNING ==> {
+                &&& index_valid(NUM_CPUS, thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id)
+                &&& cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().state is Running
+                &&& cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().current_thread == Some(t_ptr)
             }
     }
 }

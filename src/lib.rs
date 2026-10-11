@@ -1,4 +1,5 @@
 #![feature(adt_const_params)]
+#![no_std]
 
 use vstd::prelude::*;
 pub mod define;
@@ -13,7 +14,6 @@ pub mod proc;
 pub mod allocator;
 pub mod pagetable_seq;
 pub mod iommu;
-pub mod test;
 pub mod kernel;
 
 pub use define::*;
@@ -31,12 +31,11 @@ pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_base::{allocate_free_4k_page, allocate_free_4k_page_k};
-pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::{
-    allocate_free_4k_pages,
-    allocated_4k_page_lock_perms_wf,
-    page_ptrs_to_indices,
-};
+pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::allocate_free_4k_pages;
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::{allocated_4k_page_lock_perms_wf, page_ptrs_to_indices};
 pub use kernel::implementation::allocate_free_2m_page::allocate_free_2m_impl_base::allocate_free_2m_page;
+pub use kernel::implementation::create_endpoint_from_staged_page::*;
 pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::lock_owned_2m_page_tails::*;
@@ -46,19 +45,13 @@ pub use kernel::implementation::map_4k::mmap_4k_build_structure_spec::*;
 use kernel::implementation::map_4k::unmap_4k_range::unmap_4k_range;
 use kernel::implementation::map_4k::unmap_4k_spec::*;
 pub use kernel::implementation::map_4k::share_mapping_4k_spec::*;
-pub use kernel::implementation::map_4k::share_mapping_4k::{
-    share_mapping_4k_build_and_share,
-    share_mapping_4k_leaf_owner_compatible,
-    share_mapping_4k_range_owner_compatible,
-    share_mapping_4k_source_owner_precheck,
-    share_mapping_4k_source_precheck,
-    share_mapping_4k_source_range_present,
-};
+pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_build_and_share, share_mapping_4k_source_owner_precheck, share_mapping_4k_source_precheck};
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_range_owner_compatible, share_mapping_4k_source_range_present};
 pub use kernel::implementation::transfer_staged_4k_page::*;
 
 verus! {
 global size_of usize == 8;
 }
 
-fn main() {
-}
+fn main() {}

@@ -6,8 +6,7 @@ verus! {
 #[verifier::spinoff_prover]
 pub(super) fn allocate_new_process_with_iommu_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
-    current_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId,
-    Tracked(current_thread_lock_perm): Tracked<&LockPerm>,
+    current_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, Tracked(current_thread_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (PagePtr, PagePtr, PagePtr, PagePtr, PagePtr, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -15,8 +14,8 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         old(lctx).kernel_view_locking_state() is Acquire,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
-        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
+        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -37,9 +36,8 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-            old(lctx).pagetable_lock_map().dom().contains(pt)
-            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+            old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
@@ -67,9 +65,8 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
-        ret.0 != ret.1 && ret.0 != ret.2 && ret.0 != ret.3 && ret.0 != ret.4
-            && ret.1 != ret.2 && ret.1 != ret.3 && ret.1 != ret.4
-            && ret.2 != ret.3 && ret.2 != ret.4 && ret.3 != ret.4,
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
+        ret.0 != ret.1 && ret.0 != ret.2 && ret.0 != ret.3 && ret.0 != ret.4 && ret.1 != ret.2 && ret.1 != ret.3 && ret.1 != ret.4 && ret.2 != ret.3 && ret.2 != ret.4 && ret.3 != ret.4,
         page_ptr_valid(ret.0) && page_ptr_valid(ret.1) && page_ptr_valid(ret.2) && page_ptr_valid(ret.3) && page_ptr_valid(ret.4),
         final(lctx).page_lock_map().dom() == set![page_ptr2page_index(ret.0), page_ptr2page_index(ret.1), page_ptr2page_index(ret.2), page_ptr2page_index(ret.3), page_ptr2page_index(ret.4)],
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![ret.0, ret.1, ret.2, ret.3, ret.4],
@@ -127,24 +124,13 @@ pub(super) fn allocate_new_process_with_iommu_pages(
     let iommu_l4_page_ptr = *pages.get(4);
     proof {
         assert(page_lock_perms.dom().contains(process_page_ptr)
-            && page_lock_perms.dom().contains(pagetable_page_ptr)
-            && page_lock_perms.dom().contains(l4_page_ptr)
-            && page_lock_perms.dom().contains(iommu_table_page_ptr)
-            && page_lock_perms.dom().contains(iommu_l4_page_ptr)) by {
+            && page_lock_perms.dom().contains(pagetable_page_ptr) && page_lock_perms.dom().contains(l4_page_ptr) && page_lock_perms.dom().contains(iommu_table_page_ptr) && page_lock_perms.dom().contains(iommu_l4_page_ptr)) by {
             pages.view().to_set_ensures();
         };
-        assert(
-            process_page_ptr != pagetable_page_ptr && process_page_ptr != l4_page_ptr
-                && process_page_ptr != iommu_table_page_ptr && process_page_ptr != iommu_l4_page_ptr
-                && pagetable_page_ptr != l4_page_ptr && pagetable_page_ptr != iommu_table_page_ptr
-                && pagetable_page_ptr != iommu_l4_page_ptr && l4_page_ptr != iommu_table_page_ptr
-                && l4_page_ptr != iommu_l4_page_ptr && iommu_table_page_ptr != iommu_l4_page_ptr
-        ) by { seq_index_lemma::<PagePtr>(); };
-        assert(page_ptrs_to_indices(pages.view()) =~= set![page_ptr2page_index(process_page_ptr), page_ptr2page_index(pagetable_page_ptr), page_ptr2page_index(l4_page_ptr), page_ptr2page_index(iommu_table_page_ptr), page_ptr2page_index(iommu_l4_page_ptr)]) by {
-            pages.view().map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set_ensures();
-            assert_sets_equal!(page_ptrs_to_indices(pages.view()) == set![page_ptr2page_index(process_page_ptr), page_ptr2page_index(pagetable_page_ptr), page_ptr2page_index(l4_page_ptr), page_ptr2page_index(iommu_table_page_ptr), page_ptr2page_index(iommu_l4_page_ptr)]);
+        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() =~= set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr]) by {
+            pages.view().to_set_ensures();
+            assert_sets_equal!(krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr]);
         };
-        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() =~= set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr]) by { pages.view().to_set_ensures(); assert_sets_equal!(krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr]); };
     }
     let tracked process_page_lock_perm = page_lock_perms.tracked_remove(process_page_ptr);
     let tracked pagetable_page_lock_perm = page_lock_perms.tracked_remove(pagetable_page_ptr);

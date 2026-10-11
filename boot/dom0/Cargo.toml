@@ -1,0 +1,9 @@
+[package]
+name = "dom0"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+vsys = { path = "../vsys" }
+log = "0.4.19"

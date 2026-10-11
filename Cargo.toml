@@ -13,8 +13,9 @@ members = [
     "crates/veriflat_syscall_ipc",
     "crates/veriflat_syscall_schedule",
     "crates/veriflat_syscall_cpu_hotplug",
+    "crates/veriflat_syscall_pci",
 ]
-exclude = ["verus", "noninterference"]
+exclude = ["verus", "noninterference", "boot"]
 
 [package]
 name = "VeriFlat"
@@ -26,7 +27,12 @@ name = "veriflat_monolith"
 path = "src/lib.rs"
 
 [dependencies]
-vstd = { path = "verus/source/vstd" }
+vstd = { path = "verus/source/vstd", default-features = false, features = ["alloc"] }
 
 [features]
+default = ["std"]
+std = ["vstd/std"]
 split-crates = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)'] }

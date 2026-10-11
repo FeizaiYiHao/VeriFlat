@@ -45,12 +45,8 @@ pub open spec fn unmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     let range = progress->Unmap4k_range;
     let unmapped = progress->Unmap4k_unmapped;
     new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
-            syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: (unmapped + 1) as usize, flushed: false }), ..thread
-        }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.remove(range.view()[unmapped as int]), ..pagetable }), ..process
-        }),
+        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: (unmapped + 1) as usize, flushed: false }), ..thread }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { mapping_4k: pagetable.mapping_4k.remove(range.view()[unmapped as int]), ..pagetable }), ..process }),
         ..old_u
     })
 }
@@ -74,9 +70,7 @@ pub open spec fn unmap_4k_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: C
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let progress = thread.syscall_progress->Some_0;
     new_u == (KernelU {
-        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
-            syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread
-        }),
+        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread }),
         ..old_u
     })
 }

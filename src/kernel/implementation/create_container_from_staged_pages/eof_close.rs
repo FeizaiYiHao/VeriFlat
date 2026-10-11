@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-
 #[verifier::spinoff_prover]
 pub(super) proof fn eof_subsystems_inv(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -57,28 +56,15 @@ pub(super) proof fn eof_subsystems_inv(
 {
     reveal(publish_staged_container_root_kernel_state_framing);
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
-    assert(containers_inv(post.ctn_mp)) by {
-        reveal(container_perms_wf);
-    };
     assert(container_tree_fields_wf(post.ctn_mp)) by {
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
-        container_perms_wf_at(pre.ctn_mp, parent_container_ptr);
-        reveal(container_tree_fields_wf);
-        assert(!pre.ctn_mp.spec_index(parent_container_ptr).view().children.view().contains(container_page)) by {
-            reveal(container_children_parent_wf);
-        };
-        assert(!pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().contains(parent_container_ptr)) by {
-            reveal(container_uppertree_seq_wf);
-        };
-        seq_push_lemma::<RwLockContainerPtr>();
-        seq_push_unique_lemma::<RwLockContainerPtr>();
+        container_perms_wf_at(pre.ctn_mp, parent_container_ptr); reveal(container_tree_fields_wf);
+        assert(!pre.ctn_mp.spec_index(parent_container_ptr).view().children.view().contains(container_page)) by { reveal(container_children_parent_wf); };
+        assert(!pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().contains(parent_container_ptr)) by { reveal(container_uppertree_seq_wf); };
     };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_free_quota_pending_empty_unless_wlocked);
-    };
+    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
@@ -115,24 +101,9 @@ pub(super) proof fn eof_inv(
         !new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(thread_page),
         funding_pages.no_duplicates(),
         !funding_pages.to_set().contains(thread_page),
-        funding_pages.to_set().disjoint(new_container_moved_pages(
-            container_page,
-            pcid_allocator_page,
-            allocator_4k_page,
-            allocator_2m_page,
-            allocator_1g_page,
-            scheduler_page,
-            cpu_set_page,
-            process_page,
-            pagetable_page,
-            l4_page,
-        )),
-        new_container_bootstrap_4k_pages(
-            allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,
-        ).disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page))),
-        new_container_bootstrap_4k_pages(
-            allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,
-        ).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
+        funding_pages.to_set().disjoint(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page)),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page))),
+        new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
         page_2m_all_ptrs(page_ptr2page_index(container_page)).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
         forall|page_ptr: PagePtr|
             #![trigger funding_pages.to_set().contains(page_ptr)]
@@ -194,6 +165,11 @@ pub(super) proof fn eof_inv(
         allocator_quota_4k, process_quota_4k,
     );
     eof_direct_invariants(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    eof_iommu_invariants(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,

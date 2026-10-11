@@ -24,10 +24,7 @@ pub proof fn unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuI
                     pagetable: Some(PageTableU { mapping_4k: process.pagetable->Some_0.mapping_4k.remove(va), ..process.pagetable->Some_0 }), ..process
                 }),
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                    syscall_progress: Some(SyscallProgress::Unmap4k {
-                        range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false,
-                    }),
-                    ..thread
+                    syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false }), ..thread
                 }),
                 ..pre
             })
@@ -63,9 +60,7 @@ pub proof fn unmap_4k_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
             &&& thread.syscall_progress is Some
             &&& progress is Unmap4k
             &&& post == (KernelU {
-                thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                    syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread
-                }),
+                thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread }),
                 ..pre
             })
         },
@@ -112,10 +107,7 @@ pub proof fn unmap_4k_range_steps_from_flushed(steps: &KernelSteps, before: Seq<
 { reveal(unmap_4k_range_step); }
 
 /// Quota refunds to the caller's container chain after range steps that start at `start` leave only range steps.
-pub proof fn unmap_4k_range_steps_from_refund(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
-    progress: Option<SyscallProgress>,
-)
+pub proof fn unmap_4k_range_steps_from_refund(steps: &KernelSteps, before: Seq<KernelStep>, start: int, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, progress: Option<SyscallProgress>)
     requires
         index_valid(NUM_CPUS, cpu_id),
         0 <= start <= before.len() <= steps.view().len(),

@@ -3,12 +3,7 @@ use crate::*;
 
 verus! {
 pub(crate) open spec fn allocator_cache_lock_id(cache_cpu: CpuId) -> LockId {
-    LockId {
-        container: LockOwnerId::NotApp,
-        process: LockOwnerId::NotApp,
-        major: ALLOCATOR_CACHE_MAJOR,
-        minor: cache_cpu,
-    }
+    LockId { container: LockOwnerId::NotApp, process: LockOwnerId::NotApp, major: ALLOCATOR_CACHE_MAJOR, minor: cache_cpu }
 }
 
 #[verifier::opaque]

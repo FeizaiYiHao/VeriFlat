@@ -95,10 +95,7 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
             final(self).spec_index(flags_ptr).owning_container == old(self).spec_index(flags_ptr).owning_container,
             final(self).spec_index(flags_ptr).flags.unchanged_except(&old(self).spec_index(flags_ptr).flags, cpu_id),
             final(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id) == old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id),
-            wlock_ensures(
-                old(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(),
-                old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), final(lctx), ret.view(),
-            ),
+            wlock_ensures(old(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(), old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id)),
     {
         let table = self.borrow_mut(flags_ptr);
@@ -177,10 +174,7 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
         let table = self.borrow_mut(flags_ptr);
         let flag = table.flags.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
         flag.set(value);
-        proof {
-            reveal(cpu_offline_requests_of);
-            assert_seqs_equal!(cpu_offline_requests_of(self.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).spec_index(flags_ptr)).update(cpu_id as int, value));
-        }
+        proof { reveal(cpu_offline_requests_of); assert_seqs_equal!(cpu_offline_requests_of(self.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).spec_index(flags_ptr)).update(cpu_id as int, value)); }
     }
 }
 }

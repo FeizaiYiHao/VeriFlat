@@ -1,4 +1,5 @@
 #![feature(adt_const_params)]
+#![no_std]
 
 use vstd::prelude::*;
 
@@ -45,6 +46,7 @@ pub use kernel::lemma::*;
 pub use kernel::release_and_finish_syscall::*;
 pub use kernel::implementation::attach_endpoint_reference_and_unlock::*;
 pub use kernel::implementation::create_thread_from_staged_page::*;
+pub use kernel::implementation::create_endpoint_from_staged_page::*;
 pub use kernel::implementation::create_process_from_staged_pages::*;
 pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::lock_owned_2m_page_tails::*;

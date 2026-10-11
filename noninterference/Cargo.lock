@@ -113,6 +113,7 @@ dependencies = [
  "veriflat_syscall_new_container",
  "veriflat_syscall_new_process",
  "veriflat_syscall_new_thread",
+ "veriflat_syscall_pci",
  "veriflat_syscall_schedule",
  "veriflat_syscall_unmap_4k",
  "veriflat_u_facts",
@@ -179,6 +180,14 @@ name = "veriflat_syscall_new_thread"
 version = "0.1.0"
 dependencies = [
  "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_pci"
+version = "0.1.0"
+dependencies = [
  "veriflat_kernel_core",
  "vstd",
 ]

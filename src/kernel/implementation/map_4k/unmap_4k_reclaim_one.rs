@@ -5,10 +5,7 @@ use super::unmap_4k_reclaim::remove_last_4k_mapping_to_allocator;
 
 verus! {
 #[verifier::spinoff_prover]
-proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(
-    krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
-    owner: RwLockContainerPtr, depth: usize, thread_depth: usize,
-)
+proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, thread_depth: usize)
     requires
         krnl.inv(),
         krnl.pt_mp.dom().contains(pagetable),
@@ -24,39 +21,38 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(
     ensures
         depth <= thread_depth,
         thread_depth <= MAX_CONTAINER_TREE_DEPTH,
-        if depth == thread_depth {
-            owner == krnl.thr_mp.spec_index(thread_ptr).view().owning_container
-        } else {
-            krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner
-        },
+        if depth == thread_depth { owner == krnl.thr_mp.spec_index(thread_ptr).view().owning_container } else { krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
 {
     let page_index = page_ptr2page_index(page_ptr);
     let proc_ptr = krnl.pt_mp.spec_index(pagetable).view().proc_ptr;
     let thread_proc = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
     let thread_owner = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
-    assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
-    assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va)) && krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).owning_container.view() == owner
-    ) by { reveal(mapped_4k_page_pagetable_wf); };
+    assert(index_valid(NUM_PAGES, page_index));
+    assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))
+        && krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).owning_container.view() == owner) by { reveal(mapped_4k_page_pagetable_wf); };
     assert(krnl.prc_mp.dom().contains(proc_ptr) && {
             ||| krnl.prc_mp.spec_index(proc_ptr).view_rodata().view().owning_container == owner
             ||| krnl.ctn_mp.spec_index(owner).view_ghost().subtree_set.view().contains(krnl.prc_mp.spec_index(proc_ptr).view_rodata().view().owning_container,)
-        }
-    ) by { reveal(container_process_page_pagetable_wf); };
-    assert(krnl.prc_mp.dom().contains(thread_proc) && !krnl.prc_mp.spec_index(thread_proc).view().zombie && krnl.prc_mp.spec_index(thread_proc).view().pagetable == pagetable && krnl.prc_mp.spec_index(thread_proc).view_rodata().view().owning_container == thread_owner
-    ) by { reveal(process_thread_wf); };
+        }) by { reveal(container_process_page_pagetable_wf); };
+    assert(krnl.prc_mp.dom().contains(thread_proc) && !krnl.prc_mp.spec_index(thread_proc).view().zombie && krnl.prc_mp.spec_index(thread_proc).view().pagetable == pagetable
+        && krnl.prc_mp.spec_index(thread_proc).view_rodata().view().owning_container == thread_owner) by { reveal(process_thread_wf); };
     assert(proc_ptr == thread_proc) by { reveal(process_pagetable_match); };
-    assert(krnl.ctn_mp.dom().contains(thread_owner) && krnl.ctn_mp.spec_index(thread_owner).view_ghost().owned_threads.view().contains(thread_ptr) && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq && thread_depth == krnl.ctn_mp.spec_index(thread_owner).view_rodata().view().depth
-    ) by { reveal(container_thread_wf); };
-    assert(krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().len() == thread_depth && thread_depth <= MAX_CONTAINER_TREE_DEPTH
-    ) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(krnl.ctn_mp.dom().contains(thread_owner) && krnl.ctn_mp.spec_index(thread_owner).view_ghost().owned_threads.view().contains(thread_ptr)
+        && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq
+        && thread_depth == krnl.ctn_mp.spec_index(thread_owner).view_rodata().view().depth) by { reveal(container_thread_wf); };
+    assert(krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().len() == thread_depth
+        && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     if owner != thread_owner {
-        assert(krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().len() > depth && krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().spec_index(depth as int) == owner
-        ) by { reveal(container_subtree_set_wf); };
+        assert(krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().len() > depth
+            && krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq.view().spec_index(depth as int) == owner) by { reveal(container_subtree_set_wf); };
     }
 }
 
 #[verifier::spinoff_prover]
-pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, pagetable_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>)
+pub fn reclaim_unmapped_4k_page(
+    krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, pagetable_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
+)
     requires
         old(steps).snapshot_k() == *old(krnl),
         old(krnl).inv(),
@@ -69,8 +65,8 @@ pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.owners() == old(steps).snapshot_k().irt.owners(),
-        old(krnl).irt.iommu_roots() == old(steps).snapshot_k().irt.iommu_roots(),
+        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
+        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
         old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
         old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -113,7 +109,8 @@ pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         final(krnl).thr_mp.dom().contains(thread_ptr),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
-        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
+        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
+            indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         *final(direct) == final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
         forall|depth: int| #![trigger final(indirect)[depth]] 0 <= depth < final(krnl).thr_mp.spec_index(thread_ptr).view().container_depth ==> final(indirect)[depth] == final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(depth),
         final(krnl).pt_mp.dom().contains(pagetable),
@@ -126,55 +123,33 @@ pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, final(krnl).pt_mp.spec_index(pagetable).view()),
 {
     let indices = va2index(va);
-    proof {
-        pagetable_perms_wf_at(krnl.pt_mp, pagetable);
-        assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3,); };
-    }
+    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3,); }; }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-    assert(pt.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };
     let l4 = pt.get_entry_l4(indices.0).unwrap();
     let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
     let l2 = pt.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
     let page_ptr = pt.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap().addr;
-    assert(page_ptr_valid(page_ptr)) by { reveal(mapped_4k_page_pagetable_wf); };
+    assert(page_ptr_valid(page_ptr));
     let page_index = page_ptr2page_index(page_ptr);
-    proof {
-        assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
-        page_array_wf_at(krnl.pg_arr, page_index);
-        assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { reveal(mapped_4k_page_pagetable_wf); };
-    }
+    proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { reveal(mapped_4k_page_pagetable_wf); }; }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    proof {
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-    }
     proof { page_array_wf_at(krnl.pg_arr, page_index); }
     let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     if page.ref_count > 1 || page.is_io_page {
         remove_4k_mapping_without_free(krnl, pagetable, va, page_ptr, Tracked(&mut *lctx), pagetable_perm, Tracked(&page_perm));
-
         krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_perm));
     } else {
         let owner = page.owning_container;
-        proof {
-            assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
-            container_perms_wf_at(krnl.ctn_mp, owner);
-        }
+        proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); }; container_perms_wf_at(krnl.ctn_mp, owner); }
         let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
         let depth = owner_ro.depth;
         let allocator_ptr = owner_ro.allocator_ptr_4k;
         proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
         let thread_depth = thread.container_depth;
-        proof {
-            prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, thread_depth,);
-        }
-        proof {
-            assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && lctx.page_lock_map().dom().contains(page_index)) by { reveal(container_allocator_wf); };
-            allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-            page_array_wf_at(krnl.pg_arr, page_index);
-        }
+        proof { prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, thread_depth,); }
+        proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && lctx.page_lock_map().dom().contains(page_index)) by { reveal(container_allocator_wf); }; page_array_wf_at(krnl.pg_arr, page_index); }
         let Tracked(cache_perm) = krnl.wlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx));
         let cache = krnl.allc_4k_mp.borrow_cache_typed(allocator_ptr, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(&cache_perm));
         if cache.linked_list.len() == ALLOCATOR_MAX_WATERMARK {
@@ -193,18 +168,11 @@ pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
             && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
         let mut counter = if depth == thread_depth { *direct } else { indirect[depth] };
-
         remove_last_4k_mapping_to_allocator(krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, &mut counter, Tracked(&mut *lctx), pagetable_perm, Tracked(&page_perm), thread_perm, Tracked(&cache_perm));
-
         if depth == thread_depth { *direct = counter; } else { indirect[depth] = counter; }
         krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_perm));
-
         krnl.wunlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_perm));
-
-        proof {
-            assert(lctx.allocator_cache_4k_lock_map() == old(lctx).allocator_cache_4k_lock_map()) by { map_insert_remove_absent_lemma(old(lctx).allocator_cache_4k_lock_map(), (allocator_ptr, cpu_id), TypedHeldLock { lock_id: krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }); };
-            assert(lctx.allocator_global_pool_4k_lock_map() == old(lctx).allocator_global_pool_4k_lock_map()) by { map_insert_remove_absent_lemma(old(lctx).allocator_global_pool_4k_lock_map(), allocator_ptr, TypedHeldLock { lock_id: krnl.allc_4k_mp.spec_index(allocator_ptr).global_pool.lock_id(), mode: TypedLockMode::Write }); };
-        }
+        proof { assert(lctx.allocator_cache_4k_lock_map() == old(lctx).allocator_cache_4k_lock_map()); assert(lctx.allocator_global_pool_4k_lock_map() == old(lctx).allocator_global_pool_4k_lock_map()); }
     }
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {

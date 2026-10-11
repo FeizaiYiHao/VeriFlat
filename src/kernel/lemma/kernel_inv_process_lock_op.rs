@@ -4,38 +4,24 @@ use crate::kernel::*;
 
 verus! {
 /// Process invariant fields other than the empty-thread write-lock guard.
-pub open spec fn process_invariant_fields_unchanged(
-    pre: ProcessLockedMap,
-    post: ProcessLockedMap,
-) -> bool {
+pub open spec fn process_invariant_fields_unchanged(pre: ProcessLockedMap, post: ProcessLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger pre.spec_index(p_ptr)]
         #![trigger post.spec_index(p_ptr)]
-        pre.dom().contains(p_ptr) ==>
-        {
-            &&& post.spec_index(p_ptr).view()
-                == pre.spec_index(p_ptr).view()
-            &&& post.spec_index(p_ptr).view_rodata()
-                == pre.spec_index(p_ptr).view_rodata()
-            &&& post.spec_index(p_ptr).view_ghost()
-                == pre.spec_index(p_ptr).view_ghost()
+        pre.dom().contains(p_ptr) ==> {
+            &&& post.spec_index(p_ptr).view() == pre.spec_index(p_ptr).view()
+            &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
+            &&& post.spec_index(p_ptr).view_ghost() == pre.spec_index(p_ptr).view_ghost()
         }
 }
 
-pub proof fn process_lock_op_preserves_invariant_fields(
-    pre: ProcessLockedMap,
-    post: ProcessLockedMap,
-    changed: RwLockProcessPtr,
-)
+pub proof fn process_lock_op_preserves_invariant_fields(pre: ProcessLockedMap, post: ProcessLockedMap, changed: RwLockProcessPtr)
     requires
         post.unchanged_except(&pre, changed),
-        post.spec_index(changed).view()
-            == pre.spec_index(changed).view(),
-        post.spec_index(changed).view_rodata()
-            == pre.spec_index(changed).view_rodata(),
-        post.spec_index(changed).view_ghost()
-            == pre.spec_index(changed).view_ghost(),
+        post.spec_index(changed).view() == pre.spec_index(changed).view(),
+        post.spec_index(changed).view_rodata() == pre.spec_index(changed).view_rodata(),
+        post.spec_index(changed).view_ghost() == pre.spec_index(changed).view_ghost(),
     ensures
         process_invariant_fields_unchanged(pre, post),
 {
@@ -95,6 +81,5 @@ pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: 
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
-    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
 }
 }

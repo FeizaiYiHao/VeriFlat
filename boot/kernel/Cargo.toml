@@ -1,0 +1,27 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+publish = false
+
+[dependencies]
+astd = { path = "../astd", features = ["kernel"] }
+vsys = { path = "../vsys" }
+ns16550a = { path = "../ns16550a" }
+kernel-logger = { path = "../kernel-logger" }
+
+# The verified kernel, compiled with ghost code erased.
+VeriFlat = { path = "../..", default-features = false }
+vstd = { path = "../../verus/source/vstd", default-features = false, features = ["alloc"] }
+
+bit_field = "0.10.1"
+bitfield = "0.13.2"  # Totally non-confusing crate name
+displaydoc = { version = "0.2.3", default-features = false }
+log = "0.4.14"
+num-traits = { version = "0.2.14", default-features = false }
+x86 = "0.52.0"
+bitflags = "2.4.2"
+
+[build-dependencies]
+nasm-rs = "0.2.4"

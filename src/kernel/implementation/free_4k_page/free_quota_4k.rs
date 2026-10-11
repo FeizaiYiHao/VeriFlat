@@ -37,9 +37,12 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, own
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
         final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
         final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
+        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
+            indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() == if depth == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { 0usize } else { old(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() },
-        final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() == if depth < old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().update(depth as int, 0usize) } else { old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() },
+        final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()
+            == if depth < old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().update(depth as int, 0usize) }
+            else { old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() },
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.inv(),
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.locking_thread() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.locking_thread(),
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.lock_id(),
@@ -51,25 +54,27 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, own
         *final(krnl) == (KernelK { thr_mp: final(krnl).thr_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
 {
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view()) by {
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
+        reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
         let direct = krnl.ctn_mp.spec_index(owner).view_ghost().owned_threads.view();
         let indirect = krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view();
         lemma_process_effective_quota_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
         let effective = |t: RwLockThreadPtr| thread_effective_quota_4k(krnl.thr_mp.spec_index(t));
-        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t))) && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(direct, effective); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t)))
+            && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(direct, effective); };
         lemma_thread_direct_pending_4k_fold_nonneg(direct, krnl.thr_mp);
         lemma_thread_indirect_pending_4k_fold_nonneg(indirect, krnl.thr_mp, depth as int);
         if depth == krnl.thr_mp.spec_index(thread_ptr).view().container_depth {
             let value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view() as int;
-            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view()) && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(direct, value, thread_ptr); };
+            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_4k.view())
+                && direct.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(direct, value, thread_ptr); };
         } else {
             let value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth as int) as int;
-            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth as int)) && indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(indirect, value, thread_ptr); };
+            assert((|sum: int, t: RwLockThreadPtr| sum + value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_4k.view().spec_index(depth as int))
+                && indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + value(t)) >= value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(indirect, value, thread_ptr); };
         }
     };
     let amount = *counter;
     assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); };
-    assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     thread_map_clear_free_quota_pending_4k(&mut krnl.thr_mp, thread_ptr, depth, counter, Tracked(&*lctx), thread_perm);
     {
         let quota = krnl.allc_4k_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), quota_perm);
@@ -87,8 +92,8 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, own
             assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by {
                 reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
                 lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-            lemma_thread_pending_4k_folds_change_by_forall(thread_ptr, if depth == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int }, depth as int, if depth < old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int });
-
+                lemma_thread_pending_4k_folds_change_by_forall(thread_ptr, if depth == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int },
+                    depth as int, if depth < old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int });
             };
             assert(container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(krnl.ctn_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.allc_2m_mp); };
             assert(container_process_allocator_quota_1g_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(krnl.ctn_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.allc_1g_mp); };

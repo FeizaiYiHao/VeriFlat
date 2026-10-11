@@ -4,12 +4,7 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub fn wlock_cpu_offline_flag(
-        &mut self,
-        flags_ptr: RwLockCpuOfflineFlagsPtr,
-        cpu_id: CpuId,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-    ) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_cpu_offline_flag(&mut self, flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).cpu_offline_mp.dom().contains(flags_ptr),
@@ -35,17 +30,18 @@ impl KernelK {
             cpu_offline_requests_of(final(self).cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).cpu_offline_mp.spec_index(flags_ptr)),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            wlock_ensures(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(), old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), final(lctx), ret.view()),
+            wlock_ensures(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(),
+                old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), final(lctx), ret.view()),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id), TypedHeldLock { lock_id: final(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
     {
         proof {
             assert(old(self).cpu_offline_mp.perms_wf() && old(self).cpu_offline_mp.spec_index(flags_ptr).inv()) by { reveal(cpu_offline_flags_wf); };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); };
             assert(!old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locked_by_thread(old(lctx).thread_id())) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
-            assert(wlock_requires(self.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(), &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         }
         let ret = self.cpu_offline_mp.wlock_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));
         proof {
+            assert(cpu_offline_flags_invariant_fields_unchanged(old(self).cpu_offline_mp, self.cpu_offline_mp)) by { cpu_offline_flags_lock_op_preserves_invariant_fields(old(self).cpu_offline_mp, self.cpu_offline_mp, flags_ptr, cpu_id); };
             assert(cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
             assert(container_cpu_offline_flags_wf(self.ctn_mp, self.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -61,13 +57,7 @@ impl KernelK {
         ret
     }
 
-    pub fn wunlock_cpu_offline_flag(
-        &mut self,
-        flags_ptr: RwLockCpuOfflineFlagsPtr,
-        cpu_id: CpuId,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        lock_perm: Tracked<LockPerm>,
-    )
+    pub fn wunlock_cpu_offline_flag(&mut self, flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).cpu_offline_mp.dom().contains(flags_ptr),
@@ -102,6 +92,7 @@ impl KernelK {
         }
         self.cpu_offline_mp.wunlock_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), lock_perm);
         proof {
+            assert(cpu_offline_flags_invariant_fields_unchanged(old(self).cpu_offline_mp, self.cpu_offline_mp)) by { cpu_offline_flags_lock_op_preserves_invariant_fields(old(self).cpu_offline_mp, self.cpu_offline_mp, flags_ptr, cpu_id); };
             assert(cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
             assert(container_cpu_offline_flags_wf(self.ctn_mp, self.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };

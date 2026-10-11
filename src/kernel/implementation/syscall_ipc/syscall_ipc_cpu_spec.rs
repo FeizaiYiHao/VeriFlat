@@ -2,12 +2,12 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-#[verifier::opaque]
 /// Dequeues and schedules the endpoint waiter and, on success, moves the Off
 /// CPU between the source and target CPU sets, preserving PCID and published state.
+#[verifier::opaque]
 pub open spec fn ipc_cpu_rendezvous_transition(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
-    endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
+    endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
     source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,
     transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
@@ -16,6 +16,9 @@ pub open spec fn ipc_cpu_rendezvous_transition(
     &&& index_valid(NUM_CPUS, transfer_cpu_id)
     &&& current_thread_ptr != peer_thread_ptr
     &&& source_container != target_container
+    &&& pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container != pre.thr_mp.spec_index(current_thread_ptr).view().owning_container
+    &&& index_valid(NUM_CPUS, wake_cpu)
+    &&& wake_cpu == pre.thr_mp.spec_index(peer_thread_ptr).view().last_cpu
     &&& source_cpu_set != target_cpu_set
     &&& pre.ctn_mp.dom().contains(source_container)
     &&& pre.ctn_mp.dom().contains(target_container)
@@ -57,11 +60,8 @@ pub open spec fn ipc_cpu_rendezvous_transition(
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
-    &&& forall|cpu_i: CpuId|
-        #![trigger pre.cpu_arr.spec_index(cpu_i)]
-        #![trigger post.cpu_arr.spec_index(cpu_i)]
-        index_valid(NUM_CPUS, cpu_i) && (!transferred || cpu_i != transfer_cpu_id)
-            ==> post.cpu_arr.spec_index(cpu_i) == pre.cpu_arr.spec_index(cpu_i)
+    &&& forall|cpu_i: CpuId| #![trigger pre.cpu_arr.spec_index(cpu_i)] #![trigger post.cpu_arr.spec_index(cpu_i)]
+        index_valid(NUM_CPUS, cpu_i) && (!transferred || cpu_i != transfer_cpu_id) ==> post.cpu_arr.spec_index(cpu_i) == pre.cpu_arr.spec_index(cpu_i)
     &&& transferred ==> {
         let before = pre.cpu_arr.spec_index(transfer_cpu_id).view();
         let after = post.cpu_arr.spec_index(transfer_cpu_id).view();
@@ -72,44 +72,38 @@ pub open spec fn ipc_cpu_rendezvous_transition(
         &&& after.locking_thread() is Write
         &&& after.locking_thread()->Write_thread_id == thread_id
         &&& after.view().view() == CpuView { owning_container: target_container, container_depth: pre.ctn_mp.spec_index(target_container).view_rodata().view().depth, ..before.view().view() }
+        &&& after.view().wf()
     }
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
-    &&& forall|key: RwLockCpuSetPtr|
-        #![trigger pre.cpu_set_mp.spec_index(key)]
-        #![trigger post.cpu_set_mp.spec_index(key)]
-        pre.cpu_set_mp.dom().contains(key) ==> {
-            let before = pre.cpu_set_mp.spec_index(key);
-            let after = post.cpu_set_mp.spec_index(key);
-            &&& post.cpu_set_mp.view().spec_index(key).is_init() == pre.cpu_set_mp.view().spec_index(key).is_init()
-            &&& post.cpu_set_mp.view().spec_index(key).addr() == pre.cpu_set_mp.view().spec_index(key).addr()
-            &&& !(key == source_cpu_set || key == target_cpu_set) ==> after == before
-            &&& (key == source_cpu_set || key == target_cpu_set) ==> {
-                &&& after.is_init() == before.is_init()
-                &&& after.view_rodata() == before.view_rodata()
-                &&& after.view_ghost() == before.view_ghost()
-                &&& after.being_killed() == before.being_killed()
-                &&& after.locking_thread() is Write
-                &&& after.locking_thread()->Write_thread_id == thread_id
-                &&& after.view().owning_container == before.view().owning_container
-                &&& after.view().container_depth == before.view().container_depth
-                &&& !transferred ==> after.view().owned_cpus == before.view().owned_cpus
-                &&& transferred ==> {
-                    &&& after.view().owned_cpus.view() == if key == source_cpu_set { before.view().owned_cpus.view().remove(transfer_cpu_id) } else { before.view().owned_cpus.view().insert(transfer_cpu_id) }
-                    &&& after.view().owned_cpus.closed_view() == if key == source_cpu_set { before.view().owned_cpus.closed_view().remove(transfer_cpu_id) } else { before.view().owned_cpus.closed_view().insert(transfer_cpu_id) }
-                    &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, key == target_cpu_set)
-                    &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, key == target_cpu_set)
-                    &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int + if key == source_cpu_set { -1int } else { 1int }
-                }
+    &&& forall|key: RwLockCpuSetPtr| #![trigger pre.cpu_set_mp.spec_index(key)] #![trigger post.cpu_set_mp.spec_index(key)] pre.cpu_set_mp.dom().contains(key) ==> {
+        let before = pre.cpu_set_mp.spec_index(key);
+        let after = post.cpu_set_mp.spec_index(key);
+        &&& post.cpu_set_mp.view().spec_index(key).is_init() == pre.cpu_set_mp.view().spec_index(key).is_init()
+        &&& post.cpu_set_mp.view().spec_index(key).addr() == pre.cpu_set_mp.view().spec_index(key).addr()
+        &&& !(key == source_cpu_set || key == target_cpu_set) ==> after == before
+        &&& (key == source_cpu_set || key == target_cpu_set) ==> {
+            &&& after.is_init() == before.is_init()
+            &&& after.view_rodata() == before.view_rodata()
+            &&& after.view_ghost() == before.view_ghost()
+            &&& after.being_killed() == before.being_killed()
+            &&& after.locking_thread() is Write
+            &&& after.locking_thread()->Write_thread_id == thread_id
+            &&& after.view().owning_container == before.view().owning_container
+            &&& after.view().container_depth == before.view().container_depth
+            &&& !transferred ==> after.view().owned_cpus == before.view().owned_cpus
+            &&& transferred ==> {
+                &&& after.view().owned_cpus.view() == if key == source_cpu_set { before.view().owned_cpus.view().remove(transfer_cpu_id) } else { before.view().owned_cpus.view().insert(transfer_cpu_id) }
+                &&& after.view().owned_cpus.closed_view() == if key == source_cpu_set { before.view().owned_cpus.closed_view().remove(transfer_cpu_id) } else { before.view().owned_cpus.closed_view().insert(transfer_cpu_id) }
+                &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, key == target_cpu_set)
+                &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, key == target_cpu_set)
+                &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int + if key == source_cpu_set { -1int } else { 1int }
             }
         }
+    }
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
-    &&& forall|key: RwLockThreadPtr|
-        #![trigger pre.thr_mp.spec_index(key)]
-        #![trigger post.thr_mp.spec_index(key)]
-        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
-        #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
-        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
-        #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
+    &&& forall|key: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(key)] #![trigger post.thr_mp.spec_index(key)]
+        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_2m] #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_2m]
+        #![trigger pre.thr_mp.spec_index(key).view().temp_alloc_cache_1g] #![trigger post.thr_mp.spec_index(key).view().temp_alloc_cache_1g]
         pre.thr_mp.dom().contains(key) ==> {
             let before = pre.thr_mp.spec_index(key);
             let after = post.thr_mp.spec_index(key);
@@ -127,23 +121,21 @@ pub open spec fn ipc_cpu_rendezvous_transition(
         &&& after.view_ghost() == before.view_ghost()
         &&& after.being_killed() == before.being_killed()
         &&& after.locking_thread() == before.locking_thread()
-        &&& after.view() == Thread { state: ThreadState::SCHEDULED, blocking_endpoint_ptr: None, blocking_endpoint_index: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(peer_result), endpoint_linkedlist_node: after.view().endpoint_linkedlist_node, scheduler_linkedlist_node: after.view().scheduler_linkedlist_node, ..before.view() }
+        &&& after.view() == Thread { state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, blocking_endpoint_index: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(peer_result),
+            endpoint_linkedlist_node: after.view().endpoint_linkedlist_node, scheduler_linkedlist_node: after.view().scheduler_linkedlist_node, ..before.view() }
         &&& after.view().endpoint_linkedlist_node.addr() == before.view().endpoint_linkedlist_node.addr()
         &&& after.view().scheduler_linkedlist_node.addr() == before.view().scheduler_linkedlist_node.addr()
         &&& after.view().endpoint_linkedlist_node.is_init()
         &&& !after.view().scheduler_linkedlist_node.is_init()
     }
     &&& post.ep_mp.dom() == pre.ep_mp.dom()
-    &&& forall|key: RwLockEndpointPtr|
-        #![trigger pre.ep_mp.spec_index(key)]
-        #![trigger post.ep_mp.spec_index(key)]
-        pre.ep_mp.dom().contains(key) ==> {
-            let before = pre.ep_mp.spec_index(key);
-            let after = post.ep_mp.spec_index(key);
-            &&& post.ep_mp.view().spec_index(key).is_init() == pre.ep_mp.view().spec_index(key).is_init()
-            &&& post.ep_mp.view().spec_index(key).addr() == pre.ep_mp.view().spec_index(key).addr()
-            &&& !(key == endpoint_ptr) ==> after == before
-        }
+    &&& forall|key: RwLockEndpointPtr| #![trigger pre.ep_mp.spec_index(key)] #![trigger post.ep_mp.spec_index(key)] pre.ep_mp.dom().contains(key) ==> {
+        let before = pre.ep_mp.spec_index(key);
+        let after = post.ep_mp.spec_index(key);
+        &&& post.ep_mp.view().spec_index(key).is_init() == pre.ep_mp.view().spec_index(key).is_init()
+        &&& post.ep_mp.view().spec_index(key).addr() == pre.ep_mp.view().spec_index(key).addr()
+        &&& !(key == endpoint_ptr) ==> after == before
+    }
     &&& {
         let before = pre.ep_mp.spec_index(endpoint_ptr);
         let after = post.ep_mp.spec_index(endpoint_ptr);
@@ -161,33 +153,31 @@ pub open spec fn ipc_cpu_rendezvous_transition(
         &&& after.view().queue.dom() == before.view().queue.dom().remove(pre.thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr())
     }
     &&& post.sched_mp.dom() == pre.sched_mp.dom()
-    &&& forall|key: RwLockSchedulerPtr|
-        #![trigger pre.sched_mp.spec_index(key)]
-        #![trigger post.sched_mp.spec_index(key)]
-        pre.sched_mp.dom().contains(key) ==> {
-            let before = pre.sched_mp.spec_index(key);
-            let after = post.sched_mp.spec_index(key);
-            &&& post.sched_mp.view().spec_index(key).is_init() == pre.sched_mp.view().spec_index(key).is_init()
-            &&& post.sched_mp.view().spec_index(key).addr() == pre.sched_mp.view().spec_index(key).addr()
-            &&& !(key == peer_scheduler_ptr) ==> after == before
-        }
+    &&& forall|key: RwLockSchedulerPtr| #![trigger pre.sched_mp.spec_index(key)] #![trigger post.sched_mp.spec_index(key)] pre.sched_mp.dom().contains(key) ==> {
+        let before = pre.sched_mp.spec_index(key);
+        let after = post.sched_mp.spec_index(key);
+        &&& post.sched_mp.view().spec_index(key).is_init() == pre.sched_mp.view().spec_index(key).is_init()
+        &&& post.sched_mp.view().spec_index(key).addr() == pre.sched_mp.view().spec_index(key).addr()
+        &&& !(key == peer_scheduler_ptr) ==> after == before
+    }
     &&& {
         let before = pre.sched_mp.spec_index(peer_scheduler_ptr);
         let after = post.sched_mp.spec_index(peer_scheduler_ptr);
-        &&& after.is_init() == before.is_init()
-        &&& after.view_rodata() == before.view_rodata()
-        &&& after.view_ghost() == before.view_ghost()
-        &&& after.being_killed() == before.being_killed()
-        &&& after.locking_thread() is Write
-        &&& after.locking_thread()->Write_thread_id == thread_id
-        &&& after.view() == Scheduler { queue: after.view().queue, ..before.view() }
-        &&& after.view().queue.container_depth == before.view().queue.container_depth
-        &&& after.view().queue.lock_minor() == before.view().queue.lock_minor()
-        &&& after.view().queue.view() == before.view().queue.view().push(peer_thread_ptr)
-        &&& after.view().queue.length as int == before.view().queue.length as int + 1
-        &&& after.view().queue.map() == before.view().queue.map().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr(), peer_thread_ptr)
-        &&& after.view().queue.dom() == before.view().queue.dom().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
-        &&& !before.view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
+        let shard_before = before.shards.spec_index(wake_cpu).view();
+        let shard_after = after.shards.spec_index(wake_cpu).view();
+        &&& after.owning_container == before.owning_container
+        &&& after.shards.entries_unchanged_except(&before.shards, wake_cpu)
+        &&& shard_after.is_init() == shard_before.is_init()
+        &&& shard_after.view_rodata() == shard_before.view_rodata()
+        &&& shard_after.view_ghost() == shard_before.view_ghost()
+        &&& shard_after.being_killed() == shard_before.being_killed()
+        &&& shard_after.locking_thread() is Write
+        &&& shard_after.locking_thread()->Write_thread_id == thread_id
+        &&& shard_after.view().queue.view() == shard_before.view().queue.view().push(peer_thread_ptr)
+        &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
+        &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr(), peer_thread_ptr)
+        &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
+        &&& !shard_before.view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
     }
 }
 }

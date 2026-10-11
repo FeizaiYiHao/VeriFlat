@@ -1,4 +1,0 @@
-use vstd::prelude::*;
-
-verus! {
-}

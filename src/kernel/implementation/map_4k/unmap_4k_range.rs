@@ -7,7 +7,10 @@ use super::unmap_4k_flush_all::flush_pagetable_tlbs;
 use super::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 
 verus! {
-pub fn unmap_4k_range(krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>)
+pub fn unmap_4k_range(
+    krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&mut LocalContext>,
+    Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
+)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -173,7 +176,12 @@ pub fn unmap_4k_range(krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPa
             krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             steps.nonlock_view().len() == old(steps).nonlock_view().len() + i,
             krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom(),
-            forall|j: int| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))] #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len ==> { &&& krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j)) &&& krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present == (i <= j) },
+            forall|j: int| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))]
+                #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
+                ==> {
+                    &&& krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))
+                    &&& krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present == (i <= j)
+                },
         decreases range.len - i,
     {
         let va = range.index(i);
@@ -312,9 +320,13 @@ pub fn unmap_4k_range(krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPa
             }),
             krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *range, unmapped: range.len, flushed: true }),
             direct == krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
-            forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < krnl.thr_mp.spec_index(thread_ptr).view().container_depth ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
+            forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < krnl.thr_mp.spec_index(thread_ptr).view().container_depth
+                ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
             pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, krnl.pt_mp.spec_index(pagetable).view()),
-            forall|j: int| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))] #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len ==> (if j < i { !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j)) } else { krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j)) && !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present }),
+            forall|j: int| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))]
+                #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
+                ==> (if j < i { !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j)) } else { krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))
+                    && !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present }),
         decreases range.len - i,
     {
         let va = range.index(i);

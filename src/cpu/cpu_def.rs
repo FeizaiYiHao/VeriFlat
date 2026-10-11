@@ -3,17 +3,14 @@ use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 verus! {
 #[derive(Clone, Copy)]
-pub enum CpuState{
+pub enum CpuState {
     Running,
     Idle,
-    // Killing,
-    // Killed,
     Off,
 }
 
-
 #[derive(Clone, Copy, Debug)]
-pub struct ProcessPageTablePair{
+pub struct ProcessPageTablePair {
     pub process_ptr: RwLockProcessPtr,
     pub pagetable_ptr: RwLockPageTableRoot,
 }
@@ -57,19 +54,12 @@ pub ghost struct CpuU {
     pub current_thread: Option<RwLockThreadPtr>,
 }
 
-impl LockUserVisibilityTrait for Cpu{
-    open spec fn is_user_visible() -> bool {
-        true
-    }
+impl LockUserVisibilityTrait for Cpu {
+    open spec fn is_user_visible() -> bool { true }
 }
 
-impl Cpu{
-    fn new_quiescent(
-        owning_container: RwLockContainerPtr,
-        container_depth: usize,
-        state: CpuState,
-        default_cr3: PageTableRoot,
-    ) -> (ret: Self)
+impl Cpu {
+    fn new_quiescent(owning_container: RwLockContainerPtr, container_depth: usize, state: CpuState, default_cr3: PageTableRoot) -> (ret: Self)
         requires
             state is Idle || state is Off,
             page_ptr_valid(default_cr3),
@@ -86,28 +76,16 @@ impl Cpu{
             ret.view().hw_halted == (state is Off),
             forall|pcid: Pcid|
                 #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
-                pcid_valid(pcid)
-                ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
+                pcid_valid(pcid) ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
     {
         Self {
-            owning_container,
-            state,
-            current_process: None,
-            current_thread: None,
-            current_pagetable: None,
-            cr3_pcid: CpuCr3Pcid::new(default_cr3, KERNEL_DEFAULT_PCID),
-            tlb_dirty_bitmap: BitMap::new_with_init_value(None),
-            container_depth,
-            process_depth: 0,
-            hw_halted: Ghost(state is Off),
+            owning_container, state, current_process: None, current_thread: None, current_pagetable: None,
+            cr3_pcid: CpuCr3Pcid::new(default_cr3, KERNEL_DEFAULT_PCID), tlb_dirty_bitmap: BitMap::new_with_init_value(None),
+            container_depth, process_depth: 0, hw_halted: Ghost(state is Off),
         }
     }
 
-    pub fn new_idle(
-        owning_container: RwLockContainerPtr,
-        container_depth: usize,
-        default_cr3: PageTableRoot,
-    ) -> (ret: Self)
+    pub fn new_idle(owning_container: RwLockContainerPtr, container_depth: usize, default_cr3: PageTableRoot) -> (ret: Self)
         requires
             page_ptr_valid(default_cr3),
         ensures
@@ -122,17 +100,12 @@ impl Cpu{
             ret.view().current_pcid == KERNEL_DEFAULT_PCID,
             forall|pcid: Pcid|
                 #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
-                pcid_valid(pcid)
-                ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
+                pcid_valid(pcid) ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
     {
         Self::new_quiescent(owning_container, container_depth, CpuState::Idle, default_cr3)
     }
 
-    pub fn new_off(
-        owning_container: RwLockContainerPtr,
-        container_depth: usize,
-        default_cr3: PageTableRoot,
-    ) -> (ret: Self)
+    pub fn new_off(owning_container: RwLockContainerPtr, container_depth: usize, default_cr3: PageTableRoot) -> (ret: Self)
         requires
             page_ptr_valid(default_cr3),
         ensures
@@ -147,16 +120,12 @@ impl Cpu{
             ret.view().current_pcid == KERNEL_DEFAULT_PCID,
             forall|pcid: Pcid|
                 #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
-                pcid_valid(pcid)
-                ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
+                pcid_valid(pcid) ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
     {
         Self::new_quiescent(owning_container, container_depth, CpuState::Off, default_cr3)
     }
 
-    pub fn new_boot_array(
-        owning_container: RwLockContainerPtr,
-        default_cr3: PageTableRoot,
-    ) -> (ret: CpuLockedArray)
+    pub fn new_boot_array(owning_container: RwLockContainerPtr, default_cr3: PageTableRoot) -> (ret: CpuLockedArray)
         requires
             0 < NUM_CPUS,
             page_ptr_valid(default_cr3),
@@ -164,29 +133,17 @@ impl Cpu{
             ret.inv(),
             forall|cpu_id: CpuId|
                 #![trigger ret.spec_index(cpu_id)]
-                index_valid(NUM_CPUS, cpu_id)
-                ==> {
+                index_valid(NUM_CPUS, cpu_id) ==> {
                     &&& ret.spec_index(cpu_id).view().inv()
                     &&& !ret.spec_index(cpu_id).view().locked()
-                    &&& ret.spec_index(cpu_id).view().view()
-                        .view().owning_container == owning_container
-                    &&& ret.spec_index(cpu_id).view().view()
-                        .view().container_depth == 0
-                    &&& ret.spec_index(cpu_id).view().view()
-                        .view().state == if cpu_id == 0 {
-                            CpuState::Idle
-                        } else {
-                            CpuState::Off
-                        }
-                    &&& ret.spec_index(cpu_id).view().view()
-                        .view().current_cr3 == default_cr3
-                    &&& ret.spec_index(cpu_id).view().view()
-                        .view().current_pcid == KERNEL_DEFAULT_PCID
+                    &&& ret.spec_index(cpu_id).view().view().view().owning_container == owning_container
+                    &&& ret.spec_index(cpu_id).view().view().view().container_depth == 0
+                    &&& ret.spec_index(cpu_id).view().view().view().state == if cpu_id == 0 { CpuState::Idle } else { CpuState::Off }
+                    &&& ret.spec_index(cpu_id).view().view().view().current_cr3 == default_cr3
+                    &&& ret.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
                 },
     {
-        let mut cpus:
-            Array<RwLock<Cpu, (), (), CPU_HAS_KILL_STATE>, NUM_CPUS>
-                = Array::new();
+        let mut cpus: Array<RwLock<Cpu, (), (), CPU_HAS_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -195,32 +152,18 @@ impl Cpu{
                 page_ptr_valid(default_cr3),
                 forall|old_cpu: CpuId|
                     #![trigger cpus.spec_index(old_cpu)]
-                    old_cpu < cpu_id
-                    ==> {
+                    old_cpu < cpu_id ==> {
                         &&& cpus.spec_index(old_cpu).inv()
                         &&& !cpus.spec_index(old_cpu).locked()
-                        &&& cpus.spec_index(old_cpu).view()
-                            .view().owning_container == owning_container
-                        &&& cpus.spec_index(old_cpu).view()
-                            .view().container_depth == 0
-                        &&& cpus.spec_index(old_cpu).view()
-                            .view().state == if old_cpu == 0 {
-                                CpuState::Idle
-                            } else {
-                                CpuState::Off
-                            }
-                        &&& cpus.spec_index(old_cpu).view()
-                            .view().current_cr3 == default_cr3
-                        &&& cpus.spec_index(old_cpu).view()
-                            .view().current_pcid == KERNEL_DEFAULT_PCID
+                        &&& cpus.spec_index(old_cpu).view().view().owning_container == owning_container
+                        &&& cpus.spec_index(old_cpu).view().view().container_depth == 0
+                        &&& cpus.spec_index(old_cpu).view().view().state == if old_cpu == 0 { CpuState::Idle } else { CpuState::Off }
+                        &&& cpus.spec_index(old_cpu).view().view().current_cr3 == default_cr3
+                        &&& cpus.spec_index(old_cpu).view().view().current_pcid == KERNEL_DEFAULT_PCID
                     },
             decreases NUM_CPUS - cpu_id,
         {
-            let cpu = if cpu_id == 0 {
-                Self::new_idle(owning_container, 0, default_cr3)
-            } else {
-                Self::new_off(owning_container, 0, default_cr3)
-            };
+            let cpu = if cpu_id == 0 { Self::new_idle(owning_container, 0, default_cr3) } else { Self::new_off(owning_container, 0, default_cr3) };
             cpus.set(cpu_id, RwLock::new_unlocked(cpu, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
@@ -229,17 +172,9 @@ impl Cpu{
 
     pub closed spec fn view(&self) -> CpuView {
         CpuView {
-            owning_container: self.owning_container,
-            state: self.state,
-            current_process: self.current_process,
-            current_thread: self.current_thread,
-            current_pagetable: self.current_pagetable,
-            current_cr3: self.cr3_pcid.cr3(),
-            current_pcid: self.cr3_pcid.pcid(),
-            tlb_dirty_bitmap: self.tlb_dirty_bitmap,
-            container_depth: self.container_depth,
-            process_depth: self.process_depth,
-            hw_halted: self.hw_halted.view(),
+            owning_container: self.owning_container, state: self.state, current_process: self.current_process, current_thread: self.current_thread,
+            current_pagetable: self.current_pagetable, current_cr3: self.cr3_pcid.cr3(), current_pcid: self.cr3_pcid.pcid(),
+            tlb_dirty_bitmap: self.tlb_dirty_bitmap, container_depth: self.container_depth, process_depth: self.process_depth, hw_halted: self.hw_halted.view(),
         }
     }
 
@@ -247,7 +182,8 @@ impl Cpu{
 
     #[verifier(when_used_as_spec(spec_state))]
     pub fn state(&self) -> (ret: CpuState)
-        ensures ret == self.state(),
+        ensures
+            ret == self.state(),
     {
         self.state
     }
@@ -256,7 +192,8 @@ impl Cpu{
 
     #[verifier(when_used_as_spec(spec_owning_container))]
     pub fn owning_container(&self) -> (ret: RwLockContainerPtr)
-        ensures ret == self.owning_container(),
+        ensures
+            ret == self.owning_container(),
     {
         self.owning_container
     }
@@ -265,7 +202,8 @@ impl Cpu{
 
     #[verifier(when_used_as_spec(spec_current_process))]
     pub fn current_process(&self) -> (ret: Option<RwLockProcessPtr>)
-        ensures ret == self.current_process(),
+        ensures
+            ret == self.current_process(),
     {
         self.current_process
     }
@@ -274,13 +212,13 @@ impl Cpu{
 
     #[verifier(when_used_as_spec(spec_current_thread))]
     pub fn current_thread(&self) -> (ret: Option<RwLockThreadPtr>)
-        ensures ret == self.current_thread(),
+        ensures
+            ret == self.current_thread(),
     {
         self.current_thread
     }
 
     pub open spec fn spec_current_cr3(&self) -> PageTableRoot { self.view().current_cr3 }
-
     pub open spec fn spec_current_pcid(&self) -> Pcid { self.view().current_pcid }
 
     pub fn flush_current_tlb(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
@@ -303,25 +241,23 @@ impl Cpu{
         self.cr3_pcid.flush_current(cpu_id, cr3, pcid, tlb, Tracked(lctx));
     }
 
-    pub open spec fn wf(&self) -> bool{
-        &&&
-        self.view().state is Off ==> (self.view().current_process is None && self.view().current_thread is None)
+    /// The cpu's exec copy of (cr3, pcid) matches the physical register whenever the cpu is unlocked.
+    pub closed spec fn cr3_matches_hardware(&self) -> bool { self.cr3_pcid.wf() }
+
+    pub open spec fn wf(&self) -> bool {
+        &&& self.cr3_matches_hardware()
+        &&& self.view().state is Off ==> (self.view().current_process is None && self.view().current_thread is None)
         &&& self.view().state is Idle ==> (self.view().current_process is None && self.view().current_thread is None)
         &&& (self.view().state is Off ==> forall|pcid: Pcid|
             #![trigger self.tlb_dirty_bitmap().spec_index(pcid)]
-            pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
-                ==> self.tlb_dirty_bitmap().spec_index(pcid) is None)
+            pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID ==> self.tlb_dirty_bitmap().spec_index(pcid) is None)
         &&& self.view().state is Running ==> (self.view().current_process is Some && self.view().current_thread is Some)
         &&& self.view().current_process is None == self.view().current_thread is None
         &&& self.view().current_process is None == self.view().current_pagetable is None
-        &&&
-        self.view().tlb_dirty_bitmap.inv()
+        &&& self.view().tlb_dirty_bitmap.inv()
     }
 
-    pub open spec fn tlb_dirty_bitmap(&self) -> Map<Pcid, Option<ProcessPageTablePair>>{
-        self.view().tlb_dirty_bitmap.view()
-    }
-
+    pub open spec fn tlb_dirty_bitmap(&self) -> Map<Pcid, Option<ProcessPageTablePair>> { self.view().tlb_dirty_bitmap.view() }
 
     pub fn transfer_off_cpu_to_container(&mut self, container: RwLockContainerPtr, depth: usize)
         requires
@@ -336,21 +272,30 @@ impl Cpu{
     }
 
     pub fn publish_idle_from_off(&mut self)
-        requires old(self).wf(), old(self).view().state is Off,
-        ensures final(self).wf(), final(self).view() == (CpuView { state: CpuState::Idle, ..old(self).view() }),
+        requires
+            old(self).wf(),
+            old(self).view().state is Off,
+        ensures
+            final(self).wf(),
+            final(self).view() == (CpuView { state: CpuState::Idle, ..old(self).view() }),
     {
         self.state = CpuState::Idle;
     }
 
     /// The woken cpu records that its hardware runs again; the software state is untouched.
     pub fn clear_hw_halted(&mut self)
-        requires old(self).wf(),
-        ensures final(self).wf(), final(self).view() == (CpuView { hw_halted: false, ..old(self).view() }),
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+            final(self).view() == (CpuView { hw_halted: false, ..old(self).view() }),
     { self.hw_halted = Ghost(false); }
 
     /// Publish Off from Idle with an empty dirty map; the caller has flushed every non-default PCID of this cpu.
     pub fn publish_off_from_idle(&mut self)
-        requires old(self).wf(), old(self).view().state is Idle,
+        requires
+            old(self).wf(),
+            old(self).view().state is Idle,
         ensures
             final(self).wf(),
             final(self).view() == (CpuView { state: CpuState::Off, tlb_dirty_bitmap: final(self).view().tlb_dirty_bitmap, hw_halted: true, ..old(self).view() }),
@@ -406,7 +351,9 @@ impl CpuLockedArray {
             forall|c: CpuId, p: Pcid|
                 #![trigger final(tlb).spec_index((c, p))]
                 #![trigger old(tlb).spec_index((c, p))]
-                index_valid(NUM_CPUS, c) && pcid_valid(p) ==> final(tlb).spec_index((c, p)) == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(tlb).spec_index((c, p)) },
+                index_valid(NUM_CPUS, c) && pcid_valid(p) ==>
+                    final(tlb).spec_index((c, p)) == if old(needflush).spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
+                    else { old(tlb).spec_index((c, p)) },
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
@@ -442,20 +389,9 @@ impl CpuLockedArray {
 
     /// Select a thread on this running or idle CPU without changing containers.
     pub fn switch_to_thread(
-        &mut self,
-        cpu_id: CpuId,
-        process_ptr: RwLockProcessPtr,
-        thread_ptr: RwLockThreadPtr,
-        pagetable_ptr: RwLockPageTableRoot,
-        cr3: PageTableRoot,
-        pcid: Pcid,
-        process_depth: usize,
-        tlb: &mut CpuTLB,
-        needflush: &mut PcidNeedFlushArray,
-        published: &mut CpuPublishedArray,
-        needflush_perm: Tracked<&LockPerm>,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        cpu_lock_perm: Tracked<&LockPerm>,
+        &mut self, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, cr3: PageTableRoot,
+        pcid: Pcid, process_depth: usize, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, published: &mut CpuPublishedArray,
+        needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>,
     )
         requires
             old(self).inv(),
@@ -526,7 +462,9 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
             final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
             final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
-            final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Running, current_process: Some(process_ptr), current_thread: Some(thread_ptr), current_pagetable: Some(pagetable_ptr), current_cr3: cr3, current_pcid: pcid, process_depth, tlb_dirty_bitmap: final(self).spec_index(cpu_id).view().view().view().tlb_dirty_bitmap, ..old(self).spec_index(cpu_id).view().view().view() }),
+            final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Running, current_process: Some(process_ptr), current_thread: Some(thread_ptr),
+                current_pagetable: Some(pagetable_ptr), current_cr3: cr3, current_pcid: pcid, process_depth, tlb_dirty_bitmap: final(self).spec_index(cpu_id).view().view().view().tlb_dirty_bitmap,
+                ..old(self).spec_index(cpu_id).view().view().view() }),
             final(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap() == old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr, pagetable_ptr })),
     {
         let pending = needflush.borrow_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm).needflush;
@@ -554,38 +492,21 @@ impl CpuLockedArray {
     }
 }
 
-impl LockInvTrait for Cpu{
-    open spec fn inv(&self) -> bool{
-        &&&
-        self.wf()
+impl LockInvTrait for Cpu {
+    open spec fn inv(&self) -> bool {
+        &&& self.wf()
     }
 }
 
 impl LockMajorTrait for Cpu {
-    open spec fn lock_major_1(&self) -> LockMajorId {
-        CPU_LOCK_MAJOR_RUNNING
-    }
-    open spec fn lock_major_2(&self) -> LockMajorId {
-        CPU_LOCK_MAJOR_IDLE
-    }
-    open spec fn lock_major_3(&self) -> LockMajorId {
-        CPU_LOCK_MAJOR_OFF
-    }
-    open spec fn lock_major_default(&self) -> LockMajorId {
-        PAGE_TABLE_LOCK_MAJOR
-    }
-    open spec fn lock_major_1_predicate(&self) -> bool {
-        self.view().state is Running
-    }
-    open spec fn lock_major_2_predicate(&self) -> bool {
-        self.view().state is Idle
-    }
-    open spec fn lock_major_3_predicate(&self) -> bool {
-        self.view().state is Off
-    }
-    open spec fn lock_major_default_predicate(&self) -> bool {
-        true
-    }
+    open spec fn lock_major_1(&self) -> LockMajorId { CPU_LOCK_MAJOR_RUNNING }
+    open spec fn lock_major_2(&self) -> LockMajorId { CPU_LOCK_MAJOR_IDLE }
+    open spec fn lock_major_3(&self) -> LockMajorId { CPU_LOCK_MAJOR_OFF }
+    open spec fn lock_major_default(&self) -> LockMajorId { PAGE_TABLE_LOCK_MAJOR }
+    open spec fn lock_major_1_predicate(&self) -> bool { self.view().state is Running }
+    open spec fn lock_major_2_predicate(&self) -> bool { self.view().state is Idle }
+    open spec fn lock_major_3_predicate(&self) -> bool { self.view().state is Off }
+    open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
 impl LockOwnerIdTrait for Cpu {

@@ -49,10 +49,7 @@ impl CpuTLB {
     {
         unsafe { veriflat_local_flush_all_pcids(); }
         let ghost old_tlbs = self.cpu_tlbs.view();
-        self.cpu_tlbs = Ghost(Map::new(
-            old_tlbs.dom(),
-            |k: (CpuId, Pcid)| if k.0 == cpu_id && k.1 != KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old_tlbs.index(k) },
-        ));
+        self.cpu_tlbs = Ghost(Map::new(old_tlbs.dom(), |k: (CpuId, Pcid)| if k.0 == cpu_id && k.1 != KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old_tlbs.index(k) }));
     }
 }
 }

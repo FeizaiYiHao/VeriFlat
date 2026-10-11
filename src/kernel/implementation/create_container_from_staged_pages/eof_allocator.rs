@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-
 #[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_4k_global_ptr_valid(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -35,11 +34,7 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_ptr_valid(
         page_ptr_valid(page_ptr),
 {
     reveal(publish_staged_container_root_kernel_state_framing);
-    if alloc_ptr == allocator_4k_page {
-        funding_pages.to_set_ensures();
-    } else {
-        reveal(allocator_free_page_ptrs_wf);
-    }
+    if alloc_ptr == allocator_4k_page { funding_pages.to_set_ensures(); } else { reveal(allocator_free_page_ptrs_wf); }
 }
 
 #[verifier::spinoff_prover]
@@ -82,10 +77,7 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
             post.allc_4k_mp.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
         ]
         {
-            &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free4k {
-                    allocator_ptr: Ghost(alloc_ptr),
-                    state: FreePageAllocatorState::GlobalList,
-                }
+            &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free4k { allocator_ptr: Ghost(alloc_ptr), state: FreePageAllocatorState::GlobalList }
             &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == post.allc_4k_mp.spec_index(alloc_ptr).owning_container
         },
 {
@@ -123,11 +115,7 @@ pub(super) broadcast proof fn eof_allocator_free_1g_global_forward(
             allocator_quota_4k, process_quota_4k
         ),
         index_valid(NUM_PAGES, page_index),
-        post.pg_arr.spec_index(page_index).view().view().state
-            matches PageState::Free1g {
-                allocator_ptr: _,
-                state: FreePageAllocatorState::GlobalList,
-            },
+        post.pg_arr.spec_index(page_index).view().view().state matches PageState::Free1g { allocator_ptr: _, state: FreePageAllocatorState::GlobalList },
         post.pg_arr.spec_index(page_index).view().view().state == pre.pg_arr.spec_index(page_index).view().view().state,
         post.pg_arr.spec_index(page_index).view().view().owning_container == pre.pg_arr.spec_index(page_index).view().view().owning_container,
         post.pg_arr.spec_index(page_index).view().view().free_list_node_storage == pre.pg_arr.spec_index(page_index).view().view().free_list_node_storage,
@@ -188,10 +176,7 @@ pub(super) broadcast proof fn eof_allocator_free_1g_global_backward(
         {
             &&& page_ptr_valid(page_ptr)
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page_ptr))
-            &&& pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free1g {
-                    allocator_ptr: Ghost(alloc_ptr),
-                    state: FreePageAllocatorState::GlobalList,
-                }
+            &&& pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free1g { allocator_ptr: Ghost(alloc_ptr), state: FreePageAllocatorState::GlobalList }
             &&& pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == pre.allc_1g_mp.spec_index(alloc_ptr).owning_container
         },
 {
@@ -230,21 +215,17 @@ pub(super) proof fn eof_allocator_quota_wf(
     lemma_thread_quota_folds_empty(child_threads, pre.thr_mp, child_depth);
     lemma_thread_quota_folds_empty(child_indirect_threads, pre.thr_mp, child_depth);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, pre.thr_mp, post.allc_4k_mp)) by {
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf);
-        lemma_process_effective_quota_4k_fold_sum_eq_forall();
+        reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf); lemma_process_effective_quota_4k_fold_sum_eq_forall();
     };
     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, pre.thr_mp, post.allc_2m_mp)) by {
-        reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); reveal(container_allocator_wf);
-        lemma_process_effective_quota_2m_fold_sum_eq_forall();
+        reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); reveal(container_allocator_wf); lemma_process_effective_quota_2m_fold_sum_eq_forall();
     };
     container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, pre.thr_mp, post.allc_1g_mp)) by {
-        reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); reveal(container_allocator_wf);
-        lemma_process_effective_quota_1g_fold_sum_eq_forall();
+        reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); reveal(container_allocator_wf); lemma_process_effective_quota_1g_fold_sum_eq_forall();
     };
     container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
-
 }
 
 #[verifier::spinoff_prover]
@@ -289,63 +270,33 @@ pub(super) proof fn eof_allocator_free_pages_wf(
     assert(container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
     assert(container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr,)) by {
-        assert(container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr,)) by {
-            page_ptr_valid_imply_page_index_valid();
-            page_ptr_roundtrip();
-            broadcast use eof_unmodified_object_page_state_eq;
-        };
+        assert(container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr,)) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
         assert(container_allocator_global_free_4k_backward_wf(post.allc_4k_mp, post.pg_arr,)) by { broadcast use eof_allocator_free_4k_global_backward; };
         reveal(container_allocator_global_free_4k_page_wf);
     };
     assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr,)) by {
-        page_ptr_valid_imply_page_index_valid();
-        page_ptr_roundtrip();
-        broadcast use eof_unmodified_object_page_state_eq;
-        reveal(container_allocator_free_4k_page_wf);
-        reveal(container_allocator_cpu_cache_free_4k_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
+        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); broadcast use eof_unmodified_object_page_state_eq;
+        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); };
     assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr,)) by {
-        page_ptr_valid_imply_page_index_valid();
-        page_ptr_roundtrip();
         broadcast use eof_unmodified_object_page_state_eq;
-        reveal(container_allocator_free_2m_page_wf);
-        reveal(container_allocator_global_free_2m_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
+        reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr,)) by {
-        page_ptr_valid_imply_page_index_valid();
-        page_ptr_roundtrip();
         broadcast use eof_unmodified_object_page_state_eq;
-        reveal(container_allocator_free_2m_page_wf);
-        reveal(container_allocator_cpu_cache_free_2m_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
+        reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr,)) by { reveal(container_allocator_free_2m_page_wf); };
     assert(container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by {
-        page_ptr_valid_imply_page_index_valid();
-        page_ptr_roundtrip();
         broadcast use eof_unmodified_object_page_state_eq;
-        reveal(container_allocator_free_1g_page_wf);
-        reveal(container_allocator_global_free_1g_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
+        reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by {
-        page_ptr_valid_imply_page_index_valid();
-        page_ptr_roundtrip();
-        broadcast use eof_unmodified_object_page_state_eq;
-        reveal(container_allocator_free_1g_page_wf);
-        reveal(container_allocator_cpu_cache_free_1g_page_wf);
-        reveal(allocator_free_page_ptrs_wf);
+        page_ptr_roundtrip(); broadcast use eof_unmodified_object_page_state_eq;
+        reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_cpu_cache_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf);
     };
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by { reveal(container_allocator_free_1g_page_wf); };
-    assert(container_allocator_4k_forward_wf(post.ctn_mp, post.allc_4k_mp)) by { reveal(container_allocator_wf); };
-    assert(container_allocator_4k_backward_wf(post.ctn_mp, post.allc_4k_mp)) by { reveal(container_allocator_wf); };
-    assert(container_allocator_2m_forward_wf(post.ctn_mp, post.allc_2m_mp)) by { reveal(container_allocator_wf); };
-    assert(container_allocator_2m_backward_wf(post.ctn_mp, post.allc_2m_mp)) by { reveal(container_allocator_wf); };
-    assert(container_allocator_1g_forward_wf(post.ctn_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
-    assert(container_allocator_1g_backward_wf(post.ctn_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp,)) by { reveal(container_allocator_wf); };
 }
 }

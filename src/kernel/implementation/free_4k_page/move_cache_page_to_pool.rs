@@ -49,8 +49,13 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
         kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
     let page_index = page_ptr2page_index(page_ptr);
-    assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); reveal(allocator_perms_wf); };
-    assert(krnl.pg_arr.spec_index(page_index).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: FreePageAllocatorState::PreCpuCache { cpu_id } }) && !krnl.allc_4k_mp.spec_index(allocator).global_pool.view().view().contains(page_ptr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
+    assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by {
+        page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); reveal(allocator_perms_wf);
+    };
+    assert(krnl.pg_arr.spec_index(page_index).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: FreePageAllocatorState::PreCpuCache { cpu_id } })
+        && !krnl.allc_4k_mp.spec_index(allocator).global_pool.view().view().contains(page_ptr)) by {
+        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf);
+    };
     let (node_addr, Tracked(node_perm)) = krnl.allc_4k_mp.pop_cache_page_typed(allocator, cpu_id, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), cache_perm);
     assert(node_addr == krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr()) by {
         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
@@ -71,7 +76,9 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
                 allocator_1g_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_1g_mp, krnl.allc_1g_mp);
             };
             assert(container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).pg_arr, krnl.pg_arr); };
-            assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(container_page_owner_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+            assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by {
+                reveal(container_process_page_pagetable_wf); reveal(container_process_wf); reveal(process_pagetable_match);
+            };
             assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
             assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
             assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
@@ -80,7 +87,7 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
             assert(hugepage_1g_wf(krnl.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
             assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr, page_index); };
             assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); page_array_wf_at(krnl.pg_arr, page_index); };
-            assert(iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(iommu_table_pages_wf); page_array_wf_at(krnl.pg_arr, page_index); };
+            assert(pagetable_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
             assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).pcid_allc_mp, krnl.pcid_allc_mp); };
             assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
             assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); };
@@ -90,14 +97,12 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
                 thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
             };
             assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(old(krnl).ep_mp, krnl.ep_mp, old(krnl).pg_arr, krnl.pg_arr); };
-            assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
-            assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
+            assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp));
             assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
             assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
             assert(container_allocator_cpu_cache_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr) && container_allocator_global_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by {
-                reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(LinkedList::wf_value_list); reveal(page_array_wf);
-                page_ptr_valid_imply_page_index_valid(); seq_skip_lemma::<PagePtr>();
-                old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+                reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
+                seq_skip_lemma::<PagePtr>(); old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().insert_ensures(0, page_ptr);
             };
             assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); };
             assert(container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(krnl.allc_2m_mp, old(krnl).pg_arr, krnl.pg_arr, page_index); };

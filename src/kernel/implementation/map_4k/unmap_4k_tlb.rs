@@ -19,9 +19,8 @@ pub fn mark_pcid_needflush_and_load(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pci
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-            old(krnl).pt_mp.dom().contains(pt)
-            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+            old(krnl).pt_mp.dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -36,20 +35,21 @@ pub fn mark_pcid_needflush_and_load(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pci
         final(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid),
         final(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread(),
         final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost(),
-        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
+        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+            ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
 {
     krnl.mark_pcid_needflush(cpu_id, pcid, Tracked(&*lctx), needflush_perm);
     assert(krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid)) by { reveal(pcid_needflush_wf); };
     let ret = krnl.load_published_pcid_cr3(cpu_id, Tracked(&mut *lctx));
     proof {
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal, kernel_iommu_table_nonlock_fields_unchanged_for_equal;
+            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal;
             kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
         };
     }
     ret
 }
+
 pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, needflush_perm: Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
@@ -67,9 +67,8 @@ pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid
         final(krnl).inv(),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-            old(krnl).pt_mp.dom().contains(pt)
-            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+            old(krnl).pt_mp.dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         typed_lock_maps_aligned(final(krnl), lctx),
         *final(krnl) == (KernelK { cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
         final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
@@ -79,14 +78,18 @@ pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid
         final(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid),
         final(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread(),
         final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost(),
-        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
+        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+            ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
 {
     krnl.cpu_tlb.flush_remote_pcid(cpu_id, pcid, Tracked(lctx));
     pcid_needflush_array_clear(&mut krnl.pcid_needflush, cpu_id, pcid, Tracked(lctx), needflush_perm);
     proof {
-        assert(krnl.subsystems_inv()) by { reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.subsystems_inv()) by { reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); };
+        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
+            reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+            reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+        };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
     }
 }
@@ -115,9 +118,8 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         final(krnl).inv(),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
-            old(krnl).pt_mp.dom().contains(pt)
-            && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+            old(krnl).pt_mp.dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         typed_lock_maps_aligned(final(krnl), lctx),
         *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
         final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
@@ -133,7 +135,8 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         final(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid),
         final(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).locking_thread(),
         final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost() == old(krnl).pcid_needflush.spec_index(cpu_id, pcid).view_ghost(),
-        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
+        forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
+            ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
 {
     assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init()) by { reveal(cpu_array_wf); };
     cpu_array_flush_current_tlb(&mut krnl.cpu_arr, &mut krnl.cpu_tlb, cpu_id, cr3, pcid, Tracked(lctx), cpu_perm);
@@ -142,7 +145,10 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         assert(krnl.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(krnl.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); };
+        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
+            reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+            reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+        };
         assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
     }
 }

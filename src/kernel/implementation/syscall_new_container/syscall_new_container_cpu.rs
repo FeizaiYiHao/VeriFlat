@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
 use super::syscall_new_container_cpu_spec::new_container_cpu_transfer_transition;
+#[cfg(verus_keep_ghost)]
 use super::syscall_new_container_cpu_eof::new_container_cpu_transfer_eof;
 
 verus! {
@@ -44,6 +46,7 @@ pub(super) fn transfer_new_container_cpu(
         final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map().remove(transfer_cpu_id),
         final(lctx).cpu_set_lock_map().dom().is_empty(),
@@ -58,14 +61,15 @@ pub(super) fn transfer_new_container_cpu(
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_set_mp: final(krnl).cpu_set_mp, ..*old(krnl) }),
         final(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread() is None,
         final(krnl).cpu_set_mp.spec_index(child_cpu_set).locking_thread() is None,
-        forall|p: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(p)] old(krnl).cpu_set_mp.dom().contains(p) && p != parent_cpu_set && p != child_cpu_set ==>
-            final(krnl).cpu_set_mp.spec_index(p) == old(krnl).cpu_set_mp.spec_index(p),
+        forall|p: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(p)]
+            old(krnl).cpu_set_mp.dom().contains(p) && p != parent_cpu_set && p != child_cpu_set ==> final(krnl).cpu_set_mp.spec_index(p) == old(krnl).cpu_set_mp.spec_index(p),
         forall|cpu_id: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu_id)]
             index_valid(NUM_CPUS, cpu_id) && cpu_id != transfer_cpu_id ==> final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
@@ -93,7 +97,7 @@ pub(super) fn transfer_new_container_cpu(
             &&& krnl.cpu_arr.inv()
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().wf()
-        }) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_array_wf); };
+        }) by { reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_array_wf); };
     }
     let child_container_depth = krnl.ctn_mp.borrow_rodata(child_container_ptr).borrow().depth;
     let ghost locked_k = *krnl;
@@ -107,13 +111,12 @@ pub(super) fn transfer_new_container_cpu(
     }
     proof {
         assert(new_container_cpu_transfer_transition(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id())) by {
-            reveal(new_container_cpu_transfer_transition); reveal(cpu_set_perms_wf);
+            reveal(new_container_cpu_transfer_transition);
         };
         new_container_cpu_transfer_eof(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id());
     }
     krnl.wunlock_cpu(transfer_cpu_id, Tracked(&mut *lctx), Tracked(transfer_cpu_lock_perm));
     krnl.wunlock_cpu_set(child_cpu_set, Tracked(&mut *lctx), Tracked(child_cpu_set_lock_perm));
     krnl.wunlock_cpu_set(parent_cpu_set, Tracked(&mut *lctx), Tracked(parent_cpu_set_lock_perm));
-
 }
 }

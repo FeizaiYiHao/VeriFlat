@@ -1,4 +1,5 @@
 #![feature(adt_const_params)]
+#![no_std]
 
 use vstd::prelude::*;
 

@@ -13,8 +13,7 @@ use super::entry::*;
 /// rule as Rust privacy/typestate requires a future opaque-view refactor.
 pub struct PageMap {
     pub ar: Array<usize, 512>,
-    pub spec_seq: Ghost<Seq<PageEntry>>,  // pub level: Ghost<usize>,
-    // not used for now.
+    pub spec_seq: Ghost<Seq<PageEntry>>,
 }
 
 impl PageMap {
@@ -23,20 +22,13 @@ impl PageMap {
         &&& self.spec_seq.view().len() == 512
         &&& forall|i: usize|
             #![trigger usize2page_entry(self.ar.view().spec_index(i as int))]
-            pei_valid(i)
-            ==>
-            (usize2page_entry(self.ar.view().spec_index(i as int))
-                =~= self.spec_seq.view().spec_index(i as int))
-        &&&
-        forall|i: usize|
+            pei_valid(i) ==> (usize2page_entry(self.ar.view().spec_index(i as int)) =~= self.spec_seq.view().spec_index(i as int))
+        &&& forall|i: usize|
             #![trigger self.spec_seq.view().spec_index(i as int).perm.kernel_present]
-            pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present
-            ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)
+            pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)
     }
 
-    pub open spec fn view(&self) -> Seq<PageEntry> {
-        self.spec_seq.view()
-    }
+    pub open spec fn view(&self) -> Seq<PageEntry> { self.spec_seq.view() }
 
     pub open spec fn spec_index(&self, index: usize) -> PageEntry
         recommends
@@ -65,18 +57,13 @@ impl PageMap {
     {
         if value.perm.kernel_present == false {
             self.ar.set(index, 0usize);
-            proof {
-                zero_leads_is_empty_page_entry();
-                self.spec_seq = Ghost(self.spec_seq.view().update(index as int, usize2page_entry(0usize)));
-            }
+            proof { zero_leads_is_empty_page_entry(); self.spec_seq = Ghost(self.spec_seq.view().update(index as int, usize2page_entry(0usize))); }
             return;
         } else {
             let u = page_entry2usize(&value);
             self.ar.set(index, u);
-
             proof { self.spec_seq = Ghost(self.spec_seq.view().update(index as int, value)); }
-
-            return ;
+            return;
         }
     }
 

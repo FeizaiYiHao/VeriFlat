@@ -46,7 +46,5 @@ verus! {
                 &&& container_map.dom().contains(container_ptr)
                 &&& container_map.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
             }),
-    {
-        reveal(container_thread_wf);
-    }
+    { reveal(container_thread_wf); }
 }

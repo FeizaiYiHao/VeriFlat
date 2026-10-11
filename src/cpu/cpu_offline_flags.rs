@@ -30,14 +30,21 @@ impl OfflineFlag {
     pub closed spec fn index(&self) -> (RwLockCpuOfflineFlagsPtr, CpuId) { self.index.view() }
 
     pub fn new(Ghost(flags_ptr): Ghost<RwLockCpuOfflineFlagsPtr>, Ghost(cpu_id): Ghost<CpuId>) -> (ret: Self)
-        requires index_valid(NUM_CPUS, cpu_id),
-        ensures ret.inv(), !ret.requested, ret.index() == (flags_ptr, cpu_id),
+        requires
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            ret.inv(),
+            !ret.requested,
+            ret.index() == (flags_ptr, cpu_id),
     {
         Self { requested: false, index: Ghost((flags_ptr, cpu_id)) }
     }
 
     pub fn set(&mut self, value: bool)
-        ensures final(self).requested == value, final(self).index() == old(self).index(), final(self).index == old(self).index,
+        ensures
+            final(self).requested == value,
+            final(self).index() == old(self).index(),
+            final(self).index == old(self).index,
     {
         self.requested = value;
     }
@@ -106,6 +113,4 @@ impl CpuOfflineFlags {
 }
 
 const ASSERT_CPU_OFFLINE_FLAGS_FITS_4K: [(); 1] = [(); (core::mem::size_of::<CpuOfflineFlags>() <= PAGE_SZ_4K) as usize];
-const ASSERT_CONTAINER_LOCK_FITS_4K: [(); 1] = [();
-    (core::mem::size_of::<RwLock<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize
-];
+const ASSERT_CONTAINER_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<RwLock<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize];

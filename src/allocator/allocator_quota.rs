@@ -38,12 +38,7 @@ impl LockUserVisibilityTrait for AllocatorQuota {
 
 impl LockIdTrait for AllocatorQuota {
     open spec fn lock_id(&self) -> LockId {
-        LockId {
-            container: self.container_depth(),
-            process: self.process_depth(),
-            major: self.current_lock_major(),
-            minor: self.lock_minor(),
-        }
+        LockId { container: self.container_depth(), process: self.process_depth(), major: self.current_lock_major(), minor: self.lock_minor() }
     }
 }
 
@@ -52,7 +47,8 @@ impl AllocatorQuota {
 
     #[verifier(external_body)]
     pub fn exec_lock_minor(&self) -> (ret: LockMinorId)
-        ensures ret == self.lock_minor(),
+        ensures
+            ret == self.lock_minor(),
     { self as *const AllocatorQuota as LockMinorId }
 }
 }

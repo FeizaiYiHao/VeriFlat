@@ -12,11 +12,7 @@ pub open spec fn page_2m_tail_indices(head: PageIndex) -> Set<PageIndex> {
 pub open spec fn page_2m_ptr_prefix(head: PageIndex, count: nat) -> Set<PagePtr>
     decreases count,
 {
-    if count == 0 {
-        Set::empty()
-    } else {
-        page_2m_ptr_prefix(head, (count - 1) as nat).insert(spec_page_index2page_ptr((head as int + count as int - 1) as usize))
-    }
+    if count == 0 { Set::empty() } else { page_2m_ptr_prefix(head, (count - 1) as nat).insert(spec_page_index2page_ptr((head as int + count as int - 1) as usize)) }
 }
 
 pub open spec fn page_2m_all_ptrs(head: PageIndex) -> Set<PagePtr> {
@@ -34,10 +30,7 @@ proof fn page_2m_ptr_prefix_contains_head(head: PageIndex, count: nat)
 {
     if count == 1 {} else {
         page_2m_ptr_prefix_contains_head(head, (count - 1) as nat);
-        assert(!page_2m_ptr_prefix(head, (count - 1) as nat).contains(spec_page_index2page_ptr((head + count - 1) as usize))) by {
-            broadcast use page_2m_ptr_prefix_member_bounds;
-            page_index_roundtrip();
-        };
+        assert(!page_2m_ptr_prefix(head, (count - 1) as nat).contains(spec_page_index2page_ptr((head + count - 1) as usize))) by { broadcast use page_2m_ptr_prefix_member_bounds; page_index_roundtrip(); };
     }
 }
 
@@ -61,10 +54,7 @@ proof fn page_2m_ptr_prefix_contains_index(head: PageIndex, count: nat, index: P
     decreases count,
 {
     let last = (head as int + count as int - 1) as usize;
-    if index == last {
-    } else {
-        page_2m_ptr_prefix_contains_index(head, (count - 1) as nat, index);
-    }
+    if index == last { } else { page_2m_ptr_prefix_contains_index(head, (count - 1) as nat, index); }
 }
 
 pub proof fn page_2m_all_ptrs_contains_index(head: PageIndex, index: PageIndex)
@@ -100,16 +90,12 @@ pub(super) proof fn page_ptr_indices_disjoint_from_2m_tail(page_ptrs: Seq<PagePt
         });
     };
     assert(page_indices.intersect(page_2m_tail_indices(head)) =~= Set::<PageIndex>::empty()) by {
-        assert_sets_equal!(
-            page_indices.intersect(page_2m_tail_indices(head)) == Set::<PageIndex>::empty(),
-            index => {
-                if page_indices.contains(index) && page_2m_tail_indices(head).contains(index) {
-                    page_2m_all_ptrs_contains_index(head, index);
-                    page_index_roundtrip();
-                    page_ptr_set.lemma_map_by_contains(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index), index);
-                }
+        assert_sets_equal!(page_indices.intersect(page_2m_tail_indices(head)) == Set::<PageIndex>::empty(), index => {
+            if page_indices.contains(index) && page_2m_tail_indices(head).contains(index) {
+                page_2m_all_ptrs_contains_index(head, index);
+                page_ptr_set.lemma_map_by_contains(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index), index);
             }
-        );
+        });
     };
     lemma_set_disjoint_iff_empty_intersection(page_indices, page_2m_tail_indices(head));
 }
@@ -126,10 +112,7 @@ pub broadcast proof fn page_2m_ptr_prefix_member_bounds(head: PageIndex, count: 
         page_ptr2page_index(page_ptr) == head || page_2m_tail_indices(head).contains(page_ptr2page_index(page_ptr)),
     decreases count,
 {
-    assert(count > 0) by {
-        if count == 0 {
-        }
-    };
+    assert(count > 0) by { if count == 0 { } };
     let last = (head as int + count as int - 1) as usize;
     if page_ptr == spec_page_index2page_ptr(last) {
         page_index_valid_imply_page_ptr_valid();
@@ -145,11 +128,7 @@ pub broadcast proof fn page_ptr_sequence_index_in_mapped_set(page_ptrs: Seq<Page
     ensures
         #[trigger] page_ptr_valid(page_ptrs.spec_index(i)) ==> {
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page_ptrs.spec_index(i)))
-            &&& page_ptrs.map_values(
-                |page_ptr: PagePtr| page_ptr2page_index(page_ptr),
-            ).to_set().contains(
-                page_ptr2page_index(page_ptrs.spec_index(i)),
-            )
+            &&& page_ptrs.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set().contains(page_ptr2page_index(page_ptrs.spec_index(i)))
         },
 {
     page_ptr_valid_imply_page_index_valid();
@@ -187,11 +166,7 @@ pub proof fn distinct_2m_heads_have_disjoint_all_ptrs(left: PageIndex, right: Pa
     ensures
         page_2m_all_ptrs(left).disjoint(page_2m_all_ptrs(right)),
 {
-    if left + 512usize <= right {
-        ordered_2m_heads_have_disjoint_all_ptrs(left, right);
-    } else {
-        ordered_2m_heads_have_disjoint_all_ptrs(right, left);
-    }
+    if left + 512usize <= right { ordered_2m_heads_have_disjoint_all_ptrs(left, right); } else { ordered_2m_heads_have_disjoint_all_ptrs(right, left); }
 }
 
 pub proof fn owned_2m_all_ptrs_belong_to_container(krnl: &KernelK, head: PageIndex, container_ptr: RwLockContainerPtr)
@@ -220,9 +195,7 @@ pub proof fn owned_4k_page_not_in_2m_tail(krnl: &KernelK, page_ptr: PagePtr, hea
     ensures
         !page_2m_tail_indices(head).contains(page_ptr2page_index(page_ptr)),
 {
-    if page_2m_tail_indices(head).contains(page_ptr2page_index(page_ptr)) {
-        assert(krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); };
-    }
+    if page_2m_tail_indices(head).contains(page_ptr2page_index(page_ptr)) { assert(krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); }; }
 }
 
 pub proof fn owned_4k_page_not_in_2m_region(krnl: &KernelK, page_ptr: PagePtr, head: PageIndex)
@@ -237,9 +210,7 @@ pub proof fn owned_4k_page_not_in_2m_region(krnl: &KernelK, page_ptr: PagePtr, h
 {
     if page_2m_all_ptrs(head).contains(page_ptr) {
         page_2m_ptr_prefix_member_bounds(head, 512, page_ptr);
-        if page_ptr2page_index(page_ptr) != head {
-            owned_4k_page_not_in_2m_tail(krnl, page_ptr, head);
-        }
+        if page_ptr2page_index(page_ptr) != head { owned_4k_page_not_in_2m_tail(krnl, page_ptr, head); }
     }
 }
 
@@ -277,7 +248,7 @@ pub open spec fn owned_2m_tail_lock_perms_wf(perms: Map<PageIndex, LockPerm>, pa
             &&& perms.spec_index(index).state() is WriteLock
             &&& perms.spec_index(index).thread_id() == lctx.thread_id()
             &&& perms.spec_index(index).lock_id() == pages.spec_index(index).view().locking_thread()->Write_lock_id
-    }
+        }
 }
 
 pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<Map<PageIndex, LockPerm>>)
@@ -290,7 +261,8 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (old(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
+            ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (old(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -299,7 +271,8 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (final(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 512),
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page)
+            ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (final(krnl).pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 512),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         forall|index: PageIndex|
             #![trigger final(krnl).pg_arr.spec_index(index)]
@@ -319,29 +292,21 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-        *final(krnl) == (KernelK {
-            pg_arr: final(krnl).pg_arr,
-            ..*old(krnl)
-        }),
+        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
         forall|index: PageIndex|
             #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==>
-                final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
         owned_2m_tail_lock_perms_wf(ret.view(), final(krnl).pg_arr, final(lctx), head),
 {
     hide(Seq::contains);
     let tracked mut perms: Map<PageIndex, LockPerm> = Map::tracked_empty();
     let mut count: usize = 0;
     proof {
-        assert(page_2m_tail_prefix_indices(head, 0).is_empty()) by {
-            assert_sets_equal!(
-                page_2m_tail_prefix_indices(head, 0) == Set::<PageIndex>::empty(),
-                index => {}
-            );
-        };
+        assert(page_2m_tail_prefix_indices(head, 0).is_empty()) by { assert_sets_equal!(page_2m_tail_prefix_indices(head, 0) == Set::<PageIndex>::empty(), index => {}); };
     }
     while count < 511
         invariant
@@ -368,6 +333,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
             lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+            lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
             lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
@@ -394,8 +360,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             krnl.dflt_pt == old(krnl).dflt_pt,
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index).view().view()]
-                index_valid(NUM_PAGES, index) ==>
-                    krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+                index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index)]
                 #![trigger old(krnl).pg_arr.spec_index(index)]
@@ -415,44 +380,31 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             lctx.pcid_needflush_lock_map().dom().is_empty(),
             lctx.cpu_offline_flag_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (krnl.pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1 + count),
+            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page)
+                ==> krnl.pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (krnl.pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1 + count),
         decreases 511 - count,
     {
         let index = head + 1usize + count;
-        proof {
-            assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); };
-        }
+        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); }; }
         let Tracked(perm) = krnl.wlock_page(index, Tracked(&mut *lctx));
         proof {
             perms.tracked_insert(index, perm);
             assert(page_2m_tail_prefix_indices(head, (count + 1) as usize) == page_2m_tail_prefix_indices(head, count).insert(index)) by {
-                assert_sets_equal!(
-                    page_2m_tail_prefix_indices(head, (count + 1) as usize) == page_2m_tail_prefix_indices(head, count).insert(index),
-                    candidate => {}
-                );
+                assert_sets_equal!(page_2m_tail_prefix_indices(head, (count + 1) as usize) == page_2m_tail_prefix_indices(head, count).insert(index), candidate => {});
             };
             assert(lctx.page_lock_map().remove_keys(page_2m_tail_prefix_indices(head, (count + 1) as usize)) == old(lctx).page_lock_map()) by {
-                assert_maps_equal!(
-                    lctx.page_lock_map().remove_keys(page_2m_tail_prefix_indices(head, (count + 1) as usize)),
-                    old(lctx).page_lock_map(),
-                    key => {}
-                );
+                assert_maps_equal!(lctx.page_lock_map().remove_keys(page_2m_tail_prefix_indices(head, (count + 1) as usize)), old(lctx).page_lock_map(), key => {});
             };
         }
         count = count + 1usize;
     }
     proof {
-        assert(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head)) by {
-            assert_sets_equal!(
-                page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head),
-                index => {}
-            );
-        };
+        assert(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head), index => {}); };
         assert(held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx))) by { reveal(LockedArray::typed_lock_map_aligned); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal, kernel_iommu_table_nonlock_fields_unchanged_for_equal;
+            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal;
             kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
         };
     }
@@ -512,8 +464,8 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index)]
             #![trigger reference_pages.spec_index(index)]
-            index_valid(NUM_PAGES, index) && !page_2m_tail_indices(first_head).contains(index)
-                && !page_2m_tail_indices(second_head).contains(index) ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
+            index_valid(NUM_PAGES, index) && !page_2m_tail_indices(first_head).contains(index) && !page_2m_tail_indices(second_head).contains(index)
+                ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
         forall|index: PageIndex|
             #![trigger preserved_indices.contains(index)]
             preserved_indices.contains(index) && index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
@@ -613,9 +565,7 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         }
         let first_page = pages.borrow_mut_typed(first_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(first_perms.tracked_borrow(first_index)));
         first_page.owning_container = owning_container;
-        proof {
-            assert(page_array_wf(*pages)) by { reveal(page_array_wf); };
-        }
+        proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); }; }
         let second_page = pages.borrow_mut_typed(second_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(second_perms.tracked_borrow(second_index)));
         second_page.owning_container = owning_container;
         proof {
@@ -623,33 +573,17 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
             broadcast use page_ptr_sequence_index_in_equal_set; broadcast use page_ptr_sequence_index_in_mapped_set;
             preserved_page_ptr_seq.to_set_ensures();
             assert(page_2m_tail_prefix_indices(first_head, (count + 1) as usize) == page_2m_tail_prefix_indices(first_head, count).insert(first_index)) by {
-                assert_sets_equal!(
-                    page_2m_tail_prefix_indices(first_head, (count + 1) as usize) == page_2m_tail_prefix_indices(first_head, count).insert(first_index),
-                    candidate => {}
-                );
+                assert_sets_equal!(page_2m_tail_prefix_indices(first_head, (count + 1) as usize) == page_2m_tail_prefix_indices(first_head, count).insert(first_index), candidate => {});
             };
             assert(page_2m_tail_prefix_indices(second_head, (count + 1) as usize) == page_2m_tail_prefix_indices(second_head, count).insert(second_index)) by {
-                assert_sets_equal!(
-                    page_2m_tail_prefix_indices(second_head, (count + 1) as usize) == page_2m_tail_prefix_indices(second_head, count).insert(second_index),
-                    candidate => {}
-                );
+                assert_sets_equal!(page_2m_tail_prefix_indices(second_head, (count + 1) as usize) == page_2m_tail_prefix_indices(second_head, count).insert(second_index), candidate => {});
             };
         }
         count = count + 1usize;
     }
     proof {
-        assert(page_2m_tail_prefix_indices(first_head, 511) == page_2m_tail_indices(first_head)) by {
-            assert_sets_equal!(
-                page_2m_tail_prefix_indices(first_head, 511) == page_2m_tail_indices(first_head),
-                index => {}
-            );
-        };
-        assert(page_2m_tail_prefix_indices(second_head, 511) == page_2m_tail_indices(second_head)) by {
-            assert_sets_equal!(
-                page_2m_tail_prefix_indices(second_head, 511) == page_2m_tail_indices(second_head),
-                index => {}
-            );
-        };
+        assert(page_2m_tail_prefix_indices(first_head, 511) == page_2m_tail_indices(first_head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(first_head, 511) == page_2m_tail_indices(first_head), index => {}); };
+        assert(page_2m_tail_prefix_indices(second_head, 511) == page_2m_tail_indices(second_head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(second_head, 511) == page_2m_tail_indices(second_head), index => {}); };
     }
 }
 
@@ -685,21 +619,17 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+        final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-        *final(krnl) == (KernelK {
-            pg_arr: final(krnl).pg_arr,
-            ..*old(krnl)
-        }),
+        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
         forall|index: PageIndex|
             #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==>
-                final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
         forall|index: PageIndex|
             #![trigger page_2m_tail_indices(head).contains(index)]
-            page_2m_tail_indices(head).contains(index) ==>
-                !final(lctx).page_lock_map().dom().contains(index),
+            page_2m_tail_indices(head).contains(index) ==> !final(lctx).page_lock_map().dom().contains(index),
 {
     let tracked mut perms = perms;
     let mut count: usize = 0;
@@ -727,6 +657,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
             lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+            lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
             lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
@@ -753,8 +684,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             krnl.dflt_pt == old(krnl).dflt_pt,
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index).view().view()]
-                index_valid(NUM_PAGES, index) ==>
-                    krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+                index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index)]
                 #![trigger old(krnl).pg_arr.spec_index(index)]
@@ -772,45 +702,30 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
                 },
             forall|index: PageIndex|
                 #![trigger page_2m_tail_prefix_indices(head, count).contains(index)]
-                page_2m_tail_prefix_indices(head, count).contains(index) ==>
-                    !lctx.page_lock_map().dom().contains(index),
+                page_2m_tail_prefix_indices(head, count).contains(index) ==> !lctx.page_lock_map().dom().contains(index),
         decreases 511 - count,
     {
         let index = head + 1usize + count;
-        proof {
-            assert(perms.dom().contains(index)) by { vstd::set_lib::range_set_properties((head + 1) as usize, (head + 512) as usize); vstd::set_lib::range_set_properties((head + 1) as usize, (head + 1 + count) as usize); };
-        }
+        proof { assert(perms.dom().contains(index)) by { vstd::set_lib::range_set_properties((head + 1) as usize, (head + 512) as usize); vstd::set_lib::range_set_properties((head + 1) as usize, (head + 1 + count) as usize); }; }
         let tracked perm = perms.tracked_remove(index);
         krnl.wunlock_page(index, Tracked(&mut *lctx), Tracked(perm));
         proof {
             assert(page_2m_tail_prefix_indices(head, (count + 1) as usize) == page_2m_tail_prefix_indices(head, count).insert(index)) by {
-                assert_sets_equal!(
-                    page_2m_tail_prefix_indices(head, (count + 1) as usize) == page_2m_tail_prefix_indices(head, count).insert(index),
-                    candidate => {}
-                );
+                assert_sets_equal!(page_2m_tail_prefix_indices(head, (count + 1) as usize) == page_2m_tail_prefix_indices(head, count).insert(index), candidate => {});
             };
             assert(lctx.page_lock_map() == old(lctx).page_lock_map().remove_keys(page_2m_tail_prefix_indices(head, (count + 1) as usize))) by {
-                assert_maps_equal!(
-                    lctx.page_lock_map(),
-                    old(lctx).page_lock_map().remove_keys(page_2m_tail_prefix_indices(head, (count + 1) as usize)),
-                    key => {}
-                );
+                assert_maps_equal!(lctx.page_lock_map(), old(lctx).page_lock_map().remove_keys(page_2m_tail_prefix_indices(head, (count + 1) as usize)), key => {});
             };
         }
         count = count + 1usize;
     }
     proof {
-        assert(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head)) by {
-            assert_sets_equal!(
-                page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head),
-                index => {}
-            );
-        };
+        assert(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head), index => {}); };
         held_pages_unchanged_except_for_changed_set(old(krnl).pg_arr, krnl.pg_arr, old(lctx), page_2m_tail_indices(head));
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal, kernel_iommu_table_nonlock_fields_unchanged_for_equal;
+            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal;
             kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
         };
     }

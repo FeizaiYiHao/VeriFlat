@@ -2,8 +2,8 @@ use vstd::prelude::*;
 use veriflat_kernel_core::*;
 
 verus! {
-/// Container-tree domain closure, subtree/uppertree duality, ancestor transitivity, and a parent
-/// being an ancestor.
+/// Container-tree domain closure, subtree/uppertree duality, ancestor transitivity, a parent being an
+/// ancestor, and a child naming its parent.
 #[verifier::opaque]
 pub open spec fn kernel_u_container_tree_wf(u: KernelU) -> bool {
     &&& forall|c: RwLockContainerPtr, d: RwLockContainerPtr| #![trigger u.container_map[c].subtree_set.contains(d)]
@@ -18,6 +18,8 @@ pub open spec fn kernel_u_container_tree_wf(u: KernelU) -> bool {
         ==> u.container_map[e].uppertree_seq.contains(c)
     &&& forall|c: RwLockContainerPtr| #![trigger u.container_map[c].parent] u.container_map.dom().contains(c) && u.container_map[c].parent is Some
         ==> u.container_map.dom().contains(u.container_map[c].parent->Some_0) && u.container_map[c].uppertree_seq.contains(u.container_map[c].parent->Some_0)
+    &&& forall|c: RwLockContainerPtr, d: RwLockContainerPtr| #![trigger u.container_map[c].children.contains(d)]
+        u.container_map.dom().contains(c) && u.container_map[c].children.contains(d) ==> u.container_map.dom().contains(d) && u.container_map[d].parent == Some(c)
 }
 
 /// Process-container membership and same-container process ancestry.
@@ -46,8 +48,9 @@ pub open spec fn kernel_u_thread_ownership_wf(u: KernelU) -> bool {
     }
     &&& forall|c: RwLockContainerPtr, t: RwLockThreadPtr| #![trigger u.container_map[c].owned_threads.contains(t)]
         u.container_map.dom().contains(c) && u.container_map[c].owned_threads.contains(t) ==> u.thread_map.dom().contains(t) && u.thread_map[t].owning_container == c
-    &&& forall|c: RwLockContainerPtr, t: RwLockThreadPtr| #![trigger u.container_map[c].scheduler.contains(t)]
-        u.container_map.dom().contains(c) && u.container_map[c].scheduler.contains(t) ==> u.thread_map.dom().contains(t) && u.thread_map[t].owning_container == c
+    &&& forall|c: RwLockContainerPtr, i: CpuId, t: RwLockThreadPtr| #![trigger u.container_map[c].scheduler[i as int].contains(t)]
+        u.container_map.dom().contains(c) && index_valid(NUM_CPUS, i) && u.container_map[c].scheduler[i as int].contains(t)
+            ==> u.thread_map.dom().contains(t) && u.thread_map[t].owning_container == c
 }
 
 /// Endpoint-container membership, descriptor references, and queue membership.
@@ -103,6 +106,13 @@ pub open spec fn kernel_u_cpu_current_pair_wf(u: KernelU) -> bool {
         index_valid(NUM_CPUS, i) ==> (u.cpu_array[i as int].current_process is Some) == (u.cpu_array[i as int].current_thread is Some)
 }
 
+/// A PCI function in a process's set has that process as its root-table owner, so no two processes share one.
+#[verifier::opaque]
+pub open spec fn kernel_u_pci_ownership_wf(u: KernelU) -> bool {
+    forall|p: RwLockProcessPtr, bdf: PciBdf| #![trigger u.process_map[p].owned_pci_functions.contains(bdf)]
+        u.process_map.dom().contains(p) && u.process_map[p].owned_pci_functions.contains(bdf) ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2) && u.iommu_root_table.owners[bdf.0 as int][bdf.1 as int][bdf.2 as int] == p
+}
+
 /// Ownership, reference, and tree facts that hold in the user projection of every well-formed kernel.
 pub open spec fn kernel_u_ownership_wf(u: KernelU) -> bool {
     &&& kernel_u_container_tree_wf(u)
@@ -110,30 +120,29 @@ pub open spec fn kernel_u_ownership_wf(u: KernelU) -> bool {
     &&& kernel_u_thread_ownership_wf(u)
     &&& kernel_u_endpoint_ownership_wf(u)
     &&& kernel_u_cpu_ownership_wf(u)
+    &&& kernel_u_pci_ownership_wf(u)
 }
 
 /// The user projection of a well-formed kernel satisfies the user-level ownership facts.
 pub proof fn kernel_wf_implies_u_ownership_wf(krnl: &KernelK)
     requires krnl.inv(),
-    ensures kernel_u_ownership_wf(kernel_k_to_kernel_u(*krnl)), kernel_u_cpu_current_pair_wf(kernel_k_to_kernel_u(*krnl)),
+    ensures
+        kernel_u_ownership_wf(kernel_k_to_kernel_u(*krnl)),
+        kernel_u_cpu_current_pair_wf(kernel_k_to_kernel_u(*krnl)),
 {
     reveal(kernel_k_to_kernel_u);
     assert(kernel_u_container_tree_wf(kernel_k_to_kernel_u(*krnl))) by {
         reveal(kernel_u_container_tree_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf);
         reveal(container_root_wf); reveal(container_children_parent_wf); reveal(container_children_depth_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf);
     };
-    assert(kernel_u_process_ownership_wf(kernel_k_to_kernel_u(*krnl))) by {
-        reveal(kernel_u_process_ownership_wf); reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf);
-    };
+    assert(kernel_u_process_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_process_ownership_wf); reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
     assert(kernel_u_thread_ownership_wf(kernel_k_to_kernel_u(*krnl))) by {
         reveal(kernel_u_thread_ownership_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
+        reveal(scheduler_shards_of);
     };
-    assert(kernel_u_endpoint_ownership_wf(kernel_k_to_kernel_u(*krnl))) by {
-        reveal(kernel_u_endpoint_ownership_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
-    };
-    assert(kernel_u_cpu_ownership_wf(kernel_k_to_kernel_u(*krnl))) by {
-        reveal(kernel_u_cpu_ownership_wf); reveal(cpu_array_wf); reveal(container_cpu_wf); reveal(thread_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf);
-    };
+    assert(kernel_u_endpoint_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_endpoint_ownership_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); };
+    assert(kernel_u_cpu_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_cpu_ownership_wf); reveal(cpu_array_wf); reveal(container_cpu_wf); reveal(thread_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); };
     assert(kernel_u_cpu_current_pair_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_cpu_current_pair_wf); reveal(cpu_array_wf); };
+    assert(kernel_u_pci_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_pci_ownership_wf); reveal(process_pci_function_ownership_wf); reveal(IommuRootTable::user_view); };
 }
 } // verus!

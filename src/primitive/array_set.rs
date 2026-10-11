@@ -3,7 +3,6 @@ verus! {
 use crate::*;
 use vstd::set_lib::*;
 
-
 /// A set of integers from 0 to N - 1.
 pub struct ArraySet<const N: usize> {
     pub data: Array<bool, N>,
@@ -13,30 +12,24 @@ pub struct ArraySet<const N: usize> {
     pub closed_set: Ghost<Set<usize>>,
 }
 
-impl <const N: usize> ArraySet<N> {
-    pub fn new() -> (ret:Self)
+impl<const N: usize> ArraySet<N> {
+    pub fn new() -> (ret: Self)
         ensures
             ret.wf(),
             ret.view() == Set::<usize>::empty(),
             ret.closed_view() == Set::<usize>::empty(),
     {
-        let mut ret = Self {
-            data: Array::new(),
-            closed: Array::new(),
-            len: 0,
-            set: Ghost(Set::<usize>::empty()),
-            closed_set: Ghost(Set::<usize>::empty()),
-        };
+        let mut ret = Self { data: Array::new(), closed: Array::new(), len: 0, set: Ghost(Set::<usize>::empty()), closed_set: Ghost(Set::<usize>::empty()) };
         for i in 0..N
             invariant
-                0<=i<=N,
+                0 <= i <= N,
                 ret.data.wf(),
                 ret.closed.wf(),
                 ret.len == 0,
                 ret.set.view() == Set::<usize>::empty(),
                 ret.closed_set.view() == Set::<usize>::empty(),
-                forall|j:int| 0<=j<i ==> ret.data.view().spec_index(j) == false,
-                forall|j:int| 0<=j<i ==> ret.closed.view().spec_index(j) == false,
+                forall|j: int| 0 <= j < i ==> ret.data.view().spec_index(j) == false,
+                forall|j: int| 0 <= j < i ==> ret.closed.view().spec_index(j) == false,
         {
             ret.data.set(i, false);
             ret.closed.set(i, false);
@@ -57,27 +50,22 @@ impl <const N: usize> ArraySet<N> {
         self.closed_set = Ghost(Set::<usize>::empty());
         for i in 0..N
             invariant
-                0<=i<=N,
+                0 <= i <= N,
                 self.data.wf(),
                 self.closed.wf(),
                 self.len == 0,
                 self.set.view() == Set::<usize>::empty(),
                 self.closed_set.view() == Set::<usize>::empty(),
-                forall|j:int| 0<=j<i ==> self.data.view().spec_index(j) == false,
-                forall|j:int| 0<=j<i ==> self.closed.view().spec_index(j) == false,
+                forall|j: int| 0 <= j < i ==> self.data.view().spec_index(j) == false,
+                forall|j: int| 0 <= j < i ==> self.closed.view().spec_index(j) == false,
         {
             self.data.set(i, false);
             self.closed.set(i, false);
         }
     }
 
-    pub closed spec fn view(&self) -> Set<usize>{
-        self.set.view()
-    }
-
-    pub closed spec fn closed_view(&self) -> Set<usize> {
-        self.closed_set.view()
-    }
+    pub closed spec fn view(&self) -> Set<usize> { self.set.view() }
+    pub closed spec fn closed_view(&self) -> Set<usize> { self.closed_set.view() }
 
     pub fn contains(&self, v: usize) -> (ret: bool)
         requires
@@ -100,7 +88,7 @@ impl <const N: usize> ArraySet<N> {
     }
 
     #[verifier(when_used_as_spec(spec_len))]
-    pub fn len(&self) -> (ret:usize)
+    pub fn len(&self) -> (ret: usize)
         requires
             self.wf(),
         ensures
@@ -109,59 +97,45 @@ impl <const N: usize> ArraySet<N> {
         self.len
     }
 
-    pub closed spec fn spec_len(&self) -> usize{
-        self.set.view().len() as usize
-    }
+    pub closed spec fn spec_len(&self) -> usize { self.set.view().len() as usize }
 
-    pub open spec fn wf(&self) -> bool{
-        &&&
-        self.elements_in_range()
-        &&&
-        self.internal_wf()
+    pub open spec fn wf(&self) -> bool {
+        &&& self.elements_in_range()
+        &&& self.internal_wf()
         &&& self.closed_view().subset_of(self.view())
     }
 
-    pub open spec fn elements_in_range(&self) -> bool{
-        &&&
-        forall|i:usize|
+    pub open spec fn elements_in_range(&self) -> bool {
+        &&& forall|i: usize|
             #![trigger self.view().contains(i)]
             self.view().contains(i) ==> 0 <= i < N
     }
 
-    pub closed spec fn internal_wf(&self) -> bool{
-        &&&
-        self.data.wf()
-        &&&
-        self.closed.wf()
-        &&&
-        0 <= self.len <= N
-        &&&
-        forall|i:usize|
+    pub closed spec fn internal_wf(&self) -> bool {
+        &&& self.data.wf()
+        &&& self.closed.wf()
+        &&& 0 <= self.len <= N
+        &&& forall|i: usize|
             #![trigger self.data.view().spec_index(i as int)]
             #![trigger self.set.view().contains(i)]
             0 <= i < N && self.data.view().spec_index(i as int) ==> self.set.view().contains(i)
-        &&&
-        forall|i:usize|
+        &&& forall|i: usize|
             #![trigger self.data.view().spec_index(i as int)]
             #![trigger self.set.view().contains(i)]
             self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
-        &&&
-        forall|i:usize|
+        &&& forall|i: usize|
             #![trigger self.closed.view().spec_index(i as int)]
             #![trigger self.closed_set.view().contains(i)]
             0 <= i < N && self.closed.view().spec_index(i as int) ==> self.closed_set.view().contains(i)
-        &&&
-        forall|i:usize|
+        &&& forall|i: usize|
             #![trigger self.closed.view().spec_index(i as int)]
             #![trigger self.closed_set.view().contains(i)]
             self.closed_set.view().contains(i) ==> 0 <= i < N && self.closed.view().spec_index(i as int)
-        &&&
-        self.closed_set.view().subset_of(self.set.view())
-        &&&
-        self.len == self.set.view().len()
+        &&& self.closed_set.view().subset_of(self.set.view())
+        &&& self.len == self.set.view().len()
     }
 
-    pub fn insert(&mut self, v:usize)
+    pub fn insert(&mut self, v: usize)
         requires
             old(self).wf(),
             old(self).view().contains(v) == false,
@@ -200,7 +174,7 @@ impl <const N: usize> ArraySet<N> {
         self.len = self.len + 1;
     }
 
-    pub fn remove(&mut self, v:usize)
+    pub fn remove(&mut self, v: usize)
         requires
             old(self).wf(),
             old(self).view().contains(v) == true,
@@ -245,6 +219,7 @@ impl <const N: usize> ArraySet<N> {
         self.closed.set(v, false);
         self.closed_set = Ghost(self.closed_set.view().remove(v));
     }
+
     proof fn lemma_finite_set_bounded_size(s: Set<usize>, m: usize)
         requires
             forall|i: usize| #[trigger] s.contains(i) ==> 0 <= i < m,

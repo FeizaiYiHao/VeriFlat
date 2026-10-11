@@ -3,6 +3,7 @@ use crate::*;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
+#[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
@@ -74,9 +75,7 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
 /// Entering write-locks the cpu, the process and its page table, the thread, and the endpoint at
 /// `endpoint_index`, and records the call's arguments in the thread's progress.
 #[verifier::opaque]
-pub open spec fn new_process_enter_step(
-    old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
-) -> bool {
+pub open spec fn new_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let thread_ptr = cpu.current_thread->Some_0;
     let thread = old_u.thread_map[thread_ptr];
@@ -84,14 +83,10 @@ pub open spec fn new_process_enter_step(
     let progress = SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: None });
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }), ..process
-        }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }), ..process }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         endpoint_map: match endpoint_index {
-            Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU {
-                lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0]
-            }),
+            Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0] }),
             None => old_u.endpoint_map,
         },
         ..old_u
@@ -148,11 +143,11 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
         ..old_u.process_map[p]
     })
     &&& new_u.process_map[child] == (ProcessU {
-            lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
-            iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: new_u.process_map[child].pcid, owning_container: container,
-            owned_pci_functions: Set::empty(), quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
-            depth: (old_u.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors, subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
-        })
+        lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
+        iommu_table: if progress->NewProcess_0.with_iommu { Some(empty_table) } else { None }, pcid: new_u.process_map[child].pcid, owning_container: container,
+        owned_pci_functions: Set::empty(), quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
+        depth: (old_u.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors, subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
+    })
     &&& new_u == (KernelU {
         process_map: new_u.process_map,
         container_map: old_u.container_map.insert(container, ContainerU {
@@ -228,14 +223,12 @@ pub open spec fn new_process_finish_step(old_u: KernelU, new_u: KernelU, cpu_id:
             None => old_u.endpoint_map,
         },
         ..old_u
-    }, new_u, child_ptr, thread_ptr, thread.owning_container, new_u.process_map[child_ptr].owned_threads.last(), origin->NewProcess_0.regs, endpoint, None)
+    }, new_u, child_ptr, thread_ptr, thread.owning_container, cpu_id, new_u.process_map[child_ptr].owned_threads.last(), origin->NewProcess_0.regs, endpoint, None)
 }
 
 /// The partial trace after entering: one enter step from `pre`.
 #[verifier::opaque]
-pub open spec fn new_process_trace_after_enter(
-    trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
-) -> bool {
+pub open spec fn new_process_trace_after_enter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> bool {
     &&& trace.len() == 1
     &&& trace[0].old_u == pre
     &&& new_process_enter_step_pre(pre, cpu_id, range, endpoint_index, with_iommu)
@@ -244,9 +237,7 @@ pub open spec fn new_process_trace_after_enter(
 
 /// The partial trace after publishing: the enter step from `pre` and the publish step.
 #[verifier::opaque]
-pub open spec fn new_process_trace_after_publish(
-    trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
-) -> bool {
+pub open spec fn new_process_trace_after_publish(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> bool {
     &&& trace.len() == 2
     &&& trace[0].old_u == pre
     &&& new_process_enter_step_pre(pre, cpu_id, range, endpoint_index, with_iommu)
@@ -257,9 +248,7 @@ pub open spec fn new_process_trace_after_publish(
 
 /// The steps from `start` after sharing: enter from `pre`, publish, and then only share steps.
 #[verifier::opaque]
-pub open spec fn new_process_trace_after_share(
-    trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
-) -> bool {
+pub open spec fn new_process_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> bool {
     &&& 0 <= start
     &&& start + range.len + 2 <= trace.len() <= start + 4 * range.len + 2
     &&& trace[start].old_u == pre
@@ -272,9 +261,7 @@ pub open spec fn new_process_trace_after_share(
 
 /// The steps of a successful call: enter, publish, the share steps, and finish.
 #[verifier::opaque]
-pub open spec fn new_process_commit_trace(
-    trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
-) -> bool {
+pub open spec fn new_process_commit_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> bool {
     &&& range.len as int + 3 <= trace.len() as int <= 4 * range.len as int + 3
     &&& trace[0].old_u == pre
     &&& new_process_enter_step_pre(pre, cpu_id, range, endpoint_index, with_iommu)
@@ -288,10 +275,7 @@ pub open spec fn new_process_commit_trace(
 
 /// Complete trace of the call: the commit steps on success, a stutter otherwise.
 #[verifier::opaque]
-pub open spec fn new_process_syscall_trace(
-    trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize,
-    regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool, result: RetValueType,
-) -> bool {
+pub open spec fn new_process_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, va: VAddr, range: usize, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool, result: RetValueType) -> bool {
     let source_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
     if result is SuccessPairUsize || result is SuccessThreeUsize {
         &&& new_process_commit_trace(trace, pre, cpu_id, source_range, regs, endpoint_index, with_iommu)
