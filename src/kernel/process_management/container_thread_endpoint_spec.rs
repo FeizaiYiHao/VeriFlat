@@ -34,8 +34,8 @@ verus! {
                 && endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap()).view().queue.map().spec_index(thread_map.spec_index(t_ptr).view().endpoint_linkedlist_node.addr()) == t_ptr
         &&& forall|e_ptr:RwLockEndpointPtr, t_ptr: RwLockThreadPtr,|
             #![trigger endpoint_map.spec_index(e_ptr).view().queue.view().contains(t_ptr)]
-            #![trigger thread_map.spec_index(t_ptr).view().state, endpoint_map.spec_index(e_ptr).view().queue]
-            #![trigger thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr, endpoint_map.spec_index(e_ptr).view().queue]
+            #![trigger thread_map.spec_index(t_ptr).view().state, endpoint_map.dom().contains(e_ptr)]
+            #![trigger thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr, endpoint_map.dom().contains(e_ptr)]
             endpoint_map.dom().contains(e_ptr) && endpoint_map.spec_index(e_ptr).view().queue.view().contains(t_ptr)
                 ==> thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting() && thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap() == e_ptr
                 && match endpoint_map.spec_index(e_ptr).view().queue_state {
@@ -50,7 +50,7 @@ verus! {
     pub open spec fn container_thread_endpoint_wf(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool {
         &&& forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
-            #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors, edp_idx_valid(edp_index)]
+            #![trigger thread_map.dom().contains(t_ptr), edp_idx_valid(edp_index)]
             thread_map.dom().contains(t_ptr) && edp_idx_valid(edp_index) && thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some ==> {
                 ||| endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap()).view().owning_container == thread_map.spec_index(t_ptr).view().owning_container
                 ||| container_map.spec_index(endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap()).view().owning_container)

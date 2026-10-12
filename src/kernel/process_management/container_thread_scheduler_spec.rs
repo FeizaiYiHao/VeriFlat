@@ -42,8 +42,8 @@ verus! {
             }
         &&& forall|s_ptr:RwLockSchedulerPtr, cpu_id: CpuId, t_ptr:RwLockThreadPtr|
             #![trigger scheduler_map.spec_index(s_ptr).shard(cpu_id).queue.view().contains(t_ptr)]
-            #![trigger thread_map.spec_index(t_ptr).view().state, scheduler_map.spec_index(s_ptr).shards.spec_index(cpu_id)]
-            #![trigger thread_map.spec_index(t_ptr).view().owning_container, scheduler_map.spec_index(s_ptr).shards.spec_index(cpu_id)]
+            #![trigger thread_map.spec_index(t_ptr).view().state, scheduler_map.dom().contains(s_ptr), index_valid(NUM_CPUS, cpu_id)]
+            #![trigger thread_map.spec_index(t_ptr).view().owning_container, scheduler_map.dom().contains(s_ptr), index_valid(NUM_CPUS, cpu_id)]
             scheduler_map.dom().contains(s_ptr) && index_valid(NUM_CPUS, cpu_id) && scheduler_map.spec_index(s_ptr).shard(cpu_id).queue.view().contains(t_ptr) ==> {
                 &&& thread_map.dom().contains(t_ptr)
                 &&& thread_map.spec_index(t_ptr).view().state == (ThreadState::SCHEDULED { cpu_id })

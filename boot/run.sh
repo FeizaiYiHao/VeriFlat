@@ -26,5 +26,5 @@ qemu-system-x86_64 "${ACCEL[@]}" -smp ${SMP:-4} -m 1024 \
     -kernel "$OUT/aloader" -initrd "$JUMBO" \
     -nographic -serial mon:stdio \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-    -device intel-iommu,aw-bits=48 -device edu -nic none \
+    -device intel-iommu,aw-bits=48,intremap=on -device edu -nic none \
     -no-reboot "$@"

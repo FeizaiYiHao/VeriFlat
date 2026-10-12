@@ -178,7 +178,8 @@ where
 
         let mut program_headers = ArrayVec::new();
 
-        let mut elf_len = 0;
+        file.seek(SeekFrom::Start(start_pos + header.e_phoff)).map_err(Into::into)?;
+        let mut elf_len = (header.e_phoff + header.e_phentsize as u64 * header.e_phnum as u64) as usize;
         for _ in 0..header.e_phnum {
             let mut ph_bytes = [0u8; mem::size_of::<ProgramHeader>()];
             file.read_exact(&mut ph_bytes).map_err(Into::into)?;

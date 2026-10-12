@@ -85,7 +85,7 @@ impl CpuTLB {
     }
     pub closed spec fn inv(&self) -> bool {
         &&& forall|cpu_id: CpuId, pcid: Pcid|
-            #![auto]
+            #![trigger self.view().dom().contains((cpu_id, pcid))]
             self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)
     }
 }

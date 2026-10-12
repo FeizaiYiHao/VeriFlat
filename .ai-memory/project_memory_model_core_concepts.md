@@ -24,6 +24,11 @@ metadata:
   `Free*`/`Owned*` states and absent for other states, including published
   `Mapped*` pages. An unmap path must reclaim a fresh permission after mappings
   and stale TLB entries are gone; it must not resurrect a pre-publication token.
+- TODO (2026-10-12): the contents of physical pages are not modeled. A page
+  freed by one owner and handed to another (unmap/free, quota transfer,
+  `send_pages`) keeps its old bytes; the dom0 test observed a re-mapped page
+  still holding its previous contents. Zeroing or content ownership must be
+  modeled before any cross-container page flow counts as isolating.
 - `PcidAllocator` has one machine-word counter for each of the 4096 PCIDs. Its
   payload size is compile-time checked, the complete `RwLock` object must fit in
   one 2 MiB page, and `pcid_allocator_pages_wf` ties each allocator object to an

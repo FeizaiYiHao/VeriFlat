@@ -54,6 +54,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         iommu::init(glue::iommu_root_table());
         cpu::mark_started(0);
         smp::start_aps();
+        log::info!("Kernel boot stack high-water {} KiB of {} KiB", boot::boot_stack_high_water() / 1024, boot::get_boot_info().kernel_stack_size / 1024);
         syscalls::enter_first_thread();
     }
 }

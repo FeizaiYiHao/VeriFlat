@@ -812,7 +812,7 @@ fn ipc_map_pages_and_release_tables(
             kernel_cpu_thread_projection_at(&*krnl, cpu_id, process_ptr, peer_thread_ptr, None);
             if result is Success { kernel_share_4k_objects_projection(&*krnl, &*lctx, cpu_id); }
             kernel_pagetable_mappings_projection_at(&*krnl, source_process);
-            kernel_write_held_pagetable_mode(&*krnl, &*lctx, source_pagetable);
+            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable);
             if result is Success { ipc_pages_unlock_tables_step_pre_from_u(steps.snapshot_u(), cpu_id); }
         };
         assert(result is Success ==> ipc_pages_trace_after_share(steps.view(), old(steps).view().len() as int, old(steps).snapshot_u(), cpu_id, channel_index, waiting_state, range)) by {

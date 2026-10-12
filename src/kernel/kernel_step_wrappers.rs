@@ -2046,110 +2046,6 @@ impl KernelSteps {
     }
 }
 
-pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_for_equal<const TABLE_TYPE: PTType>(pre: PageTableLockedMapOf<TABLE_TYPE>, post: PageTableLockedMapOf<TABLE_TYPE>)
-    requires pre == post,
-    ensures #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_pagetable_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_transitive<const TABLE_TYPE: PTType>(pre: PageTableLockedMapOf<TABLE_TYPE>, middle: PageTableLockedMapOf<TABLE_TYPE>, post: PageTableLockedMapOf<TABLE_TYPE>)
-    requires
-        #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_pagetable_nonlock_fields_unchanged(middle, post),
-    ensures
-        kernel_pagetable_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_pagetable_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_cpu_nonlock_fields_unchanged_for_equal(pre: CpuLockedArray, post: CpuLockedArray)
-    requires pre == post,
-    ensures #[trigger] kernel_cpu_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_cpu_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_cpu_nonlock_fields_unchanged_transitive(pre: CpuLockedArray, middle: CpuLockedArray, post: CpuLockedArray)
-    requires
-        #[trigger] kernel_cpu_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_cpu_nonlock_fields_unchanged(middle, post),
-    ensures
-        kernel_cpu_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_cpu_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_process_nonlock_fields_unchanged_for_equal(pre: ProcessLockedMap, post: ProcessLockedMap)
-    requires pre == post,
-    ensures #[trigger] kernel_process_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_process_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_process_nonlock_fields_unchanged_transitive(pre: ProcessLockedMap, middle: ProcessLockedMap, post: ProcessLockedMap)
-    requires
-        #[trigger] kernel_process_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_process_nonlock_fields_unchanged(middle, post),
-    ensures
-        kernel_process_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_process_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_thread_nonlock_fields_unchanged_for_equal(pre: ThreadLockedMap, post: ThreadLockedMap)
-    requires pre == post,
-    ensures #[trigger] kernel_thread_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_thread_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_thread_nonlock_fields_unchanged_transitive(pre: ThreadLockedMap, middle: ThreadLockedMap, post: ThreadLockedMap)
-    requires
-        #[trigger] kernel_thread_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_thread_nonlock_fields_unchanged(middle, post),
-    ensures
-        kernel_thread_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_thread_nonlock_fields_unchanged); }
-
-pub broadcast group group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive {
-    kernel_pagetable_nonlock_fields_unchanged_for_equal,
-    kernel_pagetable_nonlock_fields_unchanged_transitive,
-    kernel_cpu_nonlock_fields_unchanged_for_equal,
-    kernel_cpu_nonlock_fields_unchanged_transitive,
-    kernel_process_nonlock_fields_unchanged_for_equal,
-    kernel_process_nonlock_fields_unchanged_transitive,
-    kernel_thread_nonlock_fields_unchanged_for_equal,
-    kernel_thread_nonlock_fields_unchanged_transitive,
-}
-
-pub broadcast proof fn kernel_endpoint_nonlock_fields_unchanged_for_equal(pre: EndpointLockedMap, post: EndpointLockedMap)
-    requires pre == post,
-    ensures #[trigger] kernel_endpoint_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_endpoint_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_endpoint_nonlock_fields_unchanged_transitive(pre: EndpointLockedMap, middle: EndpointLockedMap, post: EndpointLockedMap)
-    requires
-        #[trigger] kernel_endpoint_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_endpoint_nonlock_fields_unchanged(middle, post),
-    ensures kernel_endpoint_nonlock_fields_unchanged(pre, post),
-{ reveal(kernel_endpoint_nonlock_fields_unchanged); }
-
-pub broadcast group group_kernel_endpoint_nonlock_fields_unchanged_transitive {
-    kernel_endpoint_nonlock_fields_unchanged_for_equal,
-    kernel_endpoint_nonlock_fields_unchanged_transitive,
-}
-
-pub proof fn kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(steps: &KernelSteps, krnl: &KernelK)
-    requires steps.snapshot_k() == *krnl,
-    ensures kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl), kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp), kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
-{
-    broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, group_kernel_endpoint_nonlock_fields_unchanged_transitive;
-    reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-}
-
-pub broadcast proof fn kernel_cpu_process_thread_nonlock_fields_unchanged_transitive(pre: &KernelK, middle: &KernelK, post: &KernelK)
-    requires
-        #[trigger] kernel_cpu_process_thread_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_cpu_process_thread_nonlock_fields_unchanged(middle, post),
-    ensures
-        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
-{ broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }
-
-pub broadcast proof fn kernel_container_nonlock_fields_and_quotas_unchanged_transitive(pre: &KernelK, middle: &KernelK, post: &KernelK)
-    requires
-        #[trigger] kernel_container_nonlock_fields_and_quotas_unchanged(pre, middle),
-        #[trigger] kernel_container_nonlock_fields_and_quotas_unchanged(middle, post),
-    ensures
-        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
-{ reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }
-
 #[verifier::spinoff_prover]
 pub proof fn kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(pre: &KernelK, post: &KernelK)
     requires
@@ -2500,28 +2396,6 @@ pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, c
         },
     ensures kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
 { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre, post); }
-
-pub proof fn kernel_container_publication_composes(
-    pre: KernelU, published: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr,
-    thread: RwLockThreadPtr, cpu: CpuId, funding: usize, process_quota: usize, moved: Set<PagePtr>, thread_page: PagePtr, progress: Option<SyscallProgress>,
-)
-    requires
-        moved.len() == 2 * 512 + 8 + funding,
-    ensures
-        kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress) && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page)
-            ==> kernel_u_container_root_created(pre, post, parent, child, process, thread, cpu, funding, process_quota, progress) && post.container_map[parent].children.last() == child && post.container_map[child].root_process == process,
-{
-    if kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress)
-        && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page) {
-        reveal(kernel_u_container_root_published); reveal(kernel_u_cpu_and_page_owner_changed); reveal(kernel_u_container_root_created);
-        let moved_all = pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages);
-        assert_sets_equal!(post.container_map.dom(), pre.container_map.dom().insert(child));
-        assert_sets_equal!(moved_all, moved.insert(thread_page));
-        assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu as int, CpuU {
-            lock_state: LockStateU::Unlocked, owning_container: child, ..pre.cpu_array[cpu as int]
-        }));
-    }
-}
 
 pub proof fn kernel_container_root_published_implies_u_step(
     before: &KernelK, after: &KernelK, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr, thread: RwLockThreadPtr,
@@ -4306,14 +4180,6 @@ pub proof fn kernel_write_held_context_projection(krnl: &KernelK, lctx: &LocalCo
         if typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write) { krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
     }
 }
-
-pub proof fn kernel_write_held_pagetable_mode(krnl: &KernelK, lctx: &LocalContext, table: RwLockPageTableRoot)
-    requires
-        typed_lock_maps_aligned(krnl, lctx),
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
-    ensures
-        krnl.pt_mp.spec_index(table).locking_thread() is Write,
-{ krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table); }
 
 /// Expose concrete entries of the user projection without unfolding every projected map at the caller.
 pub proof fn kernel_cpu_thread_projection_at(krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, endpoint_ptr: Option<RwLockEndpointPtr>)
@@ -6931,5 +6797,86 @@ pub proof fn kernel_new_endpoint_fields_and_unlocks_implies_u_endpoint_map(
         lock_state: LockStateU::Unlocked, queue: Seq::empty(), queue_state: EndpointState::RECEIVE, owning_threads: set![(thread_ptr, endpoint_index)],
         owning_container: container_ptr, killed: false,
     }), p => { if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); } });
+}
+
+/// Equal per-element business fields imply equal nonlock projections.
+/// Complete U equality additionally requires equal observable lock modes.
+pub proof fn kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(pre: &KernelK, post: &KernelK)
+    requires
+        kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
+        post.irt.view().owners() == pre.irt.view().owners(),
+        post.irt.view().iommu_roots() == pre.irt.view().iommu_roots(),
+        post.cpu_tlb.view() == pre.cpu_tlb.view(),
+        post.iommu_tlb.view() == pre.iommu_tlb.view(),
+        post.dflt_pt == pre.dflt_pt,
+        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+        // This connects each process's projected pagetable pointer to the
+        // domain on which the per-entry framing premise below applies.
+        // Domain equality alone does not constrain `Map::spec_index` at a
+        // process-referenced key unless that key is known to be present.
+        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        // process_map: same domain, and per process only the fields
+        // `ProcessU` projects are read — quota/children fields off `view()`,
+        // tree closure fields off `view_ghost()`, `parent`/`depth` off
+        // `view_rodata()`, and `being_killed()`. NOT
+        // the whole `view()`: other kernel-only fields are unprojected.
+        post.prc_mp.dom() =~= pre.prc_mp.dom(),
+        forall|ptr: RwLockProcessPtr|
+            #![trigger post.prc_mp.spec_index(ptr)]
+            pre.prc_mp.dom().contains(ptr) ==>
+                post.prc_mp.spec_index(ptr).view().zombie == pre.prc_mp.spec_index(ptr).view().zombie
+                && post.prc_mp.spec_index(ptr).view().quota_4k == pre.prc_mp.spec_index(ptr).view().quota_4k
+                && post.prc_mp.spec_index(ptr).view().quota_2m == pre.prc_mp.spec_index(ptr).view().quota_2m
+                && post.prc_mp.spec_index(ptr).view().quota_1g == pre.prc_mp.spec_index(ptr).view().quota_1g
+                && post.prc_mp.spec_index(ptr).view().children.view() == pre.prc_mp.spec_index(ptr).view().children.view()
+                && post.prc_mp.spec_index(ptr).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(ptr).view_ghost().uppertree_seq.view()
+                && post.prc_mp.spec_index(ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(ptr).view_ghost().subtree_set.view()
+                && post.prc_mp.spec_index(ptr).view().owned_threads.view() == pre.prc_mp.spec_index(ptr).view().owned_threads.view()
+                && post.prc_mp.spec_index(ptr).view().pagetable == pre.prc_mp.spec_index(ptr).view().pagetable
+                && post.prc_mp.spec_index(ptr).view().iommu_table == pre.prc_mp.spec_index(ptr).view().iommu_table
+                && post.prc_mp.spec_index(ptr).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(ptr).view_ghost().owned_pci_functions.view()
+                && post.prc_mp.spec_index(ptr).view_rodata() == pre.prc_mp.spec_index(ptr).view_rodata()
+                && post.prc_mp.spec_index(ptr).being_killed() == pre.prc_mp.spec_index(ptr).being_killed(),
+        post.thr_mp.dom() =~= pre.thr_mp.dom(),
+        forall|ptr: RwLockThreadPtr|
+            #![trigger post.thr_mp.spec_index(ptr)]
+            pre.thr_mp.dom().contains(ptr) ==>
+                post.thr_mp.spec_index(ptr).view().state == pre.thr_mp.spec_index(ptr).view().state
+                && post.thr_mp.spec_index(ptr).view().caller == pre.thr_mp.spec_index(ptr).view().caller
+                && post.thr_mp.spec_index(ptr).view().callee == pre.thr_mp.spec_index(ptr).view().callee
+                && post.thr_mp.spec_index(ptr).view().owning_container == pre.thr_mp.spec_index(ptr).view().owning_container
+                && post.thr_mp.spec_index(ptr).view().owning_proc == pre.thr_mp.spec_index(ptr).view().owning_proc
+                && post.thr_mp.spec_index(ptr).view().last_cpu == pre.thr_mp.spec_index(ptr).view().last_cpu
+                && post.thr_mp.spec_index(ptr).view().quota_4k == pre.thr_mp.spec_index(ptr).view().quota_4k
+                && post.thr_mp.spec_index(ptr).view().quota_2m == pre.thr_mp.spec_index(ptr).view().quota_2m
+                && post.thr_mp.spec_index(ptr).view().quota_1g == pre.thr_mp.spec_index(ptr).view().quota_1g
+                && post.thr_mp.spec_index(ptr).view().endpoint_descriptors.view() == pre.thr_mp.spec_index(ptr).view().endpoint_descriptors.view()
+                && post.thr_mp.spec_index(ptr).view().blocking_endpoint_ptr == pre.thr_mp.spec_index(ptr).view().blocking_endpoint_ptr
+                && post.thr_mp.spec_index(ptr).view().ipc_payload == pre.thr_mp.spec_index(ptr).view().ipc_payload
+                && post.thr_mp.spec_index(ptr).view().error_code == pre.thr_mp.spec_index(ptr).view().error_code
+                && post.thr_mp.spec_index(ptr).view().trap_frame == pre.thr_mp.spec_index(ptr).view().trap_frame
+                && post.thr_mp.spec_index(ptr).view().syscall_progress == pre.thr_mp.spec_index(ptr).view().syscall_progress
+                && post.thr_mp.spec_index(ptr).being_killed() == pre.thr_mp.spec_index(ptr).being_killed(),
+        // cpu_array: per-slot payload `view()`.
+        forall|i: usize|
+            #![trigger post.cpu_arr.spec_index(i).value.view()]
+            index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.view() == pre.cpu_arr.spec_index(i).value.view(),
+    ensures
+        kernel_k_to_nonlock_kernel_u(*pre) == kernel_k_to_nonlock_kernel_u(*post),
+{
+    reveal(kernel_k_to_nonlock_kernel_u);
+    reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    reveal(kernel_endpoint_nonlock_fields_unchanged);
+    let pre_u = kernel_k_to_nonlock_kernel_u(*pre);
+    let post_u = kernel_k_to_nonlock_kernel_u(*post);
+    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
+    assert_maps_equal!(post_u.container_map, pre_u.container_map, ptr => {});
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => { reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); });
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, ptr => {});
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, ptr => {});
 }
 }

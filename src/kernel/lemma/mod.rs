@@ -22,6 +22,8 @@ pub mod kernel_inv_page_lock_op;
 pub mod thread_endpoint_memory_fields_eq;
 pub mod invariant_fields_eq;
 pub mod thread_process_management_fields_eq;
+pub mod held_objects_unchanged_lemmas;
+pub mod kernel_view_release_lock_op;
 
 pub use kernel_fold_lemmas::*;
 pub use kernel_cardinality_axioms::*;
@@ -47,3 +49,5 @@ pub use kernel_inv_page_lock_op::*;
 pub use thread_endpoint_memory_fields_eq::*;
 pub use invariant_fields_eq::*;
 pub use thread_process_management_fields_eq::*;
+pub use held_objects_unchanged_lemmas::*;
+pub use kernel_view_release_lock_op::*;

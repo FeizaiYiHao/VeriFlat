@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
@@ -132,86 +131,5 @@ verus! {
                 }
             }),
         }
-    }
-
-    /// Equal per-element business fields imply equal nonlock projections.
-    /// Complete U equality additionally requires equal observable lock modes.
-    pub proof fn kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(pre: &KernelK, post: &KernelK)
-        requires
-            kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
-            post.irt.view().owners() == pre.irt.view().owners(),
-            post.irt.view().iommu_roots() == pre.irt.view().iommu_roots(),
-            post.cpu_tlb.view() == pre.cpu_tlb.view(),
-            post.iommu_tlb.view() == pre.iommu_tlb.view(),
-            post.dflt_pt == pre.dflt_pt,
-            kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
-            // This connects each process's projected pagetable pointer to the
-            // domain on which the per-entry framing premise below applies.
-            // Domain equality alone does not constrain `Map::spec_index` at a
-            // process-referenced key unless that key is known to be present.
-            process_pagetable_match(pre.prc_mp, pre.pt_mp),
-            process_iommu_table_match(pre.prc_mp, pre.it_mp),
-            kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
-            kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
-            // process_map: same domain, and per process only the fields
-            // `ProcessU` projects are read — quota/children fields off `view()`,
-            // tree closure fields off `view_ghost()`, `parent`/`depth` off
-            // `view_rodata()`, and `being_killed()`. NOT
-            // the whole `view()`: other kernel-only fields are unprojected.
-            post.prc_mp.dom() =~= pre.prc_mp.dom(),
-            forall|ptr: RwLockProcessPtr|
-                #![trigger post.prc_mp.spec_index(ptr)]
-                pre.prc_mp.dom().contains(ptr) ==>
-                    post.prc_mp.spec_index(ptr).view().zombie == pre.prc_mp.spec_index(ptr).view().zombie
-                    && post.prc_mp.spec_index(ptr).view().quota_4k == pre.prc_mp.spec_index(ptr).view().quota_4k
-                    && post.prc_mp.spec_index(ptr).view().quota_2m == pre.prc_mp.spec_index(ptr).view().quota_2m
-                    && post.prc_mp.spec_index(ptr).view().quota_1g == pre.prc_mp.spec_index(ptr).view().quota_1g
-                    && post.prc_mp.spec_index(ptr).view().children.view() == pre.prc_mp.spec_index(ptr).view().children.view()
-                    && post.prc_mp.spec_index(ptr).view_ghost().uppertree_seq.view() == pre.prc_mp.spec_index(ptr).view_ghost().uppertree_seq.view()
-                    && post.prc_mp.spec_index(ptr).view_ghost().subtree_set.view() == pre.prc_mp.spec_index(ptr).view_ghost().subtree_set.view()
-                    && post.prc_mp.spec_index(ptr).view().owned_threads.view() == pre.prc_mp.spec_index(ptr).view().owned_threads.view()
-                    && post.prc_mp.spec_index(ptr).view().pagetable == pre.prc_mp.spec_index(ptr).view().pagetable
-                    && post.prc_mp.spec_index(ptr).view().iommu_table == pre.prc_mp.spec_index(ptr).view().iommu_table
-                    && post.prc_mp.spec_index(ptr).view_ghost().owned_pci_functions.view() == pre.prc_mp.spec_index(ptr).view_ghost().owned_pci_functions.view()
-                    && post.prc_mp.spec_index(ptr).view_rodata() == pre.prc_mp.spec_index(ptr).view_rodata()
-                    && post.prc_mp.spec_index(ptr).being_killed() == pre.prc_mp.spec_index(ptr).being_killed(),
-            post.thr_mp.dom() =~= pre.thr_mp.dom(),
-            forall|ptr: RwLockThreadPtr|
-                #![trigger post.thr_mp.spec_index(ptr)]
-                pre.thr_mp.dom().contains(ptr) ==>
-                    post.thr_mp.spec_index(ptr).view().state == pre.thr_mp.spec_index(ptr).view().state
-                    && post.thr_mp.spec_index(ptr).view().caller == pre.thr_mp.spec_index(ptr).view().caller
-                    && post.thr_mp.spec_index(ptr).view().callee == pre.thr_mp.spec_index(ptr).view().callee
-                    && post.thr_mp.spec_index(ptr).view().owning_container == pre.thr_mp.spec_index(ptr).view().owning_container
-                    && post.thr_mp.spec_index(ptr).view().owning_proc == pre.thr_mp.spec_index(ptr).view().owning_proc
-                    && post.thr_mp.spec_index(ptr).view().last_cpu == pre.thr_mp.spec_index(ptr).view().last_cpu
-                    && post.thr_mp.spec_index(ptr).view().quota_4k == pre.thr_mp.spec_index(ptr).view().quota_4k
-                    && post.thr_mp.spec_index(ptr).view().quota_2m == pre.thr_mp.spec_index(ptr).view().quota_2m
-                    && post.thr_mp.spec_index(ptr).view().quota_1g == pre.thr_mp.spec_index(ptr).view().quota_1g
-                    && post.thr_mp.spec_index(ptr).view().endpoint_descriptors.view() == pre.thr_mp.spec_index(ptr).view().endpoint_descriptors.view()
-                    && post.thr_mp.spec_index(ptr).view().blocking_endpoint_ptr == pre.thr_mp.spec_index(ptr).view().blocking_endpoint_ptr
-                    && post.thr_mp.spec_index(ptr).view().ipc_payload == pre.thr_mp.spec_index(ptr).view().ipc_payload
-                    && post.thr_mp.spec_index(ptr).view().error_code == pre.thr_mp.spec_index(ptr).view().error_code
-                    && post.thr_mp.spec_index(ptr).view().trap_frame == pre.thr_mp.spec_index(ptr).view().trap_frame
-                    && post.thr_mp.spec_index(ptr).view().syscall_progress == pre.thr_mp.spec_index(ptr).view().syscall_progress
-                    && post.thr_mp.spec_index(ptr).being_killed() == pre.thr_mp.spec_index(ptr).being_killed(),
-            // cpu_array: per-slot payload `view()`.
-            forall|i: usize|
-                #![trigger post.cpu_arr.spec_index(i).value.view()]
-                index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.view() == pre.cpu_arr.spec_index(i).value.view(),
-        ensures
-            kernel_k_to_nonlock_kernel_u(*pre) == kernel_k_to_nonlock_kernel_u(*post),
-    {
-        reveal(kernel_k_to_nonlock_kernel_u);
-        reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-        reveal(kernel_endpoint_nonlock_fields_unchanged);
-        let pre_u = kernel_k_to_nonlock_kernel_u(*pre);
-        let post_u = kernel_k_to_nonlock_kernel_u(*post);
-        assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
-        assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array);
-        assert_maps_equal!(post_u.container_map, pre_u.container_map, ptr => {});
-        assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => { reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); });
-        assert_maps_equal!(post_u.thread_map, pre_u.thread_map, ptr => {});
-        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, ptr => {});
     }
 }

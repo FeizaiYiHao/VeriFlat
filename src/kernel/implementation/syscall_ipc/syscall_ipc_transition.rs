@@ -152,11 +152,7 @@ verus! {
             };
             assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
             assert(krnl.process_management_inv()) by {
-                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by {
-                    assert(forall|t: RwLockThreadPtr| #![trigger krnl.thr_mp.spec_index(t)] old(krnl).thr_mp.dom().contains(t)
-                        ==> krnl.thr_mp.spec_index(t).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(t).view().endpoint_descriptors);
-                    reveal(thread_endpoint_ref_counter_wf);
-                };
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                     &&& thread_caller_callee_wf(krnl.thr_mp)

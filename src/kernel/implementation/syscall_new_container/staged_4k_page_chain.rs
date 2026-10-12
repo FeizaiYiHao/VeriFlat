@@ -294,6 +294,8 @@ pub(super) fn cleanup_published_4k_page_chain(
                     candidate => { page_ptrs.subrange(0, remaining as int).to_set_ensures(); page_ptrs.subrange(0, (remaining + 1) as int).to_set_ensures(); }
                 );
             };
+            assert forall|i: int| remaining < i < count implies page_ptr_valid(page_ptrs.spec_index(i)) by { assert(page_ptrs.to_set().contains(page_ptrs.spec_index(i))) by { page_ptrs.to_set_ensures(); }; };
+            assert forall|i: int| remaining < i < count implies page_ptr2page_index(page_ptrs.spec_index(i)) != page_index by {};
         }
     }
     proof {

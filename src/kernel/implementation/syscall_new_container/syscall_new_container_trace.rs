@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_sets_equal};
 use crate::*;
 use super::syscall_new_container_spec::*;
 #[cfg(feature = "split-crates")]
@@ -291,4 +291,26 @@ pub(super) proof fn new_container_syscall_trace_from_commit(trace: Seq<KernelSte
     ensures
         new_container_syscall_trace(trace, pre, post, cpu_id, va, range, funding, process_quota, transfer_cpu, regs, endpoint_index, ret),
 { reveal(new_container_syscall_trace); }
+
+pub(super) proof fn kernel_container_publication_composes(
+    pre: KernelU, published: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr,
+    thread: RwLockThreadPtr, cpu: CpuId, funding: usize, process_quota: usize, moved: Set<PagePtr>, thread_page: PagePtr, progress: Option<SyscallProgress>,
+)
+    requires
+        moved.len() == 2 * 512 + 8 + funding,
+    ensures
+        kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress) && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page)
+            ==> kernel_u_container_root_created(pre, post, parent, child, process, thread, cpu, funding, process_quota, progress) && post.container_map[parent].children.last() == child && post.container_map[child].root_process == process,
+{
+    if kernel_u_container_root_published(pre, published, parent, child, process, thread, cpu, funding, process_quota, moved, thread_page, progress)
+        && kernel_u_cpu_and_page_owner_changed(published, post, cpu, parent, child, thread_page) {
+        reveal(kernel_u_container_root_published); reveal(kernel_u_cpu_and_page_owner_changed); reveal(kernel_u_container_root_created);
+        let moved_all = pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages);
+        assert_sets_equal!(post.container_map.dom(), pre.container_map.dom().insert(child));
+        assert_sets_equal!(moved_all, moved.insert(thread_page));
+        assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu as int, CpuU {
+            lock_state: LockStateU::Unlocked, owning_container: child, ..pre.cpu_array[cpu as int]
+        }));
+    }
+}
 } // verus!

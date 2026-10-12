@@ -33,7 +33,7 @@ pub(super) fn build_staged_4k_global_pool(
     pages: &mut PageLockedArray, count: usize, head: PagePtr, Ghost(page_ptrs): Ghost<Seq<PagePtr>>, Ghost(page_indices): Ghost<Set<PageIndex>>,
     child_allocator_ptr: RwLockPageAllocatorPtr, child_container_ptr: RwLockContainerPtr, child_depth: usize,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perms): Tracked<&Map<PagePtr, LockPerm>>,
-) -> (ret: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>)
+) -> (ret: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>)
     requires
         old(pages).inv(),
         page_array_wf(*old(pages)),
@@ -529,7 +529,7 @@ pub(super) fn prepare_new_container_backing_pages(
     Tracked(funding_page_lock_perms): Tracked<&Map<PagePtr, LockPerm>>, Tracked(container_page_lock_perm): Tracked<&LockPerm>,
     Tracked(pcid_allocator_page_lock_perm): Tracked<&LockPerm>, Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
     Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
-) -> (ret: (LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, Tracked<PagePerm2m>, Tracked<PagePerm2m>,))
+) -> (ret: (LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, Tracked<PagePerm2m>, Tracked<PagePerm2m>,))
     requires
         reference_krnl.inv(),
         reference_krnl.pg_arr == *old(pages),
