@@ -159,10 +159,6 @@ verus! {
         proof {
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr,
                 peer_result, None, pci_transfer)) by {
-                // The process map is untouched here, so seed the entry forall's `owned_pci_functions` trigger per process.
-                assert forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)] krnl.prc_mp.spec_index(p).view_ghost().owned_pci_functions == old(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions by {
-                    let ghost t = old(krnl).prc_mp.spec_index(p).view_ghost().owned_pci_functions;
-                };
                 reveal(kernel_ipc_rendezvous_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             };
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr,

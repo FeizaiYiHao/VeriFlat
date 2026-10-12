@@ -157,7 +157,12 @@ impl Cpu {
             iret_exits: 0,
             xapic: MaybeUninit::uninit(),
             gdt: GlobalDescriptorTable::empty(),
-            tss: TaskStateSegment::new(),
+            tss: {
+                // No I/O permission bitmap: a base at or past the TSS limit denies every port to ring 3.
+                let mut tss = TaskStateSegment::new();
+                tss.iomap_base = core::mem::size_of::<TaskStateSegment>() as u16;
+                tss
+            },
             ist: [IstStack::new(), IstStack::new()],
         }
     }

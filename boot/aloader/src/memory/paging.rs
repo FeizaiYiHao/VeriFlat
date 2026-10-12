@@ -81,10 +81,10 @@ impl AddressSpace {
 
         let mut cur = self.pml4;
 
-        if vaddr as u64 & (1u64 << PAGE_SHIFT - 1) != 0 {
+        if vaddr as u64 & ((1u64 << PAGE_SHIFT) - 1) != 0 {
             panic!("vaddr is unaligned");
         }
-        if paddr as u64 & (1u64 << PAGE_SHIFT - 1) != 0 {
+        if paddr as u64 & ((1u64 << PAGE_SHIFT) - 1) != 0 {
             panic!("paddr is unaligned");
         }
 
@@ -132,7 +132,7 @@ impl AddressSpace {
         let table =
             { allocator.allocate_physical(mem::size_of::<PageTable>()).0 } as *mut PageTable;
 
-        if table as u64 & (1u64 << PAGE_SHIFT - 1) != 0 {
+        if table as u64 & ((1u64 << PAGE_SHIFT) - 1) != 0 {
             panic!("Got unaligned page");
         }
 

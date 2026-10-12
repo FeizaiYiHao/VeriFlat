@@ -21,7 +21,7 @@ impl LockInvTrait for PageAllocator {
 }
 
 impl PageAllocator {
-    pub fn new_with_global_pool(owning_container: RwLockContainerPtr, container_depth: usize, linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, quota_value: usize) -> (ret: Self)
+    pub fn new_with_global_pool(owning_container: RwLockContainerPtr, container_depth: usize, linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, quota_value: usize) -> (ret: Self)
         requires
             linked_list.wf(),
             linked_list.container_depth.view() == Some(container_depth),
@@ -37,7 +37,7 @@ impl PageAllocator {
             ret.global_pool.view().view() == linked_list.view(),
             ret.global_pool.view().map() == linked_list.map(),
             !ret.global_pool.locked(),
-            forall|cpu_id: CpuId| #![auto]
+            forall|cpu_id: CpuId| #![trigger ret.cpu_caches.spec_index(cpu_id)]
                 index_valid(NUM_CPUS, cpu_id) ==> {
                     &&& ret.cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
                     &&& ret.cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
@@ -51,7 +51,7 @@ impl PageAllocator {
             invariant
                 cache_array.wf(),
                 0 <= cpu_id <= NUM_CPUS,
-                forall|i: CpuId| #![auto]
+                forall|i: CpuId| #![trigger cache_array.spec_index(i)]
                     index_valid(NUM_CPUS, i) && i < cpu_id ==> {
                         &&& cache_array.spec_index(i).inv()
                         &&& cache_array.spec_index(i).view().linked_list.view() == Seq::<PagePtr>::empty()
@@ -88,7 +88,7 @@ impl PageAllocator {
             ret.global_pool.view().view() == Seq::<PagePtr>::empty(),
             ret.global_pool.view().map() == Map::<usize, PagePtr>::empty(),
             !ret.global_pool.locked(),
-            forall|cpu_id: CpuId| #![auto]
+            forall|cpu_id: CpuId| #![trigger ret.cpu_caches.spec_index(cpu_id)]
                 index_valid(NUM_CPUS, cpu_id) ==> {
                     &&& ret.cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
                     &&& ret.cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
@@ -101,7 +101,7 @@ impl PageAllocator {
             invariant
                 cache_array.wf(),
                 0 <= cpu_id <= NUM_CPUS,
-                forall|i: CpuId| #![auto]
+                forall|i: CpuId| #![trigger cache_array.spec_index(i)]
                     index_valid(NUM_CPUS, i) && i < cpu_id ==> {
                         &&& cache_array.spec_index(i).inv()
                         &&& cache_array.spec_index(i).view().linked_list.view() == Seq::<PagePtr>::empty()
@@ -134,7 +134,7 @@ impl PageAllocator {
     }
 
     pub open spec fn cpu_caches_wf(&self) -> bool {
-        forall|cpu_i: CpuId| #![trigger index_valid(NUM_CPUS, cpu_i)] index_valid(NUM_CPUS, cpu_i) ==> self.cpu_caches.spec_index(cpu_i).inv()
+        forall|cpu_i: CpuId| #![trigger self.cpu_caches.spec_index(cpu_i)] index_valid(NUM_CPUS, cpu_i) ==> self.cpu_caches.spec_index(cpu_i).inv()
     }
 
     /// The quota's intrinsic minor lock id is the owning container pointer.

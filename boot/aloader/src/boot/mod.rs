@@ -18,6 +18,8 @@ extern "C" {
     static bootinfo: u64;
     static __loader_start: u8;
     static __loader_end: u8;
+    static stack_bottom: u8;
+    static stack_top: u8;
 }
 
 #[cfg(test)]
@@ -73,6 +75,19 @@ trait StartInfo {
             );
         }
     }
+}
+
+/// The size of the loader's own stack (`crt0.asm`).
+pub fn loader_stack_size() -> usize {
+    unsafe { &stack_top as *const u8 as usize - &stack_bottom as *const u8 as usize }
+}
+
+/// How much of the loader's stack has been touched: it lies in .bss, so the first non-zero byte
+/// above the bottom bounds the deepest frame.
+pub fn loader_stack_high_water() -> usize {
+    let size = loader_stack_size();
+    let stack = unsafe { core::slice::from_raw_parts(&stack_bottom as *const u8, size) };
+    size - stack.iter().position(|b| *b != 0).unwrap_or(size)
 }
 
 /// Returns the range of the loader itself.

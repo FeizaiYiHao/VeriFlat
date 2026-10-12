@@ -13,6 +13,9 @@ pub const MAX_PAGES: usize = 256 * 1024;
 /// The most processors the loader reports. Must equal `veriflat_monolith::NUM_CPUS`.
 pub const MAX_CPUS: usize = 32;
 
+/// The most VT-d remapping units (DMAR DRHD entries) the loader reports.
+pub const MAX_IOMMU_UNITS: usize = 8;
+
 /// The type of physical memory.
 ///
 /// This is a simplified version of `BootMemoryType` in aloader.
@@ -60,14 +63,22 @@ pub struct BootInfo {
     /// Whether Tagged TLB is enabled.
     pub pcide: bool,
 
-    /// The base of the IOMMU remapping hardware registers.
-    pub iommu_base: Option<u64>,
+    /// Register bases of every VT-d remapping unit, in DMAR order. Together they cover every PCI
+    /// function of segment 0; the kernel points each at the same root table.
+    pub iommu_units: ArrayVec<u64, MAX_IOMMU_UNITS>,
 
     /// Local APIC IDs of the enabled processors, in ACPI MADT order.
     pub apic_ids: ArrayVec<u8, MAX_CPUS>,
 
     /// The PCI device the kernel's DMA self-test drives, if present.
     pub dma_test_device: Option<DmaTestDevice>,
+
+    /// Base of the zeroed stack CPU 0 runs the kernel's initialization on; the kernel reports how
+    /// much of it was used so the loader's reservation can be sized.
+    pub kernel_stack_base: u64,
+
+    /// Size of that stack in bytes.
+    pub kernel_stack_size: u64,
 }
 
 /// A PCI function that can issue DMA on request (QEMU `edu`), with its first BAR identity mapped.
@@ -128,9 +139,11 @@ impl BootInfo {
             dom0_pml4: ptr::null(),
             pages: ArrayVec::new(),
             pcide: false,
-            iommu_base: None,
+            iommu_units: ArrayVec::new(),
             apic_ids: ArrayVec::new(),
             dma_test_device: None,
+            kernel_stack_base: 0,
+            kernel_stack_size: 0,
         }
     }
 }

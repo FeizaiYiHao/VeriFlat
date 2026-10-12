@@ -1368,7 +1368,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
         &&& post.irt.view().iommu_roots() == seq3_update(pre.irt.view().iommu_roots(), bdf.0 as int, bdf.1 as int, bdf.2 as int, None)
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(pci_bdf_did(bdf.0, bdf.1, bdf.2), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
         &&& post.prc_mp.dom() == pre.prc_mp.dom()
-        &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p).view_ghost().owned_pci_functions]
+        &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) ==> {
                 let a = pre.prc_mp.spec_index(p);
                 let b = post.prc_mp.spec_index(p);

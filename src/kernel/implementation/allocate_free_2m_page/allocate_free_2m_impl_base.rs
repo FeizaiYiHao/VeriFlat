@@ -571,11 +571,11 @@ verus! {
                 lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
                 typed_lock_map_contains_mode(lctx.allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedLockMode::Write),
                 forall|c: CpuId|
-                    #![trigger krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(c).view().locked()]
-                    index_valid(NUM_CPUS, c) && c < cpu ==> krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(c).view().locked() == false,
-                forall|c: CpuId|
                     #![trigger krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(c)]
-                    index_valid(NUM_CPUS, c) && c < cpu ==> !typed_lock_map_contains_mode(lctx.allocator_cache_2m_lock_map(), (alloc_ptr_2m, c), TypedLockMode::Write),
+                    index_valid(NUM_CPUS, c) && c < cpu ==> {
+                        &&& krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(c).view().locked() == false
+                        &&& !typed_lock_map_contains_mode(lctx.allocator_cache_2m_lock_map(), (alloc_ptr_2m, c), TypedLockMode::Write)
+                    },
                 cache_perms_match_lctx_from(krnl.allc_2m_mp, alloc_ptr_2m, &*lctx, &perms, cpu),
             decreases NUM_CPUS - cpu,
         {

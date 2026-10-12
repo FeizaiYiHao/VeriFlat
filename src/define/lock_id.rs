@@ -51,7 +51,7 @@ pub const CPU_SET_LOCK_MAJOR: LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
 // still allocate while holding the destination scheduler.
 pub const SCHEDULER_LOCK_MAJOR: LockMajorId = CPU_SET_LOCK_MAJOR + 1;
 pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = SCHEDULER_LOCK_MAJOR + 1;
-pub const ALLOCATOR_GLOBAL_POLL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
+pub const ALLOCATOR_GLOBAL_POOL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
 pub const THREAD_SCHEDULED_LOCK_MAJOR: LockMajorId = 20001;
 
 pub const FREE_PAGE_LOCK_MAJOR: LockMajorId = 30000;

@@ -41,12 +41,18 @@ use astd::memory::{USERSPACE_BASE, USERSPACE_PAYLOAD_BASE};
 use memory::{
     AddressSpace, BootMemoryType, PhysicalAllocator, UserspaceMapper, MAX_PHYSICAL_MEMORY, PAGE_SIZE,
 };
+use core::ptr;
+
+// The reservations below are sized from the "Loader memory use" and "Kernel boot stack
+// high-water" lines the boot prints (2026-10: kernel image 101 MiB, boot stack 62 MiB, dom0 17 MiB,
+// loader stack 4 MiB) with headroom; `memory::ALLOCATOR_SIZE` must cover the first three.
 
 /// Kernel image (`KernelK` lives in its .bss) + kernel stack.
-const KERNEL_RESERVATION: usize = 320 * 1024 * 1024;
+const KERNEL_RESERVATION: usize = 224 * 1024 * 1024;
 /// The kernel builds `KernelK` (~60 MiB) by value on this stack before moving it into place.
-const KERNEL_STACK_SIZE: usize = 192 * 1024 * 1024;
-const DOM0_RESERVATION: usize = 256 * 1024 * 1024; // 256 MiB
+const KERNEL_STACK_SIZE: usize = 96 * 1024 * 1024;
+/// dom0 image, its stack, and the payload; also the span of dom0's initial user mapping.
+const DOM0_RESERVATION: usize = 64 * 1024 * 1024;
 const DOM0_STACK_SIZE: u64 = 16 * 1024 * 1024;
 
 /// MMIO pages the kernel needs identity mapped (not part of the page array).
@@ -79,16 +85,29 @@ pub extern "C" fn main() -> ! {
         }
         cur += PAGE_SIZE as u64;
     }
-    let iommu_base = acpi::probe_iommu();
+    // ACPI tables sit at the top of RAM, which the final page tables may not cover: read them now.
+    let iommu_units = acpi::probe_iommu();
+    let apic_ids = acpi::probe_cpus();
     let dma_test_device = pci::probe_dma_test_device();
     unsafe {
         kernel_space.map(bootstrap_allocator, LAPIC_BASE, LAPIC_BASE, false, false, true);
         kernel_space.map(bootstrap_allocator, IOAPIC_BASE, IOAPIC_BASE, false, false, true);
-        if let Some(base) = iommu_base {
+        for &base in iommu_units.iter() {
             kernel_space.map(bootstrap_allocator, base, base, false, false, true);
         }
         if let Some(device) = dma_test_device {
             kernel_space.map(bootstrap_allocator, device.mmio, device.mmio, false, false, true);
+        }
+        // The kernel and dom0 images are still read after the switch to these tables; the
+        // firmware may have placed them above the managed memory (below 4 GiB, as multiboot
+        // module addresses are 32-bit).
+        let module = boot::get_kernel_image_range().expect("No kernel image was passed");
+        let mut cur = module.base() & !(PAGE_SIZE as u64 - 1);
+        while cur <= module.end_inclusive() {
+            if cur >= MAX_PHYSICAL_MEMORY as u64 {
+                kernel_space.map(bootstrap_allocator, cur, cur, false, false, false);
+            }
+            cur += PAGE_SIZE as u64;
         }
     }
 
@@ -128,9 +147,9 @@ pub extern "C" fn main() -> ! {
 
     boot_info.pml4 = kernel_space.pml4();
     boot_info.dom0_pml4 = dom0_space.pml4();
-    boot_info.iommu_base = iommu_base;
+    boot_info.iommu_units = iommu_units;
     boot_info.dma_test_device = dma_test_device;
-    boot_info.apic_ids = acpi::probe_cpus();
+    boot_info.apic_ids = apic_ids;
     log::info!("Processors (APIC IDs): {:?}", boot_info.apic_ids);
 
     let (jumbo_file, jumbo_size) = {
@@ -147,6 +166,10 @@ pub extern "C" fn main() -> ! {
     let (kernel_map, mut jumbo_file) = kernel_elf.load(&mut kernel_allocator).unwrap();
 
     let stack_base = unsafe { kernel_allocator.allocate_physical(KERNEL_STACK_SIZE).0 };
+    unsafe { ptr::write_bytes(stack_base as *mut u8, 0, KERNEL_STACK_SIZE) };
+    boot_info.kernel_stack_base = stack_base;
+    boot_info.kernel_stack_size = KERNEL_STACK_SIZE as u64;
+    let kernel_image_size = kernel_allocator.used() - KERNEL_STACK_SIZE;
     log::info!(
         "Kernel loaded at {:#x} (bias {:#x}), stack {:#x}..{:#x}",
         kernel_map.load_addr,
@@ -162,6 +185,7 @@ pub extern "C" fn main() -> ! {
         .seek(SeekFrom::Start(kernel_end as u64))
         .expect("Kernel file incomplete");
 
+    let mut dom0_size = 0;
     match load_domain("dom0", jumbo_file, &mut dom0_space, bootstrap_allocator) {
         Ok(mut domain) => {
             boot_info.dom0 = Some(domain.mapping);
@@ -194,6 +218,7 @@ pub extern "C" fn main() -> ! {
                     cur += PAGE_SIZE as u64;
                 }
             }
+            dom0_size = domain.allocator.used();
         }
         Err(e) => {
             log::warn!("No valid Dom0: {:?}", e);
@@ -204,6 +229,18 @@ pub extern "C" fn main() -> ! {
     memory::dump_physical_memory_map();
 
     populate_pages(&mut boot_info);
+
+    log::info!(
+        "Loader memory use: page tables {} KiB of {} KiB, kernel image {} KiB of {} KiB, dom0 {} KiB of {} KiB, loader stack {} KiB of {} KiB",
+        bootstrap_allocator.used() / 1024,
+        memory::BOOTSTRAP_SIZE / 1024,
+        kernel_image_size / 1024,
+        (KERNEL_RESERVATION - KERNEL_STACK_SIZE) / 1024,
+        dom0_size / 1024,
+        DOM0_RESERVATION / 1024,
+        boot::loader_stack_high_water() / 1024,
+        boot::loader_stack_size() / 1024,
+    );
 
     debugger::on_ready();
 
@@ -252,6 +289,9 @@ fn populate_pages(boot_info: &mut BootInfo) {
             cur += PAGE_SIZE as u64;
         }
         while cur < region.end_inclusive() && !boot_info.pages.is_full() {
+            // A page straddling the region's end is only partly usable: keep it reserved.
+            let whole_page = cur + PAGE_SIZE as u64 - 1 <= region.end_inclusive();
+            let page_type = if whole_page { page_type } else { PhysicalMemoryType::Reserved };
             if page_type == PhysicalMemoryType::Available {
                 free_page_count += 1;
             }

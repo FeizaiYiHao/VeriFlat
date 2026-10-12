@@ -81,7 +81,6 @@ pub fn page_map_copy_kernel_entry_range(source_ptr: PageMapPtr, Tracked(source_p
                 0 <= i < index ==> target_perm.value().spec_index(i) =~= source_perm.value().spec_index(i),
     {
         let raw = *source.ar.get(index);
-        let addr = usize2pa(raw);
         let value = usize2page_entry(raw);
         page_map_set_raw(target_ptr, Tracked(&mut *target_perm), index, value);
     }

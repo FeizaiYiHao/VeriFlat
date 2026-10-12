@@ -7,7 +7,7 @@ use acpi::{AcpiTables, AcpiTable, PhysicalMapping};
 use acpi::handler::AcpiHandler;
 use acpi::madt::{Madt, MadtEntry};
 use acpi::sdt::{Signature, SdtHeader};
-use astd::boot::MAX_CPUS;
+use astd::boot::{MAX_CPUS, MAX_IOMMU_UNITS};
 use astd::heapless::Vec as ArrayVec;
 
 #[derive(Clone, Debug)]
@@ -151,7 +151,10 @@ pub fn probe_cpus() -> ArrayVec<u8, MAX_CPUS> {
     ids
 }
 
-pub fn probe_iommu() -> Option<u64> {
+/// Register bases of the VT-d remapping units, in DMAR order. VeriFlat's isolation needs DMA
+/// remapping, so a machine without a DMAR table or a DRHD entry does not boot. PCI segment groups
+/// other than 0 are not supported: the kernel's requester IDs have no segment.
+pub fn probe_iommu() -> ArrayVec<u64, MAX_IOMMU_UNITS> {
     let handler = NullAcpiHandler::new();
     let acpi = unsafe {
         AcpiTables::search_for_rsdp_bios(handler).expect("failed to find RSDP")
@@ -159,18 +162,15 @@ pub fn probe_iommu() -> Option<u64> {
 
     log::info!("ACPI: {:?}", acpi);
 
-    let dmar = if let Ok(dmar) = acpi.find_table::<Dmar>() {
-        dmar
-    } else {
-        log::warn!("IOMMU not available - No DMAR table");
-        return None;
-    };
-
+    let dmar = acpi.find_table::<Dmar>().expect("no DMAR table: VeriFlat needs VT-d DMA remapping");
     log::info!("DMAR: {:#?}", *dmar);
 
-    let drhde = dmar.iter_remapping_structs().find_map(|header| {
-        header.as_drhd()
-    }).expect("failed to find DRHD entry");
-
-    Some(drhde.register_base_address)
+    let mut units = ArrayVec::new();
+    for drhd in dmar.iter_remapping_structs().filter_map(|header| header.as_drhd()) {
+        let (segment, base) = (drhd.segment_number, drhd.register_base_address);
+        assert!(segment == 0, "DRHD for PCI segment {} is not supported", segment);
+        units.push(base).expect("more DRHD entries than MAX_IOMMU_UNITS");
+    }
+    assert!(!units.is_empty(), "DMAR has no DRHD entry: VeriFlat needs VT-d DMA remapping");
+    units
 }

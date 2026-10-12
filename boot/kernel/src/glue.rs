@@ -29,7 +29,7 @@ const PTE_ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
 
 type PageLock = RwLock<Page, (), (), NO_KILL_STATE>;
 type NeedFlushLock = RwLock<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>;
-type FreePool = LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>;
+type FreePool = LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {

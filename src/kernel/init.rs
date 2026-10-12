@@ -91,7 +91,7 @@ pub open spec fn boot_dom0_pagetable_model(
     }
 }
 
-pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>) -> bool {
+pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
@@ -115,7 +115,7 @@ pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootK
         }
 }
 
-pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>) -> bool {
+pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
@@ -139,7 +139,7 @@ pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootK
         }
 }
 
-pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>) -> bool {
+pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
@@ -166,8 +166,8 @@ pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootK
 #[verifier::opaque]
 pub open spec fn boot_page_array_ready(
     page_array: PageLockedArray, layout: BootKernelLayout, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
-    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
+    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
 ) -> bool {
     &&& page_array_wf(page_array)
     &&& hugepage_2m_wf(page_array)
@@ -458,8 +458,8 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(krnl: &KernelK, layo
 #[verifier::spinoff_prover]
 proof fn prove_boot_container_page_owner_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
-    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, all_valid_pages: Set<PagePtr>,
+    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, all_valid_pages: Set<PagePtr>,
 )
     requires
         krnl.pg_arr == page_array,
@@ -476,8 +476,8 @@ proof fn prove_boot_container_page_owner_wf(
 #[verifier::spinoff_prover]
 proof fn prove_boot_iommu_table_pages_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>,
-    manifest_4k: Map<VAddr, MapEntry>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
-    free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
+    manifest_4k: Map<VAddr, MapEntry>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
 )
     requires
         krnl.pg_arr == page_array,
@@ -536,11 +536,503 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
         process_thread_wf(krnl.prc_mp, krnl.thr_mp),
 { reveal(process_thread_wf); assert(process_empty_lists_wlocked(krnl.prc_mp)) by { reveal(process_empty_lists_wlocked); }; krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.view().lemma_index_contains(0); }
 
+/// Operation summary of `finish_init_from_boot`: every field of the kernel object it assembles.
+pub open spec fn boot_kernel_state(
+    krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    process_node_addr: usize,
+) -> bool {
+    &&& krnl.rt_ctn == layout.root_container
+    &&& krnl.pg_arr == page_array
+    &&& krnl.pcid_needflush == pcid_needflush
+    &&& krnl.cpu_published == cpu_published
+    &&& krnl.dflt_pt == default_pagetable
+    &&& krnl.cpu_arr.inv()
+    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_arr.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().inv()
+        &&& !krnl.cpu_arr.spec_index(cpu_id).view().locked()
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == layout.root_container
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == 0
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().state == if cpu_id == 0 { CpuState::Idle } else { CpuState::Off }
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == default_pagetable.view().cr3
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
+    }
+    &&& krnl.cpu_tlb.inv()
+    &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+    &&& krnl.iommu_tlb.inv()
+    &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
+    &&& krnl.irt.inv()
+    &&& krnl.irt.locking_thread() is None
+    &&& !krnl.irt.locked()
+    &&& !krnl.irt.being_killed()
+    &&& krnl.irt.view().wf()
+    &&& krnl.irt.view().table_base() == layout.iommu_root_table_base()
+    &&& forall|bus: usize, device: usize, function: usize| #![trigger krnl.irt.view().spec_index_iommu_root(bus, device, function)]
+        pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_iommu_root(bus, device, function) is None
+    &&& forall|bus: usize, device: usize, function: usize| #![trigger krnl.irt.view().spec_index_owner(bus, device, function)]
+        pci_bdf_valid(bus, device, function) ==> krnl.irt.view().spec_index_owner(bus, device, function) == layout.root_process
+    &&& krnl.pt_mp.perms_wf()
+    &&& krnl.pt_mp.dom() =~= set![layout.cpu_pagetable]
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).is_init()
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).inv()
+    &&& !krnl.pt_mp.spec_index(layout.cpu_pagetable).being_killed()
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).locking_thread() is None
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().wf()
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid_value() == 1
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().proc_ptr == layout.root_process
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_l4_end == kernel_l4_end
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_entries.view() == kernel_entries
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().page_closure() =~= cpu_page_closure
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().mapping_4k() == manifest_4k
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().mapping_2m() == Map::<VAddr, MapEntry>::empty()
+    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().mapping_1g() == Map::<VAddr, MapEntry>::empty()
+    &&& krnl.it_mp.perms_wf()
+    &&& krnl.it_mp.dom() =~= set![layout.iommu_table]
+    &&& krnl.it_mp.spec_index(layout.iommu_table).is_init()
+    &&& krnl.it_mp.spec_index(layout.iommu_table).inv()
+    &&& !krnl.it_mp.spec_index(layout.iommu_table).being_killed()
+    &&& krnl.it_mp.spec_index(layout.iommu_table).locking_thread() is None
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().wf()
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().cr3 == layout.iommu_l4
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().pcid is None
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_l4_end == 0
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_entries.view() =~= Seq::<PageEntry>::empty()
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().is_empty()
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4]
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().proc_ptr == layout.root_process
+    &&& krnl.ctn_mp.perms_wf()
+    &&& krnl.ctn_mp.dom() =~= set![layout.root_container]
+    &&& krnl.ctn_mp.spec_index(layout.root_container).is_init()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).inv()
+    &&& !krnl.ctn_mp.spec_index(layout.root_container).being_killed()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).locking_thread() is None
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().inv()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().parent_linkedlist_node.is_init()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().children.view() == Seq::<RwLockContainerPtr>::empty()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().children.map() == Map::<usize, RwLockContainerPtr>::empty()
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().root_process == layout.root_process
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().owned_endpoints.view() =~= set![layout.root_endpoint]
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view().owned_pages.view() == owned_pages
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view_rodata().owner_addr() == layout.root_container
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view() == (ContainerRO {
+        parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
+        allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
+    })
+    &&& krnl.ctn_mp.spec_index(layout.root_container).view_ghost() == (ContainerGhost {
+        uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
+        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()),
+    })
+    &&& krnl.sched_mp.perms_wf()
+    &&& krnl.sched_mp.dom() =~= set![layout.scheduler]
+    &&& krnl.sched_mp.spec_index(layout.scheduler).inv()
+    &&& krnl.sched_mp.spec_index(layout.scheduler).owning_container == layout.root_container
+    &&& forall|cpu_id: CpuId| #![trigger krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
+        &&& !krnl.sched_mp.spec_index(layout.scheduler).shards.spec_index(cpu_id).view().locked()
+        &&& krnl.sched_mp.spec_index(layout.scheduler).shard(cpu_id).queue.view() == if cpu_id == 0 { seq![layout.root_thread] } else { Seq::<RwLockThreadPtr>::empty() }
+        &&& krnl.sched_mp.spec_index(layout.scheduler).shard(cpu_id).queue.map() == if cpu_id == 0 {
+            Map::<usize, RwLockThreadPtr>::empty().insert(scheduler_node_addr, layout.root_thread)
+        } else { Map::<usize, RwLockThreadPtr>::empty() }
+    }
+    &&& krnl.pcid_allc_mp.perms_wf()
+    &&& krnl.pcid_allc_mp.dom() =~= set![layout.pcid_allocator]
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).is_init()
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).inv()
+    &&& !krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).being_killed()
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).locking_thread() is None
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().inv()
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().owning_container.view() == layout.root_container
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().container_depth.view() == 0
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(1) == 1
+    &&& krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(1) =~= set![layout.root_process]
+    &&& forall|id: Pcid| #![trigger krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(id)] pcid_valid(id) && id != 1 ==> krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().ref_counters.spec_index(id) == 0
+    &&& forall|id: Pcid| #![trigger krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(id as int)] pcid_valid(id) && id != 1 ==> krnl.pcid_allc_mp.spec_index(layout.pcid_allocator).view().id_to_proc.view().spec_index(id as int).is_empty()
+    &&& krnl.cpu_set_mp.perms_wf()
+    &&& krnl.cpu_set_mp.dom() =~= set![layout.cpu_set]
+    &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).is_init()
+    &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).inv()
+    &&& !krnl.cpu_set_mp.spec_index(layout.cpu_set).being_killed()
+    &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).locking_thread() is None
+    &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).view().inv()
+    &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owning_container.view() == layout.root_container
+    &&& krnl.cpu_set_mp.spec_index(layout.cpu_set).view().container_depth.view() == 0
+    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.view().contains(cpu_id)] krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id)
+    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.closed_view().contains(cpu_id)]
+        krnl.cpu_set_mp.spec_index(layout.cpu_set).view().owned_cpus.closed_view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id) && cpu_id != 0
+    &&& krnl.prc_mp.perms_wf()
+    &&& krnl.prc_mp.dom() =~= set![layout.root_process]
+    &&& krnl.prc_mp.spec_index(layout.root_process).is_init()
+    &&& krnl.prc_mp.spec_index(layout.root_process).inv()
+    &&& !krnl.prc_mp.spec_index(layout.root_process).being_killed()
+    &&& krnl.prc_mp.spec_index(layout.root_process).locking_thread() is None
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().inv()
+    &&& !krnl.prc_mp.spec_index(layout.root_process).view().zombie
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().pcid == 1
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().pagetable == layout.cpu_pagetable
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().iommu_table == Some(layout.iommu_table)
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().quota_4k == 0
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().quota_2m == 0
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().quota_1g == 0
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().parent_linkedlist_node.is_init()
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().children.view() == Seq::<RwLockProcessPtr>::empty()
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.view() =~= seq![layout.root_thread]
+    &&& krnl.prc_mp.spec_index(layout.root_process).view().owned_threads.map() =~= Map::<usize, RwLockThreadPtr>::empty().insert(process_node_addr, layout.root_thread)
+    &&& krnl.prc_mp.spec_index(layout.root_process).view_rodata().owner_addr() == layout.root_process
+    &&& krnl.prc_mp.spec_index(layout.root_process).view_rodata().view() == (ProcessRO {
+        owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0, pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3,
+        iommu_cr3: Some(layout.iommu_l4), pcid: 1,
+    })
+    &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
+    &&& krnl.thr_mp.perms_wf()
+    &&& krnl.thr_mp.dom() =~= set![layout.root_thread]
+    &&& krnl.thr_mp.spec_index(layout.root_thread).is_init()
+    &&& krnl.thr_mp.spec_index(layout.root_thread).inv()
+    &&& !krnl.thr_mp.spec_index(layout.root_thread).being_killed()
+    &&& krnl.thr_mp.spec_index(layout.root_thread).locking_thread() is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().state == (ThreadState::SCHEDULED { cpu_id: 0 })
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().last_cpu == 0
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().owning_container == layout.root_container
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().container_depth == 0
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().owning_proc == layout.root_process
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().process_depth == 0
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().upper_container_seq.view() == Seq::<RwLockContainerPtr>::empty()
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(0) == Some(layout.root_endpoint)
+    &&& forall|endpoint_index: EndpointIdx| #![trigger krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(endpoint_index)]
+        edp_idx_valid(endpoint_index) && endpoint_index != 0 ==> krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_descriptors.spec_index(endpoint_index) is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().ipc_payload is Empty
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().error_code is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().caller is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().callee is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().trap_frame.is_some()
+    &&& *krnl.thr_mp.spec_index(layout.root_thread).view().trap_frame.get_some_0() == initial_regs
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().blocking_endpoint_ptr is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().blocking_endpoint_index is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().syscall_progress.view() is None
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().temp_alloc_clean()
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_4k == 0
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_2m == 0
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_1g == 0
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().endpoint_linkedlist_node.is_init()
+    &&& !krnl.thr_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.is_init()
+    &&& !krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init()
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().scheduler_linkedlist_node.addr() == scheduler_node_addr
+    &&& krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr
+    &&& krnl.ep_mp.perms_wf()
+    &&& krnl.ep_mp.dom() =~= set![layout.root_endpoint]
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).is_init()
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).inv()
+    &&& !krnl.ep_mp.spec_index(layout.root_endpoint).being_killed()
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).locking_thread() is None
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().inv()
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.view() == Seq::<RwLockThreadPtr>::empty()
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.map() == Map::<usize, RwLockThreadPtr>::empty()
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.container_depth.view() == Some(0)
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.lock_minor() == layout.root_endpoint
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue_state is RECEIVE
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().rf_counter == 1
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().owning_threads.view() =~= set![(layout.root_thread, 0usize)]
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().owning_container == layout.root_container
+    &&& krnl.allc_4k_mp.perms_wf()
+    &&& krnl.allc_4k_mp.dom() =~= set![layout.allocator_4k]
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).inv()
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).owning_container == layout.root_container
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).total_free_pages.view() == free_4k_pool.view().len()
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().view() == free_4k_pool.view().len()
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().container_depth == 0
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().lock_minor() == layout.root_container
+    &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.locked()
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.view().view() == free_4k_pool.view()
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.view().map() == free_4k_pool.map()
+    &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.locked()
+    &&& forall|cpu_id: CpuId| #![trigger krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
+        &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
+        &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
+        &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).cpu_caches.spec_index(cpu_id).view().locked()
+    }
+    &&& krnl.allc_2m_mp.perms_wf()
+    &&& krnl.allc_2m_mp.dom() =~= set![layout.allocator_2m]
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).inv()
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).owning_container == layout.root_container
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).total_free_pages.view() == free_2m_pool.view().len()
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().view() == free_2m_pool.view().len()
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().container_depth == 0
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().lock_minor() == layout.root_container
+    &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.locked()
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.view().view() == free_2m_pool.view()
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.view().map() == free_2m_pool.map()
+    &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.locked()
+    &&& forall|cpu_id: CpuId| #![trigger krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
+        &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
+        &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
+        &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).cpu_caches.spec_index(cpu_id).view().locked()
+    }
+    &&& krnl.allc_1g_mp.perms_wf()
+    &&& krnl.allc_1g_mp.dom() =~= set![layout.allocator_1g]
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).inv()
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).owning_container == layout.root_container
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).total_free_pages.view() == free_1g_pool.view().len()
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().view() == free_1g_pool.view().len()
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().container_depth == 0
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().lock_minor() == layout.root_container
+    &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.locked()
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.view().view() == free_1g_pool.view()
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.view().map() == free_1g_pool.map()
+    &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.locked()
+    &&& forall|cpu_id: CpuId| #![trigger krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
+        &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().view().linked_list.view() == Seq::<PagePtr>::empty()
+        &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().view().linked_list.map() == Map::<usize, PagePtr>::empty()
+        &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).cpu_caches.spec_index(cpu_id).view().locked()
+    }
+    &&& krnl.cpu_offline_mp.perms_wf()
+    &&& krnl.cpu_offline_mp.dom() =~= set![cpu_offline_flags_ptr(layout.root_container)]
+    &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).inv()
+    &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).owning_container.view() == layout.root_container
+    &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
+        &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().locked()
+        &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().index() == (cpu_offline_flags_ptr(layout.root_container), cpu_id)
+        &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().requested
+    }
+}
+
+#[verifier::spinoff_prover]
+proof fn boot_subsystems_inv_eof(
+    krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    process_node_addr: usize,
+)
+    requires
+        0 < NUM_CPUS,
+        layout.pointers_wf(),
+        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
+        pei_valid(kernel_l4_end),
+        kernel_entries.len() == kernel_l4_end,
+        boot_dom0_manifest_wf(manifest_4k, layout.root_container),
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
+        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
+        boot_pcid_needflush_ready(pcid_needflush),
+        boot_cpu_published_ready(cpu_published, default_pagetable.view().cr3),
+        owned_pci_functions.len() == VTD_DOMAIN_COUNT,
+        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable,
+            cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
+    ensures
+        krnl.subsystems_inv(),
+{
+    assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
+    assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); };
+    assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
+    assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
+    assert(cpu_published_wf(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_published_wf); reveal(PageTable::table_pages_wf); };
+    assert(cpu_offline_flags_wf(krnl.cpu_offline_mp, krnl.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
+    assert(container_perms_wf(krnl.ctn_mp)) by { reveal(container_perms_wf); assert(container_tree_fields_wf(krnl.ctn_mp)) by { reveal(container_tree_fields_wf); }; };
+    assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
+    assert(thread_perms_wf(krnl.thr_mp)) by {
+        reveal(thread_perms_wf);
+        assert(thread_free_quota_pending_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_free_quota_pending_empty_unless_wlocked); };
+        assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_temp_alloc_empty_unless_wlocked); };
+        assert(thread_syscall_progress_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
+    };
+    assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
+    assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
+    assert(pcid_allocator_perms_wf(krnl.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
+    assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
+    assert(allocator_perms_wf(krnl.allc_4k_mp)) by { reveal(allocator_perms_wf); };
+    assert(allocator_perms_wf(krnl.allc_2m_mp)) by { reveal(allocator_perms_wf); };
+    assert(allocator_perms_wf(krnl.allc_1g_mp)) by { reveal(allocator_perms_wf); };
+}
+
+#[verifier::spinoff_prover]
+proof fn boot_memory_management_inv_eof(
+    krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    process_node_addr: usize,
+)
+    requires
+        0 < NUM_CPUS,
+        layout.pointers_wf(),
+        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
+        pei_valid(kernel_l4_end),
+        kernel_entries.len() == kernel_l4_end,
+        boot_dom0_manifest_wf(manifest_4k, layout.root_container),
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
+        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
+        boot_pcid_needflush_ready(pcid_needflush),
+        boot_cpu_published_ready(cpu_published, default_pagetable.view().cr3),
+        owned_pci_functions.len() == VTD_DOMAIN_COUNT,
+        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable,
+            cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
+    ensures
+        krnl.memory_management_inv(),
+{
+    assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); reveal(boot_page_array_ready); };
+    prove_boot_container_page_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages);
+    assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
+    assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
+    assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); };
+    assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(boot_page_array_ready); };
+    assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { reveal(container_pages_wf); reveal(boot_page_array_ready); };
+    assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { reveal(process_pages_wf); reveal(boot_page_array_ready); };
+    assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); reveal(boot_page_array_ready); reveal(PageTable::table_pages_wf); };
+    prove_boot_iommu_table_pages_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
+    assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); reveal(boot_page_array_ready); };
+    assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); reveal(boot_page_array_ready); };
+    assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); reveal(boot_page_array_ready); };
+    assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); reveal(boot_page_array_ready); };
+    assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); reveal(boot_page_array_ready); };
+    assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { reveal(endpoint_pages_wf); reveal(boot_page_array_ready); };
+    assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
+    assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
+    assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); reveal(boot_page_array_ready); };
+    prove_boot_container_process_allocator_quota_4k_wf(krnl, layout);
+    prove_boot_container_process_allocator_quota_2m_wf(krnl, layout);
+    prove_boot_container_process_allocator_quota_1g_wf(krnl, layout);
+    assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
+    assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(boot_page_array_ready); };
+    assert(container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(boot_page_array_ready); };
+    assert(container_allocator_free_1g_page_wf(krnl.allc_1g_mp, krnl.pg_arr)) by { reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_cpu_cache_free_1g_page_wf); reveal(boot_page_array_ready); };
+}
+
+#[verifier::spinoff_prover]
+proof fn boot_process_management_inv_eof(
+    krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    process_node_addr: usize,
+)
+    requires
+        0 < NUM_CPUS,
+        layout.pointers_wf(),
+        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
+        pei_valid(kernel_l4_end),
+        kernel_entries.len() == kernel_l4_end,
+        boot_dom0_manifest_wf(manifest_4k, layout.root_container),
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
+        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
+        boot_pcid_needflush_ready(pcid_needflush),
+        boot_cpu_published_ready(cpu_published, default_pagetable.view().cr3),
+        owned_pci_functions.len() == VTD_DOMAIN_COUNT,
+        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable,
+            cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
+    ensures
+        krnl.process_management_inv(),
+{
+    assert(container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)) by {
+        reveal(container_root_wf);
+        reveal(container_children_parent_wf);
+        reveal(containers_linkedlist_wf);
+        reveal(container_children_depth_wf);
+        reveal(container_subtree_set_wf);
+        reveal(container_uppertree_seq_wf);
+        reveal(container_subtree_set_exclusive);
+    };
+    assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_process_wf); };
+    assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by {
+        reveal(process_root_wf);
+        reveal(process_children_parent_wf);
+        reveal(process_linkedlist_wf);
+        reveal(process_children_depth_wf);
+        reveal(process_subtree_set_wf);
+        reveal(process_uppertree_seq_wf);
+        reveal(process_subtree_set_exclusive);
+        reveal(per_container_process_tree_wf);
+    };
+    assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
+    assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
+    assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+    assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
+    assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
+    assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); };
+    assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
+    assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+    assert(container_cpu_offline_flags_wf(krnl.ctn_mp, krnl.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
+    assert(container_pcid_allocator_wf(krnl.ctn_mp, krnl.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
+    assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
+    prove_boot_container_thread_scheduler_wf(krnl, layout, scheduler_node_addr);
+    assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
+    assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { reveal(process_cpu_wf); };
+    prove_boot_process_thread_wf(krnl, layout, process_node_addr);
+    assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
+}
+
+#[verifier::spinoff_prover]
+proof fn boot_kernel_inv_eof(
+    krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
+    page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    process_node_addr: usize,
+)
+    requires
+        0 < NUM_CPUS,
+        layout.pointers_wf(),
+        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
+        layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
+        pei_valid(kernel_l4_end),
+        kernel_entries.len() == kernel_l4_end,
+        boot_dom0_manifest_wf(manifest_4k, layout.root_container),
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
+        forall|page_ptr: PagePtr| #![trigger cpu_page_closure.contains(page_ptr)] cpu_page_closure.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        boot_default_pagetable_ready(default_pagetable, kernel_l4_end),
+        boot_pcid_needflush_ready(pcid_needflush),
+        boot_cpu_published_ready(cpu_published, default_pagetable.view().cr3),
+        owned_pci_functions.len() == VTD_DOMAIN_COUNT,
+        forall|page_ptr: PagePtr| #![trigger owned_pages.contains(page_ptr)] owned_pages.contains(page_ptr) <==> page_ptr_valid(page_ptr),
+        forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable,
+            cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
+        krnl.subsystems_inv(),
+        krnl.memory_management_inv(),
+        krnl.process_management_inv(),
+    ensures
+        krnl.inv(),
+{
+    assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
+    assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
+    assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
+        reveal(cpu_dirty_map_contains_container_processes);
+        reveal(cpu_dirty_map_proc_pcid_match);
+        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+        reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+    };
+    assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+}
+
 #[verifier::spinoff_prover]
 pub fn finish_init_from_boot(
     layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: &Registers, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray,
-    cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, free_4k_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
-    free_2m_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>, free_1g_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
+    cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, free_4k_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_2m_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_1g_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, owned_pages: Ghost<Set<PagePtr>>,
     owned_pci_functions: Ghost<Set<PciBdf>>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(cpu_l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
@@ -627,7 +1119,6 @@ pub fn finish_init_from_boot(
     let tracked mut kernel_perm = kernel_perm;
     let default_cr3 = default_pagetable.borrow().cr3;
     let ghost boot_cpu_page_closure = cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom();
-    let ghost boot_manifest_4k = manifest_4k.view();
     let cpu_pagetable = adopt_boot_dom0_pagetable(layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables));
     let (iommu_l4, Tracked(iommu_l4_perm)) = page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
     let iommu_table = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
@@ -639,7 +1130,6 @@ pub fn finish_init_from_boot(
     let endpoint = Endpoint::new_root(layout.root_endpoint, layout.root_container, layout.root_thread);
     let cpu_set = CpuSet::new_root(layout.root_container);
     let pcid_allocator = PcidAllocator::new_boot_root(layout.root_container, layout.root_process);
-    let ghost all_valid_pages = owned_pages.view();
     let container = Container::new_boot_root(layout.root_container, layout.root_process, layout.root_endpoint, owned_pages);
     let quota_4k = free_4k_pool.length;
     let quota_2m = free_2m_pool.length;
@@ -708,126 +1198,14 @@ pub fn finish_init_from_boot(
         prc_mp, thr_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt: default_pagetable,
     };
     proof {
-        assert(krnl.subsystems_inv()) by {
-            assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
-            assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); };
-            assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
-            assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
-            assert(cpu_published_wf(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(cpu_published_wf); };
-            assert(cpu_offline_flags_wf(krnl.cpu_offline_mp, krnl.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
-            assert(container_perms_wf(krnl.ctn_mp)) by { reveal(container_perms_wf); assert(container_tree_fields_wf(krnl.ctn_mp)) by { reveal(container_tree_fields_wf); }; };
-            assert(process_perms_wf(krnl.prc_mp)) by { reveal(process_perms_wf); };
-            assert(thread_perms_wf(krnl.thr_mp)) by {
-                reveal(thread_perms_wf);
-                assert(thread_free_quota_pending_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_free_quota_pending_empty_unless_wlocked); };
-                assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_temp_alloc_empty_unless_wlocked); };
-                assert(thread_syscall_progress_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
-        };
-        assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
-        assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
-        assert(pcid_allocator_perms_wf(krnl.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
-        assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
-        assert(allocator_perms_wf(krnl.allc_4k_mp)) by { reveal(allocator_perms_wf); };
-        assert(allocator_perms_wf(krnl.allc_2m_mp)) by { reveal(allocator_perms_wf); };
-        assert(allocator_perms_wf(krnl.allc_1g_mp)) by { reveal(allocator_perms_wf); };
-        };
-
-        assert(krnl.memory_management_inv()) by {
-            assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(allocator_4k_pages_wf); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf); reveal(boot_page_array_ready); };
-            prove_boot_container_page_owner_wf(&krnl, layout, page_array, boot_cpu_page_closure, boot_manifest_4k, &free_4k_pool, &free_2m_pool, &free_1g_pool, all_valid_pages);
-            assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
-            assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
-            assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); };
-            assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(boot_page_array_ready); };
-            assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { reveal(container_pages_wf); reveal(boot_page_array_ready); };
-            assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { reveal(process_pages_wf); reveal(boot_page_array_ready); };
-            assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); reveal(boot_page_array_ready); };
-            prove_boot_iommu_table_pages_wf(&krnl, layout, page_array, boot_cpu_page_closure, boot_manifest_4k, &free_4k_pool, &free_2m_pool, &free_1g_pool);
-            assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); reveal(boot_page_array_ready); };
-            assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); reveal(boot_page_array_ready); };
-            assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); reveal(boot_page_array_ready); };
-            assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); reveal(boot_page_array_ready); };
-            assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); reveal(boot_page_array_ready); };
-            assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { reveal(endpoint_pages_wf); reveal(boot_page_array_ready); };
-            assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
-            assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
-            assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); reveal(boot_page_array_ready); };
-            prove_boot_container_process_allocator_quota_4k_wf(&krnl, layout);
-            prove_boot_container_process_allocator_quota_2m_wf(&krnl, layout);
-            prove_boot_container_process_allocator_quota_1g_wf(&krnl, layout);
-            assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
-            assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by {
-                reveal(container_allocator_free_4k_page_wf);
-                reveal(container_allocator_global_free_4k_page_wf);
-                reveal(container_allocator_cpu_cache_free_4k_page_wf);
-                reveal(boot_page_array_ready);
-        };
-        assert(container_allocator_free_2m_page_wf(krnl.allc_2m_mp, krnl.pg_arr)) by {
-            reveal(container_allocator_free_2m_page_wf);
-            reveal(container_allocator_global_free_2m_page_wf);
-            reveal(container_allocator_cpu_cache_free_2m_page_wf);
-            reveal(boot_page_array_ready);
-        };
-        assert(container_allocator_free_1g_page_wf(krnl.allc_1g_mp, krnl.pg_arr)) by {
-            reveal(container_allocator_free_1g_page_wf);
-            reveal(container_allocator_global_free_1g_page_wf);
-            reveal(container_allocator_cpu_cache_free_1g_page_wf);
-            reveal(boot_page_array_ready);
-        };
-        };
-
-        assert(krnl.process_management_inv()) by {
-            assert(container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)) by {
-                reveal(container_root_wf);
-                reveal(container_children_parent_wf);
-                reveal(containers_linkedlist_wf);
-                reveal(container_children_depth_wf);
-                reveal(container_subtree_set_wf);
-                reveal(container_uppertree_seq_wf);
-                reveal(container_subtree_set_exclusive);
-        };
-        assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_process_wf); };
-        assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by {
-            reveal(process_root_wf);
-            reveal(process_children_parent_wf);
-            reveal(process_linkedlist_wf);
-            reveal(process_children_depth_wf);
-            reveal(process_subtree_set_wf);
-            reveal(process_uppertree_seq_wf);
-            reveal(process_subtree_set_exclusive);
-            reveal(per_container_process_tree_wf);
-        };
-        assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
-        assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
-        assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
-        assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
-        assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
-        assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); };
-        assert(container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); };
-        assert(container_cpu_set_wf(krnl.ctn_mp, krnl.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
-        assert(container_cpu_offline_flags_wf(krnl.ctn_mp, krnl.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
-        assert(container_pcid_allocator_wf(krnl.ctn_mp, krnl.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
-        assert(process_pcid_allocator_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
-        prove_boot_container_thread_scheduler_wf(&krnl, layout, scheduler_node_addr);
-        assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
-        assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { reveal(process_cpu_wf); };
-        prove_boot_process_thread_wf(&krnl, layout, process_node_addr);
-        assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
-        };
-
-        assert(krnl.inv()) by {
-            assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
-            assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-            assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
-            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
-                reveal(cpu_dirty_map_contains_container_processes);
-                reveal(cpu_dirty_map_proc_pcid_match);
-                reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-                reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        };
-        assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
-        };
+        boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_published, default_pagetable,
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+        boot_memory_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_published, default_pagetable,
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+        boot_process_management_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_published, default_pagetable,
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
+        boot_kernel_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_published, default_pagetable,
+            boot_cpu_page_closure, &free_4k_pool, &free_2m_pool, &free_1g_pool, owned_pages.view(), owned_pci_functions.view(), scheduler_node_addr, process_node_addr);
     }
     PPtr::<KernelK>::from_usize(layout.kernel_ptr).put(Tracked(&mut kernel_perm), krnl);
     Tracked(kernel_perm)

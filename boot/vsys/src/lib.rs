@@ -122,41 +122,9 @@ impl SysResult {
     }
 }
 
-macro_rules! raw_syscall {
-    ($nr:expr, $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr) => {{
-        let rax: isize;
-        let rdx: usize;
-        let rsi: usize;
-        asm!(
-            "push r12",
-            "push r13",
-            "mov r12, {f}",
-            "mov r13, {g}",
-            "syscall",
-            "pop r13",
-            "pop r12",
-            f = in(reg) $f as usize,
-            g = in(reg) $g as usize,
-            inout("rax") $nr as usize => rax,
-            inout("rdi") $a as usize => _,
-            inout("rsi") $b as usize => rsi,
-            inout("rdx") $c as usize => rdx,
-            inout("r8") $d as usize => _,
-            inout("r9") $e as usize => _,
-            out("rcx") _,
-            out("r10") _,
-            out("r11") _,
-        );
-        SysResult { rax, rdx, rsi }
-    }};
-}
-
-pub unsafe fn syscall7(nr: usize, a: usize, b: usize, c: usize, d: usize, e: usize, f: usize, g: usize) -> SysResult {
-    raw_syscall!(nr, a, b, c, d, e, f, g)
-}
-
-/// The eight-argument form for `NR_NEW_CONTAINER_WITH_ENDPOINT`: arguments six to eight travel in `r12`, `r13`,
-/// and `r14`, which the kernel restores on return.
+/// The eight-argument syscall: arguments six to eight travel in `r12`, `r13`, and `r14`, which
+/// the kernel restores on return. Naming the registers lets the compiler keep them for the call
+/// instead of moving values into them by hand, which could overwrite an argument it had placed there.
 pub unsafe fn syscall8(nr: usize, a: usize, b: usize, c: usize, d: usize, e: usize, f: usize, g: usize, h: usize) -> SysResult {
     let rax: isize;
     let rdx: usize;
@@ -177,6 +145,10 @@ pub unsafe fn syscall8(nr: usize, a: usize, b: usize, c: usize, d: usize, e: usi
         out("r11") _,
     );
     SysResult { rax, rdx, rsi }
+}
+
+pub unsafe fn syscall7(nr: usize, a: usize, b: usize, c: usize, d: usize, e: usize, f: usize, g: usize) -> SysResult {
+    syscall8(nr, a, b, c, d, e, f, g, 0)
 }
 
 pub unsafe fn syscall0(nr: usize) -> SysResult {

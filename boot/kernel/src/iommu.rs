@@ -1,9 +1,12 @@
 //! VT-d DMA remapping over the verified kernel's root table.
 //!
 //! The verified kernel owns the root table: `KernelK.irt` is a legacy-mode VT-d image pinned at
-//! `KERNEL_IRT_OFFSET`, and its syscalls only write entries. This module points the remapping
-//! unit at that image, enables translation, and implements the IOTLB hook. The model relies on
-//! hardware properties that `init` checks:
+//! `KERNEL_IRT_OFFSET`, and its syscalls only write entries. This module points every remapping
+//! unit at that one image (entries are indexed by B/D/F, so the units share it), enables
+//! translation, and implements the IOTLB hook. It also enables interrupt remapping on every unit
+//! with an empty table and compatibility-format requests blocked, so no device can raise an
+//! interrupt: nothing in VeriFlat takes device interrupts. The model relies on hardware
+//! properties that `init` checks:
 //!
 //! - CAP.CM = 0: not-present entries are never cached, so `pci_attach_dma` needs no invalidation.
 //! - CAP.ND >= 6: 16-bit domain IDs, because the model's domain ID is the B/D/F.
@@ -14,12 +17,22 @@
 //!   may read, including the zeroing of IOMMU table pages.
 
 use core::ptr;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+use astd::boot::MAX_IOMMU_UNITS;
 
 use crate::boot;
 
-/// Register base of the remapping unit; 0 while translation is off.
-static BASE: AtomicU64 = AtomicU64::new(0);
+/// Register bases of the remapping units, valid up to `UNIT_COUNT`; 0 while translation is off.
+static UNITS: [AtomicU64; MAX_IOMMU_UNITS] = [const { AtomicU64::new(0) }; MAX_IOMMU_UNITS];
+static UNIT_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// The interrupt remapping table every unit uses: 256 entries, all not present, never written.
+#[repr(C, align(4096))]
+struct InterruptRemappingTable([u8; REGISTER_PAGE]);
+static IRT: InterruptRemappingTable = InterruptRemappingTable([0; REGISTER_PAGE]);
+/// IRTA.S: the table holds 2^(S+1) entries of 16 bytes.
+const IRTA_SIZE_256: u64 = 7;
 
 const CAP_REG: usize = 0x08;
 const ECAP_REG: usize = 0x10;
@@ -28,6 +41,7 @@ const GSTS_REG: usize = 0x1c;
 const RTADDR_REG: usize = 0x20;
 const CCMD_REG: usize = 0x28;
 const FSTS_REG: usize = 0x34;
+const IRTA_REG: usize = 0xb8;
 
 const CAP_CM: u64 = 1 << 7;
 const CAP_SAGAW_4_LEVEL: u64 = 1 << 10;
@@ -35,10 +49,13 @@ const CAP_DWD: u64 = 1 << 54;
 const CAP_DRD: u64 = 1 << 55;
 const CAP_ND_16_BIT: u64 = 6;
 const ECAP_C: u64 = 1 << 0;
+const ECAP_IR: u64 = 1 << 3;
 
-/// TE, SRTP: GSTS reports them as TES, RTPS at the same positions.
+/// TE, SRTP, IRE, SIRTP: GSTS reports them as TES, RTPS, IRES, IRTPS at the same positions.
 const GCMD_TE: u32 = 1 << 31;
 const GCMD_SRTP: u32 = 1 << 30;
+const GCMD_IRE: u32 = 1 << 25;
+const GCMD_SIRTP: u32 = 1 << 24;
 /// GSTS bits whose GCMD counterparts are one-shot commands; a GCMD write must not repeat them.
 const GSTS_ONE_SHOT: u32 = (1 << 30) | (1 << 29) | (1 << 27) | (1 << 24);
 
@@ -85,7 +102,8 @@ fn fault_records(base: u64) -> (usize, usize) {
     (16 * ((cap >> 24) & 0x3ff) as usize, ((cap >> 40) & 0xff) as usize + 1)
 }
 
-/// Issues a persistent GCMD command (TE) or a one-shot one (SRTP) and waits until GSTS reports it.
+/// Issues a persistent GCMD command (TE, IRE) or a one-shot one (SRTP, SIRTP) and waits until GSTS
+/// reports it. CFI is never set, so with IRE on, compatibility-format interrupt requests are blocked.
 fn global_command(base: u64, command: u32) {
     write32(base, GCMD_REG, (read32(base, GSTS_REG) & !GSTS_ONE_SHOT) | command);
     while read32(base, GSTS_REG) & command == 0 {
@@ -115,14 +133,22 @@ fn under_hypervisor() -> bool {
     core::arch::x86_64::__cpuid(1).ecx & (1 << 31) != 0
 }
 
-/// Points the remapping unit at the verified root table at `root_table` and enables translation.
-/// From here on a function's DMA faults until `pci_attach_dma` gives it a context entry. Runs on
-/// CPU 0 before the other CPUs start.
+/// Points every remapping unit at the verified root table at `root_table` and enables translation
+/// and interrupt remapping. From here on a function's DMA faults until `pci_attach_dma` gives it a
+/// context entry, and its interrupt requests are always dropped. Runs on CPU 0 before the other
+/// CPUs start.
 pub fn init(root_table: u64) {
-    let Some(base) = boot::get_boot_info().iommu_base else {
-        log::warn!("no VT-d remapping unit: DMA is not translated");
-        return;
-    };
+    let units = &boot::get_boot_info().iommu_units;
+    assert!(!units.is_empty(), "no VT-d remapping unit: VeriFlat needs DMA remapping");
+    for (i, &base) in units.iter().enumerate() {
+        init_unit(base, root_table);
+        UNITS[i].store(base, Ordering::Release);
+    }
+    UNIT_COUNT.store(units.len(), Ordering::Release);
+    log::info!("VT-d translation enabled on {} unit(s), root table {:#x}", units.len(), root_table);
+}
+
+fn init_unit(base: u64, root_table: u64) {
     let cap = read64(base, CAP_REG);
     let ecap = read64(base, ECAP_REG);
     log::info!("VT-d at {:#x}: CAP {:#x} ECAP {:#x}", base, cap, ecap);
@@ -131,8 +157,9 @@ pub fn init(root_table: u64) {
     assert!(cap & CAP_SAGAW_4_LEVEL != 0, "VT-d does not support 4-level tables");
     let (records, count) = fault_records(base);
     assert!(iotlb_reg(base) + 8 <= REGISTER_PAGE && records + 16 * count <= REGISTER_PAGE, "VT-d registers beyond the mapped page");
-    assert!(read32(base, GSTS_REG) & GCMD_TE == 0, "VT-d translation already enabled");
+    assert!(read32(base, GSTS_REG) & (GCMD_TE | GCMD_IRE) == 0, "VT-d translation or interrupt remapping already enabled");
     assert!(ecap & ECAP_C != 0 || under_hypervisor(), "VT-d table walks do not snoop CPU caches");
+    assert!(ecap & ECAP_IR != 0, "VT-d does not support interrupt remapping");
 
     // TTM = 00: legacy-mode root table. After SRTP, invalidate the context cache, then the IOTLB.
     write64(base, RTADDR_REG, root_table);
@@ -140,21 +167,31 @@ pub fn init(root_table: u64) {
     invalidate_context_cache(base, CCMD_GLOBAL);
     invalidate_iotlb(base, IOTLB_GLOBAL);
     global_command(base, GCMD_TE);
-    BASE.store(base, Ordering::Release);
-    log::info!("VT-d translation enabled, root table {:#x}", root_table);
+
+    // xAPIC destinations (EIME = 0). The unit has never remapped interrupts since reset (IRES was
+    // 0), so its interrupt entry cache is empty and the table, which is never written, needs no
+    // invalidation: no invalidation queue is set up.
+    write64(base, IRTA_REG, (&raw const IRT) as u64 | IRTA_SIZE_256);
+    global_command(base, GCMD_SIRTP);
+    global_command(base, GCMD_IRE);
 }
 
-/// Empties one domain's IOTLB. The verified kernel calls it, under the root-table lock, right after
-/// it clears that domain's context entry, so the context cache (not in the model) is dropped first.
+/// The register bases of the enabled remapping units; empty while translation is off.
+fn units() -> impl Iterator<Item = u64> {
+    let count = UNIT_COUNT.load(Ordering::Acquire);
+    UNITS[..count].iter().map(|unit| unit.load(Ordering::Acquire))
+}
+
+/// Empties one domain's IOTLB on every unit. The verified kernel calls it, under the root-table
+/// lock, right after it clears that domain's context entry, so the context cache (not in the
+/// model) is dropped first.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_iommu_invalidate_domain(did: usize) {
-    let base = BASE.load(Ordering::Acquire);
-    if base == 0 {
-        return;
-    }
     let did = did as u64 & 0xffff;
-    invalidate_context_cache(base, CCMD_DOMAIN | did);
-    invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
+    for base in units() {
+        invalidate_context_cache(base, CCMD_DOMAIN | did);
+        invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
+    }
 }
 
 /// `edu` registers and its DMA buffer window.
@@ -175,7 +212,7 @@ const PROBE_TIMEOUT: u64 = 20_000_000_000;
 /// The B/D/F of the DMA test device, when it and the remapping unit are both present.
 pub fn dma_test_device() -> Option<u16> {
     let device = boot::get_boot_info().dma_test_device?;
-    (BASE.load(Ordering::Acquire) != 0).then_some(device.bdf)
+    (UNIT_COUNT.load(Ordering::Acquire) != 0).then_some(device.bdf)
 }
 
 /// Test only: has the DMA test device read 8 bytes at `PROBE_IOVA` and returns the VT-d fault
@@ -183,17 +220,18 @@ pub fn dma_test_device() -> Option<u16> {
 /// second-level entry), or 0 if it was translated.
 pub fn dma_probe() -> Option<u8> {
     let device = boot::get_boot_info().dma_test_device?;
-    let base = BASE.load(Ordering::Acquire);
-    if base == 0 {
+    if UNIT_COUNT.load(Ordering::Acquire) == 0 {
         return None;
     }
     let mmio = device.mmio;
     assert!(read32(mmio, EDU_ID) & 0xff == EDU_ID_MAGIC, "DMA test device is not edu");
-    let (records, count) = fault_records(base);
-    for i in 0..count {
-        write64(base, records + 16 * i + 8, FRCD_F);
+    for base in units() {
+        let (records, count) = fault_records(base);
+        for i in 0..count {
+            write64(base, records + 16 * i + 8, FRCD_F);
+        }
+        write32(base, FSTS_REG, FSTS_PFO);
     }
-    write32(base, FSTS_REG, FSTS_PFO);
 
     write64(mmio, EDU_DMA_SRC, PROBE_IOVA);
     write64(mmio, EDU_DMA_DST, EDU_BUFFER);
@@ -205,13 +243,18 @@ pub fn dma_probe() -> Option<u8> {
         core::hint::spin_loop();
     }
 
-    let fsts = read32(base, FSTS_REG);
-    if fsts & FSTS_PPF == 0 {
-        return Some(0);
+    // Whichever unit covers the device recorded the fault, if any.
+    for base in units() {
+        let fsts = read32(base, FSTS_REG);
+        if fsts & FSTS_PPF == 0 {
+            continue;
+        }
+        let (records, _) = fault_records(base);
+        let record = records + 16 * ((fsts >> 8) & 0xff) as usize;
+        let upper = read64(base, record + 8);
+        assert!(upper & 0xffff == device.bdf as u64, "VT-d fault from another requester {:#x}", upper & 0xffff);
+        write64(base, record + 8, FRCD_F);
+        return Some((upper >> 32) as u8);
     }
-    let record = records + 16 * ((fsts >> 8) & 0xff) as usize;
-    let upper = read64(base, record + 8);
-    assert!(upper & 0xffff == device.bdf as u64, "VT-d fault from another requester {:#x}", upper & 0xffff);
-    write64(base, record + 8, FRCD_F);
-    Some((upper >> 32) as u8)
+    Some(0)
 }

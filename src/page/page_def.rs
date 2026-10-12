@@ -88,7 +88,6 @@ impl Page {
             self.state is Mapped1g && self.mappings().contains((pt_p, va)) ==> crate::va_1g_valid(va)
     }
 
-    pub open spec fn mappings_finite(&self) -> bool { true }
     pub open spec fn is_mapped(&self) -> bool {
         match self.state {
             PageState::Mapped4k | PageState::Mapped2m | PageState::Mapped1g => true,
@@ -128,7 +127,6 @@ impl Page {
 impl LockInvTrait for Page {
     open spec fn inv(&self) -> bool {
         &&& self.mappings_va_valid()
-        &&& self.mappings_finite()
         &&& self.ref_count_inv()
         &&& self.mapped_state_inv()
         &&& self.node_storage_inv()

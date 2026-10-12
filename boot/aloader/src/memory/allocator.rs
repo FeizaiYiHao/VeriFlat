@@ -93,6 +93,10 @@ impl PhysicalAllocator for BumpAllocator {
         let layout = Layout::from_size_align(size, 4096).unwrap();
         PAddr(self.alloc(layout) as _)
     }
+
+    fn used(&self) -> usize {
+        self.watermark.load(Ordering::SeqCst)
+    }
 }
 
 impl VirtualMapper for BumpAllocator {

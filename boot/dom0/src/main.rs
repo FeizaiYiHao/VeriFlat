@@ -23,6 +23,11 @@ static PINGS: AtomicUsize = AtomicUsize::new(0);
 static SEEN_CPUS: AtomicUsize = AtomicUsize::new(0);
 static STOP_WORKER: AtomicBool = AtomicBool::new(false);
 static WORKER_STOPPED: AtomicBool = AtomicBool::new(false);
+/// While set, the worker spins without touching its page, so the page's TLB entry stays cached
+/// on the worker's CPU; `WORKER_PAUSED` acknowledges it and `WORKER_CPU` is where it spins.
+static PAUSE_WORKER: AtomicBool = AtomicBool::new(false);
+static WORKER_PAUSED: AtomicBool = AtomicBool::new(false);
+static WORKER_CPU: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 /// TSC cycles a wait loop may spin before the test fails.
 const WAIT_LIMIT: u64 = 20_000_000_000;
@@ -55,6 +60,8 @@ static mut ENDPOINT_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 static NEW_ENDPOINT_USED: AtomicBool = AtomicBool::new(false);
 /// The empty descriptor where dom0 creates a new endpoint.
 const NEW_ENDPOINT: usize = 2;
+/// Endpoint nobody sends on: the worker blocks on it once done, so its CPU goes idle again.
+const PARK_ENDPOINT: usize = 3;
 /// The user data segment (GDT index 3, RPL 3): a selector ring 3 may load into fs/gs.
 const USER_DATA_SELECTOR: u16 = 0x1b;
 
@@ -142,10 +149,6 @@ fn check(name: &str, ret: isize) -> usize {
 }
 
 /// Logs a syscall result without failing the test.
-fn probe(name: &str, ret: isize) {
-    log::info!("{} -> {} ({})", name, ret, if ret < 0 { error_name(ret) } else { "ok" });
-}
-
 /// Fails the test unless the syscall returned the model error `expected`.
 fn expect_error(name: &str, ret: isize, expected: &str) {
     log::info!("{} -> {} ({})", name, ret, if ret < 0 { error_name(ret) } else { "ok" });
@@ -207,9 +210,18 @@ extern "C" fn worker_thread() -> ! {
     let p = TEST_VA as *mut u64;
     while !STOP_WORKER.load(Ordering::SeqCst) {
         note_cpu();
+        if PAUSE_WORKER.load(Ordering::SeqCst) {
+            WORKER_CPU.store(current_cpu(), Ordering::SeqCst);
+            WORKER_PAUSED.store(true, Ordering::SeqCst);
+            core::hint::spin_loop();
+            continue;
+        }
+        WORKER_PAUSED.store(false, Ordering::SeqCst);
         unsafe { p.write_volatile(p.read_volatile() + 1) };
     }
     WORKER_STOPPED.store(true, Ordering::SeqCst);
+    // Descriptor 0 of this thread is `PARK_ENDPOINT`.
+    check("worker receive_empty on the park endpoint", unsafe { sys_receive_empty(0) });
     loop {
         unsafe { sys_schedule() };
     }
@@ -443,21 +455,16 @@ pub extern "C" fn _start() -> ! {
 
     // 0. paths that need no thread quota
     for _ in 0..2 {
-        probe("schedule", unsafe { sys_schedule() });
+        check("schedule", unsafe { sys_schedule() });
     }
-    probe("send_empty_no_block", unsafe { sys_send_empty_no_block(ENDPOINT) });
-    probe("receive_empty_no_block", unsafe { sys_receive_empty_no_block(ENDPOINT) });
-    probe("bad syscall arg", unsafe { sys_send_empty_no_block(usize::MAX) });
+    expect_error("send_empty_no_block", unsafe { sys_send_empty_no_block(ENDPOINT) }, "ErrorIpcNoPeer");
+    expect_error("receive_empty_no_block", unsafe { sys_receive_empty_no_block(ENDPOINT) }, "ErrorIpcNoPeer");
+    expect_error("bad syscall arg", unsafe { sys_send_empty_no_block(usize::MAX) }, "InvalidArgument");
     // Loading a selector into fs/gs zeroes their bases. The kernel must not depend on the user's
     // gs, so everything from here on runs with it clobbered, syscalls and timer preemptions alike.
     unsafe { core::arch::asm!("mov fs, {0:x}", "mov gs, {0:x}", in(reg) USER_DATA_SELECTOR, options(nostack, preserves_flags)) };
-    probe("schedule after the user loaded gs", unsafe { sys_schedule() });
-    let ret = unsafe { sys_new_thread(1 << 63, 0) };
-    probe("new_thread at a non-canonical ip", ret);
-    if ret != ERR_INVALID_ARGUMENT {
-        log::error!("a non-canonical thread ip was accepted");
-        unsafe { sys_debug_exit(1) };
-    }
+    check("schedule after the user loaded gs", unsafe { sys_schedule() });
+    expect_error("new_thread at a non-canonical ip", unsafe { sys_new_thread(1 << 63, 0) }, "InvalidArgument");
     time_syscall_returns();
 
     // 1. quota + mmap + touch + unmap
@@ -480,7 +487,59 @@ pub extern "C" fn _start() -> ! {
     log::info!("mapped pages read back correctly");
     check("unmap_4k", unsafe { sys_unmap_4k(TEST_VA, TEST_PAGES) });
 
-    // 2. IPC timing against a pong thread, then a second thread sharing the root endpoint, two
+    // 2. SMP, before any other thread exists: CPU 1 comes online and pulls the worker, unmapping
+    // a page the worker touched there flushes CPU 1's TLB, and CPU 1 goes Off and comes back.
+    check("cpu_online(1)", unsafe { sys_cpu_online(1) });
+    expect_error("cpu_online(1) while online", unsafe { sys_cpu_online(1) }, "ErrorCpuNotOff");
+    expect_error("cpu_online(99)", unsafe { sys_cpu_online(99) }, "InvalidArgument");
+    check("mmap_4k", unsafe { sys_mmap_4k(TEST_VA, 1) });
+    check("new_endpoint (park)", unsafe { sys_new_endpoint(PARK_ENDPOINT) });
+    let sp = (&raw const WORKER_STACK) as usize + 64 * 1024 - 8;
+    check("new_thread_with_endpoint (worker)", unsafe { sys_new_thread_with_endpoint(PARK_ENDPOINT, worker_thread as *const () as usize, sp) });
+    wait_for("a dom0 thread on CPU 1", || SEEN_CPUS.load(Ordering::SeqCst) & 0b11 == 0b11);
+    log::info!("dom0 threads ran on CPUs {:#b}", SEEN_CPUS.load(Ordering::SeqCst));
+    // Shootdown check: the worker pauses with its page's TLB entry cached, the page is replaced
+    // at the same address, and the resumed worker must write the new page. A stale entry would
+    // keep it writing the old one. Repeated until two rounds replaced the page from a CPU other
+    // than the worker's, which needs the remote flush. An idle CPU only pulls queued threads
+    // when it wakes, so if both threads share CPU 0, CPU 1 is cycled Off and On to make it pull
+    // the paused worker.
+    let mut remote_rounds = 0;
+    for _ in 0..16 {
+        PAUSE_WORKER.store(true, Ordering::SeqCst);
+        wait_for("the worker to pause", || WORKER_PAUSED.load(Ordering::SeqCst));
+        if current_cpu() == 0 && WORKER_CPU.load(Ordering::SeqCst) == 0 {
+            check("cpu_offline_request(1) to move the worker", unsafe { sys_cpu_offline_request(1) });
+            online_after_offline("cpu_online(1) to move the worker", || unsafe { sys_cpu_online(1) });
+            wait_for("the worker to move to CPU 1", || WORKER_CPU.load(Ordering::SeqCst) == 1);
+        }
+        let (here, there) = (current_cpu(), WORKER_CPU.load(Ordering::SeqCst));
+        log::info!("shootdown round: unmapping on CPU {}, worker paused on CPU {}", here, there);
+        check("unmap_4k", unsafe { sys_unmap_4k(TEST_VA, 1) });
+        let remote = here != there;
+        check("mmap_4k", unsafe { sys_mmap_4k(TEST_VA, 1) });
+        let before = unsafe { (TEST_VA as *const u64).read_volatile() };
+        PAUSE_WORKER.store(false, Ordering::SeqCst);
+        wait_for("the worker to write the remapped page", || unsafe { (TEST_VA as *const u64).read_volatile() } != before);
+        remote_rounds += remote as usize;
+        if remote_rounds >= 2 {
+            break;
+        }
+    }
+    if remote_rounds == 0 {
+        log::error!("no round replaced the page from a CPU other than the worker's");
+        unsafe { sys_debug_exit(1) };
+    }
+    log::info!("TLB shootdown: the worker wrote the remapped page in every round ({} remote)", remote_rounds);
+    STOP_WORKER.store(true, Ordering::SeqCst);
+    wait_for("the worker to stop", || WORKER_STOPPED.load(Ordering::SeqCst));
+    check("unmap_4k", unsafe { sys_unmap_4k(TEST_VA, 1) });
+
+    check("cpu_offline_request(1)", unsafe { sys_cpu_offline_request(1) });
+    online_after_offline("cpu_online(1) after offline", || unsafe { sys_cpu_online(1) });
+    log::info!("CPU 1 went Off and is online again");
+
+    // 3. IPC timing against a pong thread, then a second thread sharing the root endpoint, two
     // IPC round trips
     time_ipc_round_trip();
     time_call_round_trip();
@@ -492,24 +551,6 @@ pub extern "C" fn _start() -> ! {
     }
     check("receive_empty", unsafe { sys_receive_empty(ENDPOINT) });
     log::info!("IPC done, pings = {}", PINGS.load(Ordering::SeqCst));
-
-    // 3. SMP: CPU 1 comes online, dom0 threads spread over CPUs 0 and 1, unmapping a page they
-    // touched flushes the other CPU's TLB, and CPU 1 goes Off and comes back.
-    check("cpu_online(1)", unsafe { sys_cpu_online(1) });
-    probe("cpu_online(1) while online", unsafe { sys_cpu_online(1) });
-    probe("cpu_online(99)", unsafe { sys_cpu_online(99) });
-    check("mmap_4k", unsafe { sys_mmap_4k(TEST_VA, 1) });
-    let sp = (&raw const WORKER_STACK) as usize + 64 * 1024 - 8;
-    check("new_thread", unsafe { sys_new_thread(worker_thread as *const () as usize, sp) });
-    wait_for("a dom0 thread on CPU 1", || SEEN_CPUS.load(Ordering::SeqCst) & 0b11 == 0b11);
-    log::info!("dom0 threads ran on CPUs {:#b}", SEEN_CPUS.load(Ordering::SeqCst));
-    STOP_WORKER.store(true, Ordering::SeqCst);
-    wait_for("the worker to stop", || WORKER_STOPPED.load(Ordering::SeqCst));
-    check("unmap_4k", unsafe { sys_unmap_4k(TEST_VA, 1) });
-
-    check("cpu_offline_request(1)", unsafe { sys_cpu_offline_request(1) });
-    online_after_offline("cpu_online(1) after offline", || unsafe { sys_cpu_online(1) });
-    log::info!("CPU 1 went Off and is online again");
 
     // 4. VT-d: DMA of an unattached function faults at its context entry; once attached it
     // faults inside dom0's empty IOMMU table. Sending the function to a child process detaches it

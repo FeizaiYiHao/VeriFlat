@@ -4,7 +4,7 @@ use vstd::simple_pptr::*;
 use crate::*;
 verus! {
 pub struct GlobalPool {
-    pub linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POLL_MAJOR>,
+    pub linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
 }
 
 impl LockOwnerIdTrait for GlobalPool {
@@ -17,7 +17,7 @@ impl LockInvTrait for GlobalPool {
 }
 
 impl LockMajorTrait for GlobalPool {
-    open spec fn lock_major_1(&self) -> LockMajorId { ALLOCATOR_GLOBAL_POLL_MAJOR }
+    open spec fn lock_major_1(&self) -> LockMajorId { ALLOCATOR_GLOBAL_POOL_MAJOR }
     open spec fn lock_major_2(&self) -> LockMajorId { 233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 233 }
     open spec fn lock_major_default(&self) -> LockMajorId { 233 }

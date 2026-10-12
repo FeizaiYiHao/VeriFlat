@@ -100,7 +100,7 @@ pub unsafe fn init_cpu() {
 
         BigGdtEntry::new(
             tss_addr as u64,
-            mem::size_of::<TaskStateSegment>() as u32,
+            mem::size_of::<TaskStateSegment>() as u32 - 1,
             access,
             0,
         )

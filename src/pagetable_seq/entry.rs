@@ -121,6 +121,7 @@ pub open spec fn spec_usize2page_entry(v: usize) -> PageEntry { PageEntry { addr
 pub fn usize2page_entry(v: usize) -> (ret: PageEntry)
     ensures
         ret =~= spec_usize2page_entry(v),
+        mem_valid(ret.addr),
 {
     PageEntry { addr: usize2pa(v), perm: usize2page_entry_perm(v) }
 }

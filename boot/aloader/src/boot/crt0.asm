@@ -30,9 +30,9 @@ section .text
 ; We assume that we are already in Protected Mode, and
 ; we want to enter Long Mode.
 ;
-; We will only map 1GiB of memory here. We export a pointer
-; to the page table, so that we can finish mapping everything
-; in Rust.
+; We identity map the first 4 GiB here with 2 MiB pages, enough to reach the
+; multiboot modules wherever the firmware placed them; Rust builds the final
+; page tables.
 
 bits 32
 global _start
@@ -170,18 +170,20 @@ set_up_page_tables:
     or eax, 0b11 ; present + writable
     mov [p4_table], eax
 
-    ; map first P3 entry to P2 table
-    mov eax, p2_table
+    ; map the first four P3 entries to the four P2 tables (1 GiB each)
+    mov ecx, 0
+.map_p3_table:
+    mov eax, 4096
+    mul ecx
+    add eax, p2_tables
     or eax, 0b11 ; present + writable
-    mov [p3_table], eax
+    mov [p3_table + ecx * 8], eax
 
-	; FIXME: Map dynamically
-	; map second P3 entry to P2 module table
-	mov eax, p2_mod_table
-	or eax, 0b11
-	mov [p3_table + 16], eax
+    inc ecx
+    cmp ecx, 4
+    jne .map_p3_table
 
-    ; == map each P2 entry to a huge 2MiB page
+    ; == map each of the 2048 P2 entries to a huge 2MiB page
     mov ecx, 0         ; counter variable
 
 .map_p2_table:
@@ -189,25 +191,11 @@ set_up_page_tables:
     mov eax, 0x200000  ; 2MiB
     mul ecx            ; start address of ecx-th page
     or eax, 0b10000011 ; present + writable + huge
-    mov [p2_table + ecx * 8], eax ; map ecx-th entry
+    mov [p2_tables + ecx * 8], eax ; map ecx-th entry
 
     inc ecx            ; increase counter
-    cmp ecx, 512       ; if counter == 512, the whole P2 table is mapped
+    cmp ecx, 2048      ; if counter == 2048, all four P2 tables are mapped
     jne .map_p2_table  ; else map the next entry
-
-    ; == map each P2_mod entry to a huge 2MiB page
-    mov ecx, 0         ; counter variable
-.map_p2_mod_table:
-    ; map ecx-th P2 entry to a huge page that starts at address 0xb0000000 + 2MiB*ecx
-    mov eax, 0x200000  ; 2MiB
-    mul ecx            ; start address of ecx-th page
-	add eax, 0x80000000
-    or eax, 0b10000011 ; present + writable + huge
-    mov [p2_mod_table + ecx * 8], eax ; map ecx-th entry
-
-    inc ecx            ; increase counter
-    cmp ecx, 512       ; if counter == 512, the whole P2 table is mapped
-    jne .map_p2_mod_table  ; else map the next entry
 
     ret
 
@@ -221,15 +209,15 @@ enable_paging:
     or eax, 1 << 5
     mov cr4, eax
 
-    ; set the long mode bit in the EFER MSR (model specific register)
+    ; set the long mode (LME) and no-execute (NXE) bits in the EFER MSR
     mov ecx, 0xC0000080
     rdmsr
-    or eax, 1 << 8
+    or eax, (1 << 8) | (1 << 11)
     wrmsr
 
-    ; enable paging in the cr0 register
+    ; enable paging (PG) and supervisor write protection (WP) in the cr0 register
     mov eax, cr0
-    or eax, 1 << 31
+    or eax, (1 << 31) | (1 << 16)
     mov cr0, eax
 
     ret
@@ -265,15 +253,11 @@ p4_table:
     resb 4096
 p3_table:
     resb 4096
-p2_table:
-    resb 4096
-p2_mod_table:
-    resb 4096
-p2_apic_table:
-    resb 4096
+p2_tables:
+    resb 4096 * 4
 
 stack_bottom:
-    resb 1024 * 1024 * 256 ; Reserve this many bytes
+    resb 1024 * 1024 * 16 ; the loader uses about 4 MiB (BootInfo lives here)
 stack_top:
 
 bootinfo:

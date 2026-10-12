@@ -177,7 +177,7 @@ verus! {
     pub open spec fn container_allocator_global_free_4k_backward_wf(allocator_4k_map: PageAllocatorUnLockedMap, page_array: PageLockedArray) -> bool {
         forall|alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr|
             #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)]
-            #![trigger allocator_4k_map.spec_index(alloc_ptr).global_pool, page_ptr2page_index(page_ptr)]
+            #![trigger allocator_4k_map.dom().contains(alloc_ptr), page_ptr2page_index(page_ptr)]
             allocator_4k_map.dom().contains(alloc_ptr) && allocator_4k_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr)
                 ==> page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free4k { allocator_ptr: Ghost(alloc_ptr), state: FreePageAllocatorState::GlobalList }
                 && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_4k_map.spec_index(alloc_ptr).owning_container
@@ -208,7 +208,7 @@ verus! {
                 &&& allocator_4k_map.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page_array.spec_index(page_index).view().view().free_list_node_storage.addr()) == page_index2page_ptr(page_index)
             }
         &&& forall|alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr|
-            #![trigger page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state, allocator_4k_map.spec_index(alloc_ptr), index_valid(NUM_CPUS, cpu_i)]
+            #![trigger page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state, allocator_4k_map.dom().contains(alloc_ptr), index_valid(NUM_CPUS, cpu_i)]
             allocator_4k_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) && allocator_4k_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)
                 ==> page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free4k { allocator_ptr: Ghost(alloc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id: cpu_i } }
                 && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_4k_map.spec_index(alloc_ptr).owning_container

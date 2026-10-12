@@ -31,6 +31,15 @@ pub fn get_boot_info() -> &'static BootInfo {
     unsafe { &BOOT_INFO }
 }
 
+/// How much of the zeroed boot stack CPU 0 has touched: the first non-zero byte above its base
+/// bounds the deepest frame. Only meaningful while CPU 0 still runs on that stack.
+pub fn boot_stack_high_water() -> usize {
+    let info = get_boot_info();
+    let size = info.kernel_stack_size as usize;
+    let stack = unsafe { core::slice::from_raw_parts(info.kernel_stack_base as *const u8, size) };
+    size - stack.iter().position(|b| *b != 0).unwrap_or(size)
+}
+
 /// Returns the raw kernel command line.
 pub fn get_raw_command_line() -> &'static str {
     unsafe { BOOT_INFO.command_line.as_str() }
