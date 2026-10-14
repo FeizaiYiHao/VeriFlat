@@ -47,6 +47,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             &&& final(krnl).pt_mp.spec_index(pt).view().mapping_1g() == old(krnl).pt_mp.spec_index(pt).view().mapping_1g()
         },
 {
+    hide(TrapFrameOption::spec_is_some);
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if range == 0 || range > usize::MAX / 4096usize || !va_4k_valid(va) {
         proof {
@@ -133,6 +134,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         return RetValueType::ErrorThreadKilled;
     }
     let Tracked(thread_perm) = thread_res.unwrap();
+    proof { assert(krnl.prc_mp.perms_wf()) by { reveal(process_perms_wf); }; }
     let process = krnl.prc_mp.borrow_rodata(process_ptr).borrow();
     let pagetable = process.pagetable;
     let cr3 = process.cr3;
@@ -147,7 +149,10 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         &&& page_ptr_valid(cr3)
         &&& pcid_valid(pcid)
         &&& pcid != KERNEL_DEFAULT_PCID
-    }) by { reveal(process_thread_wf); reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_pcid_allocator_wf); reveal(pagetable_perms_wf); reveal(PageTable::table_pages_wf); };
+    }) by {
+        reveal(process_thread_wf); reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_pcid_allocator_wf);
+        pagetable_perms_wf_at(krnl.pt_mp, pagetable); reveal(PageTable::table_pages_wf);
+    };
     assert(old(krnl).pt_mp.dom().contains(pagetable) && pagetable == old(krnl).prc_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view().pagetable) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable); };

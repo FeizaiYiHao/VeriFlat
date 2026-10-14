@@ -298,6 +298,7 @@ verus! {
         (node_addr, Tracked(node_perm))
     }
 
+    // Dead code: no in-tree callers.
     pub fn clear_free_4k_staging_next(page: &mut Page)
         requires
             old(page).inv(),

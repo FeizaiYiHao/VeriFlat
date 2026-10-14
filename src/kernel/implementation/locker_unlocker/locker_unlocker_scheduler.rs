@@ -24,13 +24,6 @@ impl KernelK {
                 forall|held_scheduler: RwLockSchedulerPtr| #![trigger old(lctx).scheduler_lock_map().dom().contains(held_scheduler)] old(lctx).scheduler_lock_map().dom().contains(held_scheduler) ==> held_scheduler < scheduler_ptr,
                 typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
-                forall|key: usize|
-                    #![trigger old(self).sched_mp.view().spec_index(key)]
-                    #![trigger final(self).sched_mp.view().spec_index(key)]
-                    old(self).sched_mp.dom().contains(key) ==> {
-                        &&& final(self).sched_mp.view().spec_index(key).is_init() == old(self).sched_mp.view().spec_index(key).is_init()
-                        &&& final(self).sched_mp.view().spec_index(key).addr() == old(self).sched_mp.view().spec_index(key).addr()
-                    },
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 // ---- Kernel-wide invariant re-established ----
                 final(self).inv(),
@@ -124,11 +117,12 @@ impl KernelK {
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr)),
                 unlock_ensures(old(lctx), final(lctx), KernelObjId::Scheduler(scheduler_ptr), old(self).sched_mp.lock_id_by_key(scheduler_ptr)),
         {
+            proof { page_index_roundtrip(); }
             proof {
                 assert({
                     &&& old(self).sched_mp.perms_wf()
                     &&& old(self).sched_mp.spec_index(scheduler_ptr).inv()
-                }) by { reveal(scheduler_perms_wf); };
+                }) by { scheduler_perms_wf_at(old(self).sched_mp, scheduler_ptr); };
                 assert(old(lctx).lock_entry_contains(old(self).sched_mp.lock_id_by_key(scheduler_ptr), KernelObjId::Scheduler(scheduler_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
             }
             assert(self.sched_mp.spec_index(scheduler_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

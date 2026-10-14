@@ -435,7 +435,7 @@ fn share_one_mapping_4k(
         assert({
             &&& krnl.pg_arr.inv()
             &&& krnl.pg_arr.spec_index(page_index).view().inv()
-        }) by { reveal(page_array_wf); };
+        }) by { page_array_wf_at(krnl.pg_arr, page_index); };
         assert({
             &&& !krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((target_pagetable, target_va))
             &&& krnl.pg_arr.spec_index(page_index).view().view().ref_count < usize::MAX
@@ -683,6 +683,7 @@ pub fn share_mapping_4k_source_owner_precheck(krnl: &mut KernelK, source_range: 
         share_mapping_4k_source_range_present(final(krnl), source_pagetable, source_range),
         ret == share_mapping_4k_range_owner_compatible(final(krnl), source_pagetable, target_container, source_range),
 {
+    hide(LockedMap::dom);
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
     proof {
@@ -1815,7 +1816,9 @@ pub fn share_mapping_4k_build_and_share(
             old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k,
             source_range, target_range, (i + 1) as nat,
         )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
-        assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { reveal(container_allocator_wf); };
+        assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by {
+            container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, target_container);
+        };
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl) && kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)
                 && kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by {

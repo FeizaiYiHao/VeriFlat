@@ -53,6 +53,7 @@ impl KernelK {
                 wlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view(), old(self).pg_arr.lock_id_by_index(page_index), final(lctx), ret.view()),
                 lock_ensures(old(lctx), final(lctx), old(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)),
         {
+            hide(LockedMap::dom);
             proof {
                 page_array_wf_at(old(self).pg_arr, page_index);
                 assert(old(lctx).lock_id_acyclic(old(self).pg_arr.lock_id_by_index(page_index))) by {
@@ -114,7 +115,7 @@ impl KernelK {
                 wunlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view()),
                 unlock_ensures(old(lctx), final(lctx), KernelObjId::Page(page_index), old(self).pg_arr.lock_id_by_index(page_index)),
         {
-            assert(self.pg_arr.inv()) by { reveal(page_array_wf); };
+            assert(self.pg_arr.inv()) by { page_array_wf_at(self.pg_arr, page_index); };
             assert({
                 &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_index, TypedLockMode::Write)
                 &&& lctx.lock_entry_contains(self.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))

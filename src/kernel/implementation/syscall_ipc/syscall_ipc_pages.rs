@@ -181,6 +181,7 @@ fn ipc_check_pages_locked(
         target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
 {
+    hide(TrapFrameOption::spec_is_some);
     proof { use_type_invariant(&*steps); }
     let source_start_indices = va2index(source_range.start);
     proof {
@@ -233,7 +234,7 @@ fn ipc_check_pages_locked(
                 assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by {
                     source_range.va_range_lemma();
                     reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_page_owner_wf);
-                    reveal(container_thread_wf); reveal(process_thread_wf); reveal(process_pagetable_match);
+                    reveal(container_thread_wf); process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, source_thread); reveal(process_pagetable_match);
                     reveal(container_perms_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
                 };
             }
@@ -505,10 +506,9 @@ fn ipc_share_pages_locked(
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable
             &&& krnl.ctn_mp.dom().contains(target_container)
-            &&& krnl.ctn_mp.view().spec_index(target_container).is_init()
-            &&& krnl.ctn_mp.view().spec_index(target_container).addr() == target_container
         }) by { reveal(process_pagetable_match); reveal(container_thread_wf); reveal(container_perms_wf); };
     }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let target_allocator = krnl.ctn_mp.borrow_rodata(target_container).borrow().allocator_ptr_4k;
     proof {
         assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { reveal(container_allocator_wf); };
@@ -699,6 +699,7 @@ fn ipc_map_pages_and_release_tables(
         }),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
 {
+    hide(LockedMap::dom);
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
     let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
     let ghost range = if waiting_state is SENDING { *source_range } else { *target_range };
@@ -835,7 +836,7 @@ fn ipc_map_pages_and_release_tables(
             &&& krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable
             &&& krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable
             &&& krnl.ctn_mp.dom().contains(target_container)
-        }) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(container_thread_wf); };
+        }) by { reveal(process_thread_wf); reveal(process_pagetable_match); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); };
         assert({
             let u = steps.snapshot_u();
             &&& u.cpu_array[cpu_id as int].current_thread == Some(current_thread_ptr)

@@ -19,8 +19,6 @@ verus! {
             process_perms.dom().contains(process_ptr),
         ensures
             process_perms.perms_wf(),
-            process_perms.view().spec_index(process_ptr).is_init(),
-            process_perms.view().spec_index(process_ptr).addr() == process_ptr,
             process_perms.spec_index(process_ptr).inv(),
             process_perms.spec_index(process_ptr).is_init(),
             process_perms.spec_index(process_ptr).view().inv(),
@@ -208,7 +206,9 @@ verus! {
         let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
         let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
         let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
-        assert(parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()) by { reveal(process_perms_wf); };
+        assert(parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()) by {
+            reveal(process_perms_wf); assert(new_process_perms.dom().contains(child_ptr));
+        };
         assert(!parent_uppers.contains(parent_ptr)) by { reveal(process_uppertree_seq_wf); };
         assert(child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
             && child_uppers.subrange(0, parent_depth as int) =~= parent_uppers) by { seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); };
@@ -333,6 +333,7 @@ verus! {
         reveal(process_linkedlist_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
     }
 
+// Dead code: no in-tree callers.
 #[verifier::spinoff_prover]
 #[verifier::loop_isolation(false)]
 pub fn process_tree_check_is_ancestor(
@@ -349,6 +350,7 @@ pub fn process_tree_check_is_ancestor(
         ret == process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(a_ptr),
         ret == process_perms.spec_index(a_ptr).view_ghost().subtree_set.view().contains(child_ptr),
 {
+    hide(LinkedList::view);
     proof {
         reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf);
         reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
@@ -403,6 +405,7 @@ pub fn process_tree_check_is_ancestor(
         assert(process_perms.spec_index(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0)).view_rodata().view().depth == 0) by { reveal(process_uppertree_seq_wf); };
     };
     if root_process == a_ptr {
+        assert(process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(a_ptr)) by { seq_index_lemma::<RwLockProcessPtr>(); };
         return true;
     }
     return false;

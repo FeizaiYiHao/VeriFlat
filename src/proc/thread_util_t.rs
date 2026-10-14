@@ -401,6 +401,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 }
 
 impl KernelK {
+    // Dead code: no in-tree callers.
     pub fn retype_page_to_thread_and_insert(
         &mut self,
         page_ptr: PagePtr,

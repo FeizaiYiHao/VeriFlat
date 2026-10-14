@@ -352,14 +352,17 @@ pub(super) fn share_new_container_range(
         assert(krnl.allc_4k_mp.dom().contains(child_allocator_4k_ptr)) by { reveal(container_allocator_wf); };
         assert(lctx.page_lock_map().dom().contains(page_ptr2page_index(thread_page_ptr))) by { vstd::set::axiom_set_ext_equal(lctx.page_lock_map().dom(), set![page_ptr2page_index(thread_page_ptr)]); };
         assert(lctx.thread_lock_map().dom() == set![current_thread_ptr, current_thread_ptr]) by { vstd::set::axiom_set_ext_equal(lctx.thread_lock_map().dom(), set![current_thread_ptr, current_thread_ptr]); };
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
-        assert(krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable == source_pagetable_ptr && krnl.prc_mp.spec_index(child_process_ptr).view().pagetable == child_pagetable_ptr) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
-        assert(!krnl.prc_mp.spec_index(parent_process_ptr).view().zombie) by { reveal(process_thread_wf); };
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); };
+        assert(krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable == source_pagetable_ptr && krnl.prc_mp.spec_index(child_process_ptr).view().pagetable == child_pagetable_ptr) by {
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match);
+        };
+        assert(!krnl.prc_mp.spec_index(parent_process_ptr).view().zombie) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_process_ptr && krnl.pt_mp.spec_index(child_pagetable_ptr).view().proc_ptr == child_process_ptr) by { reveal(process_pagetable_match); };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == krnl.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by { reveal(KernelK::default_pagetable_wf); };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_container_ptr, source_range)) by {
-            reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(process_thread_wf); reveal(container_subtree_set_exclusive);
+            reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf);
+            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); reveal(container_subtree_set_exclusive);
         };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, child_container_ptr, source_range)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert({
@@ -505,6 +508,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
         final(steps).nonlock_view() == old(steps).nonlock_view().push(final(steps).nonlock_view().last()),
         final(steps).snapshot_k() == *final(krnl),
 {
+    hide(LockedMap::dom);
     let tracked caller_cpu_lock_perm = caller_cpu_lock_perm.get();
     let tracked parent_container_lock_perm = parent_container_lock_perm.get();
     let tracked child_container_lock_perm = child_container_lock_perm.get();
@@ -514,7 +518,9 @@ pub(super) fn create_new_container_root_thread_and_finish(
     let tracked source_pagetable_lock_perm = source_pagetable_lock_perm.get();
     let tracked child_pagetable_lock_perm = child_pagetable_lock_perm.get();
     let tracked thread_page_lock_perm = thread_page_lock_perm.get();
-    proof { assert(krnl.sched_mp.dom().contains(child_scheduler_ptr) && !krnl.sched_mp.spec_index(child_scheduler_ptr).being_killed()) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, child_container_ptr); reveal(scheduler_perms_wf); }; }
+    proof { assert(krnl.sched_mp.dom().contains(child_scheduler_ptr) && !krnl.sched_mp.spec_index(child_scheduler_ptr).being_killed()) by {
+        container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, child_container_ptr); scheduler_perms_wf_at(krnl.sched_mp, child_scheduler_ptr); };
+    };
     let Tracked(child_scheduler_lock_perm) = krnl.wlock_scheduler(child_scheduler_ptr, Tracked(&mut *lctx));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };

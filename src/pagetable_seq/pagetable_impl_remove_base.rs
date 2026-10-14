@@ -47,6 +47,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).kernel_entries =~= old(self).kernel_entries,
     {
+        hide(Array::view);
         let va = Ghost(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)));
         assert(self.mapping_4k.view().dom().contains(va.view())) by { reveal(PageTable::wf_mapping_4k); };
         assert({
@@ -216,6 +217,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).kernel_entries =~= old(self).kernel_entries,
     {
+        hide(Array::view);
         assert({
             &&& self.l2_tables.view().dom().contains(target_l2_p)
             &&& self.l2_tables.view().spec_index(target_l2_p).addr() == target_l2_p
@@ -504,6 +506,7 @@ impl<const TABLE_TYPE:PTType> PageTable<TABLE_TYPE> {
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l3_p,
     {
+        hide(Array::view);
         assert({
             &&& self.l4_table.view().dom().contains(self.cr3)
             &&& self.l4_table.view().spec_index(self.cr3).addr() == self.cr3

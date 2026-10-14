@@ -1,7 +1,12 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_queue::{ipc_dequeue_endpoint_waiter, ipc_enqueue_scheduled_thread, ipc_schedule_endpoint_waiter};
-use super::syscall_ipc_cpu_spec::ipc_cpu_rendezvous_transition;
+use super::syscall_ipc_cpu_spec::{
+    ipc_cpu_rendezvous_transition, ipc_cpu_rendezvous_transition_pages, ipc_cpu_rendezvous_transition_containers,
+    ipc_cpu_rendezvous_transition_processes, ipc_cpu_rendezvous_transition_threads, ipc_cpu_rendezvous_transition_allocators,
+    ipc_cpu_rendezvous_transition_tables, ipc_cpu_rendezvous_transition_objects, ipc_cpu_rendezvous_transition_cpus,
+    ipc_cpu_rendezvous_transition_inputs,
+};
 use super::syscall_ipc_cpu_eof::ipc_cpu_rendezvous_eof;
 use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 use super::syscall_ipc_spec::*;
@@ -431,12 +436,9 @@ verus! {
             assert({
                 &&& krnl.ctn_mp.dom().contains(source_container)
                 &&& krnl.ctn_mp.dom().contains(target_container)
-                &&& krnl.ctn_mp.view().spec_index(source_container).is_init()
-                &&& krnl.ctn_mp.view().spec_index(source_container).addr() == source_container
-                &&& krnl.ctn_mp.view().spec_index(target_container).is_init()
-                &&& krnl.ctn_mp.view().spec_index(target_container).addr() == target_container
             }) by { reveal(container_thread_wf); container_perms_wf_at(krnl.ctn_mp, source_container); container_perms_wf_at(krnl.ctn_mp, target_container); };
         }
+        proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
         let source_cpu_set = krnl.ctn_mp.borrow_rodata(source_container).borrow().cpu_set;
         let target_cpu_set = krnl.ctn_mp.borrow_rodata(target_container).borrow().cpu_set;
         let target_container_depth = krnl.ctn_mp.borrow_rodata(target_container).borrow().depth;
@@ -546,7 +548,17 @@ verus! {
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr,
                 source_container, target_container, source_cpu_set, target_cpu_set,
                 transfer_cpu_id, result is Success, peer_result, lctx.thread_id(),
-            )) by { reveal(ipc_cpu_rendezvous_transition); };
+            )) by {
+                reveal(ipc_cpu_rendezvous_transition_pages);
+                reveal(ipc_cpu_rendezvous_transition_containers);
+                reveal(ipc_cpu_rendezvous_transition_processes);
+                reveal(ipc_cpu_rendezvous_transition_threads);
+                reveal(ipc_cpu_rendezvous_transition_allocators);
+                reveal(ipc_cpu_rendezvous_transition_tables);
+                reveal(ipc_cpu_rendezvous_transition_objects);
+                reveal(ipc_cpu_rendezvous_transition_cpus);
+                reveal(ipc_cpu_rendezvous_transition_inputs);
+            };
             ipc_cpu_rendezvous_eof(
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr,
                 source_container, target_container, source_cpu_set, target_cpu_set,

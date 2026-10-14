@@ -35,6 +35,7 @@ verus! {
                 ret is Success ==> final(steps).nonlock_view().len() == 2,
                 ret == new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)),
         {
+            hide(RwLock::lock_state_u);
             proof { use_type_invariant(&*steps); kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof {
                 assert({
@@ -49,16 +50,14 @@ verus! {
             let current_thread_ptr = cpu.current_thread().unwrap();
 
             assert({
+                &&& krnl.prc_mp.perms_wf()
                 &&& krnl.prc_mp.dom().contains(process_ptr)
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
-                &&& krnl.prc_mp.view().spec_index(process_ptr).is_init()
-                &&& krnl.prc_mp.view().spec_index(process_ptr).addr() == process_ptr
             }) by { reveal(process_cpu_wf); reveal(process_perms_wf); };
             let container_ptr = krnl.prc_mp.borrow_rodata(process_ptr).borrow().owning_container;
             assert({
+                &&& krnl.ctn_mp.perms_wf()
                 &&& krnl.ctn_mp.dom().contains(container_ptr)
-                &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-                &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
             }) by { reveal(container_process_wf); reveal(container_perms_wf); };
             let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
 

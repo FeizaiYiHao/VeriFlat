@@ -275,7 +275,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
                 &&& krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
-            }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            }) by { reveal(thread_cpu_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
         }
         let current_thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
 
@@ -529,6 +529,7 @@ verus! {
             payload is Endpoint ==> (ret is Success || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch),
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state, blocking),
     {
+        hide(KernelK::inv);
         let entry = match ipc_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, waiting_state, payload, blocking, &*pt_regs) {
             Ok(entry) => entry,
             Err(ret) => return ret,

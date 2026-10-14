@@ -228,14 +228,16 @@ fn new_process_lock_entry(
             &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr
             &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr
             &&& krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0
-        }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
-        assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr) by { reveal(container_process_wf); reveal(container_perms_wf); };
+        }) by { reveal(thread_cpu_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
+        assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.ctn_mp.perms_wf()) by { reveal(container_process_wf); reveal(container_perms_wf); };
     }
     let container_rodata = krnl.ctn_mp.borrow_rodata(container_ptr);
     let pcid_allocator_ptr = container_rodata.borrow().pcid_allocator;
     let scheduler_ptr = container_rodata.borrow().scheduler;
     let allocator_ptr = container_rodata.borrow().allocator_ptr_4k;
-    proof { assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr) && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().wf() && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr) by { reveal(container_pcid_allocator_wf); reveal(pcid_allocator_perms_wf); }; }
+    proof { assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr) && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().wf() && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr) by {
+        reveal(container_pcid_allocator_wf); pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allocator_ptr); };
+    };
     let Tracked(pcid_allocator_lock_perm) = krnl.wlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx));
 
     let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));

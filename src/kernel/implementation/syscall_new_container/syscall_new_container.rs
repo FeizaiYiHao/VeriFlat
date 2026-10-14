@@ -166,6 +166,7 @@ fn new_container_lock_entry(
             &&& e.source_pagetable_lock_perm@.lock_id() == final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).locking_thread()->Write_lock_id
         }),
 {
+    hide(Array::view);
     proof { use_type_invariant(&*steps); }
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if range == 0 || range > usize::MAX / 4096usize || range > (usize::MAX - 9usize) / 3usize || !va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS {
@@ -242,6 +243,7 @@ fn new_container_lock_entry(
     }
     let Tracked(container_lock_perm) = container_res.unwrap();
     proof { assert(!krnl.ctn_mp.spec_index(parent_container_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); }; }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let parent_depth = krnl.ctn_mp.borrow_rodata(parent_container_ptr).borrow().depth;
     if parent_depth >= MAX_CONTAINER_TREE_DEPTH {
         krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
@@ -355,6 +357,7 @@ fn new_container_lock_entry(
         }
         return Err(RetValueType::Error);
     }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let parent_cpu_set = krnl.ctn_mp.borrow_rodata(parent_container_ptr).borrow().cpu_set;
     proof {
         assert(krnl.cpu_set_mp.dom().contains(parent_cpu_set)) by { reveal(container_cpu_set_wf); };

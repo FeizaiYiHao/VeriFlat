@@ -80,16 +80,12 @@ pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_pt
 {
     hide(Seq::contains);
     proof {
-        assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); };
-        assert(krnl.ep_mp.perms_wf()) by { reveal(endpoint_perms_wf); };
+        assert(krnl.thr_mp.perms_wf()) by { thread_perms_wf_at(krnl.thr_mp, receiver_thread_ptr); };
+        assert(krnl.ep_mp.perms_wf()) by { endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr); };
         assert({
-            &&& krnl.thr_mp.view().spec_index(receiver_thread_ptr).is_init()
-            &&& krnl.thr_mp.view().spec_index(receiver_thread_ptr).addr() == receiver_thread_ptr
-            &&& krnl.ep_mp.view().spec_index(payload_endpoint_ptr).is_init()
-            &&& krnl.ep_mp.view().spec_index(payload_endpoint_ptr).addr() == payload_endpoint_ptr
             &&& krnl.thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.wf()
             &&& krnl.ep_mp.spec_index(payload_endpoint_ptr).inv()
-        }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); };
+        }) by { thread_perms_wf_at(krnl.thr_mp, receiver_thread_ptr); endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr); };
         assert({
             &&& !krnl.ep_mp.spec_index(payload_endpoint_ptr).view().owning_threads.view().contains((receiver_thread_ptr, target_endpoint_index))
             &&& krnl.ep_mp.spec_index(payload_endpoint_ptr).view().rf_counter < usize::MAX
@@ -114,9 +110,14 @@ pub(super) fn ipc_copy_endpoint_reference(krnl: &mut KernelK, receiver_thread_pt
         assert(krnl.process_management_inv()) by {
             assert(thread_caller_callee_wf(krnl.thr_mp)) by { reveal(thread_caller_callee_wf); };
             assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
-            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
+            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by {
+                thread_perms_wf_at(krnl.thr_mp, receiver_thread_ptr); reveal(thread_endpoint_ref_counter_wf);
+            };
             assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(old(krnl).thr_mp, krnl.thr_mp, old(krnl).ep_mp, krnl.ep_mp); };
-            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
+            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
+                reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
+                container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, payload_endpoint_ptr);
+            };
             assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_scheduler_wf); };
             assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { reveal(container_thread_wf); };
             assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_thread_wf); };
@@ -323,6 +324,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(lctx).pcid_needflush_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
 {
+    hide(LockedMap::dom);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
 
     let ghost old_peer_thread_lock_id = krnl.thr_mp.lock_id_by_key(peer_thread_ptr);
@@ -334,7 +336,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             &&& old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.map().dom().contains(peer_node_addr)
             &&& old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.map().spec_index(peer_node_addr) == peer_thread_ptr
             &&& endpoint_node_perm.addr() == peer_node_addr
-        }) by { reveal(thread_endpoint_queue_wf); reveal(endpoint_perms_wf); reveal(LinkedList::wf_map); };
+        }) by { reveal(thread_endpoint_queue_wf); endpoint_perms_wf_at(old(krnl).ep_mp, channel_endpoint_ptr); reveal(LinkedList::wf_map); };
     }
     ipc_move_endpoint_waiter_to_transit(&mut krnl.thr_mp, Tracked(&*lctx), peer_thread_ptr, current_thread_ptr, Tracked(endpoint_node_perm), peer_thread_lock_perm);
 
@@ -364,9 +366,13 @@ pub(super) fn ipc_begin_endpoint_transfer(
             assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
                 seq_skip_lemma::<RwLockThreadPtr>();
                 lemma_seq_remove_value_membership::<RwLockThreadPtr>();
-                reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
+                reveal(thread_perms_wf); endpoint_perms_wf_at(krnl.ep_mp, channel_endpoint_ptr); reveal(LinkedList::wf_value_list);
+                reveal(LinkedList::wf_map); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
             };
-            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
+            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
+                container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, channel_endpoint_ptr); reveal(thread_endpoint_ref_counter_wf);
+                reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
+            };
             assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
         };
         assert({
@@ -402,7 +408,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             &&& krnl.ep_mp.dom().contains(payload_endpoint_ptr)
             &&& krnl.ep_mp.spec_index(payload_endpoint_ptr).is_init()
             &&& krnl.ep_mp.lock_id_by_key(payload_endpoint_ptr).major == ENDPOINT_LOCK_MAJOR
-        }) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); reveal(endpoint_perms_wf); };
+        }) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr); };
     }
 }
 
@@ -582,8 +588,15 @@ pub(super) fn ipc_finish_endpoint_transit(
                 &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                 &&& thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)
                 &&& thread_caller_callee_wf(krnl.thr_mp)
-            }) by { reveal(thread_perms_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
-            assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); };
+            }) by {
+                thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
+                reveal(thread_caller_callee_wf);
+            };
+            assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
+                thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr);
+                reveal(thread_endpoint_ref_counter_wf);
+                reveal(thread_endpoint_queue_wf);
+            };
             assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); };
             assert({
                 &&& container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)
@@ -782,6 +795,7 @@ pub(super) fn ipc_rendezvous_endpoint(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
 {
+    hide(LockedArray::spec_index);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
 
     let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -938,6 +952,7 @@ pub(super) fn ipc_rendezvous_endpoint(
     proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); }
     let peer_container_ptr = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm)).owning_container;
     proof { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_thread_ptr); container_perms_wf_at(krnl.ctn_mp, peer_container_ptr); }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let peer_scheduler_ptr = krnl.ctn_mp.borrow_rodata(peer_container_ptr).borrow().scheduler;
     proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_container_ptr); }
     let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler(peer_scheduler_ptr, Tracked(&mut *lctx));

@@ -162,10 +162,12 @@ verus! {
             krnl.kernel_step_boundary_process_4k_mapping_changed(
                 &mut *lctx, &mut *steps, process_ptr, pagetable_ptr, va, process_ptr, pagetable_ptr, thread_ptr,
             );
-            assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)) by { reveal(container_thread_wf); reveal(process_thread_wf); };
+            assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)) by {
+                reveal(container_thread_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr);
+            };
             assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view()) by { set_insert_remove_absent_lemma(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), page_ptr); };
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
-            assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
+            assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
         }
     }
 } // verus!

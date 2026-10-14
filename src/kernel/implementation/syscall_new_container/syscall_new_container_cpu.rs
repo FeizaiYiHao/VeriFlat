@@ -73,10 +73,6 @@ pub(super) fn transfer_new_container_cpu(
 {
     proof {
         assert({
-            &&& krnl.ctn_mp.view().spec_index(child_container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(child_container_ptr).addr() == child_container_ptr
-        }) by { container_perms_wf_at(krnl.ctn_mp, child_container_ptr); };
-        assert({
             &&& krnl.cpu_set_mp.dom().contains(parent_cpu_set)
             &&& krnl.cpu_set_mp.dom().contains(child_cpu_set)
             &&& parent_cpu_set != child_cpu_set
@@ -94,6 +90,7 @@ pub(super) fn transfer_new_container_cpu(
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().wf()
         }) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_array_wf); };
     }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let child_container_depth = krnl.ctn_mp.borrow_rodata(child_container_ptr).borrow().depth;
     let ghost locked_k = *krnl;
     {

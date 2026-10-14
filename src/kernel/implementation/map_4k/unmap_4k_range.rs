@@ -92,7 +92,9 @@ pub fn unmap_4k_range(krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPa
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { reveal(thread_perms_wf); };
     assert(krnl.prc_mp.dom().contains(process_ptr) && !krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable
-        && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == process_ptr) by { reveal(process_pagetable_match); reveal(process_thread_wf); };
+        && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == process_ptr) by {
+            reveal(process_pagetable_match); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr);
+        };
     let start = range.start;
     let mut i = 0usize;
     while i < range.len

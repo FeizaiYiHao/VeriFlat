@@ -124,6 +124,7 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
     {
+        hide(LockedMap::dom);
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked current_thread_lock_perm = current_thread_lock_perm.get();
@@ -187,9 +188,13 @@ verus! {
                 }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
                     seq_push_lemma::<RwLockThreadPtr>();
-                    reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
+                    thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list);
+                    reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
                 };
-                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
+                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
+                    container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); reveal(thread_endpoint_ref_counter_wf);
+                    reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
+                };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(container_cpu_wf); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
@@ -398,6 +403,7 @@ verus! {
         let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
         let peer_container_ptr = peer_thread_ref.owning_container;
         proof { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_thread_ptr); container_perms_wf_at(krnl.ctn_mp, peer_container_ptr); }
+        proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
         let peer_scheduler_ptr = krnl.ctn_mp.borrow_rodata(peer_container_ptr).borrow().scheduler;
         proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_container_ptr); }
         let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler(peer_scheduler_ptr, Tracked(&mut *lctx));
@@ -432,7 +438,9 @@ verus! {
             };
             assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
             assert(krnl.process_management_inv()) by {
-                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
+                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by {
+                    thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); reveal(thread_endpoint_ref_counter_wf);
+                };
                 assert({
                     &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
                     &&& thread_caller_callee_wf(krnl.thr_mp)
@@ -450,9 +458,13 @@ verus! {
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by {
                     seq_skip_lemma::<RwLockThreadPtr>();
                     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
-                    reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
+                    thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list);
+                    reveal(LinkedList::wf_map); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf);
                 };
-                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
+                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
+                    container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); reveal(thread_endpoint_ref_counter_wf);
+                    reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf);
+                };
                 assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by {
                     seq_push_lemma::<RwLockThreadPtr>();
                     reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map);

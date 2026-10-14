@@ -170,6 +170,7 @@ pub fn create_thread_from_staged_page_merged(
             #![trigger final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq]
             old(krnl).ctn_mp.dom().contains(c_ptr) ==> final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq,
 {
+    hide(RwLock::being_killed);
     let ghost uppers = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     proof {
         process_perms_wf_at(krnl.prc_mp, process_ptr);
@@ -177,7 +178,9 @@ pub fn create_thread_from_staged_page_merged(
         scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr);
         thread_perms_wf_at(krnl.thr_mp, staging_thread_ptr);
         assert(krnl.sched_mp.spec_index(scheduler_ptr).view().owning_container == container_ptr) by { reveal(container_scheduler_wf); };
-        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth) by { reveal(container_process_wf); };
+        assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth) by {
+            container_process_wf_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
+        };
         assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == krnl.prc_mp.spec_index(process_ptr).view().pagetable) by { reveal(process_pagetable_match); };
         assert(!krnl.thr_mp.dom().contains(page_ptr)) by { reveal(thread_pages_wf); };
         assert(page_ptr != staging_thread_ptr) by { reveal(thread_pages_wf); };
@@ -207,9 +210,11 @@ pub fn create_thread_from_staged_page_merged(
         assert(krnl.pg_arr.spec_index(page_index).view().view().perm_4k.view().is_some()
             && krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by { page_ptr_roundtrip(); };
     }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let container_rodata = krnl.ctn_mp.borrow_rodata(container_ptr);
     let container_ro = container_rodata.borrow();
     let container_depth = container_ro.depth;
+    proof { assert(krnl.prc_mp.perms_wf()) by { reveal(process_perms_wf); }; }
     let process_rodata = krnl.prc_mp.borrow_rodata(process_ptr);
     let process_ro = process_rodata.borrow();
     let process_depth = process_ro.depth;
@@ -401,6 +406,7 @@ proof fn eof_create_thread_memory_management_inv(
     ensures
         post.memory_management_inv(),
 {
+    page_index_roundtrip();
     reveal(create_thread_from_staged_page_kernel_state_framing);
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };

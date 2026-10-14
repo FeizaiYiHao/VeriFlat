@@ -27,22 +27,14 @@ impl<T> UnLockedMap<usize, T>{
     pub open spec fn dom(&self) -> Set<usize>{
         self.view().dom()
     }
-    pub open spec fn perms_wf(&self) -> bool {
-        &&&
+    /// Every entry is an initialized `PointsTo` at its own key. Closed: callers
+    /// reason only through `dom` and `spec_index`.
+    pub closed spec fn perms_wf(&self) -> bool {
         forall|k:usize|
-            // #![trigger self.view().spec_index(k).is_init()]
-            // #![trigger self.view().spec_index(k).addr()]
             #![trigger self.view().dom().contains(k)]
-            self.view().dom().contains(k)
-            ==>
-            {
-                &&&
-                self.view().spec_index(k).is_init()
-                &&&
-                self.view().spec_index(k).addr() == k
-            }
+            self.view().dom().contains(k) ==> self.view().spec_index(k).is_init() && self.view().spec_index(k).addr() == k
     }
-    pub open spec fn spec_index(&self, key: usize) -> T
+    pub closed spec fn spec_index(&self, key: usize) -> T
         recommends
             self.view().dom().contains(key),
     {
@@ -97,11 +89,10 @@ impl<T> UnLockedMap<usize, T>{
 
     pub fn borrow_mut<'a>(&'a mut self, key: usize) -> (ret: &'a mut T)
         requires
+            old(self).perms_wf(),
             old(self).dom().contains(key),
-            old(self).view().spec_index(key).is_init(),
-            old(self).view().spec_index(key).addr() == key,
         ensures
-            old(self).perms_wf() ==> final(self).perms_wf(),
+            final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), key),
             *ret == old(self).spec_index(key),

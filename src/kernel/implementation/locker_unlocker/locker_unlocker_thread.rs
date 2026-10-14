@@ -150,6 +150,7 @@ impl KernelK {
                     &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write })
                 },
         {
+            hide(Array::view);
             proof {
                 thread_perms_wf_at(old(self).thr_mp, thread_ptr);
                 let target_thread =
@@ -301,7 +302,7 @@ impl KernelK {
                 assert({
                     &&& old(self).thr_mp.perms_wf()
                     &&& old(self).thr_mp.spec_index(thread_ptr).inv()
-                }) by { reveal(thread_perms_wf); };
+                }) by { thread_perms_wf_at(old(self).thr_mp, thread_ptr); };
                 assert(old(lctx).lock_entry_contains(old(self).thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
             }
             assert(self.thr_mp.spec_index(thread_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -343,7 +344,7 @@ impl KernelK {
                 final(self).thr_mp.spec_index(thread_ptr).being_killed() == old(self).thr_mp.spec_index(thread_ptr).being_killed(),
                 final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr),
         {
-            assert(self.thr_mp.perms_wf() && self.thr_mp.spec_index(thread_ptr).is_init()) by { reveal(thread_perms_wf); };
+            assert(self.thr_mp.perms_wf() && self.thr_mp.spec_index(thread_ptr).is_init()) by { thread_perms_wf_at(self.thr_mp, thread_ptr); };
             {
                 let thread = self.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), lock_perm);
                 thread.syscall_progress = progress;
@@ -355,7 +356,7 @@ impl KernelK {
                 };
                 assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(self), *self); };
                 assert(self.process_management_inv()) by {
-                    assert(thread_process_management_fields_unchanged(old(self).thr_mp, self.thr_mp)) by { reveal(thread_perms_wf); };
+                    assert(thread_process_management_fields_unchanged(old(self).thr_mp, self.thr_mp)) by { thread_perms_wf_at(old(self).thr_mp, thread_ptr); };
                     thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp);
                     thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp, self.ep_mp);
                     thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp, self.ep_mp);

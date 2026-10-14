@@ -34,7 +34,9 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_ptr_valid(
         ]
         page_ptr_valid(page_ptr),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
     if alloc_ptr == allocator_4k_page {
         funding_pages.to_set_ensures();
     } else {
@@ -89,7 +91,10 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
             &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == post.allc_4k_mp.spec_index(alloc_ptr).owning_container
         },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
     eof_allocator_free_4k_global_ptr_valid(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -108,6 +113,7 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
     }
 }
 
+// Dead code: no in-tree callers.
 #[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_1g_global_forward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -152,12 +158,13 @@ pub(super) broadcast proof fn eof_allocator_free_1g_global_forward(
                     post.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr()) == page_index2page_ptr(page_index)
         },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
     let allocator_ptr_1g = post.pg_arr.spec_index(page_index).view().view().state->Free1g_allocator_ptr.view();
     assert(pre.allc_1g_mp.dom().contains(allocator_ptr_1g)) by { reveal(container_allocator_global_free_1g_page_wf); };
     reveal(container_allocator_global_free_1g_page_wf);
 }
 
+// Dead code: no in-tree callers.
 #[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_1g_global_backward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
@@ -195,7 +202,7 @@ pub(super) broadcast proof fn eof_allocator_free_1g_global_backward(
             &&& pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == pre.allc_1g_mp.spec_index(alloc_ptr).owning_container
         },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
     assert(page_ptr_valid(page_ptr)) by { reveal(allocator_free_page_ptrs_wf); };
     page_ptr_valid_imply_page_index_valid();
     reveal(container_allocator_global_free_1g_page_wf);
@@ -220,7 +227,12 @@ pub(super) proof fn eof_allocator_quota_wf(
         container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
         container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     let child_processes = post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view();
     let child_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view();
     let child_indirect_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view();
@@ -282,7 +294,12 @@ pub(super) proof fn eof_allocator_free_pages_wf(
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };

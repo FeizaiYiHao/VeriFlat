@@ -24,13 +24,6 @@ impl KernelK {
             forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)] old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set) ==> held_cpu_set < cpu_set_ptr,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
-            forall|key: usize|
-                #![trigger old(self).cpu_set_mp.view().spec_index(key)]
-                #![trigger final(self).cpu_set_mp.view().spec_index(key)]
-                old(self).cpu_set_mp.dom().contains(key) ==> {
-                    &&& final(self).cpu_set_mp.view().spec_index(key).is_init() == old(self).cpu_set_mp.view().spec_index(key).is_init()
-                    &&& final(self).cpu_set_mp.view().spec_index(key).addr() == old(self).cpu_set_mp.view().spec_index(key).addr()
-                },
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
@@ -42,6 +35,7 @@ impl KernelK {
             wlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr)),
     {
+        hide(LockedArray::spec_index);
         assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(cpu_set_perms_wf); };
         assert(old(lctx).lock_id_acyclic(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr))) by {
             reveal(LocalContext::lock_id_acyclic);
@@ -95,6 +89,7 @@ impl KernelK {
             wunlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr)),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr)),
     {
+        hide(LockedArray::spec_index);
         proof {
             assert({ &&& old(self).cpu_set_mp.perms_wf() &&& old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv() }) by { reveal(cpu_set_perms_wf); };
             assert(old(lctx).lock_entry_contains(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };

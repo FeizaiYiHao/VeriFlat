@@ -220,6 +220,7 @@ verus! {
                     }
                 },
     {
+        hide(LockedMap::dom);
         proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
         let indices = va2index(va);
@@ -238,7 +239,7 @@ verus! {
             pagetable.get_entry_l4(indices.0).is_some()
         };
         if !l4_present {
-            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
+            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr); };
             install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L4, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr,
                 (indices.0, indices.1, indices.2), transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm),
@@ -253,7 +254,7 @@ verus! {
         };
         proof { use_type_invariant(&*steps); }
         if !l3_present {
-            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
+            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr); };
             install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L3, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr,
                 (indices.0, indices.1, indices.2), transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm),
@@ -269,7 +270,7 @@ verus! {
         };
         proof { use_type_invariant(&*steps); }
         if !l2_present {
-            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
+            assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr); };
             install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L2, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr,
                 (indices.0, indices.1, indices.2), transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm),

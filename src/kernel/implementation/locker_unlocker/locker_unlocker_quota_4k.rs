@@ -110,7 +110,7 @@ impl KernelK {
                 typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
         {
             proof {
-                assert(old(self).allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
+                assert(old(self).allc_4k_mp.perms_wf()) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
                 assert(old(lctx).lock_entry_contains(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k))) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
             }
             assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };

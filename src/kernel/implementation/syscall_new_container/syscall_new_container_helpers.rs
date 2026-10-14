@@ -202,6 +202,7 @@ pub(super) proof fn new_container_staged_pages_disjoint(
         )),
         lctx.page_lock_map().dom().disjoint(page_2m_tail_indices(page_ptr2page_index(container_page)).union(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page),)),),
 {
+    hide(LockedArray::spec_index);
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page);
     page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
     assert(pages_4k.view().to_set().disjoint(

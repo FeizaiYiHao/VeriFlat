@@ -36,6 +36,26 @@ pub open spec fn container_process_wf(container_perms: ContainerLockedMap, proce
         }
 }
 
+pub proof fn container_process_wf_at(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap, process_ptr: RwLockProcessPtr)
+    requires
+        container_process_wf(container_perms, process_perms),
+        process_perms.dom().contains(process_ptr),
+    ensures
+        ({
+            let container_ptr = process_perms.spec_index(process_ptr).view_rodata().view().owning_container;
+            &&& container_perms.dom().contains(container_ptr)
+            &&& container_perms.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr)
+            &&& container_perms.spec_index(container_ptr).view_rodata().view().depth
+                == process_perms.spec_index(process_ptr).view_rodata().view().container_depth
+            &&& !container_perms.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()
+            &&& process_perms.dom().contains(container_perms.spec_index(container_ptr).view().root_process)
+            &&& container_perms.spec_index(container_ptr).view_ghost().owned_processes.view()
+                .contains(container_perms.spec_index(container_ptr).view().root_process)
+        }),
+{
+    reveal(container_process_wf);
+}
+
 #[verifier::opaque]
 pub open spec fn per_container_process_tree_wf(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap) -> bool
     recommends

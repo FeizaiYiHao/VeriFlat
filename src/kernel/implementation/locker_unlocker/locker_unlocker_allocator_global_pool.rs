@@ -43,8 +43,11 @@ impl KernelK {
                 wlock_ensures(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool, final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool, LockId{ container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().container_depth(), process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().process_depth(), major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().current_lock_major(), minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().lock_minor(), }, final(lctx), ret.view()),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(PageSize::SZ4k, alloc_ptr_4k), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write }),
         {
+            hide(LockedArray::spec_index);
             proof {
-                assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); };
+                assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by {
+                    allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k);
+                };
                 assert(old(lctx).lock_id_acyclic(LockId{ container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().container_depth(), process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().process_depth(), major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().current_lock_major(), minor: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().lock_minor(), })) by {
                     reveal(LocalContext::lock_id_acyclic);
                     reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -107,7 +110,7 @@ impl KernelK {
                 assert({
                     &&& old(self).allc_4k_mp.perms_wf()
                     &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()
-                }) by { reveal(allocator_perms_wf); };
+                }) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
                 assert(old(lctx).lock_entry_contains(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(PageSize::SZ4k, alloc_ptr_4k))) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             }
             assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };

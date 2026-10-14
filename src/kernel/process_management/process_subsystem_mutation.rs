@@ -27,14 +27,6 @@ pub fn thread_map_consume_staged_4k(
             #![trigger final(thread_map).spec_index(ptr)]
             old(thread_map).dom().contains(ptr) && ptr != thread_ptr
             ==> final(thread_map).spec_index(ptr) == old(thread_map).spec_index(ptr),
-        forall|ptr: RwLockThreadPtr|
-            #![trigger final(thread_map).view().spec_index(ptr).is_init()]
-            old(thread_map).dom().contains(ptr) ==> {
-                &&& final(thread_map).view().spec_index(ptr).is_init()
-                    == old(thread_map).view().spec_index(ptr).is_init()
-                &&& final(thread_map).view().spec_index(ptr).addr()
-                    == old(thread_map).view().spec_index(ptr).addr()
-            },
         final(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         final(thread_map).spec_index(thread_ptr).view() == (Thread {
             quota_4k: final(thread_map).spec_index(thread_ptr).view().quota_4k,
@@ -315,12 +307,6 @@ pub proof fn container_map_add_owned_process(
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
         final(container_map).spec_index(container_ptr).inv(),
-        forall|ptr: RwLockContainerPtr|
-            #![trigger final(container_map).view().spec_index(ptr).is_init()]
-            old(container_map).dom().contains(ptr) ==> {
-                &&& final(container_map).view().spec_index(ptr).is_init() == old(container_map).view().spec_index(ptr).is_init()
-                &&& final(container_map).view().spec_index(ptr).addr() == old(container_map).view().spec_index(ptr).addr()
-            },
 {
     assert(container_map.perms_wf() && container_map.spec_index(container_ptr).inv()) by { container_perms_wf_at(*container_map, container_ptr); };
     let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
@@ -358,14 +344,6 @@ pub fn pcid_allocator_map_alloc(
         final(allocator_map).spec_index(allocator_ptr).being_killed()
             == old(allocator_map).spec_index(allocator_ptr).being_killed(),
         final(allocator_map).spec_index(allocator_ptr).inv(),
-        forall|ptr: RwLockPcidAllocatorPtr|
-            #![trigger final(allocator_map).view().spec_index(ptr).is_init()]
-            old(allocator_map).dom().contains(ptr) ==> {
-                &&& final(allocator_map).view().spec_index(ptr).is_init()
-                    == old(allocator_map).view().spec_index(ptr).is_init()
-                &&& final(allocator_map).view().spec_index(ptr).addr()
-                    == old(allocator_map).view().spec_index(ptr).addr()
-            },
 {
     assert(allocator_map.perms_wf() && allocator_map.spec_index(allocator_ptr).is_init()
         && allocator_map.spec_index(allocator_ptr).inv()) by { pcid_allocator_perms_wf_at(*allocator_map, allocator_ptr); };
@@ -458,14 +436,6 @@ pub fn process_map_link_new_child(
                     == old(process_map).spec_index(ptr).view_ghost().subtree_set.view().insert(child_ptr)
                 &&& !ancestors.to_set().contains(ptr) ==> final(process_map).spec_index(ptr).view_ghost().subtree_set
                     == old(process_map).spec_index(ptr).view_ghost().subtree_set
-            },
-        forall|ptr: RwLockProcessPtr|
-            #![trigger final(process_map).view().spec_index(ptr).is_init()]
-            old(process_map).dom().contains(ptr) ==> {
-                &&& final(process_map).view().spec_index(ptr).is_init()
-                    == old(process_map).view().spec_index(ptr).is_init()
-                &&& final(process_map).view().spec_index(ptr).addr()
-                    == old(process_map).view().spec_index(ptr).addr()
             },
 {
     assert(process_map.perms_wf() && process_map.spec_index(child_ptr).is_init()
@@ -1271,9 +1241,7 @@ pub fn container_map_take_parent_node(
     let (node_addr, mut node_perm) = container.parent_linkedlist_node.take();
     node_update_value(node_addr, &mut node_perm, container_ptr);
     proof {
-        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
-            && old(container_map).view().spec_index(container_ptr).is_init()
-            && container_map.view().spec_index(container_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
     (node_addr, node_perm)
 }
@@ -1323,9 +1291,7 @@ pub fn container_map_push_child(
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
     container.children.push_tail(node_addr, node_perm);
     proof {
-        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
-            && old(container_map).view().spec_index(container_ptr).is_init()
-            && container_map.view().spec_index(container_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 
@@ -1361,9 +1327,7 @@ pub fn container_map_remove_owned_pages(
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
     container.owned_pages = Ghost(container.owned_pages.view().difference(pages));
     proof {
-        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())
-            && old(container_map).view().spec_index(container_ptr).is_init()
-            && container_map.view().spec_index(container_ptr).is_init()) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 }

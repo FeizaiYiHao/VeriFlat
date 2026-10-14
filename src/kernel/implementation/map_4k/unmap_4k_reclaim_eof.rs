@@ -67,6 +67,7 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_page_relations(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
+    hide(LockedMap::dom);
     reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
@@ -117,7 +118,8 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(
     reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
-            reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(thread_perms_wf);
+            reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf);
+            reveal(container_uppertree_seq_wf); thread_perms_wf_at(post.thr_mp, thread_ptr);
             lemma_thread_effective_quota_4k_fold_sum_eq_forall();
             lemma_thread_pending_4k_folds_change_by_forall(thread_ptr, if depth == pre.thr_mp.spec_index(thread_ptr).view().container_depth { 1int } else { 0int }, depth as int, if depth < pre.thr_mp.spec_index(thread_ptr).view().container_depth { 1int } else { 0int });
 
@@ -209,6 +211,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
         kernel_k_to_nonlock_kernel_u(post) == kernel_k_to_nonlock_kernel_u(pre),
 {
+    hide(LockedArray::spec_index);
     reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
     assert(pagetable_hidden_leaves_only_when_wlocked(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
     assert(post.subsystems_inv()) by { reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };

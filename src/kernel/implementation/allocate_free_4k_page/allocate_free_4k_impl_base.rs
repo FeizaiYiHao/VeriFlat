@@ -104,10 +104,10 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
     {
+        hide(Array::view);
         assert({
+            &&& krnl.ctn_mp.perms_wf()
             &&& krnl.ctn_mp.dom().contains(container_ptr)
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
         }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
         let alloc_ptr_4k = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
         assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(container_allocator_wf); reveal(allocator_perms_wf); };
@@ -290,9 +290,8 @@ verus! {
     {
         hide(Seq::contains);
         assert({
+            &&& krnl.ctn_mp.perms_wf()
             &&& krnl.ctn_mp.dom().contains(container_ptr)
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
         }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
         let alloc_ptr_4k = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
         assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };

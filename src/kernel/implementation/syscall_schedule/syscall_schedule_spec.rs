@@ -90,14 +90,13 @@ pub open spec fn scheduler_context_switch_transition(
     })
     &&& cpu_after.view().tlb_dirty_bitmap() == cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
+    &&& post.thr_mp.perms_wf()
     &&& (forall|ptr: RwLockThreadPtr|
         #![trigger pre.thr_mp.spec_index(ptr)]
         #![trigger post.thr_mp.spec_index(ptr)]
         pre.thr_mp.dom().contains(ptr) ==> {
             let before = pre.thr_mp.spec_index(ptr);
             let after = post.thr_mp.spec_index(ptr);
-            &&& post.thr_mp.view().spec_index(ptr).is_init() == pre.thr_mp.view().spec_index(ptr).is_init()
-            &&& post.thr_mp.view().spec_index(ptr).addr() == pre.thr_mp.view().spec_index(ptr).addr()
             &&& after.view().temp_alloc_cache_1g == before.view().temp_alloc_cache_1g
             &&& after.view().endpoint_descriptors == before.view().endpoint_descriptors
             &&& (ptr != next_thread && previous != Some(ptr) ==> after == before)
@@ -119,12 +118,11 @@ pub open spec fn scheduler_context_switch_transition(
             })
         })
     &&& post.sched_mp.dom() == pre.sched_mp.dom()
+    &&& post.sched_mp.perms_wf()
     &&& (forall|ptr: RwLockSchedulerPtr|
         #![trigger pre.sched_mp.spec_index(ptr)]
         #![trigger post.sched_mp.spec_index(ptr)]
         pre.sched_mp.dom().contains(ptr) ==> {
-            &&& post.sched_mp.view().spec_index(ptr).is_init() == pre.sched_mp.view().spec_index(ptr).is_init()
-            &&& post.sched_mp.view().spec_index(ptr).addr() == pre.sched_mp.view().spec_index(ptr).addr()
             &&& (ptr != scheduler_ptr ==> post.sched_mp.spec_index(ptr) == pre.sched_mp.spec_index(ptr))
         })
     &&& scheduler_after.is_init() == scheduler_before.is_init()

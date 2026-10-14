@@ -49,16 +49,14 @@ verus! {
             let current_thread_ptr = cpu.current_thread().unwrap();
 
             assert({
+                &&& krnl.prc_mp.perms_wf()
                 &&& krnl.prc_mp.dom().contains(process_ptr)
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
-                &&& krnl.prc_mp.view().spec_index(process_ptr).is_init()
-                &&& krnl.prc_mp.view().spec_index(process_ptr).addr() == process_ptr
             }) by { reveal(process_cpu_wf); reveal(process_perms_wf); };
             let container_ptr = krnl.prc_mp.borrow_rodata(process_ptr).borrow().owning_container;
             assert({
+                &&& krnl.ctn_mp.perms_wf()
                 &&& krnl.ctn_mp.dom().contains(container_ptr)
-                &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-                &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
             }) by { reveal(container_process_wf); reveal(container_perms_wf); };
             let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
 
@@ -87,7 +85,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
-            }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            }) by { reveal(thread_cpu_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
             let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));

@@ -2,6 +2,131 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// Lock-map framing used by the step-boundary wrappers for every map a section
+/// restores. `relocked` names the one entry (if any) the section re-acquired.
+impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {
+    /// `old`, except that `relocked` may differ in lock owner or token while
+    /// keeping its lock mode and payload (`RwLock::relocked_from`).
+    pub open spec fn unchanged_except_relock(&self, old: &Self, relocked: Option<usize>) -> bool {
+        match relocked {
+            Some(key) => self.unchanged_except(old, key) && self.spec_index(key).relocked_from(&old.spec_index(key)),
+            None => self == old,
+        }
+    }
+
+    /// `old`, except that `relocked` may differ in any way other than lock mode.
+    pub open spec fn unchanged_except_same_lock_mode(&self, old: &Self, relocked: Option<usize>) -> bool {
+        match relocked {
+            Some(key) => self.unchanged_except(old, key) && self.spec_index(key).lock_state_u() == old.spec_index(key).lock_state_u(),
+            None => self == old,
+        }
+    }
+}
+
+/// Everything the modeled interleaving at a kernel-step boundary preserves about
+/// the kernel state and this thread's `LocalContext`: the invariant, the lock
+/// phase flip to `Acquire`, every held object and its lock id, the TLB facts for
+/// held page tables, and the read-only data of every container and process.
+/// `LocalContext` is thread-local, so its identity and exact held-lock set stay put.
+/// `KernelK::kernel_step_boundary_raw` guarantees it; the `kernel_step_boundary_*`
+/// wrappers re-export it unchanged.
+pub open spec fn kernel_step_boundary_preserved(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext) -> bool {
+    &&& post_lctx.cpu_id() == pre_lctx.cpu_id()
+    &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> {
+        &&& post.cpu_arr.spec_index(pre_lctx.cpu_id()).view().view().view().current_cr3 == pre.cpu_arr.spec_index(pre_lctx.cpu_id()).view().view().view().current_cr3
+        &&& post.cpu_arr.spec_index(pre_lctx.cpu_id()).view().view().view().current_pcid == pre.cpu_arr.spec_index(pre_lctx.cpu_id()).view().view().view().current_pcid
+        &&& post.cpu_published[pre_lctx.cpu_id() as int].view() == pre.cpu_published[pre_lctx.cpu_id() as int].view()
+    }
+    &&& post.inv()
+    &&& post_lctx.kernel_view_locking_state() is Acquire
+    &&& post_lctx.thread_id() == pre_lctx.thread_id()
+    &&& typed_lock_maps_unchanged(pre_lctx, post_lctx)
+    &&& forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pt, post.pt_mp.spec_index(pt).view())]
+            pre_lctx.pagetable_lock_map().dom().contains(pt)
+            && pagetable_tlb_entries_present(pre.cpu_tlb, pre.cpu_arr, pre.pcid_needflush, pt, pre.pt_mp.spec_index(pt).view())
+            ==> pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pt, post.pt_mp.spec_index(pt).view())
+    &&& forall|pagetable_ptr: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid|
+            #![trigger pre_lctx.pagetable_lock_map().dom().contains(pagetable_ptr), post.cpu_tlb.spec_index((cpu_id, pcid))]
+            pre_lctx.pagetable_lock_map().dom().contains(pagetable_ptr)
+            && index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+            ==> {
+                let before = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+                let after = post.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
+                after is Some && after.unwrap().pagetable_ptr == pagetable_ptr
+                && (before is None || before.unwrap().pagetable_ptr != pagetable_ptr
+                    || single_cpu_single_pcid_tlb_subset_of_present_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), pre.pt_mp.spec_index(pagetable_ptr).view())
+                    || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
+                        && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
+                        && (!post.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || post.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid)))
+                ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(post.cpu_tlb.spec_index((cpu_id, pcid)), post.pt_mp.spec_index(pagetable_ptr).view())
+            }
+    &&& forall|cpu_id: CpuId, pcid: Pcid|
+            #![trigger pre_lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
+            pre_lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid))
+            ==> post.pcid_needflush.spec_index(cpu_id, pcid) == pre.pcid_needflush.spec_index(cpu_id, pcid)
+    &&& pre_lctx.holds_no_allocator_locks(PageSize::SZ4k) ==> post_lctx.holds_no_allocator_locks(PageSize::SZ4k)
+    &&& pre_lctx.holds_no_allocator_locks(PageSize::SZ2m) ==> post_lctx.holds_no_allocator_locks(PageSize::SZ2m)
+    &&& pre_lctx.holds_no_allocator_locks(PageSize::SZ1g) ==> post_lctx.holds_no_allocator_locks(PageSize::SZ1g)
+    &&& forall|major: LockMajorId|
+            #![trigger pre_lctx.held_lock_majors_lt(major)]
+            pre_lctx.held_lock_majors_lt(major) ==> post_lctx.held_lock_majors_lt(major)
+    // Direct typed-map framing for owner objects.
+    &&& forall|cpu_id: CpuId|
+            #![trigger pre_lctx.cpu_lock_map().dom().contains(cpu_id)]
+            pre_lctx.cpu_lock_map().dom().contains(cpu_id)
+            ==> post.cpu_arr.spec_index(cpu_id).view() == pre.cpu_arr.spec_index(cpu_id).view()
+    &&& forall|container_ptr: RwLockContainerPtr|
+            #![trigger pre_lctx.container_lock_map().dom().contains(container_ptr)]
+            pre_lctx.container_lock_map().dom().contains(container_ptr)
+            ==> {
+                &&& post.ctn_mp.dom().contains(container_ptr)
+                &&& post.ctn_mp.lock_id_by_key(container_ptr) == pre.ctn_mp.lock_id_by_key(container_ptr)
+                &&& post.ctn_mp.spec_index(container_ptr) == pre.ctn_mp.spec_index(container_ptr)
+            }
+    &&& forall|process_ptr: RwLockProcessPtr|
+            #![trigger pre_lctx.process_lock_map().dom().contains(process_ptr)]
+            pre_lctx.process_lock_map().dom().contains(process_ptr)
+            ==> {
+                &&& post.prc_mp.dom().contains(process_ptr)
+                &&& post.prc_mp.lock_id_by_key(process_ptr) == pre.prc_mp.lock_id_by_key(process_ptr)
+                &&& post.prc_mp.spec_index(process_ptr) == pre.prc_mp.spec_index(process_ptr)
+            }
+    &&& forall|thread_ptr: RwLockThreadPtr|
+            #![trigger pre_lctx.thread_lock_map().dom().contains(thread_ptr)]
+            pre_lctx.thread_lock_map().dom().contains(thread_ptr)
+            ==> {
+                &&& post.thr_mp.dom().contains(thread_ptr)
+                &&& post.thr_mp.lock_id_by_key(thread_ptr) == pre.thr_mp.lock_id_by_key(thread_ptr)
+                &&& post.thr_mp.spec_index(thread_ptr) == pre.thr_mp.spec_index(thread_ptr)
+            }
+    &&& forall|pagetable_ptr: RwLockPageTableRoot|
+            #![trigger pre_lctx.pagetable_lock_map().dom().contains(pagetable_ptr)]
+            pre_lctx.pagetable_lock_map().dom().contains(pagetable_ptr)
+            ==> {
+                &&& post.pt_mp.dom().contains(pagetable_ptr)
+                &&& post.pt_mp.lock_id_by_key(pagetable_ptr) == pre.pt_mp.lock_id_by_key(pagetable_ptr)
+                &&& post.pt_mp.spec_index(pagetable_ptr) == pre.pt_mp.spec_index(pagetable_ptr)
+            }
+    &&& typed_lock_maps_aligned(post, post_lctx)
+    &&& post.dflt_pt == pre.dflt_pt
+    &&& containers_rodata_unchanged(pre.ctn_mp, post.ctn_mp)
+    &&& processes_rodata_unchanged(pre.prc_mp, post.prc_mp)
+    &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, pre_lctx)
+    &&& held_processes_unchanged(pre.prc_mp, post.prc_mp, pre_lctx)
+    &&& held_threads_unchanged(pre.thr_mp, post.thr_mp, pre_lctx)
+    &&& held_endpoints_unchanged(pre.ep_mp, post.ep_mp, pre_lctx)
+    &&& held_schedulers_unchanged(pre.sched_mp, post.sched_mp, pre_lctx)
+    &&& held_pcid_allocators_unchanged(pre.pcid_allc_mp, post.pcid_allc_mp, pre_lctx)
+    &&& held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, pre_lctx)
+    &&& held_pagetables_unchanged(pre.pt_mp, post.pt_mp, pre_lctx)
+    &&& held_iommu_tables_unchanged(pre.it_mp, post.it_mp, pre_lctx)
+    &&& held_pages_unchanged(pre.pg_arr, post.pg_arr, pre_lctx)
+    &&& held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, pre_lctx)
+    &&& held_allocator_objects_unchanged(pre.allc_4k_mp, post.allc_4k_mp, pre_lctx, PageSize::SZ4k)
+    &&& held_allocator_objects_unchanged(pre.allc_2m_mp, post.allc_2m_mp, pre_lctx, PageSize::SZ2m)
+    &&& held_allocator_objects_unchanged(pre.allc_1g_mp, post.allc_1g_mp, pre_lctx, PageSize::SZ1g)
+}
+
 pub open spec fn held_containers_unchanged(
     pre: ContainerLockedMap,
     post: ContainerLockedMap,

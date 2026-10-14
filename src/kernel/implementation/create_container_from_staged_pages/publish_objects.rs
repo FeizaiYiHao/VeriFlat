@@ -129,6 +129,7 @@ pub(super) fn build_staged_4k_global_pool(
                 &&& page_lock_perms.spec_index(page_ptr).lock_id() == final(pages).spec_index(page_ptr2page_index(page_ptr),).view().locking_thread()->Write_lock_id
             },
 {
+    hide(LockedArray::spec_index);
     let mut global_pool = LinkedList::new(Some(child_depth), Some(child_container_ptr));
     let mut current = head;
     let mut remaining = count;
@@ -427,6 +428,7 @@ pub(super) fn set_new_container_owned_2m_page_tail_pair(
         final(pages).spec_index(page_ptr2page_index(l4_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(l4_page),),
         final(pages).spec_index(page_ptr2page_index(thread_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(thread_page),),
 {
+    hide(LockedArray::spec_index);
     hide(Seq::contains);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
@@ -1041,6 +1043,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         owned_2m_tail_lock_perms_wf(*container_tail_lock_perms, final(krnl).pg_arr, final(lctx), container_head,),
         owned_2m_tail_lock_perms_wf(*pcid_allocator_tail_lock_perms, final(krnl).pg_arr, final(lctx), pcid_allocator_head,),
 {
+    hide(LockedArray::spec_index);
     let process_index = page_ptr2page_index(child_process_ptr);
     let pagetable_index = page_ptr2page_index(child_pagetable_ptr);
     let l4_index = page_ptr2page_index(l4_page);

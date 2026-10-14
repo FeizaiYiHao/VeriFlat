@@ -39,7 +39,7 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
 {
     let indices = va2index(va);
     assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by {
-        reveal(pagetable_perms_wf);
+        pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         spec_va_4k_index_roundtrip_at(
             va, indices.0, indices.1, indices.2, indices.3,
         );

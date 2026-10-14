@@ -218,11 +218,13 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         let mut counter = if depth == thread_depth { *direct } else { indirect[depth] };
         if counter != 0 {
             let amount = counter;
-            assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by { reveal(container_allocator_wf); reveal(allocator_perms_wf); };
+            assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by {
+                reveal(container_allocator_wf); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
+            };
             proof {
                 let origin = old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container;
                 assert(steps.snapshot_k().ctn_mp.dom().contains(origin) && (owner == origin || steps.snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner))) by {
-                    reveal(container_thread_wf); reveal(thread_perms_wf); broadcast use vstd::seq::Seq::lemma_index_contains;
+                    reveal(container_thread_wf); thread_perms_wf_at(krnl.thr_mp, thread_ptr); broadcast use vstd::seq::Seq::lemma_index_contains;
                 };
             }
             let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
@@ -230,7 +232,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             }
             return_free_quota_4k(krnl, thread_ptr, owner, depth, allocator_ptr, &mut counter, Tracked(&mut *lctx), thread_perm, Tracked(&quota_perm));
-            assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by { reveal(allocator_perms_wf); };
+            assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); };
             krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
             proof {
                 assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).allocator_quota_4k_lock_map(), allocator_ptr, TypedHeldLock { lock_id: krnl.allc_4k_mp.spec_index(allocator_ptr).quota.lock_id(), mode: TypedLockMode::Write }); };
@@ -240,7 +242,10 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                     broadcast use kernel_endpoint_nonlock_fields_unchanged_transitive; reveal(container_allocator_wf);
                 };
                 krnl.kernel_step_boundary_container_quota_4k_changed(&mut *lctx, &mut *steps, owner, amount as int, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container);
-                assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().parent == parent && (depth > 0 ==> krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1)) by { reveal(thread_perms_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); broadcast use vstd::seq::Seq::lemma_index_contains; };
+                assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().parent == parent && (depth > 0 ==> krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1)) by {
+                    thread_perms_wf_at(krnl.thr_mp, thread_ptr); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
+                    broadcast use vstd::seq::Seq::lemma_index_contains;
+                };
             }
         }
         if depth == thread_depth { *direct = 0; } else { indirect[depth] = 0; }

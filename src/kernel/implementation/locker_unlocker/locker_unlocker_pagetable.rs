@@ -218,7 +218,7 @@ impl KernelK {
                 assert({
                     &&& old(self).pt_mp.perms_wf()
                     &&& old(self).pt_mp.spec_index(pagetable_ptr).inv()
-                }) by { reveal(pagetable_perms_wf); };
+                }) by { pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
                 assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
             }
             assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

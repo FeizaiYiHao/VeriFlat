@@ -198,8 +198,7 @@ impl UnLockedMap<usize, PageAllocator> {
     pub fn borrow_mut_quota<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorQuota)
         requires
             old(self).dom().contains(alloc_ptr),
-            old(self).view().spec_index(alloc_ptr).is_init(),
-            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
+            old(self).perms_wf(),
             old(self).spec_index(alloc_ptr).quota.wlocked_by(lctx),
             old(self).spec_index(alloc_ptr).quota.is_init(),
 
@@ -328,8 +327,7 @@ impl UnLockedMap<usize, PageAllocator> {
     pub fn borrow_mut_global_pool<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut GlobalPool)
         requires
             old(self).dom().contains(alloc_ptr),
-            old(self).view().spec_index(alloc_ptr).is_init(),
-            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
+            old(self).perms_wf(),
             old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
             old(self).spec_index(alloc_ptr).global_pool.is_init(),
 
@@ -360,6 +358,7 @@ impl UnLockedMap<usize, PageAllocator> {
         alloc.global_pool.borrow_mut(Tracked(lctx), lp)
     }
 
+    // Dead code: no in-tree callers.
     pub fn borrow_mut_global_pool_typed<'a>(
         &'a mut self,
         alloc_ptr: usize,
@@ -460,8 +459,7 @@ impl UnLockedMap<usize, PageAllocator> {
     pub fn borrow_mut_cache<'a>(&'a mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorCache)
         requires
             old(self).dom().contains(alloc_ptr),
-            old(self).view().spec_index(alloc_ptr).is_init(),
-            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
+            old(self).perms_wf(),
             index_valid(NUM_CPUS, cpu_id),
             old(self).spec_index(alloc_ptr).cpu_caches.inv(),
             old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
@@ -497,6 +495,7 @@ impl UnLockedMap<usize, PageAllocator> {
         alloc.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lp)
     }
 
+    // Dead code: no in-tree callers.
     pub fn borrow_mut_cache_typed<'a>(
         &'a mut self,
         alloc_ptr: usize,

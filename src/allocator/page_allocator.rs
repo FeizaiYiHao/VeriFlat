@@ -610,6 +610,7 @@ impl PageAllocator{
         (node_addr, node_perm)
     }
 
+    // Dead code: no in-tree callers.
     pub fn move_global_pool_head_to_cache(
         &mut self,
         cpu_id: CpuId,

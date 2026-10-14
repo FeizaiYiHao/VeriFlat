@@ -372,6 +372,7 @@ verus! {
                     &&& mmap_4k_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id)
                 },
     {
+        hide(RwLock::lock_state_u);
         proof { use_type_invariant(&*steps); }
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
         let ghost share_guard = old(steps).snapshot_k() == *old(krnl) && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread)
@@ -396,7 +397,9 @@ verus! {
         let ghost share_lctx = *lctx;
         proof {
             if share_guard {
-                assert(share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id) && krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(share_4k_objects_k); reveal(container_thread_wf); };
+                assert(share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id) && krnl.ctn_mp.dom().contains(container_ptr)) by {
+                    reveal(share_4k_objects_k); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, quota_thread_ptr);
+                };
                 assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by { reveal(process_pagetable_match); };
             }
         }
@@ -441,10 +444,12 @@ verus! {
             krnl.kernel_step_boundary_thread_quota_4k_changed(
                 &mut *lctx, &mut *steps, quota_thread_ptr, -1,
             );
-            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
+            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, quota_thread_ptr); };
             assert(krnl.prc_mp.dom().contains(process_ptr) && ((krnl.thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && krnl.thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr) || typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write))) by { reveal(process_thread_wf); };
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
-            assert(krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
+            assert(krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by {
+                pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
+            };
             assert(share_guard ==> share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)) by { reveal(share_4k_objects_k); };
         }
     }

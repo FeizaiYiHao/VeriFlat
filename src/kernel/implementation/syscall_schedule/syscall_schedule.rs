@@ -26,8 +26,6 @@ proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: CpuId)
             let current_thread = cpu.current_thread;
             &&& krnl.ctn_mp.dom().contains(container_ptr)
             &&& krnl.ctn_mp.spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
             &&& (current_process is Some ==> krnl.prc_mp.dom().contains(current_process.unwrap()))
             &&& (current_process is Some == current_thread is Some)
             &&& (current_process is Some ==> cpu.state is Running)
@@ -237,19 +235,19 @@ fn schedule_switch_to_queue_head(
     let thread = krnl.thr_mp.borrow_typed(next_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&next_lock_perm));
     let next_process = thread.owning_proc;
     assert({
+        &&& krnl.prc_mp.perms_wf()
         &&& krnl.prc_mp.dom().contains(next_process)
         &&& !krnl.prc_mp.spec_index(next_process).view().zombie
         &&& krnl.prc_mp.spec_index(next_process).is_init()
-        &&& krnl.prc_mp.view().spec_index(next_process).is_init()
-        &&& krnl.prc_mp.view().spec_index(next_process).addr() == next_process
-    }) by { reveal(process_thread_wf); reveal(process_perms_wf); };
+    }) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, next_thread); reveal(process_perms_wf); };
     let process = krnl.prc_mp.borrow_rodata(next_process).borrow();
     let next_pagetable = process.pagetable;
     let cr3 = process.cr3;
     let pcid = process.pcid;
     let depth = process.depth;
     assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
-        reveal(process_thread_wf); reveal(process_pagetable_match); reveal(process_perms_wf); reveal(pagetable_perms_wf); reveal(process_pcid_allocator_wf);
+        process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, next_thread); reveal(process_pagetable_match); reveal(process_perms_wf);
+        reveal(pagetable_perms_wf); reveal(process_pcid_allocator_wf);
         reveal(PageTable::table_pages_wf);
     };
     let scheduler = krnl.sched_mp.borrow_typed(scheduler_ptr, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
@@ -403,6 +401,7 @@ pub fn syscall_schedule(
             })
         },
 {
+    hide(RwLock::lock_state_u);
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
@@ -429,6 +428,7 @@ pub fn syscall_schedule(
         return ScheduleResult::Off;
     }
     proof { schedule_current_cpu_references_wf(&*krnl, cpu_id); }
+    proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
     let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
     let mut process_lock_perm: Option<Tracked<LockPerm>> = None;
     let mut current_thread_lock_perm: Option<Tracked<LockPerm>> = None;

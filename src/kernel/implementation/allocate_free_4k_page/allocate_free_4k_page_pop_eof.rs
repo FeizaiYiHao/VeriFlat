@@ -3,9 +3,51 @@ use crate::*;
 
 verus! {
 #[verifier::opaque]
-pub(super) open spec fn pop_stage_4k_page_transition_framing(
-    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr,
-    container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>,
+pub(super) open spec fn pop_stage_4k_page_transition_framing_pages(
+    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr,
+    page: PagePtr, node: usize, source: Option<CpuId>,
+) -> bool {
+    let index = page_ptr2page_index(page);
+    &&& post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..pre })
+    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, index)
+    &&& post.pg_arr.spec_index(index).view().is_init()
+    &&& post.pg_arr.spec_index(index).view().view_rodata() == pre.pg_arr.spec_index(index).view().view_rodata()
+    &&& post.pg_arr.spec_index(index).view().view_ghost() == pre.pg_arr.spec_index(index).view().view_ghost()
+    &&& post.pg_arr.spec_index(index).view().being_killed() == pre.pg_arr.spec_index(index).view().being_killed()
+    &&& post.pg_arr.spec_index(index).view().locking_thread() is Write
+}
+
+#[verifier::opaque]
+pub(super) open spec fn pop_stage_4k_page_transition_framing_containers(
+    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr,
+    page: PagePtr, node: usize, source: Option<CpuId>,
+) -> bool {
+    &&& pre.ctn_mp.dom().contains(container)
+    &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_4k == allocator
+}
+
+#[verifier::opaque]
+pub(super) open spec fn pop_stage_4k_page_transition_framing_threads(
+    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr,
+    page: PagePtr, node: usize, source: Option<CpuId>,
+) -> bool {
+    &&& pre.thr_mp.dom().contains(thread)
+    &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread)
+}
+
+#[verifier::opaque]
+pub(super) open spec fn pop_stage_4k_page_transition_framing_allocators(
+    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr,
+    page: PagePtr, node: usize, source: Option<CpuId>,
+) -> bool {
+    &&& pre.allc_4k_mp.dom().contains(allocator)
+    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator)
+}
+
+#[verifier::opaque]
+pub(super) open spec fn pop_stage_4k_page_transition_framing_inputs(
+    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr,
+    page: PagePtr, node: usize, source: Option<CpuId>,
 ) -> bool {
     let index = page_ptr2page_index(page);
     let old_page = pre.pg_arr.spec_index(index).view().view();
@@ -17,28 +59,16 @@ pub(super) open spec fn pop_stage_4k_page_transition_framing(
     let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
     &&& page_ptr_valid(page)
     &&& index_valid(NUM_PAGES, index)
-    &&& pre.ctn_mp.dom().contains(container)
-    &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_4k == allocator
-    &&& pre.thr_mp.dom().contains(thread)
     &&& thread_effective_quota_4k(old_thread) >= 1
     &&& old_thread.view().owning_container == container
-    &&& pre.allc_4k_mp.dom().contains(allocator)
     &&& old_allocator.total_free_pages.view() > 0
     &&& old_page.state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: free_state })
     &&& old_page.free_list_node_storage.addr() == node
     &&& old_page.owning_container == container
     &&& !old_thread.view().temp_alloc_cache_4k.view().contains(page)
-    &&& post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..pre })
-    &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, index)
     &&& new_page == (Page { state: PageState::Owned4k { thread_ptr: thread }, free_list_node_storage: new_page.free_list_node_storage, ..old_page })
     &&& new_page.free_list_node_storage.addr() == old_page.free_list_node_storage.addr()
     &&& new_page.free_list_node_storage.is_init()
-    &&& post.pg_arr.spec_index(index).view().is_init()
-    &&& post.pg_arr.spec_index(index).view().view_rodata() == pre.pg_arr.spec_index(index).view().view_rodata()
-    &&& post.pg_arr.spec_index(index).view().view_ghost() == pre.pg_arr.spec_index(index).view().view_ghost()
-    &&& post.pg_arr.spec_index(index).view().being_killed() == pre.pg_arr.spec_index(index).view().being_killed()
-    &&& post.pg_arr.spec_index(index).view().locking_thread() is Write
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread)
     &&& new_thread.view() == (Thread {
         temp_alloc_cache_4k: Ghost(old_thread.view().temp_alloc_cache_4k.view().insert(page)), ..old_thread.view()
     })
@@ -48,7 +78,6 @@ pub(super) open spec fn pop_stage_4k_page_transition_framing(
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.locking_thread() is Write
     &&& new_thread.being_killed() == old_thread.being_killed()
-    &&& post.allc_4k_mp.unchanged_except(&pre.allc_4k_mp, allocator)
     &&& match source {
         Some(cpu_id) => {
             let old_cache = old_allocator.cpu_caches.spec_index(cpu_id).view();
@@ -87,6 +116,17 @@ pub(super) open spec fn pop_stage_4k_page_transition_framing(
     }
 }
 
+pub(super) open spec fn pop_stage_4k_page_transition_framing(
+    pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr,
+    container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>,
+) -> bool {
+    &&& pop_stage_4k_page_transition_framing_pages(pre, post, allocator, thread, container, page, node, source)
+    &&& pop_stage_4k_page_transition_framing_containers(pre, post, allocator, thread, container, page, node, source)
+    &&& pop_stage_4k_page_transition_framing_threads(pre, post, allocator, thread, container, page, node, source)
+    &&& pop_stage_4k_page_transition_framing_allocators(pre, post, allocator, thread, container, page, node, source)
+    &&& pop_stage_4k_page_transition_framing_inputs(pre, post, allocator, thread, container, page, node, source)
+}
+
 proof fn eof_pop_4k_subsystems(
     pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr,
     container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>,
@@ -102,7 +142,10 @@ proof fn eof_pop_4k_subsystems(
     ensures
         post.subsystems_inv(),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); };
     assert(thread_perms_wf(post.thr_mp)) by {
@@ -121,7 +164,8 @@ proof fn eof_pop_4k_cpu_set_pages(
     ensures
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
 }
 
@@ -135,7 +179,8 @@ proof fn eof_pop_4k_container_page_owner(
     ensures
         container_page_owner_wf(post.ctn_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
 }
 
@@ -149,7 +194,8 @@ proof fn eof_pop_4k_container_pages(
     ensures
         container_pages_wf(post.pg_arr, post.ctn_mp),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { reveal(container_pages_wf); };
 }
 
@@ -163,7 +209,8 @@ proof fn eof_pop_4k_process_pages(
     ensures
         process_pages_wf(post.pg_arr, post.prc_mp),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
 }
 
@@ -177,7 +224,8 @@ proof fn eof_pop_4k_pagetable_pages(
     ensures
         pagetable_pages_wf(post.pt_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
 }
 
@@ -191,7 +239,8 @@ proof fn eof_pop_4k_iommu_table_pages(
     ensures
         iommu_table_pages_wf(post.it_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
 }
 
@@ -205,7 +254,9 @@ proof fn eof_pop_4k_pcid_allocator_pages(
     ensures
         pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
 }
 
@@ -219,7 +270,10 @@ proof fn eof_pop_4k_thread_pages(
     ensures
         thread_pages_wf(post.thr_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
 }
 
@@ -233,7 +287,8 @@ proof fn eof_pop_4k_scheduler_pages(
     ensures
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
 }
 
@@ -247,7 +302,8 @@ proof fn eof_pop_4k_endpoint_pages(
     ensures
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
 }
 
@@ -261,7 +317,9 @@ proof fn eof_pop_4k_allocator_pages(
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
     allocator_2m_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_2m_mp, post.allc_2m_mp);
     allocator_1g_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_1g_mp, post.allc_1g_mp);
@@ -279,7 +337,9 @@ proof fn eof_pop_4k_hugepages(
         hugepage_2m_wf(post.pg_arr),
         hugepage_1g_wf(post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_containers);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
 }
@@ -296,7 +356,9 @@ proof fn eof_pop_4k_staged_pages(
         thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr),
         thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
@@ -316,7 +378,10 @@ proof fn eof_pop_4k_mappings(
         page_pagetable_wf(post.pt_mp, post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_containers);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
         reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf);
         reveal(pagetable_perms_wf);
@@ -339,7 +404,9 @@ proof fn eof_pop_4k_global_pool(
     ensures
         container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     if source is Some {
         assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
             reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
@@ -367,7 +434,12 @@ proof fn eof_pop_4k_cpu_cache(
     ensures
         container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    hide(LockedArray::spec_index);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_containers);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     if source is Some {
         assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
             reveal(allocator_perms_wf);
@@ -406,7 +478,11 @@ proof fn eof_pop_4k_allocator(
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    page_index_roundtrip();
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_containers);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by {
         reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf);
@@ -438,7 +514,11 @@ proof fn eof_pop_4k_quota(
         container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
         container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_containers);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
         reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(container_allocator_wf);
         lemma_thread_effective_quota_4k_fold_change_by_forall(thread, -1); lemma_thread_effective_quota_4k_fold_sum_eq_forall();
@@ -485,7 +565,10 @@ pub(super) proof fn eof_pop_4k_inv(
     ensures
         post.inv(),
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     eof_pop_4k_subsystems(pre, post, allocator, thread, container, page, node, source);
     eof_pop_4k_cpu_set_pages(pre, post, allocator, thread, container, page, node, source);
     eof_pop_4k_container_page_owner(pre, post, allocator, thread, container, page, node, source);

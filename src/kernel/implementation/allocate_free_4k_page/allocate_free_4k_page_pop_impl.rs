@@ -1,6 +1,10 @@
 use super::*;
 use super::allocate_free_4k_page_pop_postconditions::eof_pop_4k_postconditions;
-use super::allocate_free_4k_page_pop_eof::{eof_pop_4k_inv, pop_stage_4k_page_transition_framing};
+use super::allocate_free_4k_page_pop_eof::{
+    eof_pop_4k_inv, pop_stage_4k_page_transition_framing, pop_stage_4k_page_transition_framing_pages,
+    pop_stage_4k_page_transition_framing_containers, pop_stage_4k_page_transition_framing_threads,
+    pop_stage_4k_page_transition_framing_allocators, pop_stage_4k_page_transition_framing_inputs,
+};
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
@@ -104,12 +108,12 @@ verus! {
     {
         assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf() && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.inv()
             && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.inv() && krnl.thr_mp.perms_wf() && krnl.pg_arr.inv()
-        ) by { reveal(allocator_perms_wf); reveal(thread_perms_wf); reveal(page_array_wf); };
+        ) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); thread_perms_wf_at(krnl.thr_mp, thread_ptr); reveal(page_array_wf); };
         let (node_addr, page_ptr) = match source {
             Some(cpu_id) => krnl.allc_4k_mp.borrow_cache_typed(alloc_ptr_4k, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_4k_mp.borrow_global_pool_typed(alloc_ptr_4k, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
         };
-        assert(page_ptr_valid(page_ptr)) by { reveal(allocator_perms_wf); reveal(allocator_free_page_ptrs_wf); };
+        assert(page_ptr_valid(page_ptr)) by { allocator_perms_wf_at(old(krnl).allc_4k_mp, alloc_ptr_4k); reveal(allocator_free_page_ptrs_wf); };
         let page_index = page_ptr2page_index(page_ptr);
         let ghost free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
         proof {
@@ -175,7 +179,13 @@ verus! {
             }
         };
         proof {
-            assert(pop_stage_4k_page_transition_framing(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source)) by { reveal(pop_stage_4k_page_transition_framing); };
+            assert(pop_stage_4k_page_transition_framing(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source)) by {
+                reveal(pop_stage_4k_page_transition_framing_pages);
+                reveal(pop_stage_4k_page_transition_framing_containers);
+                reveal(pop_stage_4k_page_transition_framing_threads);
+                reveal(pop_stage_4k_page_transition_framing_allocators);
+                reveal(pop_stage_4k_page_transition_framing_inputs);
+            };
             eof_pop_4k_inv(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
             eof_pop_4k_postconditions(*old(krnl), *krnl, *old(lctx), alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
         }

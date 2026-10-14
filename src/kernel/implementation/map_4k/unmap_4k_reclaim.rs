@@ -90,6 +90,7 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
+    hide(RwLock::being_killed);
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() < usize::MAX) by {
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
         reveal(allocator_free_page_ptrs_wf);
@@ -101,7 +102,9 @@ pub fn remove_last_4k_mapping_to_allocator(krnl: &mut KernelK, pagetable: RwLock
         };
     };
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view()) by {
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
+        reveal(container_process_allocator_quota_4k_wf);
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); reveal(container_process_wf);
+        reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
         let direct = krnl.ctn_mp.spec_index(owner).view_ghost().owned_threads.view();
         let indirect = krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view();
         lemma_process_effective_quota_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);

@@ -1,6 +1,11 @@
 use vstd::prelude::*;
 use crate::*;
-use super::syscall_ipc_cpu_spec::ipc_cpu_rendezvous_transition;
+use super::syscall_ipc_cpu_spec::{
+    ipc_cpu_rendezvous_transition, ipc_cpu_rendezvous_transition_pages, ipc_cpu_rendezvous_transition_containers,
+    ipc_cpu_rendezvous_transition_processes, ipc_cpu_rendezvous_transition_threads, ipc_cpu_rendezvous_transition_allocators,
+    ipc_cpu_rendezvous_transition_tables, ipc_cpu_rendezvous_transition_objects, ipc_cpu_rendezvous_transition_cpus,
+    ipc_cpu_rendezvous_transition_inputs,
+};
 use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 
 verus! {
@@ -16,7 +21,14 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(ipc_cpu_rendezvous_transition);
+    hide(RwLock::being_killed);
+    reveal(ipc_cpu_rendezvous_transition_allocators);
+    reveal(ipc_cpu_rendezvous_transition_containers);
+    reveal(ipc_cpu_rendezvous_transition_cpus);
+    reveal(ipc_cpu_rendezvous_transition_inputs);
+    reveal(ipc_cpu_rendezvous_transition_objects);
+    reveal(ipc_cpu_rendezvous_transition_processes);
+    reveal(ipc_cpu_rendezvous_transition_threads);
     assert(post.process_management_inv()) by {
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(cpu_array_wf); };
@@ -53,7 +65,15 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
     ensures post.memory_management_inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_cpu_rendezvous_transition);
+    reveal(ipc_cpu_rendezvous_transition_allocators);
+    reveal(ipc_cpu_rendezvous_transition_containers);
+    reveal(ipc_cpu_rendezvous_transition_cpus);
+    reveal(ipc_cpu_rendezvous_transition_inputs);
+    reveal(ipc_cpu_rendezvous_transition_objects);
+    reveal(ipc_cpu_rendezvous_transition_pages);
+    reveal(ipc_cpu_rendezvous_transition_processes);
+    reveal(ipc_cpu_rendezvous_transition_tables);
+    reveal(ipc_cpu_rendezvous_transition_threads);
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
@@ -138,7 +158,16 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
             index_valid(NUM_CPUS, i) && (!transferred || i != transfer_cpu_id) ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i),
         kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer),
 {
-    reveal(ipc_cpu_rendezvous_transition);
+    hide(RwLock::lock_state_u);
+    reveal(ipc_cpu_rendezvous_transition_allocators);
+    reveal(ipc_cpu_rendezvous_transition_containers);
+    reveal(ipc_cpu_rendezvous_transition_cpus);
+    reveal(ipc_cpu_rendezvous_transition_inputs);
+    reveal(ipc_cpu_rendezvous_transition_objects);
+    reveal(ipc_cpu_rendezvous_transition_pages);
+    reveal(ipc_cpu_rendezvous_transition_processes);
+    reveal(ipc_cpu_rendezvous_transition_tables);
+    reveal(ipc_cpu_rendezvous_transition_threads);
     assert(post.subsystems_inv()) by {
         assert({
             &&& thread_perms_wf(post.thr_mp)

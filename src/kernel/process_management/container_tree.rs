@@ -37,8 +37,6 @@ verus! {
             container_perms.dom().contains(container_ptr),
         ensures
             container_perms.perms_wf(),
-            container_perms.view().spec_index(container_ptr).is_init(),
-            container_perms.view().spec_index(container_ptr).addr() == container_ptr,
             container_perms.spec_index(container_ptr).inv(),
             container_perms.spec_index(container_ptr).is_init(),
             container_perms.spec_index(container_ptr).view().inv(),
@@ -203,6 +201,7 @@ verus! {
         reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
     }
 
+    // Dead code: no in-tree callers.
     pub open spec fn container_add_child_ensures(
         root_container: RwLockContainerPtr, old_container_perms: ContainerLockedMap, new_container_perms: ContainerLockedMap,
         parent_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr,
@@ -315,8 +314,8 @@ pub fn container_tree_check_is_ancestor(
     requires
         container_perms_wf(*container_perms),
         container_tree_wf(root_container, *container_perms),
-        container_perms.view().dom().contains(a_ptr),
-        container_perms.view().dom().contains(child_ptr),
+        container_perms.dom().contains(a_ptr),
+        container_perms.dom().contains(child_ptr),
         a_ptr != child_ptr,
     ensures
         ret == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(a_ptr),
@@ -324,10 +323,9 @@ pub fn container_tree_check_is_ancestor(
 {
     hide(Seq::no_duplicates);
     assert({
-        &&& container_perms.view().spec_index(child_ptr).is_init()
-        &&& container_perms.view().spec_index(child_ptr).addr() == child_ptr
         &&& container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(a_ptr) == container_perms.spec_index(a_ptr).view_ghost().subtree_set.view().contains(child_ptr)
     }) by { reveal(container_perms_wf); reveal(container_subtree_set_exclusive); };
+    assert(container_perms.perms_wf()) by { reveal(container_perms_wf); };
     let current_child_ro = container_perms.borrow_rodata(child_ptr);
     let depth = current_child_ro.borrow().depth;
     assert({
@@ -347,10 +345,7 @@ pub fn container_tree_check_is_ancestor(
             i != 0 ==> current_c_ptr == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i),
             forall|j:int| depth - i <= j < depth ==> container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(j) != a_ptr
     {
-        assert({
-            &&& container_perms.view().spec_index(current_c_ptr).is_init()
-            &&& container_perms.view().spec_index(current_c_ptr).addr() == current_c_ptr
-        }) by { reveal(container_perms_wf); };
+        assert(container_perms.perms_wf()) by { reveal(container_perms_wf); };
         let current_ro = container_perms.borrow_rodata(current_c_ptr);
         assert({
             &&& current_ro.view().parent is Some

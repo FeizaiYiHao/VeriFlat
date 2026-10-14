@@ -112,7 +112,7 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
     assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); };
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
+    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_wf_preserved_for_thread_invariant_fields(pre.thr_mp, post.thr_mp, post.pg_arr); };
 }
 
 pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: KernelK, post: KernelK)

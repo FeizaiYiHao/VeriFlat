@@ -25,11 +25,11 @@ pub open spec fn new_container_moved_pages(
 }
 
 #[verifier::opaque]
-pub open spec fn publish_staged_container_root_kernel_state_framing(
+pub open spec fn publish_staged_container_root_kernel_state_framing_pages(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
-    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
 ) -> bool {
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
@@ -41,59 +41,12 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     let process_index = page_ptr2page_index(process_page);
     let pagetable_index = page_ptr2page_index(pagetable_page);
     let l4_index = page_ptr2page_index(l4_page);
-    let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
-    let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
-    let moved_pages = new_container_moved_pages(
-        container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page,
-        process_page, pagetable_page, l4_page
-    ).union(funding_pages.to_set());
     let funding_indices = funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
     let unpublished = |index: PageIndex| index != container_head && index != pcid_allocator_head && index != allocator_4k_index && index != allocator_2m_index && index != allocator_1g_index && index != scheduler_index && index != cpu_set_index && index != process_index && index != pagetable_index && index != l4_index;
-    &&& pre.ctn_mp.dom().contains(parent_container_ptr)
-    &&& pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().contains(thread_page)
-    &&& !moved_pages.contains(thread_page)
-    &&& !pre.ctn_mp.spec_index(parent_container_ptr).being_killed()
     &&& pre.pg_arr.spec_index(page_ptr2page_index(thread_page)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr })
     &&& pre.pg_arr.spec_index(page_ptr2page_index(thread_page)).view().view().owning_container == parent_container_ptr
-    &&& pre.thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 8
-    &&& funding_pages.len() <= pre.thr_mp.spec_index(current_thread_ptr).view().quota_4k - 8
-    &&& pre.thr_mp.spec_index(current_thread_ptr).view().quota_2m >= 2
-    &&& !pre.ctn_mp.dom().contains(container_page)
-    &&& !pre.pcid_allc_mp.dom().contains(pcid_allocator_page)
-    &&& !pre.allc_4k_mp.dom().contains(allocator_4k_page)
-    &&& !pre.allc_2m_mp.dom().contains(allocator_2m_page)
-    &&& !pre.allc_1g_mp.dom().contains(allocator_1g_page)
-    &&& !pre.sched_mp.dom().contains(scheduler_page)
-    &&& !pre.cpu_set_mp.dom().contains(cpu_set_page)
-    &&& !pre.prc_mp.dom().contains(process_page)
-    &&& !pre.pt_mp.dom().contains(pagetable_page)
-    &&& pre.thr_mp.dom().contains(current_thread_ptr)
-    &&& funding_pages.len() == allocator_quota_4k + process_quota_4k
-    &&& forall|page_ptr: PagePtr|
-        #![trigger pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
-        #![trigger funding_pages.to_set().contains(page_ptr)]
-        #![trigger new_container_bootstrap_4k_pages(
-            allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page
-        ).contains(page_ptr)]
-        pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) <==> new_container_bootstrap_4k_pages(
-            allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page
-        ).contains(page_ptr) || funding_pages.to_set().contains(page_ptr) || page_ptr == thread_page
-    &&& forall|page_ptr: PagePtr|
-        #![trigger pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
-        pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr) <==> page_ptr == container_page || page_ptr == pcid_allocator_page
     &&& pre.pg_arr.spec_index(container_head).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr })
     &&& pre.pg_arr.spec_index(pcid_allocator_head).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr })
-    &&& moved_pages.subset_of(pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view())
-    &&& post.it_mp == pre.it_mp
-    &&& post.irt == pre.irt
-    &&& post.cpu_arr == pre.cpu_arr
-    &&& post.pcid_needflush == pre.pcid_needflush
-    &&& post.cpu_published == pre.cpu_published
-    &&& post.ep_mp == pre.ep_mp
-    &&& post.cpu_tlb == pre.cpu_tlb
-    &&& post.iommu_tlb == pre.iommu_tlb
-    &&& post.rt_ctn == pre.rt_ctn
-    &&& post.dflt_pt == pre.dflt_pt
     &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().mappings()]
         #![trigger pre.pg_arr.spec_index(index).view().view().mappings()]
@@ -179,6 +132,37 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.pg_arr.spec_index(pagetable_index).view().view().owning_container == container_page
     &&& post.pg_arr.spec_index(l4_index).view().view().owning_container == container_page
     &&& post.pg_arr.spec_index(page_ptr2page_index(thread_page)) == pre.pg_arr.spec_index(page_ptr2page_index(thread_page))
+    &&& forall|page_ptr: PagePtr|
+        #![trigger funding_pages.to_set().contains(page_ptr)]
+        #![trigger funding_pages.contains(page_ptr)]
+        funding_pages.to_set().contains(page_ptr) ==> {
+            &&& page_ptr_valid(page_ptr)
+            &&& page_ptr_valid(page_ptr) ==> {
+                let node_addr = post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr();
+                &&& post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().map().dom().contains(node_addr)
+                &&& post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().map().spec_index(node_addr) == page_ptr
+            }
+        }
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_containers(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
+    let moved_pages = new_container_moved_pages(
+        container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page,
+        process_page, pagetable_page, l4_page
+    ).union(funding_pages.to_set());
+    &&& pre.ctn_mp.dom().contains(parent_container_ptr)
+    &&& pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().contains(thread_page)
+    &&& !pre.ctn_mp.spec_index(parent_container_ptr).being_killed()
+    &&& !pre.ctn_mp.dom().contains(container_page)
+    &&& moved_pages.subset_of(pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view())
+    &&& post.rt_ctn == pre.rt_ctn
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom().insert(container_page)
     &&& forall|ptr: RwLockContainerPtr|
         #![trigger post.ctn_mp.dom().contains(ptr)]
@@ -239,6 +223,23 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.ctn_mp.spec_index(container_page).view_ghost().subtree_set.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view().is_empty()
+    &&& post.prc_mp.spec_index(process_page).view_rodata().view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
+    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
+    &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
+    &&& post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
+    &&& post.allc_2m_mp.spec_index(allocator_2m_page).quota.view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
+    &&& post.allc_1g_mp.spec_index(allocator_1g_page).quota.view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_processes(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
+    &&& !pre.prc_mp.dom().contains(process_page)
     &&& post.prc_mp.dom() =~= pre.prc_mp.dom().insert(process_page)
     &&& forall|ptr: RwLockProcessPtr|
         #![trigger post.prc_mp.spec_index(ptr)]
@@ -258,7 +259,6 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.prc_mp.spec_index(process_page).view().owned_threads.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view().parent_linkedlist_node.is_init()
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().owning_container == container_page
-    &&& post.prc_mp.spec_index(process_page).view_rodata().view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().parent is None
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().depth == 0
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().pagetable == pagetable_page
@@ -266,39 +266,63 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().pcid == root_pcid
     &&& post.prc_mp.spec_index(process_page).view_ghost().uppertree_seq.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view_ghost().subtree_set.view().is_empty()
-    &&& post.pt_mp.dom() =~= pre.pt_mp.dom().insert(pagetable_page)
-    &&& forall|ptr: RwLockPageTableRoot|
-        #![trigger post.pt_mp.spec_index(ptr)]
-        pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
-    &&& !post.pt_mp.spec_index(pagetable_page).being_killed()
-    &&& post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page
-    &&& post.pt_mp.spec_index(pagetable_page).view().pcid is Some
-    &&& post.pt_mp.spec_index(pagetable_page).view().pcid_value() == root_pcid
-    &&& post.pt_mp.spec_index(pagetable_page).view().cr3 == l4_page
-    &&& post.pt_mp.spec_index(pagetable_page).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
-    &&& post.pt_mp.spec_index(pagetable_page).view().is_empty()
-    &&& post.pt_mp.spec_index(pagetable_page).view().page_closure() == set![l4_page]
-    &&& post.sched_mp.dom() =~= pre.sched_mp.dom().insert(scheduler_page)
-    &&& forall|ptr: RwLockSchedulerPtr|
-        #![trigger post.sched_mp.spec_index(ptr)]
-        pre.sched_mp.dom().contains(ptr) ==> post.sched_mp.spec_index(ptr) == pre.sched_mp.spec_index(ptr)
-    &&& !post.sched_mp.spec_index(scheduler_page).being_killed()
-    &&& post.sched_mp.spec_index(scheduler_page).view().owning_container == container_page
-    &&& post.sched_mp.spec_index(scheduler_page).view().queue.view().len() == 0
-    &&& post.cpu_set_mp.dom() =~= pre.cpu_set_mp.dom().insert(cpu_set_page)
-    &&& forall|ptr: RwLockCpuSetPtr|
-        #![trigger post.cpu_set_mp.spec_index(ptr)]
-        pre.cpu_set_mp.dom().contains(ptr) ==> post.cpu_set_mp.spec_index(ptr) == pre.cpu_set_mp.spec_index(ptr)
-    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owning_container.view() == container_page
-    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
-    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.view().is_empty()
-    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.closed_view().is_empty()
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_threads(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    &&& pre.thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 8
+    &&& funding_pages.len() <= pre.thr_mp.spec_index(current_thread_ptr).view().quota_4k - 8
+    &&& pre.thr_mp.spec_index(current_thread_ptr).view().quota_2m >= 2
+    &&& pre.thr_mp.dom().contains(current_thread_ptr)
+    &&& forall|page_ptr: PagePtr|
+        #![trigger pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
+        #![trigger funding_pages.to_set().contains(page_ptr)]
+        #![trigger new_container_bootstrap_4k_pages(
+            allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page
+        ).contains(page_ptr)]
+        pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) <==> new_container_bootstrap_4k_pages(
+            allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page
+        ).contains(page_ptr) || funding_pages.to_set().contains(page_ptr) || page_ptr == thread_page
+    &&& forall|page_ptr: PagePtr|
+        #![trigger pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
+        pre.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr) <==> page_ptr == container_page || page_ptr == pcid_allocator_page
+    &&& post.thr_mp.unchanged_except(&pre.thr_mp, current_thread_ptr)
+    &&& post.thr_mp.spec_index(current_thread_ptr).view() == (Thread {
+        temp_alloc_cache_4k: Ghost(set![thread_page]), temp_alloc_cache_2m: Ghost(Set::empty()),
+        quota_4k: (pre.thr_mp.spec_index(current_thread_ptr).view().quota_4k as int - 8 - funding_pages.len()) as usize,
+        quota_2m: (pre.thr_mp.spec_index(current_thread_ptr).view().quota_2m as int - 2) as usize,
+        ..pre.thr_mp.spec_index(current_thread_ptr).view()
+    })
+    &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() == pre.thr_mp.spec_index(current_thread_ptr).locking_thread()
+    &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() is Write
+    &&& post.thr_mp.spec_index(current_thread_ptr).being_killed() == pre.thr_mp.spec_index(current_thread_ptr).being_killed()
+    &&& thread_quota_4k_fields_unchanged(pre.thr_mp, post.thr_mp)
+    &&& thread_quota_2m_fields_unchanged(pre.thr_mp, post.thr_mp)
+    &&& thread_quota_1g_fields_unchanged(pre.thr_mp, post.thr_mp)
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_allocators(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
+    &&& !pre.pcid_allc_mp.dom().contains(pcid_allocator_page)
+    &&& !pre.allc_4k_mp.dom().contains(allocator_4k_page)
+    &&& !pre.allc_2m_mp.dom().contains(allocator_2m_page)
+    &&& !pre.allc_1g_mp.dom().contains(allocator_1g_page)
     &&& post.pcid_allc_mp.dom() =~= pre.pcid_allc_mp.dom().insert(pcid_allocator_page)
     &&& forall|ptr: RwLockPcidAllocatorPtr|
         #![trigger post.pcid_allc_mp.spec_index(ptr)]
         pre.pcid_allc_mp.dom().contains(ptr) ==> post.pcid_allc_mp.spec_index(ptr) == pre.pcid_allc_mp.spec_index(ptr)
     &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().owning_container.view() == container_page
-    &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().ref_counters.spec_index(root_pcid) == 1
     &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().id_to_proc.view().spec_index(root_pcid as int)
         =~= set![process_page]
@@ -319,20 +343,8 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
         pre.allc_1g_mp.dom().contains(ptr) ==> post.allc_1g_mp.spec_index(ptr) == pre.allc_1g_mp.spec_index(ptr)
     &&& post.allc_4k_mp.spec_index(allocator_4k_page).owning_container == container_page
     &&& post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().view() == funding_pages
-    &&& forall|page_ptr: PagePtr|
-        #![trigger funding_pages.to_set().contains(page_ptr)]
-        #![trigger funding_pages.contains(page_ptr)]
-        funding_pages.to_set().contains(page_ptr) ==> {
-            &&& page_ptr_valid(page_ptr)
-            &&& page_ptr_valid(page_ptr) ==> {
-                let node_addr = post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr();
-                &&& post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().map().dom().contains(node_addr)
-                &&& post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().map().spec_index(node_addr) == page_ptr
-            }
-        }
     &&& post.allc_4k_mp.spec_index(allocator_4k_page).total_free_pages.view() == funding_pages.len()
     &&& post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k
-    &&& post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& forall|cpu_id: CpuId|
         #![trigger post.allc_4k_mp.spec_index(allocator_4k_page).cpu_caches.spec_index(cpu_id).view().view().view()]
         index_valid(NUM_CPUS, cpu_id) ==> post.allc_4k_mp.spec_index(allocator_4k_page).cpu_caches.spec_index(cpu_id).view().view().view() == Seq::<PagePtr>::empty()
@@ -340,7 +352,6 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.allc_2m_mp.spec_index(allocator_2m_page).global_pool.view().view() == Seq::<PagePtr>::empty()
     &&& post.allc_2m_mp.spec_index(allocator_2m_page).total_free_pages.view() == 0
     &&& post.allc_2m_mp.spec_index(allocator_2m_page).quota.view().view() == 0
-    &&& post.allc_2m_mp.spec_index(allocator_2m_page).quota.view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& forall|cpu_id: CpuId|
         #![trigger post.allc_2m_mp.spec_index(allocator_2m_page).cpu_caches.spec_index(cpu_id).view().view().view()]
         index_valid(NUM_CPUS, cpu_id) ==> post.allc_2m_mp.spec_index(allocator_2m_page).cpu_caches.spec_index(cpu_id).view().view().view() == Seq::<PagePtr>::empty()
@@ -348,23 +359,143 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.allc_1g_mp.spec_index(allocator_1g_page).global_pool.view().view() == Seq::<PagePtr>::empty()
     &&& post.allc_1g_mp.spec_index(allocator_1g_page).total_free_pages.view() == 0
     &&& post.allc_1g_mp.spec_index(allocator_1g_page).quota.view().view() == 0
-    &&& post.allc_1g_mp.spec_index(allocator_1g_page).quota.view().container_depth == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& forall|cpu_id: CpuId|
         #![trigger post.allc_1g_mp.spec_index(allocator_1g_page).cpu_caches.spec_index(cpu_id).view().view().view()]
         index_valid(NUM_CPUS, cpu_id) ==> post.allc_1g_mp.spec_index(allocator_1g_page).cpu_caches.spec_index(cpu_id).view().view().view() == Seq::<PagePtr>::empty()
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, current_thread_ptr)
-    &&& post.thr_mp.spec_index(current_thread_ptr).view() == (Thread {
-        temp_alloc_cache_4k: Ghost(set![thread_page]), temp_alloc_cache_2m: Ghost(Set::empty()),
-        quota_4k: (pre.thr_mp.spec_index(current_thread_ptr).view().quota_4k as int - 8 - funding_pages.len()) as usize,
-        quota_2m: (pre.thr_mp.spec_index(current_thread_ptr).view().quota_2m as int - 2) as usize,
-        ..pre.thr_mp.spec_index(current_thread_ptr).view()
-    })
-    &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() == pre.thr_mp.spec_index(current_thread_ptr).locking_thread()
-    &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() is Write
-    &&& post.thr_mp.spec_index(current_thread_ptr).being_killed() == pre.thr_mp.spec_index(current_thread_ptr).being_killed()
-    &&& thread_quota_4k_fields_unchanged(pre.thr_mp, post.thr_mp)
-    &&& thread_quota_2m_fields_unchanged(pre.thr_mp, post.thr_mp)
-    &&& thread_quota_1g_fields_unchanged(pre.thr_mp, post.thr_mp)
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_tables(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
+    &&& !pre.pt_mp.dom().contains(pagetable_page)
+    &&& post.it_mp == pre.it_mp
+    &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pt_mp.dom() =~= pre.pt_mp.dom().insert(pagetable_page)
+    &&& forall|ptr: RwLockPageTableRoot|
+        #![trigger post.pt_mp.spec_index(ptr)]
+        pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
+    &&& !post.pt_mp.spec_index(pagetable_page).being_killed()
+    &&& post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page
+    &&& post.pt_mp.spec_index(pagetable_page).view().pcid is Some
+    &&& post.pt_mp.spec_index(pagetable_page).view().pcid_value() == root_pcid
+    &&& post.pt_mp.spec_index(pagetable_page).view().cr3 == l4_page
+    &&& post.pt_mp.spec_index(pagetable_page).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
+    &&& post.pt_mp.spec_index(pagetable_page).view().is_empty()
+    &&& post.pt_mp.spec_index(pagetable_page).view().page_closure() == set![l4_page]
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_objects(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    &&& !pre.sched_mp.dom().contains(scheduler_page)
+    &&& !pre.cpu_set_mp.dom().contains(cpu_set_page)
+    &&& post.ep_mp == pre.ep_mp
+    &&& post.sched_mp.dom() =~= pre.sched_mp.dom().insert(scheduler_page)
+    &&& forall|ptr: RwLockSchedulerPtr|
+        #![trigger post.sched_mp.spec_index(ptr)]
+        pre.sched_mp.dom().contains(ptr) ==> post.sched_mp.spec_index(ptr) == pre.sched_mp.spec_index(ptr)
+    &&& !post.sched_mp.spec_index(scheduler_page).being_killed()
+    &&& post.sched_mp.spec_index(scheduler_page).view().owning_container == container_page
+    &&& post.sched_mp.spec_index(scheduler_page).view().queue.view().len() == 0
+    &&& post.cpu_set_mp.dom() =~= pre.cpu_set_mp.dom().insert(cpu_set_page)
+    &&& forall|ptr: RwLockCpuSetPtr|
+        #![trigger post.cpu_set_mp.spec_index(ptr)]
+        pre.cpu_set_mp.dom().contains(ptr) ==> post.cpu_set_mp.spec_index(ptr) == pre.cpu_set_mp.spec_index(ptr)
+    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owning_container.view() == container_page
+    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.view().is_empty()
+    &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.closed_view().is_empty()
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_cpus(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    &&& post.irt == pre.irt
+    &&& post.cpu_arr == pre.cpu_arr
+    &&& post.pcid_needflush == pre.pcid_needflush
+    &&& post.cpu_published == pre.cpu_published
+    &&& post.cpu_tlb == pre.cpu_tlb
+    &&& post.iommu_tlb == pre.iommu_tlb
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_kernel_state_framing_inputs(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+) -> bool {
+    let moved_pages = new_container_moved_pages(
+        container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page,
+        process_page, pagetable_page, l4_page
+    ).union(funding_pages.to_set());
+    &&& !moved_pages.contains(thread_page)
+    &&& funding_pages.len() == allocator_quota_4k + process_quota_4k
+}
+
+pub open spec fn publish_staged_container_root_kernel_state_framing(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize
+) -> bool {
+    &&& publish_staged_container_root_kernel_state_framing_pages(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_containers(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_processes(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_threads(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_allocators(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_tables(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_objects(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_cpus(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
+    &&& publish_staged_container_root_kernel_state_framing_inputs(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    )
 }
 
 #[verifier::spinoff_prover]
@@ -871,7 +1002,15 @@ pub(super) fn publish_staged_container_root_mutation(
             allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
             funding_pages, allocator_quota_4k, process_quota_4k,
         )) by {
-            reveal(publish_staged_container_root_kernel_state_framing);
+            reveal(publish_staged_container_root_kernel_state_framing_pages);
+            reveal(publish_staged_container_root_kernel_state_framing_containers);
+            reveal(publish_staged_container_root_kernel_state_framing_processes);
+            reveal(publish_staged_container_root_kernel_state_framing_threads);
+            reveal(publish_staged_container_root_kernel_state_framing_allocators);
+            reveal(publish_staged_container_root_kernel_state_framing_tables);
+            reveal(publish_staged_container_root_kernel_state_framing_objects);
+            reveal(publish_staged_container_root_kernel_state_framing_cpus);
+            reveal(publish_staged_container_root_kernel_state_framing_inputs);
             old(krnl).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), current_thread_ptr);
         };
     }

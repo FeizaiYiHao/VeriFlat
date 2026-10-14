@@ -1,6 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
-use super::allocate_free_4k_page_pop_eof::pop_stage_4k_page_transition_framing;
+use super::allocate_free_4k_page_pop_eof::{
+    pop_stage_4k_page_transition_framing, pop_stage_4k_page_transition_framing_pages,
+    pop_stage_4k_page_transition_framing_containers, pop_stage_4k_page_transition_framing_threads,
+    pop_stage_4k_page_transition_framing_allocators, pop_stage_4k_page_transition_framing_inputs,
+};
 
 verus! {
 pub(super) proof fn eof_pop_4k_postconditions(
@@ -38,7 +42,10 @@ pub(super) proof fn eof_pop_4k_postconditions(
         post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state == (PageState::Owned4k { thread_ptr: thread }),
         post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().owning_container == container,
 {
-    reveal(pop_stage_4k_page_transition_framing);
+    reveal(pop_stage_4k_page_transition_framing_allocators);
+    reveal(pop_stage_4k_page_transition_framing_inputs);
+    reveal(pop_stage_4k_page_transition_framing_pages);
+    reveal(pop_stage_4k_page_transition_framing_threads);
     assert(post.thr_mp.lock_id_by_key(thread) == pre.thr_mp.lock_id_by_key(thread)) by { reveal(thread_perms_wf); };
     pre.thr_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.thread_lock_map(), pre_lctx.thread_id());
     assert(held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)])) by { reveal(LockedArray::typed_lock_map_aligned); };

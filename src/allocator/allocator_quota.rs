@@ -50,6 +50,7 @@ impl LockIdTrait for AllocatorQuota {
 impl AllocatorQuota {
     pub open spec fn view(&self) -> usize { self.value }
 
+    // Dead code: no in-tree callers.
     #[verifier(external_body)]
     pub fn exec_lock_minor(&self) -> (ret: LockMinorId)
         ensures ret == self.lock_minor(),

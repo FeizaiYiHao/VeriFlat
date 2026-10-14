@@ -28,9 +28,6 @@ verus! {
             endpoint_map.dom().contains(endpoint_ptr),
         ensures
             endpoint_map.perms_wf(),
-            endpoint_map.view().spec_index(endpoint_ptr).is_init(),
-            endpoint_map.view().spec_index(endpoint_ptr).addr()
-                == endpoint_ptr,
             endpoint_map.spec_index(endpoint_ptr).inv(),
             endpoint_map.spec_index(endpoint_ptr).is_init(),
             endpoint_map.spec_index(endpoint_ptr).view().inv(),

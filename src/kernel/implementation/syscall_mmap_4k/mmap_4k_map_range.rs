@@ -279,7 +279,19 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 assert({
                     &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_1g_l3(spec_v2l4index(current_va), spec_v2l3index(current_va)) is None
                     &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_2m_l2(spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va)) is None
-                }) by { reveal(PageTable::wf_mapping_1g); reveal(PageTable::wf_mapping_2m); };
+                }) by {
+                    let before = old(krnl).pt_mp.spec_index(pagetable_ptr).view();
+                    let after = krnl.pt_mp.spec_index(pagetable_ptr).view();
+                    assert(before.spec_4k_entry_usable(spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va))) by {
+                        range.va_range_lemma(); seq_index_lemma::<VAddr>();
+                        spec_va_4k_index_roundtrip_at(current_va, spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va));
+                    };
+                    assert(!after.mapping_1g().dom().contains(spec_index2va((spec_v2l4index(current_va), spec_v2l3index(current_va), 0, 0)))
+                        && !after.mapping_2m().dom().contains(spec_index2va((spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), 0)))) by {
+                        reveal(PageTable::wf_mapping_1g); reveal(PageTable::wf_mapping_2m);
+                    };
+                    reveal(PageTable::wf_mapping_1g); reveal(PageTable::wf_mapping_2m);
+                };
                 assert({
                     &&& !krnl.pt_mp.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(current_va)
                     &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va)) is None

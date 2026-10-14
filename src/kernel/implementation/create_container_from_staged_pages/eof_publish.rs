@@ -117,7 +117,15 @@ pub(super) proof fn eof_publish_postconditions(
                 &&& funding_page_lock_perms.spec_index(page_ptr).lock_id() == post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id
             },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     assert(staged_4k_page_chain(post.pg_arr, funding_pages)) by { broadcast use page_ptr_sequence_index_in_equal_set; };
     assert(held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, &pre_lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(held_processes_unchanged(pre.prc_mp, post.prc_mp, &pre_lctx)) by {

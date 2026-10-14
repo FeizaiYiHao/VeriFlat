@@ -38,6 +38,7 @@ verus! {
                     &&& alloc_quota_4k_step(step.old_u, step.new_u, cpu_id, alloc_amount)
                 },
         {
+            hide(LockedArray::spec_index);
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
@@ -71,6 +72,7 @@ verus! {
                 return RetValueType::ErrorContainerKilled;
             }
             let Tracked(container_lock_perm) = container_res.unwrap();
+            proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
             let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
             let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); };

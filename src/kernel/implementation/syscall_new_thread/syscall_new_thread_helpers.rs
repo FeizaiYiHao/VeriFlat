@@ -99,6 +99,7 @@ verus! {
                 new_thread_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, None, true),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         {
+            hide(LinkedList::view);
             let tracked mut process_lock_perm = process_lock_perm.get();
             let tracked mut current_thread_lock_perm = current_thread_lock_perm.get();
             let tracked cpu_lock_perm = cpu_lock_perm.get();

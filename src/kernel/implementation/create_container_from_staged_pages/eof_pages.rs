@@ -54,7 +54,9 @@ pub(super) proof fn eof_page_fields_eq_outside_moved_pages(
         post.pg_arr.spec_index(page_index).view().view().free_list_node_storage == pre.pg_arr.spec_index(page_index).view().view().free_list_node_storage,
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     let allocator_4k_index = page_ptr2page_index(allocator_4k_page);
@@ -241,7 +243,14 @@ pub(super) broadcast proof fn eof_unmodified_object_page_state_eq(
             &&& post.pg_arr.spec_index(page_index).view().view().free_list_node_storage == pre.pg_arr.spec_index(page_index).view().view().free_list_node_storage
         },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    hide(LockedMap::dom);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     page_index_valid_imply_page_ptr_valid();
     page_index_roundtrip();
     let page_ptr = page_index2page_ptr(page_index);
@@ -463,7 +472,14 @@ pub(super) proof fn eof_existing_post_container_page_state_eq(
         post.pg_arr.spec_index(page_index).view().view().state == pre.pg_arr.spec_index(page_index).view().view().state,
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     page_index_valid_imply_page_ptr_valid();
     page_index_roundtrip();
     let page_ptr = page_index2page_ptr(page_index);
@@ -523,7 +539,7 @@ pub(super) broadcast proof fn eof_container_pages_forward_new(
         ]
         post.ctn_mp.dom().contains(page_index2page_ptr(page_index)),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
     assert(page_index2page_ptr(page_index) == container_page) by { page_ptr_roundtrip(); };
 }
 
@@ -568,7 +584,7 @@ pub(super) broadcast proof fn eof_container_pages_forward_existing(
         ]
         post.ctn_mp.dom().contains(page_index2page_ptr(page_index)),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
     eof_existing_post_container_page_state_eq(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -615,7 +631,10 @@ pub(super) broadcast proof fn eof_container_pages_backward(
                     state: Allocated2MPageState::AsContainer,
                 }),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
     if container_ptr == container_page {
     } else {
         assert(container_pages_backward_wf(pre.pg_arr, pre.ctn_mp)) by { reveal(container_pages_wf); };
@@ -676,7 +695,9 @@ pub(super) broadcast proof fn eof_existing_pagetable_closure_page_backward(
         },
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     assert(pagetable_closure_page_backward_wf(pre.pt_mp, pre.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(page_ptr2page_index(pt_page_ptr) != page_ptr2page_index(l4_page)) by {
         if page_ptr2page_index(pt_page_ptr) == page_ptr2page_index(l4_page) {
@@ -735,7 +756,9 @@ pub(super) broadcast proof fn eof_thread_staged_pages_4k_forward(
             &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_index2page_ptr(page_index))
         },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
     eof_unmodified_object_page_state_eq(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -792,7 +815,9 @@ pub(super) broadcast proof fn eof_thread_staged_pages_4k_backward(
         ]
         page_ptr_valid(page_ptr) && post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr }),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
     if thread_ptr == current_thread_ptr {
         assert(pre.pg_arr.spec_index(page_ptr2page_index(thread_page)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr })) by { reveal(thread_staged_pages_4k_wf); };
     } else {
@@ -848,7 +873,10 @@ pub(super) broadcast proof fn eof_thread_staged_pages_2m_forward(
         },
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     page_index_valid_imply_page_ptr_valid();
     page_index_roundtrip();
     assert(!new_container_moved_pages(
@@ -908,7 +936,9 @@ pub(super) broadcast proof fn eof_thread_staged_pages_2m_backward(
             &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned2m { thread_ptr })
         },
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
     assert(hugepage_2m_tail_forward_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page);
     page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
@@ -995,7 +1025,13 @@ pub(super) broadcast proof fn eof_hugepage_2m_head_valid(
         page_index_2m_valid(page_index),
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page);
@@ -1081,7 +1117,13 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_forward(
         },
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     assert(hugepage_2m_head_valid_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
@@ -1191,7 +1233,13 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_backward(
         },
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     let head_index = spec_page_index_truncate_2m(tail_index);
@@ -1292,7 +1340,14 @@ pub(super) proof fn eof_object_page_pagetable_wf(
         ),
     ensures page_pagetable_wf(post.pt_mp, post.pg_arr),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
         broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_perms_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
@@ -1349,7 +1404,14 @@ pub(super) proof fn eof_object_pages_wf(
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_pages);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_inputs);
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         assert(allocator_4k_pages_forward_wf(pre.pg_arr, pre.allc_4k_mp)) by { reveal(allocator_4k_pages_wf); };
         assert(allocator_4k_pages_backward_wf(pre.pg_arr, pre.allc_4k_mp)) by { reveal(allocator_4k_pages_wf); };
@@ -1523,7 +1585,7 @@ pub(super) proof fn eof_thread_staged_pages_wf(
     ensures
         thread_staged_pages_wf(post.thr_mp, post.pg_arr),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
     assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by {
         broadcast use eof_thread_staged_pages_4k_forward; broadcast use eof_thread_staged_pages_4k_backward; reveal(thread_staged_pages_4k_wf);
     };

@@ -18,6 +18,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             ret.perms_wf(),
             ret.dom() =~= Set::<usize>::empty(),
     {
+        proof { reveal(LockedMap::spec_index); }
         Self {
             map: Tracked(Map::<usize, PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>::tracked_empty()),
             map_u: Ghost(Map::<usize, RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::empty()),
@@ -30,19 +31,17 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
     pub open spec fn dom(&self) -> Set<usize>{
         self.view().dom()
     }
-    pub open spec fn perms_wf(&self) -> bool {
-        &&&
+    /// Every entry is an initialized `PointsTo` at its own key. Closed: callers
+    /// reason only through `dom`, `spec_index`, and `lock_id_by_key`.
+    pub closed spec fn perms_wf(&self) -> bool {
         forall|k:usize|
-            #![trigger self.view().spec_index(k).is_init()]
-            self.view().dom().contains(k)
-            ==>
-            {
-                &&&
-                self.view().spec_index(k).is_init()
-                &&&
-                self.view().spec_index(k).addr() == k
-            }
+            #![trigger self.view().dom().contains(k)]
+            self.view().dom().contains(k) ==> self.view().spec_index(k).is_init() && self.view().spec_index(k).addr() == k
     }
+    /// Opaque: the `PointsTo` representation is hidden from every proof unless it
+    /// explicitly reveals `LockedMap::spec_index`, which keeps the many-state framing
+    /// chains in exec proofs free of `Map`/`PointsTo` unfolding.
+    #[verifier::opaque]
     pub open spec fn spec_index(&self, key: usize) -> RwLock<T, ROT, GhostT, HAS_KILL_STATE>
         recommends
             self.view().dom().contains(key),
@@ -151,6 +150,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
 
             ret == old(self).spec_index(key).view(),
     {
+        reveal(LockedMap::spec_index);
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
 
         let ret = take(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm);
@@ -177,6 +177,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             put_ensures(old(self).spec_index(key), final(self).spec_index(key), v),
             final(self).spec_index(key).wlocked_by(lctx),
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
 
         put(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, v);
@@ -196,6 +197,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         ensures
             ret == self.spec_index(key).view(),
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked perm = self.map.tracked_borrow(key);
         let ret = borrow(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), lock_perm);
         return ret;
@@ -223,6 +225,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         ensures
             ret == self.spec_index(key).view(),
     {
+        proof { reveal(LockedMap::spec_index); }
         assert({
             &&& lock_perm.view().state() is WriteLock ==> self.spec_index(key).write_lock_perm_match(lock_perm.view())
             &&& lock_perm.view().state() is ReadLock ==> self.spec_index(key).read_lock_perm_match(lock_perm.view())
@@ -232,9 +235,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
 
     pub fn borrow_mut<'a>(&'a mut self, key:usize, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
         requires
+            old(self).perms_wf(),
             old(self).dom().contains(key),
-            old(self).view().spec_index(key).is_init(),
-            old(self).view().spec_index(key).addr() == key,
 
             old(self).spec_index(key).wlocked_by(lctx),
             old(self).spec_index(key).is_init(),
@@ -243,13 +245,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             lock_perm.view().thread_id() == lctx.thread_id(),
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
         ensures
-            old(self).perms_wf() ==> final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
-            forall|k:usize|
-                #![trigger final(self).view().spec_index(k)]
-                #![trigger old(self).view().spec_index(k)]
-                old(self).dom().contains(k) && k != key ==>
-                    final(self).spec_index(k) == old(self).spec_index(k),
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
 
             // Lock state of `key`'s rwlock is preserved.
             final(self).spec_index(key).is_init(),
@@ -263,6 +260,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             *ret == old(self).spec_index(key).view(),
             final(self).spec_index(key).view() == *final(ret),
     {
+        proof { reveal(LockedMap::spec_index); }
+        proof { assert(self.view().dom().insert(key) =~= self.view().dom()); }
         let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
         let ret = borrow_mut(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(perm), Tracked(lctx), lock_perm);
         return ret;
@@ -312,18 +311,19 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key)
                 ==> final(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
     {
+        proof { reveal(LockedMap::spec_index); }
         proof { reveal(LockedMap::typed_lock_map_aligned); }
         self.borrow_mut(key, Tracked(lctx), lock_perm)
     }
 
     pub fn borrow_rodata(&self, key:usize) -> (ret:&ROT)
         requires
+            self.perms_wf(),
             self.dom().contains(key),
-            self.view().spec_index(key).is_init(),
-            self.view().spec_index(key).addr() == key,
         ensures
             ret == self.spec_index(key).view_rodata(),
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked perm = self.map.tracked_borrow(key);
         let ret = borrow_rodata(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&perm));
         return ret;
@@ -353,6 +353,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
                     final(self).spec_index(k).wlocked_by_thread(thread_id)
                         == old(self).spec_index(k).wlocked_by_thread(thread_id),
     {
+        reveal(LockedMap::spec_index);
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         update_ghost(&mut perm, new_ghost);
         self.map.borrow_mut().tracked_insert(key, perm);
@@ -362,11 +363,15 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
 impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     GhostT, const KILL_STATE: bool>
     LockedMap<usize, T, ROT, GhostT, KILL_STATE>{
+    /// The lock id of the entry at `key`. Equal to `self.view().spec_index(key).lock_id()`
+    /// under `perms_wf`, but stated through the abstract `spec_index` so callers never
+    /// unfold the `PointsTo` representation.
     pub open spec fn lock_id_by_key(&self, key: usize) -> LockId
         recommends
             self.dom().contains(key)
     {
-        self.view().spec_index(key).lock_id()
+        let lock = self.spec_index(key);
+        LockId { container: lock.container_depth(), process: lock.process_depth(), major: lock.view().current_lock_major(), minor: key }
     }
     /// Insert an already-initialized, already-locked entry into the map.
     /// The caller provides the `PointsTo<RwLock<T>>` (from a retype operation)
@@ -388,8 +393,6 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         ensures
             old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(key),
-            final(self).view().spec_index(key).is_init(),
-            final(self).view().spec_index(key).addr() == key,
             forall|k: usize| #![auto]
                 old(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
             forall|k: usize|
@@ -410,6 +413,7 @@ impl<T:LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 minor: key,
             }),
     {
+        proof { reveal(LockedMap::spec_index); }
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
 }
@@ -447,6 +451,7 @@ NO_KILL_STATE>{
                 minor: key,
             }, obj_id.view()),
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         assert({
             &&& perm.addr() == key
@@ -489,6 +494,7 @@ NO_KILL_STATE>>::from_usize(key),
             wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
             unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_key(key)),
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         assert(old(self).view().spec_index(key).is_init() && perm.addr() == key) by {
             vstd::assert_maps_equal!(old(self).view(), self.view().insert(key, perm));
@@ -541,6 +547,7 @@ HAS_KILL_STATE>{
                     obj_id.view())
             },
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         assert({
             &&& perm.addr() == key
@@ -583,6 +590,7 @@ HAS_KILL_STATE>{
             wunlock_ensures(old(self).spec_index(key), final(self).spec_index(key)),
             unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_key(key)),
     {
+        proof { reveal(LockedMap::spec_index); }
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         assert(old(self).view().spec_index(key).is_init() && perm.addr() == key) by {
             vstd::assert_maps_equal!(old(self).view(), self.view().insert(key, perm));

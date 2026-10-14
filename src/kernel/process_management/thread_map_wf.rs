@@ -37,8 +37,6 @@ verus! {
             thread_map.dom().contains(thread_ptr),
         ensures
             thread_map.perms_wf(),
-            thread_map.view().spec_index(thread_ptr).is_init(),
-            thread_map.view().spec_index(thread_ptr).addr() == thread_ptr,
             thread_map.spec_index(thread_ptr).inv(),
             thread_map.spec_index(thread_ptr).is_init(),
             thread_map.spec_index(thread_ptr).view().inv(),

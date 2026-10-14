@@ -104,6 +104,7 @@ impl IommuTLB {
             self.view().dom().contains(did) <==> vtd_domain_id_valid(did)
     }
 
+    // Dead code: no in-tree callers.
     pub open spec fn invalidation_only_removes(&self, old: &Self) -> bool {
         &&& self.inv()
         &&& old.inv()
@@ -113,6 +114,7 @@ impl IommuTLB {
             ==> self.spec_index(did).submap_of(&old.spec_index(did))
     }
 
+    // Dead code: no in-tree callers.
     pub open spec fn page_invalidation_target_absent(
         &self,
         did: VtdDomainId,

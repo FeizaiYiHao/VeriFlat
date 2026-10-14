@@ -308,6 +308,16 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
     {
         self.ghost_value.view()
     }
+
+    /// Payload, read-only data, ghost data, and kill flag equal `old`; only the
+    /// lock owner or token may differ, within the same lock mode.
+    pub open spec fn relocked_from(&self, old: &Self) -> bool {
+        &&& self.view() == old.view()
+        &&& self.view_rodata() == old.view_rodata()
+        &&& self.view_ghost() == old.view_ghost()
+        &&& self.being_killed() == old.being_killed()
+        &&& self.lock_state_u() == old.lock_state_u()
+    }
 }
 
 impl<T:LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE>{

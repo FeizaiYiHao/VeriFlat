@@ -29,9 +29,6 @@ verus! {
             scheduler_map.dom().contains(scheduler_ptr),
         ensures
             scheduler_map.perms_wf(),
-            scheduler_map.view().spec_index(scheduler_ptr).is_init(),
-            scheduler_map.view().spec_index(scheduler_ptr).addr()
-                == scheduler_ptr,
             scheduler_map.spec_index(scheduler_ptr).inv(),
             scheduler_map.spec_index(scheduler_ptr).is_init(),
             scheduler_map.spec_index(scheduler_ptr).view().inv(),

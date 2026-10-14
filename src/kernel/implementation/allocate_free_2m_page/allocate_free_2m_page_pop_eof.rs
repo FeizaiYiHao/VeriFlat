@@ -381,6 +381,7 @@ proof fn eof_pop_2m_free_pages(
         container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
+    page_index_roundtrip();
     reveal(pop_stage_2m_page_transition_framing);
     assert(post.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
     eof_pop_2m_global_pool(pre, post, allocator, thread, container, page, node, source);

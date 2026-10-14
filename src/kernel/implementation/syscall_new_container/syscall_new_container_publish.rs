@@ -376,7 +376,9 @@ pub(super) fn publish_new_container_base(
         Tracked(&funding_page_lock_perms), Tracked(&container_tail_lock_perms), Tracked(&pcid_allocator_tail_lock_perms),
     );
     proof {
-        assert(krnl.ctn_mp.spec_index(container_page).view().root_process == process_page) by { reveal(publish_staged_container_root_kernel_state_framing); };
+        assert(krnl.ctn_mp.spec_index(container_page).view().root_process == process_page) by {
+            reveal(publish_staged_container_root_kernel_state_framing_containers);
+        };
         page_2m_all_ptrs_contains_head(container_head);
         page_2m_all_ptrs_contains_head(pcid_allocator_head);
         page_ptr_roundtrip();
@@ -461,7 +463,15 @@ pub(super) fn publish_new_container_base(
             new_container_moved_pages(container_page, pcid_allocator_page, pages_4k.view()[0], pages_4k.view()[1], pages_4k.view()[2],
                 pages_4k.view()[3], pages_4k.view()[8], pages_4k.view()[4], pages_4k.view()[5], pages_4k.view()[6]).union(funding_pages.to_set()), pages_4k.view()[7],
             sharing)) by {
-            reveal(publish_staged_container_root_kernel_state_framing); reveal(kernel_cpu_nonlock_fields_unchanged);
+            reveal(kernel_cpu_nonlock_fields_unchanged);
+            reveal(publish_staged_container_root_kernel_state_framing_inputs);
+            reveal(publish_staged_container_root_kernel_state_framing_cpus);
+            reveal(publish_staged_container_root_kernel_state_framing_objects);
+            reveal(publish_staged_container_root_kernel_state_framing_tables);
+            reveal(publish_staged_container_root_kernel_state_framing_allocators);
+            reveal(publish_staged_container_root_kernel_state_framing_threads);
+            reveal(publish_staged_container_root_kernel_state_framing_processes);
+            reveal(publish_staged_container_root_kernel_state_framing_containers);
             let moved = new_container_moved_pages(container_page, pcid_allocator_page, pages_4k.view()[0], pages_4k.view()[1], pages_4k.view()[2],
                 pages_4k.view()[3], pages_4k.view()[8], pages_4k.view()[4], pages_4k.view()[5], pages_4k.view()[6]).union(funding_pages.to_set());
             assert(old(krnl).cpu_arr.spec_index(transfer_cpu_id).value.view().view().owning_container == parent_container_ptr) by { reveal(cpu_set_perms_wf); reveal(container_cpu_wf); };

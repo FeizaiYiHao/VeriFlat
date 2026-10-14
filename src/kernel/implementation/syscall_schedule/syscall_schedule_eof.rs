@@ -16,7 +16,9 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
         let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
         assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by { reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
-        assert(pre.sched_mp.spec_index(scheduler_ptr).view().queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
+        assert(pre.sched_mp.spec_index(scheduler_ptr).view().queue.view().no_duplicates()) by {
+            scheduler_perms_wf_at(pre.sched_mp, scheduler_ptr); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list);
+        };
         reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
         seq_push_lemma::<RwLockThreadPtr>(); seq_skip_lemma::<RwLockThreadPtr>();
     };
@@ -32,6 +34,7 @@ proof fn scheduler_context_switch_eof_process_management_inv(
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
+    hide(RwLock::being_killed);
     reveal(scheduler_context_switch_transition);
     assert(post.process_management_inv()) by {
         scheduler_context_switch_eof_container_thread_scheduler(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);

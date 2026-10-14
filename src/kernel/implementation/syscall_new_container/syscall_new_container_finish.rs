@@ -180,6 +180,8 @@ pub(super) fn finish_staged_container_publish(
         ret.4.view().thread_id() == final(lctx).thread_id(),
         ret.4.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
 {
+    hide(LockedMap::dom);
+    hide(LockedArray::spec_index);
     let allocator_4k_page = *pages_4k.get(0);
     let allocator_2m_page = *pages_4k.get(1);
     let allocator_1g_page = *pages_4k.get(2);

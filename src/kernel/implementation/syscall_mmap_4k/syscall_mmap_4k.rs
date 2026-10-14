@@ -97,7 +97,7 @@ verus! {
         }
         let Tracked(thread_lock_perm) = thread_res.unwrap();
 
-        assert(krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr) by { container_perms_wf_at(krnl.ctn_mp, container_ptr); };
+        assert(krnl.ctn_mp.perms_wf()) by { container_perms_wf_at(krnl.ctn_mp, container_ptr); };
         let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
         let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));

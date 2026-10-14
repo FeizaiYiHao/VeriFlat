@@ -125,6 +125,7 @@ impl KernelK {
                 wlock_ensures(old(self).ep_mp.spec_index(endpoint_ptr), final(self).ep_mp.spec_index(endpoint_ptr), old(self).ep_mp.lock_id_by_key(endpoint_ptr), final(lctx), ret.view()),
                 typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr), TypedHeldLock { lock_id: final(self).ep_mp.lock_id_by_key(endpoint_ptr), mode: TypedLockMode::Write }),
         {
+            hide(LockedMap::dom);
             proof {
                 endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr);
                 assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(cpu_array_wf); reveal(container_perms_wf); reveal(pcid_allocator_perms_wf); reveal(process_perms_wf); reveal(thread_perms_wf); reveal(thread_cpu_wf); reveal(endpoint_perms_wf); };

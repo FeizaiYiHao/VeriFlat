@@ -62,7 +62,7 @@ pub(super) enum Mmap4kPrecheck {
             assert(
                 krnl.pt_mp.perms_wf()
                     && krnl.pt_mp.spec_index(pagetable_ptr).inv()
-            ) by { reveal(pagetable_perms_wf); };
+            ) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
         }
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
         if start_indices.0 < pagetable.kernel_l4_end {

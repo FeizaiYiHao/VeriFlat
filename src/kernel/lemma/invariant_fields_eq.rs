@@ -281,22 +281,13 @@ pub proof fn lemma_container_allocator_wf_preserved_for_allocator_quota_value_fr
     reveal(container_allocator_wf);
 }
 
-pub proof fn lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall()
-    ensures
-        forall|pre: ThreadLockedMap,
-            post: ThreadLockedMap,
-            page_array: PageLockedArray|
-            #![trigger
-                thread_staged_pages_wf(pre, page_array),
-                thread_staged_pages_wf(post, page_array)
-            ]
-            thread_staged_pages_wf(pre, page_array)
-            && thread_invariant_fields_unchanged(pre, post)
-            ==> thread_staged_pages_wf(post, page_array),
+pub proof fn thread_staged_pages_wf_preserved_for_thread_invariant_fields(pre: ThreadLockedMap, post: ThreadLockedMap, page_array: PageLockedArray)
+    requires thread_staged_pages_wf(pre, page_array), thread_invariant_fields_unchanged(pre, post),
+    ensures thread_staged_pages_wf(post, page_array),
 {
-    reveal(thread_staged_pages_4k_wf);
-    reveal(thread_staged_pages_2m_wf);
-    reveal(thread_staged_pages_1g_wf);
+    // Seeds `pre.spec_index(t).view()` for every post-side trigger so the pre-state facts match.
+    assert(forall|t: RwLockThreadPtr| #![trigger post.spec_index(t)] post.dom().contains(t) ==> post.spec_index(t).view() == pre.spec_index(t).view());
+    reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
 }
 
 pub proof fn lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall()

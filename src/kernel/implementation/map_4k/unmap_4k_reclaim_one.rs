@@ -43,10 +43,10 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(
         }
     ) by { reveal(container_process_page_pagetable_wf); };
     assert(krnl.prc_mp.dom().contains(thread_proc) && !krnl.prc_mp.spec_index(thread_proc).view().zombie && krnl.prc_mp.spec_index(thread_proc).view().pagetable == pagetable && krnl.prc_mp.spec_index(thread_proc).view_rodata().view().owning_container == thread_owner
-    ) by { reveal(process_thread_wf); };
+    ) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
     assert(proc_ptr == thread_proc) by { reveal(process_pagetable_match); };
     assert(krnl.ctn_mp.dom().contains(thread_owner) && krnl.ctn_mp.spec_index(thread_owner).view_ghost().owned_threads.view().contains(thread_ptr) && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq == krnl.ctn_mp.spec_index(thread_owner).view_ghost().uppertree_seq && thread_depth == krnl.ctn_mp.spec_index(thread_owner).view_rodata().view().depth
-    ) by { reveal(container_thread_wf); };
+    ) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
     assert(krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().len() == thread_depth && thread_depth <= MAX_CONTAINER_TREE_DEPTH
     ) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     if owner != thread_owner {
@@ -160,6 +160,7 @@ pub fn reclaim_unmapped_4k_page(krnl: &mut KernelK, pagetable: RwLockPageTableRo
             assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
             container_perms_wf_at(krnl.ctn_mp, owner);
         }
+        proof { assert(krnl.ctn_mp.perms_wf()) by { reveal(container_perms_wf); }; }
         let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
         let depth = owner_ro.depth;
         let allocator_ptr = owner_ro.allocator_ptr_4k;

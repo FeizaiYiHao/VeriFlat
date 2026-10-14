@@ -24,6 +24,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         old(thread_map).spec_index(thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
     ensures
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).perms_wf(),
         final(thread_map).typed_lock_map_aligned(
             lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
                 lock_id: final(thread_map).lock_id_by_key(thread_ptr),
@@ -79,6 +80,7 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
         old(endpoint_map).spec_index(endpoint_ptr).view().queue.length != usize::MAX,
     ensures
         endpoint_perms_wf(*final(endpoint_map)),
+        final(endpoint_map).perms_wf(),
         final(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
         final(endpoint_map).spec_index(endpoint_ptr).locking_thread() == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
@@ -133,17 +135,11 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         endpoint_node_perm.view().addr() == old(thread_map).spec_index(thread_ptr).view().endpoint_linkedlist_node.addr(),
         endpoint_node_perm.view().value().view() == thread_ptr,
     ensures
-        forall|key: usize|
-            #![trigger old(thread_map).view().spec_index(key)]
-            #![trigger final(thread_map).view().spec_index(key)]
-            old(thread_map).dom().contains(key) ==> {
-                &&& final(thread_map).view().spec_index(key).is_init() == old(thread_map).view().spec_index(key).is_init()
-                &&& final(thread_map).view().spec_index(key).addr() == old(thread_map).view().spec_index(key).addr()
-            },
         final(thread_map).spec_index(thread_ptr).is_init() == old(thread_map).spec_index(thread_ptr).is_init(),
         final(thread_map).spec_index(thread_ptr).view_rodata() == old(thread_map).spec_index(thread_ptr).view_rodata(),
         final(thread_map).spec_index(thread_ptr).view_ghost() == old(thread_map).spec_index(thread_ptr).view_ghost(),
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).perms_wf(),
         final(thread_map).typed_lock_map_aligned(
             lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
                 lock_id: final(thread_map).lock_id_by_key(thread_ptr),
@@ -208,6 +204,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(
         final(thread_map).spec_index(thread_ptr).view().error_code == old(thread_map).spec_index(thread_ptr).view().error_code,
         final(thread_map).spec_index(thread_ptr).view().trap_frame == old(thread_map).spec_index(thread_ptr).view().trap_frame,
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).perms_wf(),
         final(thread_map).typed_lock_map_aligned(
             lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
                 lock_id: final(thread_map).lock_id_by_key(thread_ptr),
@@ -258,6 +255,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
     ensures
         final(thread_map).spec_index(thread_ptr).view().trap_frame == old(thread_map).spec_index(thread_ptr).view().trap_frame,
         thread_perms_wf(*final(thread_map)),
+        final(thread_map).perms_wf(),
         final(thread_map).typed_lock_map_aligned(
             lctx.thread_lock_map().insert(thread_ptr, TypedHeldLock {
                 lock_id: final(thread_map).lock_id_by_key(thread_ptr),
@@ -311,13 +309,6 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
         old(endpoint_map).spec_index(endpoint_ptr).view().queue.len() != 0,
         old(endpoint_map).spec_index(endpoint_ptr).view().queue.view().spec_index(0) == thread_ptr,
     ensures
-        forall|key: usize|
-            #![trigger old(endpoint_map).view().spec_index(key)]
-            #![trigger final(endpoint_map).view().spec_index(key)]
-            old(endpoint_map).dom().contains(key) ==> {
-                &&& final(endpoint_map).view().spec_index(key).is_init() == old(endpoint_map).view().spec_index(key).is_init()
-                &&& final(endpoint_map).view().spec_index(key).addr() == old(endpoint_map).view().spec_index(key).addr()
-            },
         final(endpoint_map).spec_index(endpoint_ptr).is_init() == old(endpoint_map).spec_index(endpoint_ptr).is_init(),
         final(endpoint_map).spec_index(endpoint_ptr).view_rodata() == old(endpoint_map).spec_index(endpoint_ptr).view_rodata(),
         final(endpoint_map).spec_index(endpoint_ptr).view_ghost() == old(endpoint_map).spec_index(endpoint_ptr).view_ghost(),
@@ -328,6 +319,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(
         final(endpoint_map).spec_index(endpoint_ptr).view().queue.length as int == old(endpoint_map).spec_index(endpoint_ptr).view().queue.length as int - 1,
         final(endpoint_map).spec_index(endpoint_ptr).view().queue.dom() == old(endpoint_map).spec_index(endpoint_ptr).view().queue.dom().remove(ret.0),
         endpoint_perms_wf(*final(endpoint_map)),
+        final(endpoint_map).perms_wf(),
         final(endpoint_map).typed_lock_map_aligned(lctx.endpoint_lock_map(), lctx.thread_id()),
         final(endpoint_map).unchanged_except(old(endpoint_map), endpoint_ptr),
         final(endpoint_map).spec_index(endpoint_ptr).locking_thread() == old(endpoint_map).spec_index(endpoint_ptr).locking_thread(),
@@ -383,13 +375,6 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         !old(scheduler_map).spec_index(scheduler_ptr).view().queue.view().contains(thread_ptr),
         old(scheduler_map).spec_index(scheduler_ptr).view().queue.length != usize::MAX,
     ensures
-        forall|key: usize|
-            #![trigger old(scheduler_map).view().spec_index(key)]
-            #![trigger final(scheduler_map).view().spec_index(key)]
-            old(scheduler_map).dom().contains(key) ==> {
-                &&& final(scheduler_map).view().spec_index(key).is_init() == old(scheduler_map).view().spec_index(key).is_init()
-                &&& final(scheduler_map).view().spec_index(key).addr() == old(scheduler_map).view().spec_index(key).addr()
-            },
         final(scheduler_map).spec_index(scheduler_ptr).is_init() == old(scheduler_map).spec_index(scheduler_ptr).is_init(),
         final(scheduler_map).spec_index(scheduler_ptr).view_rodata() == old(scheduler_map).spec_index(scheduler_ptr).view_rodata(),
         final(scheduler_map).spec_index(scheduler_ptr).view_ghost() == old(scheduler_map).spec_index(scheduler_ptr).view_ghost(),
@@ -400,6 +385,7 @@ pub(super) fn ipc_enqueue_scheduled_thread(
         final(scheduler_map).spec_index(scheduler_ptr).view().queue.length as int == old(scheduler_map).spec_index(scheduler_ptr).view().queue.length as int + 1,
         final(scheduler_map).spec_index(scheduler_ptr).view().queue.dom() == old(scheduler_map).spec_index(scheduler_ptr).view().queue.dom().insert(node_addr),
         scheduler_perms_wf(*final(scheduler_map)),
+        final(scheduler_map).perms_wf(),
         final(scheduler_map).typed_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
         final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),
         final(scheduler_map).spec_index(scheduler_ptr).locking_thread() == old(scheduler_map).spec_index(scheduler_ptr).locking_thread(),

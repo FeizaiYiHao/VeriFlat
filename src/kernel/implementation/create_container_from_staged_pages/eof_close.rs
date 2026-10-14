@@ -55,7 +55,13 @@ pub(super) proof fn eof_subsystems_inv(
     ensures
         post.subsystems_inv(),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_kernel_state_framing_containers);
+    reveal(publish_staged_container_root_kernel_state_framing_processes);
+    reveal(publish_staged_container_root_kernel_state_framing_threads);
+    reveal(publish_staged_container_root_kernel_state_framing_allocators);
+    reveal(publish_staged_container_root_kernel_state_framing_tables);
+    reveal(publish_staged_container_root_kernel_state_framing_objects);
+    reveal(publish_staged_container_root_kernel_state_framing_cpus);
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
     assert(containers_inv(post.ctn_mp)) by {
         reveal(container_perms_wf);
