@@ -48,7 +48,8 @@ verus! {
                 &&& transfer_target_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
                 &&& transfer_target_lock_perm->Some_0.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id
             },
-            ((old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr) || typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)),
+            ((old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
+                || (typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write) && !old(krnl).prc_mp.spec_index(process_ptr).view().zombie)),
             quota_thread_lock_perm.state() is WriteLock,
             quota_thread_lock_perm.thread_id() == old(lctx).thread_id(),
             quota_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(quota_thread_ptr).locking_thread()->Write_lock_id,
@@ -116,7 +117,7 @@ verus! {
             final(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
             mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), quota_thread_ptr, container_ptr),
             ((final(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && final(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
-                || typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)),
+                || (typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write) && !final(krnl).prc_mp.spec_index(process_ptr).view().zombie)),
             quota_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(quota_thread_ptr).locking_thread()->Write_lock_id,
             final(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
             final(krnl).pt_mp.dom().contains(pagetable_ptr),
@@ -205,6 +206,8 @@ verus! {
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some,
+            final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr,
+            final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             old(steps).snapshot_k() == *old(krnl) && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() is Some
                 && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view()->Some_0 is Mmap4k && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_directory is None
                 && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr)
@@ -220,6 +223,7 @@ verus! {
                     }
                 },
     {
+        hide(Set::is_empty);
         proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
         let indices = va2index(va);
@@ -231,7 +235,6 @@ verus! {
         });
         proof {
             assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { reveal(pagetable_perms_wf); };
-            broadcast use group_held_objects_unchanged_transitive;
         }
         let l4_present = {
             let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
@@ -250,6 +253,8 @@ verus! {
             let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
             pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).is_some()
         };
+        let ghost before_l3 = *krnl;
+        let ghost lctx_l3 = *lctx;
         proof { use_type_invariant(&*steps); }
         if !l3_present {
             assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
@@ -266,6 +271,8 @@ verus! {
             let l3_entry = pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap();
             pagetable.get_entry_l2(indices.0, indices.1, indices.2, &l3_entry).is_some()
         };
+        let ghost before_l2 = *krnl;
+        let ghost lctx_l2 = *lctx;
         proof { use_type_invariant(&*steps); }
         if !l2_present {
             install_one_mmap_4k_directory_page(
@@ -273,6 +280,31 @@ verus! {
                 (indices.0, indices.1, indices.2), transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm),
                 Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
             );
+        }
+        proof {
+            held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
+            if !l3_present {
+                if transfer_source is None { held_containers_unchanged_transitive(old(krnl).ctn_mp, before_l3.ctn_mp, before_l2.ctn_mp, old(lctx), &lctx_l3); }
+                held_processes_unchanged_transitive(old(krnl).prc_mp, before_l3.prc_mp, before_l2.prc_mp, old(lctx), &lctx_l3);
+                held_endpoints_unchanged_transitive(old(krnl).ep_mp, before_l3.ep_mp, before_l2.ep_mp, old(lctx), &lctx_l3);
+                held_schedulers_unchanged_transitive(old(krnl).sched_mp, before_l3.sched_mp, before_l2.sched_mp, old(lctx), &lctx_l3);
+                held_pcid_allocators_unchanged_transitive(old(krnl).pcid_allc_mp, before_l3.pcid_allc_mp, before_l2.pcid_allc_mp, old(lctx), &lctx_l3);
+                held_iommu_tables_unchanged_transitive(old(krnl).it_mp, before_l3.it_mp, before_l2.it_mp, old(lctx), &lctx_l3);
+                held_cpus_unchanged_transitive(old(krnl).cpu_arr, before_l3.cpu_arr, before_l2.cpu_arr, old(lctx), &lctx_l3);
+                held_threads_unchanged_except_transitive(old(krnl).thr_mp, before_l3.thr_mp, before_l2.thr_mp, old(lctx), &lctx_l3, set![quota_thread_ptr]);
+                held_pagetables_unchanged_except_transitive(old(krnl).pt_mp, before_l3.pt_mp, before_l2.pt_mp, old(lctx), &lctx_l3, set![pagetable_ptr]);
+            }
+            if !l2_present {
+                if transfer_source is None { held_containers_unchanged_transitive(old(krnl).ctn_mp, before_l2.ctn_mp, krnl.ctn_mp, old(lctx), &lctx_l2); }
+                held_processes_unchanged_transitive(old(krnl).prc_mp, before_l2.prc_mp, krnl.prc_mp, old(lctx), &lctx_l2);
+                held_endpoints_unchanged_transitive(old(krnl).ep_mp, before_l2.ep_mp, krnl.ep_mp, old(lctx), &lctx_l2);
+                held_schedulers_unchanged_transitive(old(krnl).sched_mp, before_l2.sched_mp, krnl.sched_mp, old(lctx), &lctx_l2);
+                held_pcid_allocators_unchanged_transitive(old(krnl).pcid_allc_mp, before_l2.pcid_allc_mp, krnl.pcid_allc_mp, old(lctx), &lctx_l2);
+                held_iommu_tables_unchanged_transitive(old(krnl).it_mp, before_l2.it_mp, krnl.it_mp, old(lctx), &lctx_l2);
+                held_cpus_unchanged_transitive(old(krnl).cpu_arr, before_l2.cpu_arr, krnl.cpu_arr, old(lctx), &lctx_l2);
+                held_threads_unchanged_except_transitive(old(krnl).thr_mp, before_l2.thr_mp, krnl.thr_mp, old(lctx), &lctx_l2, set![quota_thread_ptr]);
+                held_pagetables_unchanged_except_transitive(old(krnl).pt_mp, before_l2.pt_mp, krnl.pt_mp, old(lctx), &lctx_l2, set![pagetable_ptr]);
+            }
         }
         assert(krnl.thr_mp.lock_id_by_key(quota_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(quota_thread_ptr)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), krnl, old(lctx), lctx, quota_thread_ptr); };
     }

@@ -34,6 +34,7 @@ pub(super) proof fn new_container_enter_step_from_u(
             &&& container.lock_state is Unlocked
             &&& container.cpu_set_lock is Unlocked
             &&& !container.killed
+            &&& !container.zombie
             &&& container.depth < MAX_CONTAINER_TREE_DEPTH
             &&& pre.process_map.dom().contains(process_ptr)
             &&& process.lock_state is Unlocked

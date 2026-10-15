@@ -7,6 +7,8 @@ pub mod syscall_new_thread_with_endpoint;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_endpoint;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_thread_exit;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_process;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_container;

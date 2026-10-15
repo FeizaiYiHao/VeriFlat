@@ -8,7 +8,6 @@ use super::syscall_new_container_cpu_eof::new_container_cpu_transfer_eof;
 verus! {
 /// Moves the write-held Off CPU from the parent CPU set into the child CPU set,
 /// then releases that CPU and both CPU sets.
-#[verifier::spinoff_prover]
 pub(super) fn transfer_new_container_cpu(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, parent_container_ptr: RwLockContainerPtr, child_container_ptr: RwLockContainerPtr,
     parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, Tracked(transfer_cpu_lock_perm): Tracked<LockPerm>,

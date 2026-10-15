@@ -48,6 +48,7 @@ pub(super) fn commit_new_endpoint(
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.spec_index(container_ptr).being_killed() == false,
+        !old(krnl).ctn_mp.spec_index(container_ptr).view().zombie,
         old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
         process_lock_perm.view().state() is WriteLock,
         process_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -125,7 +126,6 @@ pub(super) fn commit_new_endpoint(
             &&& kernel_k_to_kernel_u(steps.snapshot_k()).process_map.spec_index(process_ptr).lock_state is WriteLocked
             &&& kernel_k_to_kernel_u(steps.snapshot_k()).thread_map.spec_index(thread_ptr).lock_state is WriteLocked
         }) by { kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, None); };
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
     }
     let Tracked(endpoint_lock_perm) = create_endpoint_from_staged_page(
         krnl, page_ptr, container_ptr, thread_ptr, endpoint_index, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&container_lock_perm), Tracked(&thread_lock_perm),

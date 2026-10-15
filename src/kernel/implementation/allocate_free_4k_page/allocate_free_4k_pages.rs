@@ -131,6 +131,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
     let tracked mut page_lock_perms: Map<PagePtr, LockPerm> = Map::tracked_empty();
     let mut i: usize = 0;
     proof {
+        held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
         broadcast use group_held_objects_unchanged_transitive;
         assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set())) by {
             vstd::set::axiom_set_ext_equal(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(pages.view().to_set()));

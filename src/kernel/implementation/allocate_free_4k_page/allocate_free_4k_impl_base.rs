@@ -102,9 +102,9 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(container_ptr)
             &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
-        }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
+        }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); };
         let alloc_ptr_4k = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-        assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(container_allocator_wf); reveal(allocator_perms_wf); };
+        assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); };
         let Tracked(cache_lock_perm) = krnl.wlock_allocator_cache_4k(alloc_ptr_4k, cpu_id, Tracked(&mut *lctx));
 
         let cache_ref = krnl.allc_4k_mp.borrow_cache_typed(alloc_ptr_4k, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(&cache_lock_perm));
@@ -129,13 +129,13 @@ verus! {
                     &&& krnl.ctn_mp.dom().contains(container_ptr)
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { reveal(container_thread_wf); };
+                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
 
         let Tracked(gp_lock_perm) = krnl.wlock_allocator_global_pool_4k(alloc_ptr_4k, Tracked(&mut *lctx));
-        assert(krnl.allc_4k_mp.perms_wf()) by { reveal(allocator_perms_wf); };
+        assert(krnl.allc_4k_mp.perms_wf()) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); };
         let pool_ref = krnl.allc_4k_mp.borrow_global_pool_typed(alloc_ptr_4k, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(&gp_lock_perm));
         let pool_len = pool_ref.len();
 
@@ -171,7 +171,7 @@ verus! {
                     &&& krnl.ctn_mp.dom().contains(container_ptr)
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { reveal(container_thread_wf); };
+                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
@@ -196,7 +196,6 @@ verus! {
         ret
     }
 
-    #[verifier::spinoff_prover]
     fn alloc_4k_scan_all_caches_and_pool(
         krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
@@ -282,7 +281,7 @@ verus! {
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
         }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
         let alloc_ptr_4k = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-        assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
+        assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         let (cache_perms, pool_perm) = wlock_all_caches_and_global_pool(krnl, alloc_ptr_4k, Tracked(&mut *lctx));
 
         let tracked cache_perms_ref = cache_perms.borrow();
@@ -329,7 +328,7 @@ verus! {
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_thread_write_held_section_implies_u_eq(old(krnl), &*krnl, old(lctx), &*lctx, thread_ptr); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
+            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
         }
         (page_ptr, Tracked(page_lock_perm))
     }
@@ -766,10 +765,10 @@ verus! {
                     && cache_perms.dom().contains(cpu) && cache_perms.spec_index(cpu).state() is WriteLock && cache_perms.spec_index(cpu).thread_id() == lctx.thread_id()
                     && cache_perms.spec_index(cpu).lock_id() == krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu).view().locking_thread()->Write_lock_id
                     && typed_lock_map_contains_mode(lctx.allocator_cache_4k_lock_map(), (alloc_ptr_4k, cpu), TypedLockMode::Write)
-                    && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu).view().being_killed() == false) by { reveal(allocator_perms_wf); reveal(cache_perms_match_lctx); };
+                    && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu).view().being_killed() == false) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); reveal(cache_perms_match_lctx); };
             }
             let cache_ref = krnl.allc_4k_mp.borrow_cache_typed(alloc_ptr_4k, cpu, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(cache_perms.tracked_borrow(cpu)));
-            assert(cache_ref.linked_list.wf()) by { assert(index_valid(NUM_CPUS, cpu) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches_wf()) by { reveal(allocator_perms_wf); }; };
+            assert(cache_ref.linked_list.wf()) by { assert(index_valid(NUM_CPUS, cpu) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches_wf()) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); }; };
             let cache_len = cache_ref.linked_list.len();
             assert(cache_len == krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu).view().view().view().len()) by { cache_ref.linked_list.lemma_len_view(); };
             if cache_len > 0 {
@@ -791,7 +790,7 @@ verus! {
             cpu = cpu + 1;
         }
         assert(krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().fold_left(0int,
-            |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by { reveal(allocator_perms_wf); krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().lemma_take_len(); };
+            |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().lemma_take_len(); };
         proof { held_threads_unchanged_except_for_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr); }
         proof { assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };

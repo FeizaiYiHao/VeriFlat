@@ -15,8 +15,21 @@ impl KernelK {
                 &&& !cpus.is_empty()
                 &&& old(lctx).page_lock_map().dom().is_empty()
                 &&& old(lctx).container_lock_map().dom().subset_of(set![container_ptr])
-                &&& old(lctx).process_lock_map().dom().is_empty()
-                &&& old(lctx).thread_lock_map().dom().is_empty()
+                &&& (forall|held_process: RwLockProcessPtr|
+                    #![trigger old(lctx).process_lock_map().dom().contains(held_process)]
+                    old(lctx).process_lock_map().dom().contains(held_process) ==> {
+                        &&& old(self).prc_mp.dom().contains(held_process)
+                        &&& !old(self).prc_mp.spec_index(held_process).being_killed()
+                        &&& old(self).prc_mp.spec_index(held_process).view_rodata().view().owning_container == container_ptr
+                    })
+                &&& (forall|held_thread: RwLockThreadPtr|
+                    #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
+                    old(lctx).thread_lock_map().dom().contains(held_thread) ==> {
+                        &&& old(self).thr_mp.dom().contains(held_thread)
+                        &&& !old(self).thr_mp.spec_index(held_thread).being_killed()
+                        &&& old(self).thr_mp.spec_index(held_thread).view().state is RUNNING
+                        &&& old(self).thr_mp.spec_index(held_thread).view().owning_container == container_ptr
+                    })
                 &&& old(lctx).endpoint_lock_map().dom().is_empty()
                 &&& old(lctx).scheduler_lock_map().dom().is_empty()
                 &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
@@ -63,8 +76,9 @@ impl KernelK {
             pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf);
+                reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); reveal(container_process_wf); reveal(container_thread_wf);
             };
+
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id()) {
                     assert(old(lctx).pcid_allocator_lock_map().dom().contains(allocator_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -75,7 +89,7 @@ impl KernelK {
         proof {
             assert(pcid_allocator_perms_wf(self.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { reveal(pcid_allocator_pages_wf); };
+            assert(self.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(self).pg_arr, self.pg_arr, old(self).pcid_allc_mp, self.pcid_allc_mp); };
             assert(self.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -115,15 +129,15 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::PcidAllocator(allocator_ptr), old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr)),
     {
         proof {
-            assert({ &&& old(self).pcid_allc_mp.perms_wf() &&& old(self).pcid_allc_mp.spec_index(allocator_ptr).inv() }) by { reveal(pcid_allocator_perms_wf); };
+            assert({ &&& old(self).pcid_allc_mp.perms_wf() &&& old(self).pcid_allc_mp.spec_index(allocator_ptr).inv() }) by { pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr), KernelObjId::PcidAllocator(allocator_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
-        assert(self.pcid_allc_mp.spec_index(allocator_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(self.pcid_allc_mp.spec_index(allocator_ptr).wlocked_by(&*lctx)) by { old(self).pcid_allc_mp.typed_lock_map_aligned_write_at(old(lctx).pcid_allocator_lock_map(), old(lctx).thread_id(), allocator_ptr); };
         self.pcid_allc_mp.wunlock(allocator_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PcidAllocator(allocator_ptr)));
         proof {
             assert(pcid_allocator_perms_wf(self.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { reveal(pcid_allocator_pages_wf); };
+            assert(self.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(self).pg_arr, self.pg_arr, old(self).pcid_allc_mp, self.pcid_allc_mp); };
             assert(self.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };

@@ -128,6 +128,7 @@ verus! {
         ensures
             share_4k_directory_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
             share_4k_directory_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+            share_4k_objects_k(*post, cpu_id) == share_4k_objects_k(*pre, cpu_id),
     {
         reveal(share_4k_directory_step_pre); reveal(share_4k_directory_step); reveal(share_4k_directory_pre_at); reveal(share_4k_directory_at); reveal(kernel_thread_quota_4k_changed);
         match transfer_source {
@@ -135,6 +136,7 @@ verus! {
             None => { kernel_thread_quota_4k_and_progress_changed_implies_u_step(pre, post, lctx, cpu_id, quota_thread_ptr, process_ptr, pagetable_ptr); },
         }
         kernel_share_4k_objects_projection(pre, pre_lctx, cpu_id);
+        reveal(share_4k_objects_k);
     }
 
     /// Allocate and install one missing directory page, then end the krnl
@@ -183,7 +185,8 @@ verus! {
                 &&& transfer_target_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
                 &&& transfer_target_lock_perm->Some_0.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id
             },
-            ((old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr) || typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)),
+            ((old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && old(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
+                || (typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write) && !old(krnl).prc_mp.spec_index(process_ptr).view().zombie)),
             quota_thread_lock_perm.state() is WriteLock,
             quota_thread_lock_perm.thread_id() == old(lctx).thread_id(),
             quota_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(quota_thread_ptr).locking_thread()->Write_lock_id,
@@ -237,7 +240,11 @@ verus! {
                 &&& share_4k_directory_step_pre(final(steps).view().last().old_u, cpu_id)
                 &&& share_4k_directory_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id)
                 &&& share_4k_objects_k(*final(krnl), cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)
+                &&& final(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view()
+                &&& progress_thread == quota_thread_ptr || final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() is None
             },
+            held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_MAJOR),
+            final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                     ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -258,7 +265,7 @@ verus! {
             final(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
             mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), quota_thread_ptr, container_ptr),
             ((final(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && final(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
-                || typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)),
+                || (typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write) && !final(krnl).prc_mp.spec_index(process_ptr).view().zombie)),
             quota_thread_lock_perm.thread_id() == final(lctx).thread_id(),
             quota_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(quota_thread_ptr).locking_thread()->Write_lock_id,
             final(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
@@ -302,11 +309,6 @@ verus! {
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
-            final(steps).nonlock_view().last().new_u.thread_map.spec_index(quota_thread_ptr) == (ThreadU {
-                quota_4k: (final(steps).nonlock_view().last().old_u.thread_map.spec_index(quota_thread_ptr).quota_4k as int - 1) as usize,
-                syscall_progress: final(steps).nonlock_view().last().new_u.thread_map.spec_index(quota_thread_ptr).syscall_progress,
-                ..final(steps).nonlock_view().last().old_u.thread_map.spec_index(quota_thread_ptr)
-            }),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed(),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view(),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_2m.view().len() == 0,
@@ -385,7 +387,9 @@ verus! {
         proof {
             if share_guard {
                 assert(share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id) && krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(share_4k_objects_k); };
-                assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by { reveal(process_pagetable_match); };
+                assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by {
+                    process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, quota_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);
+                };
             }
         }
         if let Some(source) = transfer_source {
@@ -397,7 +401,12 @@ verus! {
         let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
         proof {
             assert(krnl.prc_mp.dom().contains(process_ptr) && krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
-                && krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
+                && krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr) by {
+                if !typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) {
+                    process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, quota_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, quota_thread_ptr);
+                }
+                process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);
+            };
         }
         install_staged_4k_page_table_page(krnl, level, page_ptr, quota_thread_ptr, process_ptr, container_ptr, pagetable_ptr, indices, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm));
         let ghost installed_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
@@ -408,25 +417,26 @@ verus! {
                     TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
                 map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedHeldLock { lock_id: installed_page_lock_id, mode: TypedLockMode::Write });
             };
-
             assert(kernel_thread_quota_4k_changed(&steps.snapshot_k(), &*krnl, quota_thread_ptr, -1)) by { reveal(kernel_thread_quota_4k_changed); };
             use_type_invariant(&*steps);
             assert(mmap_guard ==> mmap_4k_directory_step_pre(steps.snapshot_u(), cpu_id) && mmap_4k_directory_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
                 if mmap_guard { install_one_mmap_4k_directory_step(&steps.snapshot_k(), &*krnl, &*lctx, cpu_id, quota_thread_ptr, process_ptr, pagetable_ptr, level); }
             };
-            assert(share_guard ==> share_4k_directory_step_pre(steps.snapshot_u(), cpu_id) && share_4k_directory_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
+            assert(share_guard ==> share_4k_directory_step_pre(steps.snapshot_u(), cpu_id) && share_4k_directory_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id)
+                && share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)) by {
                 if share_guard {
                     install_one_share_4k_directory_step(&steps.snapshot_k(), &*krnl, &share_lctx, &*lctx, cpu_id, progress_thread, quota_thread_ptr, process_ptr, container_ptr,
                         pagetable_ptr, transfer_source, page_ptr);
                 }
             };
+            let before_boundary = *krnl;
             krnl.kernel_step_boundary_thread_quota_4k_changed(&mut *lctx, &mut *steps, quota_thread_ptr, -1);
-            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
+            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { if transfer_source is None { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, quota_thread_ptr); } };
             assert(krnl.prc_mp.dom().contains(process_ptr) && ((krnl.thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && krnl.thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
-                || typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write))) by { reveal(process_thread_wf); };
-            assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
-            assert(krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
-            assert(share_guard ==> share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)) by { reveal(share_4k_objects_k); };
+                || (typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) && !krnl.prc_mp.spec_index(process_ptr).view().zombie))) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, quota_thread_ptr); };
+            assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
+            assert(krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
+            assert(share_guard ==> share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(before_boundary, cpu_id)) by { reveal(share_4k_objects_k); };
         }
     }
 } // verus!

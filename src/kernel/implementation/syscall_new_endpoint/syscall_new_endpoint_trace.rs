@@ -21,6 +21,7 @@ pub proof fn new_endpoint_enter_step_from_u(
             &&& pre.container_map.dom().contains(container_ptr)
             &&& pre.container_map.spec_index(container_ptr).lock_state is Unlocked
             &&& !pre.container_map.spec_index(container_ptr).killed
+            &&& !pre.container_map.spec_index(container_ptr).zombie
             &&& pre.process_map.dom().contains(process_ptr)
             &&& pre.process_map.spec_index(process_ptr).lock_state is Unlocked
             &&& !pre.process_map.spec_index(process_ptr).killed

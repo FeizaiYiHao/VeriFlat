@@ -76,6 +76,7 @@ verus! {
             &&& hugepage_1g_wf(self.pg_arr)
             &&& page_pagetable_wf(self.pt_mp, self.pg_arr)
             &&& container_process_page_pagetable_wf(self.ctn_mp, self.prc_mp, self.pt_mp, self.pg_arr)
+            &&& page_iommu_table_wf(self.ctn_mp, self.prc_mp, self.it_mp, self.pg_arr)
             &&& container_pages_wf(self.pg_arr, self.ctn_mp)
             &&& process_pages_wf(self.pg_arr, self.prc_mp)
             &&& pagetable_pages_wf(self.pt_mp, self.pg_arr)
@@ -126,6 +127,7 @@ verus! {
             &&& iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)
             &&& process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)
             &&& iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)
+            &&& iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)
             // TLB spec
             &&& cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)
             &&& tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)

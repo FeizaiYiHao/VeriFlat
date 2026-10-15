@@ -199,10 +199,10 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
     {
         proof {
-            assert({ &&& old(self).pt_mp.perms_wf() &&& old(self).pt_mp.spec_index(pagetable_ptr).inv() }) by { reveal(pagetable_perms_wf); };
+            assert({ &&& old(self).pt_mp.perms_wf() &&& old(self).pt_mp.spec_index(pagetable_ptr).inv() }) by { pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
-        assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
         self.pt_mp.wunlock(pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
             assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp)) by { pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, pagetable_ptr); };

@@ -20,13 +20,6 @@ impl KernelK {
             forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)] old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set) ==> held_cpu_set < cpu_set_ptr,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
-            forall|key: usize|
-                #![trigger old(self).cpu_set_mp.view().spec_index(key)]
-                #![trigger final(self).cpu_set_mp.view().spec_index(key)]
-                old(self).cpu_set_mp.dom().contains(key) ==> {
-                    &&& final(self).cpu_set_mp.view().spec_index(key).is_init() == old(self).cpu_set_mp.view().spec_index(key).is_init()
-                    &&& final(self).cpu_set_mp.view().spec_index(key).addr() == old(self).cpu_set_mp.view().spec_index(key).addr()
-                },
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
@@ -53,7 +46,7 @@ impl KernelK {
         proof {
             assert(cpu_set_perms_wf(self.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { reveal(cpu_set_pages_wf); };
+            assert(self.memory_management_inv()) by { cpu_set_pages_wf_preserved_for_page_state_eq(old(self).cpu_set_mp, self.cpu_set_mp, old(self).pg_arr, self.pg_arr); };
             assert(cpu_set_invariant_fields_unchanged(old(self).cpu_set_mp, self.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(old(self).cpu_set_mp, self.cpu_set_mp, cpu_set_ptr); };
             assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
             assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };

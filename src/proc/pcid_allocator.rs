@@ -52,7 +52,10 @@ impl PcidAllocator {
         &&& forall|id: usize|
             #![trigger self.ref_counters.spec_index(id)]
             #![trigger self.id_to_proc.view().spec_index(id as int)]
-            usize_in_range::<PCID_MAX>(id) ==> self.ref_counters.spec_index(id) == self.id_to_proc.view().spec_index(id as int).len()
+            usize_in_range::<PCID_MAX>(id) ==> {
+                &&& self.ref_counters.spec_index(id) == self.id_to_proc.view().spec_index(id as int).len()
+                &&& self.ref_counters.spec_index(id) <= 1
+            }
     }
 
     pub open spec fn process_is_unallocated(&self, process_ptr: RwLockProcessPtr) -> bool {
@@ -114,7 +117,7 @@ impl PcidAllocator {
             usize_in_range::<PCID_MAX>(id),
             id != KERNEL_DEFAULT_PCID,
             old(self).process_is_unallocated(process_ptr),
-            old(self).ref_counters.spec_index(id) < usize::MAX,
+            old(self).ref_counters.spec_index(id) == 0,
         ensures
             final(self).wf(),
             final(self).alloc_ensures(old(self), process_ptr, id),
@@ -123,6 +126,29 @@ impl PcidAllocator {
         self.ref_counters.set(id, old_counter + 1);
         self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).insert(process_ptr)));
     }
+
+    pub open spec fn release_ensures(&self, old: &Self, process_ptr: RwLockProcessPtr, id: usize) -> bool {
+        &&& self.owning_container.view() == old.owning_container.view()
+        &&& self.container_depth.view() == old.container_depth.view()
+        &&& self.ref_counters.view() =~= old.ref_counters.view().update(id as int, 0)
+        &&& self.id_to_proc.view() =~= old.id_to_proc.view().update(id as int, old.id_to_proc.view().spec_index(id as int).remove(process_ptr))
+    }
+
+    /// Releases `id` from `process_ptr`; `wf` bounds every counter by one, so the id becomes free.
+    pub fn release(&mut self, id: usize, process_ptr: RwLockProcessPtr)
+        requires
+            old(self).wf(),
+            usize_in_range::<PCID_MAX>(id),
+            id != KERNEL_DEFAULT_PCID,
+            old(self).id_to_proc.view().spec_index(id as int).contains(process_ptr),
+        ensures
+            final(self).wf(),
+            final(self).release_ensures(old(self), process_ptr, id),
+    {
+        self.ref_counters.set(id, 0);
+        self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).remove(process_ptr)));
+    }
+
 }
 
 impl LockInvTrait for PcidAllocator {

@@ -4,12 +4,12 @@ use crate::*;
 use super::syscall_new_container_cpu_spec::new_container_cpu_transfer_transition;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, parent_container: RwLockContainerPtr, child_container: RwLockContainerPtr, parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, thread_id: LockThreadId)
     requires
         pre.inv(),
         new_container_cpu_transfer_transition(pre, post, parent_container, child_container, parent_cpu_set, child_cpu_set, transfer_cpu_id, thread_id),
         post.cpu_arr.inv(),
+        post.cpu_set_mp.perms_wf(),
         post.cpu_set_mp.spec_index(parent_cpu_set).view().owned_cpus.wf(),
         post.cpu_set_mp.spec_index(child_cpu_set).view().owned_cpus.wf(),
     ensures

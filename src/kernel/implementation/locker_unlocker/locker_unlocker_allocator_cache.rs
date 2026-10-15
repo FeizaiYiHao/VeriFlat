@@ -52,7 +52,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); };
+            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
             assert(old(lctx).lock_id_acyclic(LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).container_depth(),
                 process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).process_depth(),
                 major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().view().current_lock_major(),
@@ -111,7 +111,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu), old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_id()),
     {
         proof {
-            assert({ &&& old(self).allc_4k_mp.perms_wf() &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf() }) by { reveal(allocator_perms_wf); };
+            assert({ &&& old(self).allc_4k_mp.perms_wf() &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf() }) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
             assert(old(lctx).lock_entry_contains(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu))) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         }
         assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };

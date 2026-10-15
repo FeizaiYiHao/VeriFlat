@@ -18,9 +18,11 @@ pub open spec fn thread_quota_4k_fields_unchanged(pre: ThreadLockedMap, post: Th
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger pre.spec_index(t_ptr)]
         #![trigger post.spec_index(t_ptr)]
-        pre.dom().contains(t_ptr)
-            ==> thread_effective_quota_4k(post.spec_index(t_ptr)) == thread_effective_quota_4k(pre.spec_index(t_ptr)) && post.spec_index(t_ptr).view().direct_free_quota_pending_4k == pre.spec_index(t_ptr).view().direct_free_quota_pending_4k
-                && post.spec_index(t_ptr).view().indirect_free_quota_pending_4k == pre.spec_index(t_ptr).view().indirect_free_quota_pending_4k
+        pre.dom().contains(t_ptr) ==> {
+            &&& thread_effective_quota_4k(post.spec_index(t_ptr)) == thread_effective_quota_4k(pre.spec_index(t_ptr))
+            &&& post.spec_index(t_ptr).view().direct_free_quota_pending_4k == pre.spec_index(t_ptr).view().direct_free_quota_pending_4k
+            &&& post.spec_index(t_ptr).view().indirect_free_quota_pending_4k == pre.spec_index(t_ptr).view().indirect_free_quota_pending_4k
+        }
 }
 
 /// Thread fields read by the 2M conservation law. Changes to unrelated
@@ -30,9 +32,11 @@ pub open spec fn thread_quota_2m_fields_unchanged(pre: ThreadLockedMap, post: Th
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger pre.spec_index(t_ptr)]
         #![trigger post.spec_index(t_ptr)]
-        pre.dom().contains(t_ptr)
-            ==> thread_effective_quota_2m(post.spec_index(t_ptr)) == thread_effective_quota_2m(pre.spec_index(t_ptr)) && post.spec_index(t_ptr).view().direct_free_quota_pending_2m == pre.spec_index(t_ptr).view().direct_free_quota_pending_2m
-                && post.spec_index(t_ptr).view().indirect_free_quota_pending_2m == pre.spec_index(t_ptr).view().indirect_free_quota_pending_2m
+        pre.dom().contains(t_ptr) ==> {
+            &&& thread_effective_quota_2m(post.spec_index(t_ptr)) == thread_effective_quota_2m(pre.spec_index(t_ptr))
+            &&& post.spec_index(t_ptr).view().direct_free_quota_pending_2m == pre.spec_index(t_ptr).view().direct_free_quota_pending_2m
+            &&& post.spec_index(t_ptr).view().indirect_free_quota_pending_2m == pre.spec_index(t_ptr).view().indirect_free_quota_pending_2m
+        }
 }
 
 /// Thread fields read by the 1G conservation law.
@@ -41,9 +45,11 @@ pub open spec fn thread_quota_1g_fields_unchanged(pre: ThreadLockedMap, post: Th
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger pre.spec_index(t_ptr)]
         #![trigger post.spec_index(t_ptr)]
-        pre.dom().contains(t_ptr)
-            ==> thread_effective_quota_1g(post.spec_index(t_ptr)) == thread_effective_quota_1g(pre.spec_index(t_ptr)) && post.spec_index(t_ptr).view().direct_free_quota_pending_1g == pre.spec_index(t_ptr).view().direct_free_quota_pending_1g
-                && post.spec_index(t_ptr).view().indirect_free_quota_pending_1g == pre.spec_index(t_ptr).view().indirect_free_quota_pending_1g
+        pre.dom().contains(t_ptr) ==> {
+            &&& thread_effective_quota_1g(post.spec_index(t_ptr)) == thread_effective_quota_1g(pre.spec_index(t_ptr))
+            &&& post.spec_index(t_ptr).view().direct_free_quota_pending_1g == pre.spec_index(t_ptr).view().direct_free_quota_pending_1g
+            &&& post.spec_index(t_ptr).view().indirect_free_quota_pending_1g == pre.spec_index(t_ptr).view().indirect_free_quota_pending_1g
+        }
 }
 
 pub proof fn thread_lock_op_preserves_invariant_fields(pre: ThreadLockedMap, post: ThreadLockedMap, changed: RwLockThreadPtr)
@@ -88,6 +94,8 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
     requires
         pre.process_management_inv(),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
+        forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).being_killed()]
+            pre.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).being_killed() ==> pre.thr_mp.spec_index(t_ptr).being_killed() && post.thr_mp.spec_index(t_ptr).locking_thread() == pre.thr_mp.spec_index(t_ptr).locking_thread(),
         post.cpu_arr == pre.cpu_arr,
         post.ctn_mp == pre.ctn_mp,
         post.sched_mp == pre.sched_mp,

@@ -140,6 +140,7 @@ pub proof fn lemma_container_process_wf_preserved_for_process_rodata_forall()
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
+                    &&& post.spec_index(p_ptr).view().zombie == pre.spec_index(p_ptr).view().zombie
                 }) ==> container_process_wf(container_map, post),
 { reveal(container_process_wf); }
 
@@ -148,6 +149,41 @@ pub proof fn lemma_container_allocator_wf_preserved_for_allocator_quota_value_fr
         forall|container_map: ContainerLockedMap, pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, allocator_2m_map: PageAllocatorUnLockedMap, allocator_1g_map: PageAllocatorUnLockedMap|
             #![trigger container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map), container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map)]
             container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map) && allocator_quota_value_framed_fields_unchanged(pre, post) ==> container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map),
+{ reveal(container_allocator_wf); }
+
+pub proof fn container_allocator_wf_preserved_for_owner_depth_eq(
+    old_container_map: ContainerLockedMap, new_container_map: ContainerLockedMap, old_allocator_4k_map: PageAllocatorUnLockedMap, new_allocator_4k_map: PageAllocatorUnLockedMap,
+    old_allocator_2m_map: PageAllocatorUnLockedMap, new_allocator_2m_map: PageAllocatorUnLockedMap, old_allocator_1g_map: PageAllocatorUnLockedMap, new_allocator_1g_map: PageAllocatorUnLockedMap,
+)
+    requires
+        container_allocator_wf(old_container_map, old_allocator_4k_map, old_allocator_2m_map, old_allocator_1g_map),
+        new_container_map.dom() == old_container_map.dom(),
+        forall|c_ptr: RwLockContainerPtr|
+            #![trigger new_container_map.spec_index(c_ptr).view_rodata()]
+            new_container_map.dom().contains(c_ptr) ==> new_container_map.spec_index(c_ptr).view_rodata() == old_container_map.spec_index(c_ptr).view_rodata(),
+        new_allocator_4k_map.dom() == old_allocator_4k_map.dom(),
+        forall|a_ptr: RwLockPageAllocatorPtr|
+            #![trigger new_allocator_4k_map.spec_index(a_ptr)]
+            new_allocator_4k_map.dom().contains(a_ptr) ==> {
+                &&& new_allocator_4k_map.spec_index(a_ptr).owning_container == old_allocator_4k_map.spec_index(a_ptr).owning_container
+                &&& new_allocator_4k_map.spec_index(a_ptr).quota.view().container_depth == old_allocator_4k_map.spec_index(a_ptr).quota.view().container_depth
+            },
+        new_allocator_2m_map.dom() == old_allocator_2m_map.dom(),
+        forall|a_ptr: RwLockPageAllocatorPtr|
+            #![trigger new_allocator_2m_map.spec_index(a_ptr)]
+            new_allocator_2m_map.dom().contains(a_ptr) ==> {
+                &&& new_allocator_2m_map.spec_index(a_ptr).owning_container == old_allocator_2m_map.spec_index(a_ptr).owning_container
+                &&& new_allocator_2m_map.spec_index(a_ptr).quota.view().container_depth == old_allocator_2m_map.spec_index(a_ptr).quota.view().container_depth
+            },
+        new_allocator_1g_map.dom() == old_allocator_1g_map.dom(),
+        forall|a_ptr: RwLockPageAllocatorPtr|
+            #![trigger new_allocator_1g_map.spec_index(a_ptr)]
+            new_allocator_1g_map.dom().contains(a_ptr) ==> {
+                &&& new_allocator_1g_map.spec_index(a_ptr).owning_container == old_allocator_1g_map.spec_index(a_ptr).owning_container
+                &&& new_allocator_1g_map.spec_index(a_ptr).quota.view().container_depth == old_allocator_1g_map.spec_index(a_ptr).quota.view().container_depth
+            },
+    ensures
+        container_allocator_wf(new_container_map, new_allocator_4k_map, new_allocator_2m_map, new_allocator_1g_map),
 { reveal(container_allocator_wf); }
 
 pub proof fn lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall()
@@ -191,6 +227,8 @@ pub proof fn lemma_process_thread_wf_preserved_for_process_thread_membership_fie
                     &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
                     &&& post.spec_index(p_ptr).view().owned_threads == pre.spec_index(p_ptr).view().owned_threads
                     &&& post.spec_index(p_ptr).view().pagetable == pre.spec_index(p_ptr).view().pagetable
+                    &&& post.spec_index(p_ptr).being_killed() == pre.spec_index(p_ptr).being_killed()
+                    &&& pre.spec_index(p_ptr).being_killed() ==> post.spec_index(p_ptr).locking_thread() == pre.spec_index(p_ptr).locking_thread()
                 }) ==> process_thread_wf(post, thread_map),
 { reveal(process_thread_wf); }
 
@@ -201,4 +239,36 @@ pub proof fn lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields
             cpu_dirty_map_wf(container_map, cpu_set_map, pre, cpu_array, cpu_tlb, pagetable_map, needflush) && process_cpu_wf(pre, cpu_array) && container_cpu_wf(container_map, cpu_set_map, cpu_array) && process_quota_4k_framed_fields_unchanged(pre, post)
                 ==> cpu_dirty_map_wf(container_map, cpu_set_map, post, cpu_array, cpu_tlb, pagetable_map, needflush),
 { reveal(cpu_dirty_map_proc_pcid_match); }
+
+pub proof fn process_pagetable_match_preserved_for_pagetable_fields_eq(process_map: ProcessLockedMap, old_pagetable_map: PageTableLockedMap, new_pagetable_map: PageTableLockedMap)
+    requires
+        process_pagetable_match(process_map, old_pagetable_map),
+        new_pagetable_map.dom() == old_pagetable_map.dom(),
+        forall|pt_ptr: RwLockPageTableRoot|
+            #![trigger new_pagetable_map.spec_index(pt_ptr).view()]
+            new_pagetable_map.dom().contains(pt_ptr) ==> {
+                &&& new_pagetable_map.spec_index(pt_ptr).view().cr3 == old_pagetable_map.spec_index(pt_ptr).view().cr3
+                &&& new_pagetable_map.spec_index(pt_ptr).view().proc_ptr == old_pagetable_map.spec_index(pt_ptr).view().proc_ptr
+                &&& new_pagetable_map.spec_index(pt_ptr).view().pcid_value() == old_pagetable_map.spec_index(pt_ptr).view().pcid_value()
+            },
+    ensures
+        process_pagetable_match(process_map, new_pagetable_map),
+{ reveal(process_pagetable_match); }
+
+pub proof fn process_pagetable_match_preserved_for_process_fields_eq(old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap)
+    requires
+        process_pagetable_match(old_process_map, pagetable_map),
+        new_process_map.dom() == old_process_map.dom(),
+        forall|proc_ptr: RwLockProcessPtr|
+            #![trigger new_process_map.spec_index(proc_ptr).view()]
+            new_process_map.dom().contains(proc_ptr) ==> {
+                &&& new_process_map.spec_index(proc_ptr).view().pagetable == old_process_map.spec_index(proc_ptr).view().pagetable
+                &&& new_process_map.spec_index(proc_ptr).view().pcid == old_process_map.spec_index(proc_ptr).view().pcid
+                &&& new_process_map.spec_index(proc_ptr).view_rodata().view().pagetable == old_process_map.spec_index(proc_ptr).view_rodata().view().pagetable
+                &&& new_process_map.spec_index(proc_ptr).view_rodata().view().pcid == old_process_map.spec_index(proc_ptr).view_rodata().view().pcid
+                &&& new_process_map.spec_index(proc_ptr).view_rodata().view().cr3 == old_process_map.spec_index(proc_ptr).view_rodata().view().cr3
+            },
+    ensures
+        process_pagetable_match(new_process_map, pagetable_map),
+{ reveal(process_pagetable_match); }
 }

@@ -127,6 +127,7 @@ impl Process {
         &&& self.children.inv()
         &&& self.owned_threads.wf()
         &&& self.pagetable_iommu_table_different()
+        // A zombie has no thread and no quota left.
         &&& self.zombie ==> {
             &&& self.owned_threads.view().len() == 0
             &&& self.quota_4k == 0
@@ -160,6 +161,39 @@ impl Process {
         node_update_value(node_addr, &mut node_perm, thread_ptr);
         proof { assert(self.owned_threads.length != usize::MAX) by { reveal(LinkedList::wf_value_list); }; }
         self.owned_threads.push_tail(node_addr, node_perm);
+    }
+
+    /// Remove an exiting thread through its list node, absorb the thread's quota, and become a zombie
+    /// when it was the last thread.
+    pub fn remove_exiting_thread(&mut self, node_addr: usize, quota_4k: usize, quota_2m: usize, quota_1g: usize) -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).owned_threads.dom().contains(node_addr),
+            old(self).quota_4k + quota_4k <= usize::MAX,
+            old(self).quota_2m + quota_2m <= usize::MAX,
+            old(self).quota_1g + quota_1g <= usize::MAX,
+            old(self).owned_threads.view().len() == 1 ==> old(self).quota_4k + quota_4k == 0 && old(self).quota_2m + quota_2m == 0 && old(self).quota_1g + quota_1g == 0,
+        ensures
+            final(self).inv(),
+            *final(self) == (Process {
+                zombie: final(self).owned_threads.view().len() == 0, quota_4k: (old(self).quota_4k + quota_4k) as usize, quota_2m: (old(self).quota_2m + quota_2m) as usize,
+                quota_1g: (old(self).quota_1g + quota_1g) as usize, owned_threads: final(self).owned_threads, ..*old(self)
+            }),
+            final(self).owned_threads.view() == old(self).owned_threads.view().remove_value(old(self).owned_threads.map().spec_index(node_addr)),
+            final(self).owned_threads.dom() == old(self).owned_threads.dom().remove(node_addr),
+            final(self).owned_threads.map() == old(self).owned_threads.map().remove(node_addr),
+            ret.view().is_init(),
+            ret.view().addr() == node_addr,
+            ret.view().value().view() == old(self).owned_threads.map().spec_index(node_addr),
+    {
+        proof { assert(self.owned_threads.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); }; }
+        let (_, node_perm) = self.owned_threads.remove(node_addr);
+        proof { assert(self.owned_threads.view().len() == self.owned_threads.length && old(self).owned_threads.view().len() == old(self).owned_threads.length) by { reveal(LinkedList::wf_value_list); }; }
+        self.quota_4k = self.quota_4k + quota_4k;
+        self.quota_2m = self.quota_2m + quota_2m;
+        self.quota_1g = self.quota_1g + quota_1g;
+        self.zombie = self.owned_threads.len() == 0;
+        node_perm
     }
 
     pub fn add_child(&mut self, child_ptr: RwLockProcessPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockProcessPtr>>>)

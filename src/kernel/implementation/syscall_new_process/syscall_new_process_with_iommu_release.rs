@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) fn release_staged_process_with_iommu_input_locks(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr,
     child_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr,
@@ -55,6 +54,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         old(krnl).prc_mp.dom().contains(parent_ptr),
         old(krnl).prc_mp.dom().contains(child_ptr),
         parent_ptr != child_ptr,
+        old(krnl).prc_mp.spec_index(child_ptr).view().iommu_table == Some(iommu_table_ptr),
         old(krnl).prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0,
         !old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), parent_ptr, TypedLockMode::Write),
@@ -120,6 +120,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         final(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view() == old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view(),
 {
     hide(Seq::no_duplicates);
+    proof { assert(old(krnl).prc_mp.spec_index(parent_ptr).view().iommu_table != Some(iommu_table_ptr)) by { reveal(process_iommu_table_match); }; }
     krnl.wunlock_page(page_ptr2page_index(iommu_l4_page_ptr), Tracked(&mut *lctx), Tracked(iommu_l4_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(iommu_table_page_ptr), Tracked(&mut *lctx), Tracked(iommu_table_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(l4_page_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));

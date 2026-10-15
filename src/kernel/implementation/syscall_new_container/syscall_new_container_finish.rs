@@ -53,13 +53,13 @@ pub(super) fn finish_staged_container_publish(
             page_ptr2page_index(pages_4k.view().spec_index(5)), page_ptr2page_index(pages_4k.view().spec_index(6)),
             page_ptr2page_index(pages_4k.view().spec_index(7)), page_ptr2page_index(pages_4k.view().spec_index(8)),
         ]),
-        old(lctx).page_lock_map().dom().difference(page_2m_tail_indices(page_ptr2page_index(container_page)).union(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page))).union(seq![
+        old(lctx).page_lock_map().dom().difference(page_2m_tail_indices(page_ptr2page_index(container_page)).union(page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page))).union(set![
             page_ptr2page_index(pages_4k.view().spec_index(0)), page_ptr2page_index(pages_4k.view().spec_index(1)),
             page_ptr2page_index(pages_4k.view().spec_index(2)), page_ptr2page_index(pages_4k.view().spec_index(3)),
             page_ptr2page_index(pages_4k.view().spec_index(8)), page_ptr2page_index(pages_4k.view().spec_index(4)),
             page_ptr2page_index(pages_4k.view().spec_index(5)), page_ptr2page_index(pages_4k.view().spec_index(6)),
             page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page),
-        ].to_set())) =~= set![page_ptr2page_index(pages_4k.view().spec_index(7))],
+        ])) =~= set![page_ptr2page_index(pages_4k.view().spec_index(7))],
         owned_2m_tail_lock_perms_wf(container_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(container_page)),
         owned_2m_tail_lock_perms_wf(pcid_allocator_tail_lock_perms, old(krnl).pg_arr, old(lctx), page_ptr2page_index(pcid_allocator_page)),
         old(krnl).ctn_mp.dom().contains(container_page),
@@ -210,23 +210,12 @@ pub(super) fn finish_staged_container_publish(
     proof {
         assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
         assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_page_invariant_fields(*old(krnl), *krnl); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-            reveal(kernel_endpoint_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-            kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl);
-        };
     }
     krnl.wunlock_pcid_allocator(pcid_allocator_page, Tracked(&mut *lctx), Tracked(child_pcid_allocator_lock_perm));
-    proof {
-        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-            reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
-        };
-    }
+    proof { kernel_page_then_pcid_allocator_unlocks_implies_u_eq(old(krnl), &*krnl); }
     (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm))
 }
 
-#[verifier::spinoff_prover]
 fn release_container_backing_page_locks(
     pages: &mut PageLockedArray, Tracked(lctx): Tracked<&mut LocalContext>,
     indices: (PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex),

@@ -45,7 +45,7 @@ pub fn create_thread_from_staged_page_merged(
         page_lock_perm.thread_id() == old(lctx).thread_id(),
         page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
-        old(lctx).kernel_view_locking_state() is Release,
+        old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -128,7 +128,7 @@ pub fn create_thread_from_staged_page_merged(
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+        final(lctx).kernel_view_locking_state() is Release,
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ctn_mp: final(krnl).ctn_mp, sched_mp: final(krnl).sched_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
         forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
@@ -192,13 +192,15 @@ pub fn create_thread_from_staged_page_merged(
     let proc_pagetable = process_ro.pagetable;
     let thread_value = Thread::new_fresh(container_ptr, container_depth, process_ptr, process_depth, proc_pagetable, Ghost(uppers));
     let page_index = page_ptr2page_index(page_ptr);
-    let Tracked(page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, page_index, PageState::Allocated4k { state: Allocated4KPageState::AsThread }, Tracked(&mut *lctx), Tracked(page_lock_perm));
+    let ghost page_locks = lctx.page_lock_map();
+    let Tracked(page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, page_index, PageState::Allocated4k { state: Allocated4KPageState::AsThread }, Ghost(page_locks), Tracked(&*lctx), Tracked(page_lock_perm));
     let (Tracked(thread_perm), sched_node_addr, node_addr) = process_subsystem_create_scheduled_thread(
         &krnl.ctn_mp, &mut krnl.prc_mp, &mut krnl.thr_mp, &mut krnl.sched_mp, page_ptr, process_ptr,
         staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, thread_value, initial_regs, Tracked(page_perm),
         Tracked(&mut *lctx), Tracked(process_lock_perm), Tracked(staging_thread_lock_perm), Tracked(scheduler_lock_perm),
     );
     proof {
+        lctx.update_lock_id(KernelObjId::Page(page_index), page_locks.index(page_index).lock_id, krnl.pg_arr.lock_id_by_index(page_index));
         add_thread_to_container_sets(&mut krnl.ctn_mp, container_ptr, page_ptr, uppers, krnl.thr_mp, krnl.sched_mp, lctx.container_lock_map(), lctx.thread_id());
         assert(create_thread_from_staged_page_kernel_state_framing(
             *old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr,
@@ -373,14 +375,18 @@ proof fn eof_create_thread_memory_management_inv(
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr, page_index); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by {
+        page_iommu_table_wf_preserved_for_nonmapped_page_change(pre.ctn_mp, pre.prc_mp, pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr, page_index);
+        reveal(page_iommu_table_wf);
+    };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
-    assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
-    assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
+    assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr); };
+    assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
-    assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); };
+    assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
     assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
@@ -400,7 +406,6 @@ proof fn eof_create_thread_memory_management_inv(
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_index); };
 }
 
-#[verifier::spinoff_prover]
 proof fn eof_create_thread_endpoint_ref_counter_wf(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
@@ -414,7 +419,6 @@ proof fn eof_create_thread_endpoint_ref_counter_wf(
     reveal(create_thread_from_staged_page_kernel_state_framing); reveal(thread_endpoint_ref_counter_wf);
 }
 
-#[verifier::spinoff_prover]
 proof fn eof_create_thread_process_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
@@ -475,7 +479,6 @@ proof fn eof_create_thread_process_management_inv(
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
 }
 
-#[verifier::spinoff_prover]
 proof fn eof_create_thread_inv(pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize)
     requires
         pre.inv(),
@@ -515,6 +518,7 @@ proof fn eof_create_thread_inv(pre: KernelK, post: KernelK, page_ptr: PagePtr, p
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(container_cpu_wf);
     };

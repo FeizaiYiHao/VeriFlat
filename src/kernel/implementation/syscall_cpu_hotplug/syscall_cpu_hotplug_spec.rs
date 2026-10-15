@@ -102,11 +102,12 @@ pub open spec fn cpu_online_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, 
 }
 
 /// The result of `syscall_cpu_offline_request_child` from the state at entry: the caller's container must be
-/// live and `target` a cpu, not Off, of its `child`-th child. A request already pending succeeds without a step.
+/// live and not a zombie, and `target` a cpu, not Off, of its `child`-th child. A request already pending succeeds without a step.
 pub open spec fn cpu_offline_request_child_syscall_result(pre: KernelU, cpu_id: CpuId, child: usize, target: CpuId) -> RetValueType {
     let caller = pre.container_map[pre.cpu_array[cpu_id as int].owning_container];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
     else if caller.killed { RetValueType::ErrorContainerKilled }
+    else if caller.zombie { RetValueType::ErrorContainerZombie }
     else if child >= caller.children.len() || pre.cpu_array[target as int].owning_container != caller.children[child as int] { RetValueType::ErrorCpuOwnerMismatch }
     else if pre.cpu_array[target as int].state is Off { RetValueType::ErrorCpuAlreadyOff }
     else { RetValueType::Success }
@@ -117,7 +118,7 @@ pub open spec fn cpu_offline_request_child_pending(pre: KernelU, target: CpuId) 
     pre.container_map[pre.cpu_array[target as int].owning_container].cpu_offline_requests[target as int]
 }
 
-/// The cpu, the caller's live container, and the cpu-set lock of `target`'s container, a direct child of the
+/// The cpu, the caller's live, non-zombie container, and the cpu-set lock of `target`'s container, a direct child of the
 /// caller's, are unlocked; `target` is a non-Off cpu with no pending request.
 #[verifier::opaque]
 pub open spec fn cpu_offline_request_child_step_pre(old_u: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
@@ -130,6 +131,7 @@ pub open spec fn cpu_offline_request_child_step_pre(old_u: KernelU, cpu_id: CpuI
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& old_u.container_map[cpu.owning_container].lock_state is Unlocked
     &&& !old_u.container_map[cpu.owning_container].killed
+    &&& !old_u.container_map[cpu.owning_container].zombie
     &&& index_valid(NUM_CPUS, target)
     &&& old_u.container_map.dom().contains(container_ptr)
     &&& container.parent == Some(cpu.owning_container)
@@ -159,17 +161,18 @@ pub open spec fn cpu_offline_request_child_syscall_trace(trace: Seq<KernelStep>,
 }
 
 /// The result of `syscall_cpu_online_child` from the state at entry: the caller's container must be live and
-/// `target` an Off cpu of its `child`-th child.
+/// not a zombie, and `target` an Off cpu of its `child`-th child.
 pub open spec fn cpu_online_child_syscall_result(pre: KernelU, cpu_id: CpuId, child: usize, target: CpuId) -> RetValueType {
     let caller = pre.container_map[pre.cpu_array[cpu_id as int].owning_container];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
     else if caller.killed { RetValueType::ErrorContainerKilled }
+    else if caller.zombie { RetValueType::ErrorContainerZombie }
     else if child >= caller.children.len() || pre.cpu_array[target as int].owning_container != caller.children[child as int] { RetValueType::ErrorCpuOwnerMismatch }
     else if !(pre.cpu_array[target as int].state is Off) { RetValueType::ErrorCpuNotOff }
     else { RetValueType::Success }
 }
 
-/// The cpu, the caller's live container, the cpu-set lock of `target`'s container, a direct child of the
+/// The cpu, the caller's live, non-zombie container, the cpu-set lock of `target`'s container, a direct child of the
 /// caller's, and `target` are unlocked; `target` is Off.
 #[verifier::opaque]
 pub open spec fn cpu_online_child_step_pre(old_u: KernelU, cpu_id: CpuId, target: CpuId) -> bool {
@@ -181,6 +184,7 @@ pub open spec fn cpu_online_child_step_pre(old_u: KernelU, cpu_id: CpuId, target
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& old_u.container_map[cpu.owning_container].lock_state is Unlocked
     &&& !old_u.container_map[cpu.owning_container].killed
+    &&& !old_u.container_map[cpu.owning_container].zombie
     &&& index_valid(NUM_CPUS, target)
     &&& old_u.container_map.dom().contains(container_ptr)
     &&& old_u.container_map[container_ptr].parent == Some(cpu.owning_container)

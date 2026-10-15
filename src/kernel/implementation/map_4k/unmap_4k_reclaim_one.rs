@@ -4,7 +4,6 @@ use super::unmap_4k_remove::remove_4k_mapping_without_free;
 use super::unmap_4k_reclaim::remove_last_4k_mapping_to_allocator;
 
 verus! {
-#[verifier::spinoff_prover]
 proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, thread_depth: usize)
     requires
         krnl.inv(),
@@ -105,6 +104,7 @@ pub fn reclaim_unmapped_4k_page(
         final(steps).snapshot_k() == *final(krnl),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).thr_mp.dom().contains(thread_ptr),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -149,7 +149,7 @@ pub fn reclaim_unmapped_4k_page(
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
         let thread_depth = thread.container_depth;
         proof { prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, thread_depth,); }
-        proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && lctx.page_lock_map().dom().contains(page_index)) by { reveal(container_allocator_wf); }; page_array_wf_at(krnl.pg_arr, page_index); }
+        proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && lctx.page_lock_map().dom().contains(page_index)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }; page_array_wf_at(krnl.pg_arr, page_index); }
         let Tracked(cache_perm) = krnl.wlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx));
         let cache = krnl.allc_4k_mp.borrow_cache_typed(allocator_ptr, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(&cache_perm));
         if cache.linked_list.len() == ALLOCATOR_MAX_WATERMARK {

@@ -188,6 +188,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_thread_exit"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
 name = "veriflat_syscall_unmap_4k"
 version = "0.1.0"
 dependencies = [

@@ -128,7 +128,7 @@ verus! {
                     new_thread_enter_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, process_ptr, current_thread_ptr, container_ptr, Some(endpoint_ptr), *initial_regs, Some(endpoint_index));
                     new_thread_trace_enter_step(&*steps, enter_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *initial_regs, Some(endpoint_index));
                 };
-                assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
+                assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
             }
             let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
             let page_index = page_ptr2page_index(page_ptr);
@@ -141,7 +141,7 @@ verus! {
                 }) by { kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, Some(endpoint_ptr)); };
             }
 
-            proof { assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_thread_wf); }; enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
+            proof { assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; }
             let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
                 krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&page_lock_perm),
                 Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
@@ -153,7 +153,7 @@ verus! {
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
                     ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
                 }) by { reveal(container_thread_endpoint_wf); };
-                assert(krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { reveal(endpoint_perms_wf); };
+                assert(krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
             }
             attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
             krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));

@@ -12,7 +12,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     /// First half of 4K unmap: make future page walks miss while retaining the
     /// kernel mapping record that backs any stale TLB entry. A caller must flush
     /// those entries before invoking `unmap_4k_page_kernel`.
-    #[verifier::spinoff_prover]
     pub fn unmap_4k_page_user_view(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -102,7 +101,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     /// present bit is already clear. Kernel-level callers must additionally
     /// establish that no stale TLB entry remains; restoring `tlb_wf_spec` after
     /// this removal enforces that obligation.
-    #[verifier::spinoff_prover]
     pub fn unmap_4k_page_kernel(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -170,7 +168,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    #[verifier::spinoff_prover]
     pub fn map_2m_page(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -228,7 +225,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    #[verifier::spinoff_prover]
     pub fn remove_l2_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
         requires
             old(self).wf(),
@@ -297,7 +293,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         return ret;
     }
 
-    #[verifier::spinoff_prover]
     pub fn remove_l3_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
         requires
             old(self).wf(),
@@ -367,7 +362,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         return ret;
     }
 
-    #[verifier::spinoff_prover]
     pub fn remove_l4_entry(&mut self, target_l4i: L4Index, target_l3_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
         requires
             old(self).wf(),

@@ -70,6 +70,19 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         return RetValueType::ErrorContainerKilled;
     }
     let Tracked(container_lock_perm) = container_res.unwrap();
+    let container = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
+    if container.zombie {
+        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        proof {
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+            new_endpoint_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index);
+            assert(new_endpoint_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index) is ErrorContainerZombie) by {
+                kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_container_projection_at(&*old(krnl), container_ptr);
+            };
+        }
+        return RetValueType::ErrorContainerZombie;
+    }
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));

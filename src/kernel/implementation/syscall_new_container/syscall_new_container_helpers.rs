@@ -56,7 +56,6 @@ pub(super) proof fn new_container_page_positions(pages: Seq<PagePtr>)
         pages.to_set().contains(pages.spec_index(8)),
         new_container_bootstrap_4k_pages(pages.spec_index(0), pages.spec_index(1), pages.spec_index(2), pages.spec_index(3), pages.spec_index(8), pages.spec_index(4), pages.spec_index(5), pages.spec_index(6)).len() == 8,
         !new_container_bootstrap_4k_pages(pages.spec_index(0), pages.spec_index(1), pages.spec_index(2), pages.spec_index(3), pages.spec_index(8), pages.spec_index(4), pages.spec_index(5), pages.spec_index(6)).contains(pages.spec_index(7)),
-        pages.to_set() == new_container_bootstrap_4k_pages(pages.spec_index(0), pages.spec_index(1), pages.spec_index(2), pages.spec_index(3), pages.spec_index(8), pages.spec_index(4), pages.spec_index(5), pages.spec_index(6)).union(seq![pages.spec_index(7)].to_set()),
         pages.to_set() == new_container_bootstrap_4k_pages(pages.spec_index(0), pages.spec_index(1), pages.spec_index(2), pages.spec_index(3), pages.spec_index(8), pages.spec_index(4), pages.spec_index(5), pages.spec_index(6)).insert(pages.spec_index(7)),
 {
     pages.to_set_ensures();
@@ -101,8 +100,16 @@ pub(super) proof fn new_container_staged_pages_disjoint(
         page_ptr_2m_valid(pcid_allocator_page),
         krnl.pg_arr.spec_index(page_ptr2page_index(container_page)).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr }),
         krnl.pg_arr.spec_index(page_ptr2page_index(pcid_allocator_page)).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr }),
-        lctx.page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(page_ptrs_to_indices(funding_pages)).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set()),
+        lctx.page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set()).union(page_ptrs_to_indices(funding_pages)),
+        pages_4k.view().no_duplicates(),
+        funding_pages.no_duplicates(),
+        page_2m_all_ptrs(page_ptr2page_index(container_page)).disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page))),
     ensures
+        new_container_bootstrap_4k_pages(pages_4k.view().spec_index(0), pages_4k.view().spec_index(1), pages_4k.view().spec_index(2), pages_4k.view().spec_index(3),
+            pages_4k.view().spec_index(8), pages_4k.view().spec_index(4), pages_4k.view().spec_index(5), pages_4k.view().spec_index(6)).subset_of(pages_4k.view().to_set()),
+        new_container_moved_pages(container_page, pcid_allocator_page, pages_4k.view().spec_index(0), pages_4k.view().spec_index(1), pages_4k.view().spec_index(2),
+            pages_4k.view().spec_index(3), pages_4k.view().spec_index(8), pages_4k.view().spec_index(4), pages_4k.view().spec_index(5), pages_4k.view().spec_index(6),
+        ).union(funding_pages.to_set()).len() == 2 * 512 + 8 + funding_pages.len(),
         pages_4k.view().to_set().disjoint(page_2m_all_ptrs(page_ptr2page_index(container_page)),),
         pages_4k.view().to_set().disjoint(page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)),),
         funding_pages.to_set().disjoint(new_container_moved_pages(
@@ -167,6 +174,13 @@ pub(super) proof fn new_container_staged_pages_disjoint(
     vstd::set_lib::lemma_set_disjoint_iff_empty_intersection(funding_page_set, moved_pages);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
+    assert(new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, cpu_set_page, child_process_ptr, child_pagetable_ptr, l4_page)
+        .subset_of(pages_4k.view().to_set())) by { reveal(new_container_bootstrap_4k_pages); pages_4k.view().to_set_ensures(); };
+    assert(moved_pages.union(funding_page_set).len() == 2 * 512 + 8 + funding_pages.len()) by {
+        reveal(new_container_moved_pages); new_container_page_positions(pages_4k.view()); funding_pages.unique_seq_to_set();
+        page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head);
+        broadcast use vstd::set_lib::lemma_set_disjoint_lens;
+    };
     let page_tails = page_2m_tail_indices(container_head).union(page_2m_tail_indices(pcid_allocator_head),);
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
     assert(page_ptrs_to_indices(pages_4k.view()).union(page_ptrs_to_indices(funding_pages)).disjoint(page_tails)) by {
@@ -198,7 +212,6 @@ pub(super) proof fn new_container_staged_pages_disjoint(
     };
 }
 
-#[verifier::spinoff_prover]
 pub(super) fn wlock_new_container_2m_page_tails(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, left: PageIndex, right: PageIndex) -> (ret: (Tracked<Map<PageIndex, LockPerm>>, Tracked<Map<PageIndex, LockPerm>>))
     requires
         old(krnl).inv(),

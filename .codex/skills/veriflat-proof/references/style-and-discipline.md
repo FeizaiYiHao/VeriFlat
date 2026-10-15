@@ -77,9 +77,12 @@
 - Do not add `#[verifier::external_body]`
   outside the explicitly approved page-retype TCB boundary:
   `retype_4k_page_perm_to_allocator`, `retype_4k_page_perm_to_scheduler`,
-  `retype_page_perm_2m_to_rwlock`, `retype_page_perm_to_rwlock`, and
-  `retype_container_page_tail_to_offline_flags`. Keep those primitives limited to consuming
-  an owned page permission and constructing the corresponding kernel object;
+  `retype_page_perm_2m_to_rwlock`, `retype_page_perm_to_rwlock`,
+  `retype_container_page_tail_to_offline_flags`, and the inverse
+  `retype_thread_rwlock_to_4k_page_perm` (an exclusively held, unreferenced
+  thread lock object back to its owned 4K page permission). Keep those
+  primitives limited to consuming an owned page permission and constructing
+  the corresponding kernel object, or the exact inverse for thread exit;
   new variants or callers require explicit authorization. The other approved
   trusted primitives are the hardware TLB invalidations
   `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`.
@@ -140,7 +143,8 @@
   time; retain only fail-on-delete proof. Preserve measured reveal order.
 - `#[verifier::spinoff_prover]` is wall-time scheduling only. Add, remove, or
   move it after paired same-scope wall measurements. Ignore rlimit for this
-  decision.
+  decision. It is never a fix for a flaky or unstable proof (user rule
+  2026-10-12): diagnose the trigger/context cause and repair the proof.
 - Prefer direct operation facts. Do not hide a hard callsite inside a new helper
   or split equations merely for prover parallelism. Splitting is appropriate
   when required to isolate solver context or bring a >10-second equation below

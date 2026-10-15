@@ -14,7 +14,8 @@ impl KernelK {
             !process_value.children.view().contains(page_ptr),
             process_ghost.uppertree_seq.view().no_duplicates(),
             process_ghost.uppertree_seq.view().len() == rodata.view().depth,
-            typed_lock_maps_aligned(old(self), old(lctx)),
+            old(self).prc_mp.typed_lock_map_aligned(old(lctx).process_lock_map(), old(lctx).thread_id()),
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).pt_mp == old(self).pt_mp,
@@ -68,12 +69,12 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(page_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
-            typed_lock_maps_aligned(final(self), final(lctx)),
+            final(self).prc_mp.typed_lock_map_aligned(final(lctx).process_lock_map(), final(lctx).thread_id()),
     {
         let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_page_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>(
             page_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(page_ptr)));
         self.prc_mp.insert_with_perm(page_ptr, Tracked(process_rwlock_perm));
-        proof { assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); }; assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        proof { assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); }; assert(self.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         Tracked(process_perm)
     }
 }

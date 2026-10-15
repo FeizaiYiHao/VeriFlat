@@ -188,7 +188,6 @@ verus! {
         &&& new_process_perms.spec_index(parent_ptr).view().children.map() == old_process_perms.spec_index(parent_ptr).view().children.map().insert(new_process_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr(), child_ptr)
     }
 
-    #[verifier::spinoff_prover]
     pub proof fn process_add_child_preserves_tree_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
@@ -319,7 +318,6 @@ verus! {
         reveal(process_linkedlist_wf); reveal(process_children_depth_wf); reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
     }
 
-#[verifier::spinoff_prover]
 #[verifier::loop_isolation(false)]
 pub fn process_tree_check_is_ancestor(root_process: RwLockProcessPtr, process_tree_dom: Ghost<Set<RwLockProcessPtr>>, process_perms: &ProcessLockedMap, a_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr) -> (ret: bool)
     requires

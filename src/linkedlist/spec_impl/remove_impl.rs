@@ -13,6 +13,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             old(self).head.unwrap() != addr,
             old(self).tail.unwrap() != addr,
         ensures
+            ret.0 == addr,
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
             ret.1.view().value().view() == old(self).map().spec_index(addr),
@@ -84,6 +85,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             old(self).wf(),
             old(self).dom().contains(addr),
         ensures
+            ret.0 == addr,
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
             ret.1.view().value().view() == old(self).map().spec_index(addr),

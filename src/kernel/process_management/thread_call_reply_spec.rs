@@ -29,4 +29,26 @@ pub open spec fn thread_caller_callee_wf(thread_map: ThreadLockedMap) -> bool {
             &&& thread_map.spec_index(caller_ptr).view().owning_container == thread_map.spec_index(callee_ptr).view().owning_container
         }
 }
+
+pub proof fn thread_caller_callee_wf_at(thread_map: ThreadLockedMap, t_ptr: RwLockThreadPtr)
+    requires
+        thread_caller_callee_wf(thread_map),
+    ensures
+        thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().callee is Some ==> ({
+            let callee_ptr = thread_map.spec_index(t_ptr).view().callee.unwrap();
+            &&& thread_map.dom().contains(callee_ptr)
+            &&& t_ptr != callee_ptr
+            &&& thread_map.spec_index(t_ptr).view().state is WAITING_REPLY
+            &&& thread_map.spec_index(callee_ptr).view().caller == Some(t_ptr)
+            &&& thread_map.spec_index(t_ptr).view().owning_container == thread_map.spec_index(callee_ptr).view().owning_container
+        }),
+        thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().caller is Some ==> ({
+            let caller_ptr = thread_map.spec_index(t_ptr).view().caller.unwrap();
+            &&& thread_map.dom().contains(caller_ptr)
+            &&& caller_ptr != t_ptr
+            &&& thread_map.spec_index(caller_ptr).view().state is WAITING_REPLY
+            &&& thread_map.spec_index(caller_ptr).view().callee == Some(t_ptr)
+            &&& thread_map.spec_index(caller_ptr).view().owning_container == thread_map.spec_index(t_ptr).view().owning_container
+        }),
+{ reveal(thread_caller_callee_wf); }
 } // verus!

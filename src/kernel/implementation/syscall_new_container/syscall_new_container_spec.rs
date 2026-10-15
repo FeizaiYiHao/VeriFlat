@@ -8,7 +8,7 @@ use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_
 
 verus! {
 /// The result of `syscall_new_container` from the state at entry, in the implementation's check order:
-/// malformed arguments or funding, a killed parent container, a parent at the maximum tree depth, a
+/// malformed arguments or funding, a killed or zombie parent container, a parent at the maximum tree depth, a
 /// killed process or caller, an empty `endpoint_index` descriptor, too little caller 4K or 2M quota, a
 /// source range below the first user L4 index or with a page that has no present 4K leaf, and a transfer
 /// cpu that the parent container does not own or that is not Off. `Success` stands for
@@ -26,6 +26,7 @@ pub open spec fn new_container_syscall_result(
         || funding_page_count > usize::MAX - 9 - 3 * range {
         RetValueType::Error
     } else if parent.killed { RetValueType::ErrorContainerKilled }
+    else if parent.zombie { RetValueType::ErrorContainerZombie }
     else if parent.depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
@@ -38,7 +39,7 @@ pub open spec fn new_container_syscall_result(
     else { RetValueType::Success }
 }
 
-/// The cpu runs a live thread of a live process inside its live container, which is below the
+/// The cpu runs a live thread of a live process inside its live, non-zombie container, which is below the
 /// maximum container depth; the thread has no syscall in progress; `range` is a nonempty well-formed user
 /// range whose every page the process maps; `process_quota <= funding`, and the thread's quotas pay
 /// for the child's pages, `funding`, and three directory pages per shared page; `transfer_cpu` is an
@@ -65,6 +66,7 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     &&& container.lock_state is Unlocked
     &&& container.cpu_set_lock is Unlocked
     &&& !container.killed
+    &&& !container.zombie
     &&& container.depth < MAX_CONTAINER_TREE_DEPTH
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is Unlocked

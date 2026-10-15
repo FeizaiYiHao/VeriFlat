@@ -210,7 +210,7 @@ pub(in super::super) fn commit_new_process(
             *source_range, *initial_regs, endpoint_index_opt, false)) by {
             new_process_trace_publish_step(&*steps, publish_before, old(steps).view().len() as int, old(steps).snapshot_u(), cpu_id, *source_range, *initial_regs, endpoint_index_opt, false);
         };
-        assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { reveal(container_allocator_wf); };
+        assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by { reveal(mapped_4k_page_pagetable_wf); source_range.va_range_lemma(); };
     }
     proof {
@@ -246,22 +246,22 @@ pub(in super::super) fn commit_new_process(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl));
 
-        assert(!krnl.prc_mp.spec_index(child_ptr).view().zombie) by { reveal(process_pagetable_match); };
+        assert(!krnl.prc_mp.spec_index(child_ptr).view().zombie);
     }
     proof {
         if let Some(endpoint_ptr) = endpoint {
             assert(krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf()
                 && krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)) by {
-                thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); reveal(thread_endpoint_ref_counter_wf);
+                thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_endpoint_ref_counter_wf_endpoint_at(krnl.thr_mp, krnl.ep_mp, endpoint_ptr, current_thread_ptr, endpoint_index);
             };
             assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); };
             assert({
                 ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
                 ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
-            }) by { reveal(container_thread_endpoint_wf); };
+            }) by { container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
         }
     }
-    proof { assert(krnl.prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr) by { reveal(process_pagetable_match); }; }
+    proof { assert(krnl.prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_ptr); }; }
     let ghost finish_before = steps.view();
     let new_thread_ptr = create_initial_thread_and_finish_new_process(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, child_ptr, current_thread_ptr, scheduler_ptr,

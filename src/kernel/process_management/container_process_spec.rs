@@ -13,6 +13,8 @@ pub open spec fn container_process_wf(container_perms: ContainerLockedMap, proce
             &&& !container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().is_empty()
                 ==> process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process) && container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(container_perms.spec_index(c_ptr).view().root_process)
             &&& container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().subset_of(process_perms.dom())
+            &&& container_perms.spec_index(c_ptr).view().zombie
+                ==> process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process) && process_perms.spec_index(container_perms.spec_index(c_ptr).view().root_process).view().zombie
         }
     &&& forall|c_ptr: RwLockContainerPtr, p_ptr: RwLockProcessPtr|
         #![trigger container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(p_ptr)]
@@ -26,6 +28,28 @@ pub open spec fn container_process_wf(container_perms: ContainerLockedMap, proce
             &&& container_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().owning_container).view_rodata().view().depth == process_perms.spec_index(p_ptr).view_rodata().view().container_depth
         }
 }
+
+pub proof fn container_process_wf_process_at(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+    requires
+        container_process_wf(container_perms, process_perms),
+    ensures
+        process_perms.dom().contains(p_ptr) ==> ({
+            let c_ptr = process_perms.spec_index(p_ptr).view_rodata().view().owning_container;
+            &&& container_perms.dom().contains(c_ptr)
+            &&& container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(p_ptr)
+            &&& container_perms.spec_index(c_ptr).view_rodata().view().depth == process_perms.spec_index(p_ptr).view_rodata().view().container_depth
+        }),
+{ reveal(container_process_wf); }
+
+pub proof fn container_process_wf_container_at(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap, c_ptr: RwLockContainerPtr, p_ptr: RwLockProcessPtr)
+    requires
+        container_process_wf(container_perms, process_perms),
+    ensures
+        container_perms.dom().contains(c_ptr) ==> ({
+            &&& container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().subset_of(process_perms.dom())
+            &&& container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(p_ptr) ==> process_perms.spec_index(p_ptr).view_rodata().view().owning_container == c_ptr
+        }),
+{ reveal(container_process_wf); }
 
 #[verifier::opaque]
 pub open spec fn per_container_process_tree_wf(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap) -> bool

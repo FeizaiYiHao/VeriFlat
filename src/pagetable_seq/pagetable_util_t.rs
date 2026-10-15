@@ -10,7 +10,8 @@ impl KernelK {
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             pagetable_value.inv(),
-            typed_lock_maps_aligned(old(self), old(lctx)),
+            old(self).pt_mp.typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id()),
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).it_mp == old(self).it_mp,
@@ -63,7 +64,7 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(page_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
-            typed_lock_maps_aligned(final(self), final(lctx)),
+            final(self).pt_mp.typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
     {
         let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTable<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>(page_ptr, pagetable_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(page_ptr)));
         self.pt_mp.insert_with_perm(page_ptr, Tracked(pagetable_rwlock_perm));
@@ -74,7 +75,7 @@ impl KernelK {
                 reveal(mapped_2m_page_pagetable_wf);
                 reveal(mapped_1g_page_pagetable_wf);
             };
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(self.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         Tracked(pagetable_perm)
     }
@@ -86,7 +87,8 @@ impl KernelK {
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             iommu_table_value.inv(),
-            typed_lock_maps_aligned(old(self), old(lctx)),
+            old(self).it_mp.typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).pt_mp == old(self).pt_mp,
@@ -130,11 +132,11 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuTable(page_ptr), TypedHeldLock { lock_id: final(self).it_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
-            typed_lock_maps_aligned(final(self), final(lctx)),
+            final(self).it_mp.typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
     {
         let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>(page_ptr, iommu_table_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(page_ptr)));
         self.it_mp.insert_with_perm(page_ptr, Tracked(iommu_table_rwlock_perm));
-        proof { assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        proof { assert(self.it_mp.typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         Tracked(iommu_table_perm)
     }
 }

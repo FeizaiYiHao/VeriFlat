@@ -27,26 +27,27 @@ pub proof fn unmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
 { reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// An unmap leaf on a cpu of `a` removes one mapping of a process of `a`.
-pub proof fn unmap_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn unmap_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        unmap_4k_leaf_step_pre(old_u, cpu_id),
-        unmap_4k_leaf_step(old_u, new_u, cpu_id),
+        unmap_4k_leaf_step_pre(old_u, cpu_id, va),
+        unmap_4k_leaf_step(old_u, new_u, cpu_id, va),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+{ reveal(unmap_4k_leaf_trace_step_pre); reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `unmap_4k_leaf_step_lr` preserves isolation.
-pub proof fn unmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn unmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        unmap_4k_leaf_step_pre(old_u, cpu_id),
-        unmap_4k_leaf_step(old_u, new_u, cpu_id),
+        unmap_4k_leaf_step_pre(old_u, cpu_id, va),
+        unmap_4k_leaf_step(old_u, new_u, cpu_id, va),
     ensures isolated(new_u, a, b),
-{ reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
+{ reveal(unmap_4k_leaf_trace_step_pre); reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
+
 
 /// An unmap TLB flush changes only cpu TLBs, which no domain view contains.
 pub proof fn unmap_4k_tlb_cleared_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, pcid: Pcid, a: RwLockContainerPtr, b: RwLockContainerPtr)

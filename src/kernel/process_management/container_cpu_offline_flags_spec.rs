@@ -15,4 +15,14 @@ pub open spec fn container_cpu_offline_flags_wf(container_map: ContainerLockedMa
         &&& cpu_offline_flags_ptr(c_ptr) == flags_ptr
     }
 }
+
+pub proof fn container_cpu_offline_flags_wf_container_at(container_map: ContainerLockedMap, flags_map: CpuOfflineFlagsUnLockedMap, c_ptr: RwLockContainerPtr)
+    requires
+        container_cpu_offline_flags_wf(container_map, flags_map),
+    ensures
+        container_map.dom().contains(c_ptr) ==> ({
+            &&& flags_map.dom().contains(cpu_offline_flags_ptr(c_ptr))
+            &&& flags_map.spec_index(cpu_offline_flags_ptr(c_ptr)).owning_container.view() == c_ptr
+        }),
+{ reveal(container_cpu_offline_flags_wf); }
 }

@@ -80,7 +80,7 @@ verus! {
                 let c_ghost = krnl.ctn_mp.spec_index(ptr).view_ghost();
                 let c_ro = krnl.ctn_mp.spec_index(ptr).view_rodata().view();
                 ContainerU {
-                    lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
+                    lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked }, zombie: c.zombie,
                     children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                     root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
                     owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),

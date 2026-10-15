@@ -73,7 +73,9 @@ impl KernelK {
     {
         proof {
             container_perms_wf_at(old(self).ctn_mp, container_ptr);
-            assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
+            if !old(self).ctn_mp.spec_index(container_ptr).being_killed() {
+                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
+            }
             assert(!old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()) {
                     assert(old(lctx).container_lock_map().dom().contains(container_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -139,10 +141,10 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Container(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr)),
     {
         proof {
-            assert({ &&& old(self).ctn_mp.perms_wf() &&& old(self).ctn_mp.spec_index(container_ptr).inv() }) by { reveal(container_perms_wf); };
+            assert({ &&& old(self).ctn_mp.perms_wf() &&& old(self).ctn_mp.spec_index(container_ptr).inv() }) by { container_perms_wf_at(old(self).ctn_mp, container_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
-        assert(self.ctn_mp.spec_index(container_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(self.ctn_mp.spec_index(container_ptr).wlocked_by(&*lctx)) by { old(self).ctn_mp.typed_lock_map_aligned_write_at(old(lctx).container_lock_map(), old(lctx).thread_id(), container_ptr); };
         self.ctn_mp.wunlock(container_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Container(container_ptr)));
         proof {
             assert(container_perms_wf(self.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };

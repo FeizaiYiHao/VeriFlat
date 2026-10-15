@@ -122,7 +122,6 @@ pub broadcast proof fn held_pages_unchanged_except_transitive_for_held_middle(pr
 {}
 
 pub broadcast group group_held_objects_unchanged_transitive {
-    held_kernel_objects_unchanged_reflexive,
     held_containers_unchanged_transitive,
     held_processes_unchanged_transitive,
     held_threads_unchanged_transitive,

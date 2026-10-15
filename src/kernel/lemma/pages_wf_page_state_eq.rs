@@ -76,6 +76,20 @@ pub proof fn endpoint_pages_wf_preserved_for_page_state_eq(old_endpoint_map: End
         endpoint_pages_wf(new_endpoint_map, new_page_array),
 { reveal(endpoint_pages_wf); }
 
+// cpu_set_pages_wf: Allocated4k{AsCpuSet} <-> cpu_set_map.dom().
+pub proof fn cpu_set_pages_wf_preserved_for_page_state_eq(old_cpu_set_map: CpuSetLockedMap, new_cpu_set_map: CpuSetLockedMap, old_page_array: PageLockedArray, new_page_array: PageLockedArray)
+    requires
+        cpu_set_pages_wf(old_cpu_set_map, old_page_array),
+        new_cpu_set_map.dom() == old_cpu_set_map.dom(),
+        forall|p_i: PageIndex|
+            #![trigger new_page_array.spec_index(p_i).view().view().state]
+            index_valid(NUM_PAGES, p_i)
+                && ((old_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsCpuSet }) || (new_page_array.spec_index(p_i).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsCpuSet }))
+                ==> new_page_array.spec_index(p_i).view().view().state == old_page_array.spec_index(p_i).view().view().state,
+    ensures
+        cpu_set_pages_wf(new_cpu_set_map, new_page_array),
+{ reveal(cpu_set_pages_wf); }
+
 // pagetable_pages_wf: Allocated4k{AsPageTableRoot} and Allocated4k{PageTable} of one table type <-> pagetable_map roots and page closures.
 pub proof fn pagetable_pages_wf_preserved_for_page_state_eq<const TABLE_TYPE: PTType>(old_pagetable_map: PageTableLockedMapOf<TABLE_TYPE>, new_pagetable_map: PageTableLockedMapOf<TABLE_TYPE>, old_page_array: PageLockedArray, new_page_array: PageLockedArray)
     requires

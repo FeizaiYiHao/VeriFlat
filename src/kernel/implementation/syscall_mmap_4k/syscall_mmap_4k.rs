@@ -100,7 +100,7 @@ verus! {
             &&& krnl.pt_mp.dom().contains(pagetable_ptr)
             &&& krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr
-        }) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(process_thread_wf); reveal(process_pagetable_match); };
+        }) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); reveal(process_pagetable_match); };
 
         let result = if quota_4k < 4 * range {
             proof { assert(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorNoQuota) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); }; }
@@ -130,7 +130,7 @@ verus! {
                             mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, va_range);
                         };
                         assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr) && !krnl.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(container_thread_wf); reveal(process_cpu_wf); };
-                        assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
+                        assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
                     }
                     let ghost entered = steps.view();
                     mmap_4k_map_leaf_range(krnl, &va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));

@@ -56,7 +56,7 @@ pub fn syscall_pci_attach_dma(
         &&& krnl.prc_mp.dom().contains(cpu.current_process.unwrap())
         &&& !krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view().zombie
         &&& krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view_rodata().view().owning_container == cpu.owning_container
-    }) by { reveal(cpu_array_wf); reveal(process_cpu_wf); };
+    }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let process_ptr = cpu.current_process().unwrap();
@@ -78,7 +78,7 @@ pub fn syscall_pci_attach_dma(
         return RetValueType::ErrorProcessKilled;
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); }; }
+    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(process_thread_wf); }; }
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(lctx));
     let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus, device, function);
     let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, device, function);
@@ -112,6 +112,16 @@ pub fn syscall_pci_attach_dma(
     proof {
         assert(old(krnl).prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { reveal(process_pci_function_ownership_wf); };
         assert(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table is Some && page_ptr_valid(root)) by { reveal(process_iommu_table_match); reveal(iommu_table_perms_wf); reveal(PageTable::table_pages_wf); };
+        let iommu_table = krnl.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
+        assert(!lctx.iommu_table_lock_map().dom().contains(iommu_table));
+        krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
+        assert(!(krnl.it_mp.spec_index(iommu_table).locking_thread() is Write)) by {
+            reveal(iommu_table_lock_wf); reveal(process_iommu_table_match);
+            if krnl.it_mp.spec_index(iommu_table).locking_thread() is Write {
+                assert(krnl.it_mp.spec_index(iommu_table).locked_by_thread(lctx.thread_id()));
+                assert(lctx.iommu_table_lock_map().dom().contains(iommu_table)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            }
+        };
     }
     let ghost before_attach = *krnl;
     iommu_root_table_attach(&mut krnl.irt, bus, device, function, root, Tracked(&*lctx), Tracked(&irt_lock_perm));

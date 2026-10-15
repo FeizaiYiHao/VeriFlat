@@ -45,7 +45,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(PageSize::SZ4k, alloc_ptr_4k), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { reveal(allocator_perms_wf); };
+            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
             assert(old(lctx).lock_id_acyclic(LockId { container: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().container_depth(),
                 process: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().process_depth(),
                 major: old(self).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().current_lock_major(),

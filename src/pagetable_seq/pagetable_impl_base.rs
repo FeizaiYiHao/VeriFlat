@@ -207,7 +207,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         }
     }
 
-    #[verifier::spinoff_prover]
     pub fn create_entry_l4(&mut self, target_l4i: L4Index, target_l3i: L3Index, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -285,7 +284,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    #[verifier::spinoff_prover]
     pub fn create_entry_l3(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -377,7 +375,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    #[verifier::spinoff_prover]
     pub fn create_entry_l2(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -468,7 +465,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    #[verifier::spinoff_prover]
     pub fn map_4k_page(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),

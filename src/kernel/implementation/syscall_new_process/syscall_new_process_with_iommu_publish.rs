@@ -166,6 +166,7 @@ pub(super) fn publish_staged_process_with_iommu(
         final(krnl).prc_mp.dom().contains(ret.0),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), ret.0, TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(ret.0).being_killed(),
+        !final(krnl).prc_mp.spec_index(ret.0).view().zombie,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().owning_container == container_ptr,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pagetable == ret.1,
         final(krnl).prc_mp.spec_index(ret.0).view().iommu_table == Some(ret.2),
@@ -244,7 +245,6 @@ pub(super) fn publish_staged_process_with_iommu(
             page_ptr2page_index_neq(iommu_table_page_ptr, iommu_l4_page_ptr);
         };
     }
-    proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     let (child_ptr, target_pagetable_ptr, iommu_table_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm)) = create_process_with_iommu_from_staged_pages(
         krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, current_thread_ptr,
         container_ptr, pcid_allocator_ptr, pcid, Tracked(&mut *lctx), Tracked(&process_page_lock_perm), Tracked(&pagetable_page_lock_perm),
@@ -278,7 +278,7 @@ pub(super) fn publish_staged_process_with_iommu(
     }
     proof {
         assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by { reveal(KernelK::default_pagetable_wf); };
     }
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, target_pagetable_ptr, krnl.pt_mp.spec_index(target_pagetable_ptr).view())) by { reveal(tlb_wf_spec); }; }

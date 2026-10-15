@@ -19,12 +19,14 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, process_ptr:
         !pre.prc_mp.spec_index(process_ptr).view().zombie,
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().iommu_cr3 == Some(root),
         pre.irt.view().spec_index_owner(bus, device, function) == process_ptr,
+        pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> !(pre.it_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).locking_thread() is Write),
     ensures
         post.inv(),
 {
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); };
+    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); reveal(process_iommu_table_match); };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!

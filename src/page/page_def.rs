@@ -12,6 +12,8 @@ pub struct Page {
     pub ref_count: usize,
     pub owning_container: RwLockContainerPtr,
     pub mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
+    /// Reverse map of the IOMMU tables that map this page, keyed by IOVA; `ref_count` counts both reverse maps.
+    pub iommu_mappings: Ghost<Set<(RwLockPageTableRoot, VAddr)>>,
     pub free_list_node_storage: ExternalNode<PageIndex>,
     pub free_list: RwLockContainerPtr,
 
@@ -25,9 +27,10 @@ pub struct Page {
 
 impl Page {
     pub open spec fn mappings(&self) -> Set<(RwLockPageTableRoot, VAddr)> { self.mappings.view() }
+    pub open spec fn iommu_mappings(&self) -> Set<(RwLockPageTableRoot, VAddr)> { self.iommu_mappings.view() }
 
     pub open spec fn ref_count_inv(&self) -> bool {
-        &&& self.ref_count == self.mappings.view().len()
+        &&& self.ref_count == self.mappings.view().len() + self.iommu_mappings.view().len()
     }
 
     pub open spec fn mapped_state_inv(&self) -> bool {
@@ -79,6 +82,7 @@ impl Page {
         }
     }
 
+    #[verifier::opaque]
     pub open spec fn mappings_va_valid(&self) -> bool {
         &&& forall|pt_p: RwLockPageTableRoot, va: VAddr|
             self.state is Mapped4k && self.mappings().contains((pt_p, va)) ==> va_4k_valid(va)
@@ -86,6 +90,12 @@ impl Page {
             self.state is Mapped2m && self.mappings().contains((pt_p, va)) ==> crate::va_2m_valid(va)
         &&& forall|pt_p: RwLockPageTableRoot, va: VAddr|
             self.state is Mapped1g && self.mappings().contains((pt_p, va)) ==> crate::va_1g_valid(va)
+        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr|
+            self.state is Mapped4k && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_4k_valid(iova)
+        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr|
+            self.state is Mapped2m && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_2m_valid(iova)
+        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr|
+            self.state is Mapped1g && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_1g_valid(iova)
     }
 
     pub open spec fn is_mapped(&self) -> bool {
@@ -175,11 +185,13 @@ pub fn set_4k_staging_next(page: &mut Page, next: PagePtr)
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings == old(page).mappings,
+        final(page).iommu_mappings == old(page).iommu_mappings,
         final(page).free_list_node_storage == old(page).free_list_node_storage,
         final(page).perm_4k == old(page).perm_4k,
         final(page).perm_2m == old(page).perm_2m,
         final(page).perm_1g == old(page).perm_1g,
 {
+    proof { reveal(Page::mappings_va_valid); }
     page.free_list = next;
 }
 
@@ -199,10 +211,12 @@ pub fn convert_owned_4k_to_free_global(page: &mut Page, allocator_ptr: RwLockPag
         final(page).is_io_page == old(page).is_io_page,
         final(page).ref_count == old(page).ref_count,
         final(page).mappings == old(page).mappings,
+        final(page).iommu_mappings == old(page).iommu_mappings,
         final(page).perm_4k == old(page).perm_4k,
         final(page).perm_2m == old(page).perm_2m,
         final(page).perm_1g == old(page).perm_1g,
 {
+    proof { reveal(Page::mappings_va_valid); }
     let (node_addr, Tracked(node_perm)) = page.free_list_node_storage.take();
     page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList };
     page.owning_container = owning_container;
@@ -222,11 +236,13 @@ pub fn clear_free_4k_staging_next(page: &mut Page)
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings == old(page).mappings,
+        final(page).iommu_mappings == old(page).iommu_mappings,
         final(page).free_list_node_storage == old(page).free_list_node_storage,
         final(page).perm_4k == old(page).perm_4k,
         final(page).perm_2m == old(page).perm_2m,
         final(page).perm_1g == old(page).perm_1g,
 {
+    proof { reveal(Page::mappings_va_valid); }
     page.free_list = 0;
 }
 
@@ -249,6 +265,7 @@ pub fn take_perm_4k(page: &mut Page) -> (ret: Tracked<PagePerm4k>)
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings.view() == old(page).mappings.view(),
+        final(page).iommu_mappings.view() == old(page).iommu_mappings.view(),
         final(page).free_list_node_storage == old(page).free_list_node_storage,
         final(page).free_list == old(page).free_list,
         final(page).perm_2m.view() == old(page).perm_2m.view(),
@@ -271,9 +288,37 @@ pub fn retype_owned_4k_to_kernel_object(page: &mut Page, new_state: PageState) -
         ret.view().is_init(),
         ret.view().addr() == final(page).addr,
 {
+    proof { reveal(Page::mappings_va_valid); }
     let Tracked(ret) = take_perm_4k(page);
     page.state = new_state;
     Tracked(ret)
+}
+
+/// Return the memory of a retired 4k kernel object to CPU cache `cpu_id` of `allocator_ptr`.
+pub fn convert_kernel_object_4k_to_free_cache(page: &mut Page, Tracked(perm): Tracked<PagePerm4k>, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+    requires
+        old(page).inv(),
+        old(page).state is Allocated4k,
+        perm.is_init(),
+        perm.addr() == old(page).addr,
+        index_valid(NUM_CPUS, cpu_id),
+    ensures
+        final(page).inv(),
+        *final(page) == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
+            free_list_node_storage: final(page).free_list_node_storage, perm_4k: final(page).perm_4k, ..*old(page) }),
+        final(page).perm_4k.view() == Some(perm),
+        final(page).free_list_node_storage.addr() == old(page).free_list_node_storage.addr(),
+        ret.0 == old(page).free_list_node_storage.addr(),
+        ret.1.view().is_init(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().value().view() == old(page).addr,
+{
+    proof { reveal(Page::mappings_va_valid); }
+    let (node_addr, mut node_perm) = page.free_list_node_storage.take();
+    node_update_value(node_addr, &mut node_perm, page.addr);
+    page.perm_4k = Tracked(Some(perm));
+    page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
+    (node_addr, node_perm)
 }
 
 pub fn take_perm_2m(page: &mut Page) -> (ret: Tracked<PagePerm2m>)
@@ -292,6 +337,7 @@ pub fn take_perm_2m(page: &mut Page) -> (ret: Tracked<PagePerm2m>)
         final(page).ref_count == old(page).ref_count,
         final(page).owning_container == old(page).owning_container,
         final(page).mappings.view() == old(page).mappings.view(),
+        final(page).iommu_mappings.view() == old(page).iommu_mappings.view(),
         final(page).free_list_node_storage == old(page).free_list_node_storage,
         final(page).free_list == old(page).free_list,
         final(page).perm_4k.view() == old(page).perm_4k.view(),
@@ -312,6 +358,7 @@ pub fn add_4k_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: V
     ensures
         final(page).inv(),
         final(page).mappings() == old(page).mappings().insert((pagetable_ptr, va)),
+        final(page).iommu_mappings == old(page).iommu_mappings,
         final(page).ref_count == old(page).ref_count + 1,
         final(page).addr == old(page).addr,
         final(page).state == old(page).state,
@@ -325,5 +372,6 @@ pub fn add_4k_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: V
 {
     page.mappings = Ghost(page.mappings().insert((pagetable_ptr, va)));
     page.ref_count = page.ref_count + 1;
+    proof { reveal(Page::mappings_va_valid); assert(page.iommu_mappings() == old(page).iommu_mappings()); }
 }
 }

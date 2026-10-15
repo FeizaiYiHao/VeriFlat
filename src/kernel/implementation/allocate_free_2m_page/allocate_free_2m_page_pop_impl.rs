@@ -9,7 +9,6 @@ use crate::*;
 
 verus! {
     /// Pops the head 2m page of the CPU cache (`source` is `Some`) or the global pool (`None`) and stages it on `thread_ptr`.
-    #[verifier::spinoff_prover]
     pub(super) fn pop_stage_2m_page(
         krnl: &mut KernelK, alloc_ptr_2m: RwLockPageAllocatorPtr, source: Option<CpuId>, thread_ptr: RwLockThreadPtr,
         container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(source_lock_perm): Tracked<&LockPerm>,
@@ -134,7 +133,7 @@ verus! {
             }
         }
         assert(krnl.pg_arr.inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).is_init()) by {
-            assert(krnl.pg_arr.inv()) by { reveal(page_array_wf); };
+            assert(krnl.pg_arr.inv()) by { page_array_wf_at(krnl.pg_arr, page_index); };
             thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         };
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);

@@ -83,4 +83,18 @@ pub proof fn page_pagetable_wf_preserved_for_nonmapped_page_change(old_pagetable
     ensures
         page_pagetable_wf(new_pagetable_map, new_page_array),
 { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); }
+
+pub proof fn container_process_page_pagetable_wf_preserved_for_page_mapping_fields_eq(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap, old_page_array: PageLockedArray, new_page_array: PageLockedArray)
+    requires
+        container_process_page_pagetable_wf(container_map, process_map, pagetable_map, old_page_array),
+        forall|p_i: PageIndex|
+            #![trigger new_page_array.spec_index(p_i)]
+            index_valid(NUM_PAGES, p_i) && new_page_array.spec_index(p_i).view().view().is_mapped() ==> {
+                &&& old_page_array.spec_index(p_i).view().view().is_mapped()
+                &&& new_page_array.spec_index(p_i).view().view().mappings() == old_page_array.spec_index(p_i).view().view().mappings()
+                &&& new_page_array.spec_index(p_i).view().view().owning_container == old_page_array.spec_index(p_i).view().view().owning_container
+            },
+    ensures
+        container_process_page_pagetable_wf(container_map, process_map, pagetable_map, new_page_array),
+{ reveal(container_process_page_pagetable_wf); }
 }

@@ -8,6 +8,13 @@ pub open spec fn cpu_set_perms_wf(cpu_set_map: CpuSetLockedMap) -> bool {
     &&& forall|cpu_set_ptr: RwLockCpuSetPtr| #![trigger cpu_set_map.dom().contains(cpu_set_ptr)] cpu_set_map.dom().contains(cpu_set_ptr) ==> cpu_set_map.spec_index(cpu_set_ptr).inv()
 }
 
+pub proof fn cpu_set_perms_wf_at(cpu_set_map: CpuSetLockedMap, cpu_set_ptr: RwLockCpuSetPtr)
+    requires
+        cpu_set_perms_wf(cpu_set_map),
+    ensures
+        cpu_set_map.dom().contains(cpu_set_ptr) ==> cpu_set_map.spec_index(cpu_set_ptr).inv(),
+{ reveal(cpu_set_perms_wf); }
+
 pub proof fn cpu_set_perms_wf_map(cpu_set_map: CpuSetLockedMap)
     requires cpu_set_perms_wf(cpu_set_map)
     ensures cpu_set_map.perms_wf()

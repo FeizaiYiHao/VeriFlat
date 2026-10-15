@@ -93,9 +93,9 @@ pub fn unmap_4k_range(
     let ghost process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
     let ghost container_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
-    assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { reveal(thread_perms_wf); };
+    assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     assert(krnl.prc_mp.dom().contains(process_ptr) && !krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable
-        && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == process_ptr) by { reveal(process_pagetable_match); reveal(process_thread_wf); };
+        && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == process_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
     let start = range.start;
     let mut i = 0usize;
     while i < range.len
@@ -200,25 +200,37 @@ pub fn unmap_4k_range(
         krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Unmap4k { range: *range, unmapped: (i + 1) as usize, flushed: false })), Tracked(&*lctx), thread_perm);
         proof {
             assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, process_ptr, pagetable, va)) by { reveal(kernel_process_4k_mapping_changed); };
-            assert(unmap_4k_leaf_step_pre(steps.snapshot_u(), cpu_id) && unmap_4k_leaf_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
+            assert(unmap_4k_leaf_step_pre(steps.snapshot_u(), cpu_id, va) && unmap_4k_leaf_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, va)) by {
                 range.va_range_lemma();
+                assert(range.view().contains(va)) by { assert(range.view()[i as int] == va); };
                 kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&steps.snapshot_k(), &*krnl, pagetable, va, thread_ptr);
                 unmap_4k_leaf_step_from_u(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, va);
             };
             let ghost leaf_before = steps.view();
             let ghost leaf_pre = steps.snapshot_u();
             let ghost leaf_k = *krnl;
-            krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable, va, process_ptr, pagetable, thread_ptr);
+            krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable, va, process_ptr, pagetable, thread_ptr, thread_ptr);
             assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id)) by {
-                unmap_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, leaf_pre, kernel_k_to_kernel_u(leaf_k), cpu_id);
+                unmap_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, leaf_pre, kernel_k_to_kernel_u(leaf_k), cpu_id, va);
             };
         }
         i = i + 1;
     }
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    let ghost flush_before = steps.view();
+    let ghost flush_entry = kernel_k_to_kernel_u(*krnl);
+    proof {
+        assert(unmap_4k_flush_step_pre(flush_entry, cpu_id) && flush_entry.cpu_array[cpu_id as int].current_thread == Some(thread_ptr) && flush_entry.thread_map[thread_ptr].owning_proc == process_ptr
+            && flush_entry.thread_map[thread_ptr].owning_container == container_ptr && flush_entry.process_map[process_ptr].pcid == pcid) by {
+            kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, None);
+            unmap_4k_flush_step_pre_from_u(flush_entry, cpu_id, thread_ptr);
+        };
+    }
     flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
     proof {
+        unmap_4k_range_steps_from_tlb_flush(&*steps, flush_before, old(steps).view().len() as int, flush_entry, cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
         use_type_invariant(&*steps);
+
         assert(unmap_4k_flush_step_pre(steps.snapshot_u(), cpu_id) && steps.snapshot_u().cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             && steps.snapshot_u().thread_map[thread_ptr].syscall_progress == krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()) by {
             kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, None);
@@ -240,7 +252,7 @@ pub fn unmap_4k_range(
             unmap_4k_range_steps_from_flushed(&*steps, flushed_before, old(steps).view().len() as int, flushed_pre, kernel_k_to_kernel_u(flushed_k), cpu_id);
         };
     }
-    assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { reveal(thread_perms_wf); };
+    assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     assert(krnl.thr_mp.spec_index(thread_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_thread_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;

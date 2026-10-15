@@ -107,6 +107,7 @@ pub(super) fn commit_new_container(
         old(krnl).ctn_mp.dom().contains(parent_container_ptr),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
+        !old(krnl).ctn_mp.spec_index(parent_container_ptr).view().zombie,
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
         parent_container_lock_perm.view().state() is WriteLock,
         parent_container_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -218,12 +219,6 @@ pub(super) fn commit_new_container(
         owned_2m_all_ptrs_belong_to_container(krnl, page_ptr2page_index(container_page), parent_container_ptr);
         owned_2m_all_ptrs_belong_to_container(krnl, page_ptr2page_index(pcid_allocator_page), parent_container_ptr);
         let ghost parent_owned_pages = krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view();
-        let ghost bootstrap_pages = new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, child_cpu_set, child_process_ptr, child_pagetable_ptr, l4_page);
-        assert(bootstrap_pages.subset_of(pages_4k.view().to_set())) by { reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); pages_4k.view().to_set_ensures(); };
-        assert(new_container_moved_pages(
-            container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, child_cpu_set, child_process_ptr,
-            child_pagetable_ptr, l4_page,
-        ).subset_of(parent_owned_pages)) by { reveal(new_container_moved_pages); };
         assert(!krnl.ctn_mp.dom().contains(container_page)) by { page_ptr_roundtrip(); reveal(container_pages_wf); };
         assert(!krnl.pcid_allc_mp.dom().contains(pcid_allocator_page)) by { page_ptr_roundtrip(); reveal(pcid_allocator_pages_wf); };
         assert(!krnl.cpu_set_mp.dom().contains(child_cpu_set)) by { reveal(cpu_set_pages_wf); assert(page_4k_lock_perms.dom().contains(child_cpu_set)) by { pages_4k.view().to_set_ensures(); }; };
@@ -250,18 +245,12 @@ pub(super) fn commit_new_container(
         assert(!krnl.sched_mp.dom().contains(child_scheduler_ptr)) by { page_ptr_roundtrip(); reveal(scheduler_pages_wf); };
         assert(!krnl.prc_mp.dom().contains(child_process_ptr)) by { page_ptr_roundtrip(); reveal(process_pages_wf); };
         assert(!krnl.pt_mp.dom().contains(child_pagetable_ptr)) by { page_ptr_roundtrip(); reveal(pagetable_pages_wf); };
-        assert(lctx.page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(page_ptrs_to_indices(funding_pages)).union(seq![
-            page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page),
-        ].to_set())) by { seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set_ensures(); };
         new_container_staged_pages_disjoint(krnl, lctx, &pages_4k, funding_pages, page_4k_lock_perms, funding_page_lock_perms, current_thread_ptr, parent_container_ptr, container_page, pcid_allocator_page);
+        assert(new_container_moved_pages(
+            container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, child_scheduler_ptr, child_cpu_set, child_process_ptr,
+            child_pagetable_ptr, l4_page,
+        ).subset_of(parent_owned_pages)) by { reveal(new_container_moved_pages); };
         assert(!steps.snapshot_k().prc_mp.dom().contains(child_process_ptr) && parent_process_ptr != child_process_ptr) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); };
-        assert(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, child_scheduler_ptr, child_cpu_set, child_process_ptr, child_pagetable_ptr, l4_page
-        ).union(funding_pages.to_set()).len() == 2 * 512 + 8 + funding_page_count) by {
-            reveal(new_container_moved_pages); new_container_page_positions(pages_4k.view()); funding_pages.unique_seq_to_set();
-            page_2m_all_ptrs_contains_head(page_ptr2page_index(container_page)); page_2m_all_ptrs_contains_head(page_ptr2page_index(pcid_allocator_page));
-            broadcast use vstd::set_lib::lemma_set_disjoint_lens;
-        };
         assert(krnl.cpu_arr.spec_index(transfer_cpu_id).value.locking_thread() is None ==> new_container_publish_step_pre(steps.snapshot_u(), caller_cpu_id)
             && steps.snapshot_u().cpu_array[caller_cpu_id as int].current_thread == Some(current_thread_ptr)
             && steps.snapshot_u().thread_map[current_thread_ptr].owning_container == parent_container_ptr) by {

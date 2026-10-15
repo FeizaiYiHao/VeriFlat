@@ -78,8 +78,6 @@ pub open spec fn ipc_cpu_rendezvous_transition(
     &&& forall|key: RwLockCpuSetPtr| #![trigger pre.cpu_set_mp.spec_index(key)] #![trigger post.cpu_set_mp.spec_index(key)] pre.cpu_set_mp.dom().contains(key) ==> {
         let before = pre.cpu_set_mp.spec_index(key);
         let after = post.cpu_set_mp.spec_index(key);
-        &&& post.cpu_set_mp.view().spec_index(key).is_init() == pre.cpu_set_mp.view().spec_index(key).is_init()
-        &&& post.cpu_set_mp.view().spec_index(key).addr() == pre.cpu_set_mp.view().spec_index(key).addr()
         &&& !(key == source_cpu_set || key == target_cpu_set) ==> after == before
         &&& (key == source_cpu_set || key == target_cpu_set) ==> {
             &&& after.is_init() == before.is_init()

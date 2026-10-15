@@ -38,7 +38,7 @@ verus! {
                     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
                     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
                     &&& krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().state == (ThreadState::RUNNING { cpu_id })
-                }) by { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
+                }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
             }
             let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
@@ -50,13 +50,13 @@ verus! {
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
                 &&& krnl.prc_mp.view().spec_index(process_ptr).is_init()
                 &&& krnl.prc_mp.view().spec_index(process_ptr).addr() == process_ptr
-            }) by { reveal(process_cpu_wf); reveal(process_perms_wf); };
+            }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_perms_wf_at(krnl.prc_mp, process_ptr); };
             let container_ptr = krnl.prc_mp.borrow_rodata(process_ptr).borrow().owning_container;
             assert({
                 &&& krnl.ctn_mp.dom().contains(container_ptr)
                 &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
                 &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
-            }) by { reveal(container_process_wf); reveal(container_perms_wf); };
+            }) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); };
             let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
 
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
@@ -82,7 +82,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
-            }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
             let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
             if thread_res.is_none() {
                 proof {
@@ -142,11 +142,11 @@ verus! {
                 },
             };
 
-            proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { reveal(thread_endpoint_ref_counter_wf); }; }
+            proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); }; }
             proof { assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, Some(endpoint_index)) is Success) by { kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, current_thread_ptr, None); }; }
             let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
 
-            assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); };
+            assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); };
             let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
 
             proof {

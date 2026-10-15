@@ -212,7 +212,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
             *source_range, *initial_regs, Some(endpoint_index), true)) by {
             new_process_trace_publish_step(&*steps, publish_before, old(steps).view().len() as int, old(steps).snapshot_u(), cpu_id, *source_range, *initial_regs, Some(endpoint_index), true);
         };
-        assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { reveal(container_allocator_wf); };
+        assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by { reveal(mapped_4k_page_pagetable_wf); source_range.va_range_lemma(); };
         assert(lctx.thread_lock_map().dom() == set![current_thread_ptr, current_thread_ptr]) by { vstd::set::axiom_set_ext_equal(lctx.thread_lock_map().dom(), set![current_thread_ptr, current_thread_ptr]); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, container_ptr, source_range)) by {
@@ -239,19 +239,21 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         assert(new_process_trace_after_share(steps.view(), old(steps).view().len() as int, old(steps).snapshot_u(), cpu_id, *source_range, *initial_regs, Some(endpoint_index), true)) by {
             new_process_trace_share_steps(&*steps, share_before, old(steps).view().len() as int, old(steps).snapshot_u(), cpu_id, *source_range, *initial_regs, Some(endpoint_index), true);
         };
-        assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { reveal(container_scheduler_wf); };
+        assert(krnl.sched_mp.dom().contains(scheduler_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); };
     }
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
-    proof { assert(!krnl.prc_mp.spec_index(child_ptr).view().zombie) by { reveal(process_pagetable_match); }; }
+    proof { assert(!krnl.prc_mp.spec_index(child_ptr).view().zombie); }
     proof {
-        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf() && krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
-        assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { reveal(container_endpoint_wf); };
+        assert(krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf() && krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)) by {
+            thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_endpoint_ref_counter_wf_endpoint_at(krnl.thr_mp, krnl.ep_mp, endpoint_ptr, current_thread_ptr, endpoint_index);
+        };
+        assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); };
         assert({
             ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
             ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
-        }) by { reveal(container_thread_endpoint_wf); };
+        }) by { container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
     }
-    proof { assert(krnl.prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr) by { reveal(process_pagetable_match); }; }
+    proof { assert(krnl.prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_ptr); }; }
     let ghost finish_before = steps.view();
     let new_thread_ptr = create_initial_thread_and_finish_new_process(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, child_ptr, current_thread_ptr, scheduler_ptr, Some(endpoint_ptr),

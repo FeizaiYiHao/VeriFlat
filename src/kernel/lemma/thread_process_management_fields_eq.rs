@@ -85,6 +85,8 @@ pub proof fn process_thread_wf_preserved_for_thread_process_management_fields(pr
     requires
         process_thread_wf(process_map, pre),
         thread_process_management_fields_unchanged(pre, post),
+        forall|t_ptr: RwLockThreadPtr| #![trigger post.spec_index(t_ptr).being_killed()]
+            pre.dom().contains(t_ptr) && post.spec_index(t_ptr).being_killed() ==> pre.spec_index(t_ptr).being_killed() && post.spec_index(t_ptr).locking_thread() == pre.spec_index(t_ptr).locking_thread(),
     ensures
         process_thread_wf(process_map, post),
 { reveal(process_thread_wf); }

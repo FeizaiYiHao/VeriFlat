@@ -3,12 +3,13 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_alloc_quota_4k` from the state at entry, in the implementation's check order:
-/// a killed container or process, too little container 4K quota, and process 4K quota overflow.
+/// a killed or zombie container, a killed process, too little container 4K quota, and process 4K quota overflow.
 pub open spec fn alloc_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
     let process = pre.process_map[cpu.current_process->Some_0];
     if container.killed { RetValueType::ErrorContainerKilled }
+    else if container.zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if container.quota_4k < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }
     else if alloc_amount > usize::MAX - process.quota_4k { RetValueType::ErrorProcessQuotaOverflow }
@@ -29,6 +30,7 @@ pub open spec fn alloc_quota_4k_step_pre(old_u: KernelU, cpu_id: CpuId, alloc_am
     &&& old_u.container_map.dom().contains(container_ptr)
     &&& old_u.container_map.spec_index(container_ptr).lock_state is Unlocked
     &&& !old_u.container_map.spec_index(container_ptr).killed
+    &&& !old_u.container_map.spec_index(container_ptr).zombie
     &&& old_u.container_map.spec_index(container_ptr).quota_4k >= alloc_amount
     &&& old_u.process_map.dom().contains(process_ptr)
     &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked
@@ -114,12 +116,13 @@ pub open spec fn alloc_thread_quota_4k_syscall_trace(trace: Seq<KernelStep>, pre
 }
 
 /// The result of `syscall_alloc_quota_2m` from the state at entry, in the implementation's check order:
-/// a killed container or process, too little container 2M quota, and process 2M quota overflow.
+/// a killed or zombie container, a killed process, too little container 2M quota, and process 2M quota overflow.
 pub open spec fn alloc_quota_2m_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
     let process = pre.process_map[cpu.current_process->Some_0];
     if container.killed { RetValueType::ErrorContainerKilled }
+    else if container.zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if container.quota_2m < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }
     else if alloc_amount > usize::MAX - process.quota_2m { RetValueType::ErrorProcessQuotaOverflow }
@@ -140,6 +143,7 @@ pub open spec fn alloc_quota_2m_step_pre(old_u: KernelU, cpu_id: CpuId, alloc_am
     &&& old_u.container_map.dom().contains(container_ptr)
     &&& old_u.container_map.spec_index(container_ptr).lock_state is Unlocked
     &&& !old_u.container_map.spec_index(container_ptr).killed
+    &&& !old_u.container_map.spec_index(container_ptr).zombie
     &&& old_u.container_map.spec_index(container_ptr).quota_2m >= alloc_amount
     &&& old_u.process_map.dom().contains(process_ptr)
     &&& old_u.process_map.spec_index(process_ptr).lock_state is Unlocked

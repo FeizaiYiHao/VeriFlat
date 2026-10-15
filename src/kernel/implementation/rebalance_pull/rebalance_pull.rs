@@ -15,7 +15,6 @@ pub enum RebalanceResult {
 
 /// Write-locks shards `0, 1, ...` of `scheduler_ptr` in cpu-id order until one is nonempty; returns how many
 /// shards are locked and whether the last locked one is nonempty.
-#[verifier::spinoff_prover]
 fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr) -> (ret: (usize, bool, Tracked<Map<CpuId, LockPerm>>))
     requires
         old(krnl).inv(),
@@ -154,7 +153,6 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
 }
 
 /// Releases shards `0..count` of `scheduler_ptr`, the only scheduler shards held.
-#[verifier::spinoff_prover]
 fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, scheduler_ptr: RwLockSchedulerPtr, count: usize, Tracked(shard_perms): Tracked<Map<CpuId, LockPerm>>)
     requires
         old(krnl).inv(),
@@ -258,7 +256,6 @@ fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut
 
 /// Moves the head `thread_ptr` of shard `victim` to the empty shard `cpu_id`, releases every lock, and records
 /// the pull step.
-#[verifier::spinoff_prover]
 fn rebalance_pull_move_head(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr, count: usize, shard_perms: Tracked<Map<CpuId, LockPerm>>,

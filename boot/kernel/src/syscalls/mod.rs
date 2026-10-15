@@ -41,6 +41,7 @@ use veriflat_monolith::kernel::implementation::syscall_new_thread::syscall_new_t
 use veriflat_monolith::kernel::implementation::syscall_new_thread_with_endpoint::syscall_new_thread_with_endpoint::syscall_new_thread_with_endpoint;
 use veriflat_monolith::kernel::implementation::syscall_pci::syscall_pci_attach_dma::syscall_pci_attach_dma;
 use veriflat_monolith::kernel::implementation::syscall_schedule::syscall_schedule::{syscall_schedule, ScheduleResult};
+use veriflat_monolith::kernel::implementation::syscall_thread_exit::syscall_thread_exit::syscall_thread_exit;
 use veriflat_monolith::kernel::implementation::syscall_unmap_4k::syscall_unmap_4k;
 use veriflat_monolith::{IPCPayLoad, Registers, RetValueType, MAX_NUM_ENDPOINT_DESCRIPTORS, NUM_CPUS, PCI_BUS_COUNT, PCI_DEVICE_COUNT, PCI_FUNCTION_COUNT};
 use vstd::prelude::Tracked;
@@ -344,6 +345,8 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorReplyOutOfPhase => 39,
         ErrorProcessQuotaOverflow => 40,
         ErrorThreadQuotaOverflow => 41,
+        ErrorContainerZombie => 42,
+        ErrorIpcCalleeExited => 43,
     }
 }
 
@@ -463,6 +466,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             require!(endpoint_ok(a1));
             syscall_new_endpoint(k, t!(), t!(), cpu_id, a1)
         }
+        vsys::NR_THREAD_EXIT => syscall_thread_exit(k, t!(), t!(), cpu_id),
         vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_NEW_PROCESS => {
@@ -571,7 +575,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
     };
 
     if let RetValueType::CpuIdle = ret {
-        // The caller blocked; its frame is saved in its thread. Pick the next thread.
+        // The caller blocked (its frame is saved in its thread) or exited (its thread is gone). Pick the next thread.
         run_idle(regs);
     } else {
         encode(regs, ret);

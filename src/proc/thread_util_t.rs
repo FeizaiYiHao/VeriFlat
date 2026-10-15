@@ -22,6 +22,7 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
         value.inv(),
+        old(lctx).kernel_view_locking_state() is Acquire,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         ret.0.view().addr() == page_ptr,
@@ -47,6 +48,43 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
+/// TCB: retire a write-locked thread object and reclaim its 4k page as raw memory.
+///
+/// This is the inverse of the `retype_page_perm_to_rwlock` MINT. The object has
+/// already left `thread_map`, the caller exclusively write-holds its lock in the
+/// release phase, its process list returned the in-page process node, and its
+/// other in-page nodes are not linked anywhere, so no other thread can reach or
+/// wait on the lock. The held lock disappears from `lctx` with the object.
+#[verifier::external_body]
+pub fn retype_thread_rwlock_to_4k_page_perm(
+    thread_ptr: RwLockThreadPtr, Tracked(thread_perm): Tracked<PointsTo<ThreadRwLock>>, Tracked(proc_node_perm): Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+    Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
+) -> (ret: Tracked<PagePerm4k>)
+    requires
+        thread_perm.is_init(),
+        thread_perm.addr() == thread_ptr,
+        thread_perm.value().is_init(),
+        !thread_perm.value().being_killed(),
+        thread_perm.value().view().scheduler_linkedlist_node.is_init(),
+        thread_perm.value().view().endpoint_linkedlist_node.is_init(),
+        proc_node_perm.is_init(),
+        proc_node_perm.addr() == thread_perm.value().view().proc_linkedlist_node.addr(),
+        thread_perm.value().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: lock_perm.lock_id() }),
+        lock_perm.state() is WriteLock,
+        lock_perm.thread_id() == old(lctx).thread_id(),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        old(lctx).kernel_view_locking_state() is Release,
+    ensures
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+        typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr)),
+        ret.view().is_init(),
+        ret.view().addr() == thread_ptr,
+{
+    Tracked::assume_new()
+}
+
 /// Approved TCB boundary for retyping one owned 2M page; callers use `retype_2m_and_insert`.
 #[verifier::external_body]
 fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>(
@@ -56,6 +94,7 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
         value.inv(),
+        old(lctx).kernel_view_locking_state() is Acquire,
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         ret.0.view().addr() == page_ptr,
@@ -91,6 +130,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             page_perm.addr() == page_ptr,
             value.inv(),
             old(lctx).typed_lock_entry(obj_id.view()) is None,
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -135,6 +175,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             page_perm.addr() == page_ptr,
             value.inv(),
             old(lctx).typed_lock_entry(obj_id.view()) is None,
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
@@ -280,7 +321,6 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 
 /// Boot-only: retype the root thread page in place, then schedule it on CPU 0 so
 /// both intrusive nodes take their final in-page addresses before any list uses them.
-#[verifier::spinoff_prover]
 pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thread_ptr: RwLockThreadPtr, thread_value: Thread, initial_regs: &Registers,
     Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>, usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
     requires
@@ -338,7 +378,8 @@ impl KernelK {
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             thread_value.inv(),
-            typed_lock_maps_aligned(old(self), old(lctx)),
+            old(self).thr_mp.typed_lock_map_aligned(old(lctx).thread_lock_map(), old(lctx).thread_id()),
+            old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             *final(self) == (KernelK { thr_mp: final(self).thr_mp, ..*old(self) }),
@@ -363,12 +404,56 @@ impl KernelK {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(page_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
-            typed_lock_maps_aligned(final(self), final(lctx)),
+            final(self).thr_mp.typed_lock_map_aligned(final(lctx).thread_lock_map(), final(lctx).thread_id()),
     {
         proof { assert(!old(lctx).thread_lock_map().dom().contains(page_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         let Tracked(thread_perm) = self.thr_mp.retype_4k_and_insert(page_ptr, thread_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)));
-        proof { assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        proof { assert(self.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         Tracked(thread_perm)
+    }
+
+    /// Remove a write-locked thread from `thr_mp` and reclaim its page memory together with the
+    /// process node its process list returned.
+    pub fn remove_thread_and_reclaim_4k_page_perm(
+        &mut self, thread_ptr: RwLockThreadPtr, Tracked(proc_node_perm): Tracked<PointsTo<Node<RwLockThreadPtr>>>,
+        Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
+    ) -> (ret: Tracked<PagePerm4k>)
+        requires
+            old(self).thr_mp.perms_wf(),
+            old(self).thr_mp.dom().contains(thread_ptr),
+            old(self).thr_mp.spec_index(thread_ptr).is_init(),
+            !old(self).thr_mp.spec_index(thread_ptr).being_killed(),
+            old(self).thr_mp.spec_index(thread_ptr).view().scheduler_linkedlist_node.is_init(),
+            old(self).thr_mp.spec_index(thread_ptr).view().endpoint_linkedlist_node.is_init(),
+            proc_node_perm.is_init(),
+            proc_node_perm.addr() == old(self).thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr(),
+            lock_perm.state() is WriteLock,
+            lock_perm.thread_id() == old(lctx).thread_id(),
+            lock_perm.lock_id() == old(self).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
+            old(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_aligned(old(self), old(lctx)),
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr)),
+            *final(self) == (KernelK { thr_mp: final(self).thr_mp, ..*old(self) }),
+            final(self).thr_mp.perms_wf(),
+            final(self).thr_mp.dom() =~= old(self).thr_mp.dom().remove(thread_ptr),
+            forall|t: RwLockThreadPtr| #![trigger final(self).thr_mp.spec_index(t)]
+                final(self).thr_mp.dom().contains(t) ==> final(self).thr_mp.spec_index(t) == old(self).thr_mp.spec_index(t),
+            forall|t: RwLockThreadPtr| #![trigger final(self).thr_mp.lock_id_by_key(t)]
+                final(self).thr_mp.dom().contains(t) ==> final(self).thr_mp.lock_id_by_key(t) == old(self).thr_mp.lock_id_by_key(t),
+            typed_lock_maps_aligned(final(self), final(lctx)),
+            ret.view().is_init(),
+            ret.view().addr() == thread_ptr,
+    {
+        proof { self.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
+        let Tracked(thread_perm) = self.thr_mp.remove_with_perm(thread_ptr);
+        let ret = retype_thread_rwlock_to_4k_page_perm(thread_ptr, Tracked(thread_perm), Tracked(proc_node_perm), Tracked(lock_perm), Tracked(&mut *lctx));
+        proof { assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        ret
     }
 }
 }

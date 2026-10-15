@@ -27,7 +27,10 @@ impl<T: LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockMajorTrait 
 
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const KILL_STATE: bool> LockIdTrait for PointsTo<RwLock<T, ROT, GhostT, KILL_STATE>> {
     open spec fn lock_id(&self) -> LockId {
-        LockId { container: self.value().container_depth(), process: self.value().process_depth(), major: self.value().view().current_lock_major(), minor: self.lock_minor() }
+        LockId {
+            container: self.value().container_depth(), process: self.value().process_depth(),
+            major: if self.value().being_killed() { KILLED_LOCK_MAJOR } else { self.value().view().current_lock_major() }, minor: self.lock_minor(),
+        }
     }
 }
 
@@ -87,7 +90,7 @@ pub fn wlock_unless_killed<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
         wlock_requires(old(perm).value(), old(lctx)),
-        old(lctx).lock_id_acyclic(old(perm).lock_id()),
+        !old(perm).value().being_killed() ==> old(lctx).lock_id_acyclic(old(perm).lock_id()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),

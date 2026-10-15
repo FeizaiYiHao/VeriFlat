@@ -319,6 +319,202 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         }
         true
     }
+
+    /// The first 4K mapping under one fixed L4/L3/L2 path at or after `start_l1i`; `start_l1i == 512` scans nothing.
+    fn next_mapped_4k_l1_from(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry, start_l1i: L1Index) -> (ret: Option<L1Index>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
+            start_l1i <= 512,
+            self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
+        ensures
+            ret is Some ==> {
+                let found = ret->Some_0;
+                &&& start_l1i <= found
+                &&& pei_valid(found)
+                &&& self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, found)))
+            },
+            forall|l1i: L1Index|
+                #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l1i) && start_l1i <= l1i && (ret is None || l1i < ret->Some_0) ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+    {
+        let mut l1i = start_l1i;
+        while l1i < 512
+            invariant
+                self.wf(),
+                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l3i),
+                pei_valid(l2i),
+                start_l1i <= l1i <= 512,
+                self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
+                forall|done_l1i: L1Index|
+                    #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i)))]
+                    start_l1i <= done_l1i < l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i))),
+            decreases 512 - l1i,
+        {
+            let entry = self.get_entry_l1(l4i, l3i, l2i, l1i, l2_entry);
+            if let Some(_) = entry {
+                return Some(l1i);
+            }
+            l1i = l1i + 1;
+        }
+        None
+    }
+
+    /// The first 4K mapping under one fixed L4/L3 path at or after `start` in (L2, L1) order.
+    fn next_mapped_4k_l2_from(&self, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index)) -> (ret: Option<(L2Index, L1Index)>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(start.0),
+            start.1 <= 512,
+            self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
+        ensures
+            ret is Some ==> {
+                let found = ret->Some_0;
+                &&& pei_valid(found.0)
+                &&& pei_valid(found.1)
+                &&& spec_l2_index_path_le(start, found)
+                &&& self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, found.0, found.1)))
+            },
+            forall|l2i: L2Index, l1i: L1Index|
+                #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l2i) && pei_valid(l1i) && spec_l2_index_path_le(start, (l2i, l1i)) && (ret is None || !spec_l2_index_path_le(ret->Some_0, (l2i, l1i)))
+                    ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+    {
+        let mut l2i = start.0;
+        while l2i < 512
+            invariant
+                self.wf(),
+                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(l3i),
+                pei_valid(start.0),
+                start.1 <= 512,
+                start.0 <= l2i <= 512,
+                self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
+                forall|done_l2i: L2Index, done_l1i: L1Index|
+                    #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, done_l2i, done_l1i)))]
+                    pei_valid(done_l2i) && pei_valid(done_l1i) && spec_l2_index_path_le(start, (done_l2i, done_l1i)) && done_l2i < l2i
+                        ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, done_l2i, done_l1i))),
+            decreases 512 - l2i,
+        {
+            let l2_entry = self.get_entry_l2(l4i, l3i, l2i, l3_entry);
+            if let Some(l2_entry) = l2_entry {
+                if let Some(l1i) = self.next_mapped_4k_l1_from(l4i, l3i, l2i, &l2_entry, if l2i == start.0 { start.1 } else { 0 }) {
+                    return Some((l2i, l1i));
+                }
+            }
+            l2i = l2i + 1;
+        }
+        None
+    }
+
+    /// The first 4K mapping under one fixed L4 path at or after `start` in (L3, L2, L1) order.
+    fn next_mapped_4k_l3_from(&self, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index)) -> (ret: Option<(L3Index, L2Index, L1Index)>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(start.0),
+            pei_valid(start.1),
+            start.2 <= 512,
+            self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
+        ensures
+            ret is Some ==> {
+                let found = ret->Some_0;
+                &&& pei_valid(found.0)
+                &&& pei_valid(found.1)
+                &&& pei_valid(found.2)
+                &&& spec_l3_index_path_le(start, found)
+                &&& self.mapping_4k().dom().contains(spec_index2va((l4i, found.0, found.1, found.2)))
+            },
+            forall|l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l3_index_path_le(start, (l3i, l2i, l1i)) && (ret is None || !spec_l3_index_path_le(ret->Some_0, (l3i, l2i, l1i)))
+                    ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+    {
+        let mut l3i = start.0;
+        while l3i < 512
+            invariant
+                self.wf(),
+                self.kernel_l4_end <= l4i && pei_valid(l4i),
+                pei_valid(start.0),
+                pei_valid(start.1),
+                start.2 <= 512,
+                start.0 <= l3i <= 512,
+                self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
+                forall|done_l3i: L3Index, done_l2i: L2Index, done_l1i: L1Index|
+                    #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, done_l3i, done_l2i, done_l1i)))]
+                    pei_valid(done_l3i) && pei_valid(done_l2i) && pei_valid(done_l1i) && spec_l3_index_path_le(start, (done_l3i, done_l2i, done_l1i)) && done_l3i < l3i
+                        ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, done_l3i, done_l2i, done_l1i))),
+            decreases 512 - l3i,
+        {
+            let l3_entry = self.get_entry_l3(l4i, l3i, l4_entry);
+            if let Some(l3_entry) = l3_entry {
+                if let Some(found) = self.next_mapped_4k_l2_from(l4i, l3i, &l3_entry, if l3i == start.0 { (start.1, start.2) } else { (0, 0) }) {
+                    return Some((l3i, found.0, found.1));
+                }
+            }
+            l3i = l3i + 1;
+        }
+        None
+    }
+
+    /// The first 4K mapping at or after `cursor` in (L4, L3, L2, L1) order. `cursor.3 == 512` names the slot just past
+    /// `(cursor.0, cursor.1, cursor.2, 511)`, so a caller steps past a found leaf `f` with `(f.0, f.1, f.2, f.3 + 1)`.
+    /// Missing directory levels and huge-page entries skip their complete 4K subtrees.
+    pub fn next_mapped_4k_from(&self, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
+        requires
+            self.wf(),
+            self.kernel_l4_end <= cursor.0,
+            pei_valid(cursor.0),
+            pei_valid(cursor.1),
+            pei_valid(cursor.2),
+            cursor.3 <= 512,
+        ensures
+            ret is Some ==> {
+                let found = ret->Some_0;
+                &&& self.kernel_l4_end <= found.0
+                &&& pei_valid(found.0)
+                &&& pei_valid(found.1)
+                &&& pei_valid(found.2)
+                &&& pei_valid(found.3)
+                &&& spec_l4_index_path_le(cursor, found)
+                &&& self.mapping_4k().dom().contains(spec_index2va(found))
+            },
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
+                #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(cursor, (l4i, l3i, l2i, l1i))
+                    && (ret is None || !spec_l4_index_path_le(ret->Some_0, (l4i, l3i, l2i, l1i)))
+                    ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+    {
+        let mut l4i = cursor.0;
+        while l4i < 512
+            invariant
+                self.wf(),
+                self.kernel_l4_end <= cursor.0 <= l4i <= 512,
+                pei_valid(cursor.0),
+                pei_valid(cursor.1),
+                pei_valid(cursor.2),
+                cursor.3 <= 512,
+                forall|done_l4i: L4Index, done_l3i: L3Index, done_l2i: L2Index, done_l1i: L1Index|
+                    #![trigger self.mapping_4k().dom().contains(spec_index2va((done_l4i, done_l3i, done_l2i, done_l1i)))]
+                    pei_valid(done_l4i) && pei_valid(done_l3i) && pei_valid(done_l2i) && pei_valid(done_l1i) && spec_l4_index_path_le(cursor, (done_l4i, done_l3i, done_l2i, done_l1i)) && done_l4i < l4i
+                        ==> !self.mapping_4k().dom().contains(spec_index2va((done_l4i, done_l3i, done_l2i, done_l1i))),
+            decreases 512 - l4i,
+        {
+            let l4_entry = self.get_entry_l4(l4i);
+            if let Some(l4_entry) = l4_entry {
+                if let Some(found) = self.next_mapped_4k_l3_from(l4i, &l4_entry, if l4i == cursor.0 { (cursor.1, cursor.2, cursor.3) } else { (0, 0, 0) }) {
+                    return Some((l4i, found.0, found.1, found.2));
+                }
+            }
+            l4i = l4i + 1;
+        }
+        None
+    }
 }
 
 impl PageTable<PT_TYPE> {

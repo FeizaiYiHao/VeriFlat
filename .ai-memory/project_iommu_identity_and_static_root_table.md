@@ -20,7 +20,7 @@ metadata:
   entry is not present; it does not remove ownership.
 - `ProcessGhost.owned_pci_functions` (lock-free ghost) is the reverse index;
   the root-table lock serializes its updates. `process_pci_function_ownership_wf`
-  aligns it with the owner slots both ways and keeps a zombie's set empty.
+  aligns it with the owner slots both ways; a zombie keeps its functions.
   There is no exec counter.
 - Ownership moves only through an IPC `Pci` rendezvous: the slot's owner and
   both reverse sets change, the function is detached, and its IOTLB domain is
@@ -31,8 +31,9 @@ metadata:
 ## Root table
 
 - `KernelK.irt` is one `RwLock` over the whole table
-  (`IOMMU_ROOT_TABLE_LOCK_MAJOR = IOMMU_TABLE_LOCK_MAJOR + 1`); it is taken and
-  released inside one step and is not U-visible. Its exec operations are
+  (`IOMMU_ROOT_TABLE_LOCK_MAJOR = PAGE_TABLE_LOCK_MAJOR + 1`, below
+  `IOMMU_TABLE_LOCK_MAJOR`, so exit can lock its IOMMU table under it); it is
+  taken and released inside one step and is not U-visible. Its exec operations are
   `owner`, `is_attached`, `set_owner`, `attach`, and `detach`; kernel code
   mutates it only through `iommu_subsystem_mutation.rs`.
 - `IommuRootTable` is an opaque, pinned legacy VT-d image with logical
@@ -70,13 +71,21 @@ metadata:
   `Allocated4k{PageTable{pagetable_root, table_type}}`, so `pagetable_pages_wf`,
   `pagetables_inv`, `kernel_pagetable_nonlock_fields_unchanged`, and
   `pagetable_map_user_view` are generic over the table type.
-- IOMMU tables are still only created empty; there is no IOMMU map/unmap path
-  and no `wlock_iommu_table`. Adding IOMMU unmap needs the CPU-side
-  hidden-leaves-only-when-wlocked rule in `iommu_table_perms_wf`.
+- IOMMU tables are still only created empty and there is no IOMMU map path.
+  The only IOMMU unmap path is thread exit's reclaim, under
+  `wlock_iommu_table`: `clear_iommu_4k_mapping_present` hides a leaf, and
+  `reclaim_unmapped_iommu_4k_page` removes it and frees its page.
+  `iommu_table_perms_wf` allows hidden leaves only while the table is
+  write-locked, and `iommu_table_lock_wf` keeps a write-locked IOMMU table free
+  of attached functions, so its leaves need no IOTLB flush.
+- Pages count IOMMU references in `Page.iommu_mappings`; `ref_count` is
+  `mappings.len() + iommu_mappings.len()`, and `page_iommu_table_wf` ties the
+  set to the IOMMU tables' 4K leaves.
 
 Primary code: `src/iommu/root_table.rs`, `src/iommu/iotlb.rs`,
 `src/kernel/memory_management/pages_pagetable_spec.rs`,
 `src/kernel/process_management/process_pci_function_spec.rs`,
 `src/kernel/iommu_tlb_management/iotlb_wf_spec.rs`,
-`src/kernel/iommu_tlb_management/iommu_subsystem_mutation.rs`, and
-`src/kernel/implementation/syscall_pci/`.
+`src/kernel/iommu_tlb_management/iommu_subsystem_mutation.rs`,
+`src/kernel/implementation/syscall_pci/`, and
+`src/kernel/implementation/map_4k/unmap_iommu_4k_*.rs`.

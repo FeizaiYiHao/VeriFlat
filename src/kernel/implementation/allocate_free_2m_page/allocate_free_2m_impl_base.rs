@@ -98,9 +98,9 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(container_ptr)
             &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
-        }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
+        }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); };
         let alloc_ptr_2m = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
-        assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m) && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { reveal(container_allocator_wf); reveal(allocator_perms_wf); };
+        assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m) && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
         let Tracked(cache_lock_perm) = krnl.wlock_allocator_cache_2m(alloc_ptr_2m, cpu_id, Tracked(&mut *lctx));
 
         let cache_ref = krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(&cache_lock_perm));
@@ -125,13 +125,13 @@ verus! {
                     &&& krnl.ctn_mp.dom().contains(container_ptr)
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { reveal(container_thread_wf); };
+                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
 
         let Tracked(gp_lock_perm) = krnl.wlock_allocator_global_pool_2m(alloc_ptr_2m, Tracked(&mut *lctx));
-        assert(krnl.allc_2m_mp.perms_wf()) by { reveal(allocator_perms_wf); };
+        assert(krnl.allc_2m_mp.perms_wf()) by { allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
         let pool_ref = krnl.allc_2m_mp.borrow_global_pool_typed(alloc_ptr_2m, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(&gp_lock_perm));
         let pool_len = pool_ref.len();
 
@@ -156,7 +156,7 @@ verus! {
                     &&& krnl.ctn_mp.dom().contains(container_ptr)
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
                     &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { reveal(container_thread_wf); };
+                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
             }
             return (page_ptr, Tracked(page_lock_perm));
         }
@@ -182,7 +182,6 @@ verus! {
         ret
     }
 
-    #[verifier::spinoff_prover]
     fn alloc_2m_scan_all_caches_and_pool(
         krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
@@ -275,7 +274,7 @@ verus! {
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
         }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
         let alloc_ptr_2m = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
-        assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { reveal(container_allocator_wf); };
+        assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         let (cache_perms, pool_perm) = wlock_all_caches_and_global_pool(krnl, alloc_ptr_2m, Tracked(&mut *lctx));
 
         let tracked cache_perms_ref = cache_perms.borrow();
@@ -322,7 +321,7 @@ verus! {
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_thread_write_held_section_implies_u_eq(old(krnl), &*krnl, old(lctx), &*lctx, thread_ptr); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
+            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
         }
         (page_ptr, Tracked(page_lock_perm))
     }

@@ -21,8 +21,5 @@ pub open spec fn process_pci_function_ownership_wf(root_table: IommuRootTable, p
     &&& forall|proc_ptr: RwLockProcessPtr, bdf: PciBdf|
         #![trigger process_map.spec_index(proc_ptr).view_ghost().owned_pci_functions.view().contains(bdf)]
         process_map.dom().contains(proc_ptr) && process_map.spec_index(proc_ptr).view_ghost().owned_pci_functions.view().contains(bdf) ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2) && root_table.spec_index_owner(bdf.0, bdf.1, bdf.2) == proc_ptr
-    &&& forall|proc_ptr: RwLockProcessPtr|
-        #![trigger process_map.spec_index(proc_ptr).view().zombie]
-        process_map.dom().contains(proc_ptr) && process_map.spec_index(proc_ptr).view().zombie ==> process_map.spec_index(proc_ptr).view_ghost().owned_pci_functions.view().is_empty()
 }
 }

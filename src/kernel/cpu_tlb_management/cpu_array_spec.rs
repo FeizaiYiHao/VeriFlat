@@ -12,4 +12,16 @@ verus! {
                 &&& cpu_array.spec_index(cpu_i).view().view().view().current_pagetable is None ==> cpu_array.spec_index(cpu_i).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
             }
     }
+
+    pub proof fn cpu_array_wf_at(cpu_array: CpuLockedArray, kernel_pagetable: PageTable<PT_TYPE>, cpu_i: CpuId)
+        requires
+            cpu_array_wf(cpu_array, kernel_pagetable),
+        ensures
+            cpu_array.inv(),
+            index_valid(NUM_CPUS, cpu_i) ==> ({
+                &&& cpu_array.spec_index(cpu_i).view().inv()
+                &&& cpu_array.spec_index(cpu_i).view().view().view().current_pagetable is None ==> cpu_array.spec_index(cpu_i).view().view().view().current_cr3 == kernel_pagetable.cr3
+                &&& cpu_array.spec_index(cpu_i).view().view().view().current_pagetable is None ==> cpu_array.spec_index(cpu_i).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
+            }),
+    { reveal(cpu_array_wf); }
 }

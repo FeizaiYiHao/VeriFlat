@@ -50,23 +50,23 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         }
         return RetValueType::ErrorCpuOwnerMismatch;
     }
-    proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { reveal(container_cpu_wf); }; }
+    proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); }; }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let container_ptr = cpu.owning_container();
     proof {
-        assert(page_ptr_2m_valid(container_ptr)) by { reveal(container_pages_wf); };
+        assert(page_ptr_2m_valid(container_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr); };
         assert({
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).owning_container.view() == container_ptr
-        }) by { reveal(container_cpu_offline_flags_wf); };
+        }) by { container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); };
     }
     let flags_ptr = container_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx));
-    proof { assert(krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr) by { reveal(container_perms_wf); }; }
+    proof { assert(krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr) by { container_perms_wf_at(krnl.ctn_mp, container_ptr); }; }
     let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
     let cpu_set_ptr = container_ro.borrow().cpu_set;
-    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); }; }
+    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(lctx));
     let cpu_set = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
     let result = if !cpu_set.owned_cpus.contains(target) { RetValueType::ErrorCpuOwnerMismatch }
@@ -74,14 +74,18 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         else { RetValueType::Success };
     let pending = krnl.cpu_offline_mp.read_flag(flags_ptr, target, Tracked(&flag_lock_perm));
     proof {
-        assert(result == cpu_offline_request_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target)) by { reveal(container_cpu_wf); kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_cpu_projection_at(&*old(krnl), target); };
+        assert(result == cpu_offline_request_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target)) by {
+            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, container_ptr, target);
+            container_cpu_wf_cpu_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, target); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, container_ptr, target);
+            kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_cpu_projection_at(&*old(krnl), target);
+        };
         assert(pending == cpu_offline_request_pending(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target)) by {
             reveal(cpu_offline_requests_of); kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr);
         };
         assert(result is Success ==> {
             &&& krnl.cpu_arr.spec_index(target).view().view().view().owning_container == container_ptr
             &&& !(krnl.cpu_arr.spec_index(target).view().view().view().state is Off)
-        }) by { reveal(container_cpu_wf); };
+        }) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, container_ptr, target); };
     }
     let success = if let RetValueType::Success = result { true } else { false };
     if !success || pending {

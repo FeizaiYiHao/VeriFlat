@@ -438,11 +438,13 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
     #[verifier::external_body]
     pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
         requires
-            old(self).view().container_depth() == lock_id.view().container,
-            old(self).view().process_depth() == lock_id.view().process,
-            old(self).view().lock_major_sat(lock_id.view().major),
             wlock_requires(*old(self), old(lctx)),
-            old(lctx).lock_id_acyclic(lock_id.view()),
+            !old(self).being_killed() ==> {
+                &&& old(self).view().container_depth() == lock_id.view().container
+                &&& old(self).view().process_depth() == lock_id.view().process
+                &&& old(self).view().lock_major_sat(lock_id.view().major)
+                &&& old(lctx).lock_id_acyclic(lock_id.view())
+            },
         ensures
             ret is None ==> {
                 &&& old(self).being_killed() == true
@@ -499,11 +501,13 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
     #[verifier::external_body]
     pub fn try_wlock_and_mark_kill(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>, killer_info: KillerInfo) -> (ret: (bool, Option<Tracked<LockPerm>>))
         requires
-            old(self).view().container_depth() == lock_id.view().container,
-            old(self).view().process_depth() == lock_id.view().process,
-            old(self).view().lock_major_sat(lock_id.view().major),
             wlock_requires(*old(self), old(lctx)),
-            old(lctx).lock_id_acyclic(lock_id.view()),
+            !old(self).being_killed() ==> {
+                &&& old(self).view().container_depth() == lock_id.view().container
+                &&& old(self).view().process_depth() == lock_id.view().process
+                &&& old(self).view().lock_major_sat(lock_id.view().major)
+                &&& old(lctx).lock_id_acyclic(lock_id.view())
+            },
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             ret.0 == false ==> {
@@ -528,9 +532,11 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
                 &&& ret.1.unwrap().view().lock_id() == final(self).locking_thread()->Write_lock_id
                 &&& ret.1.unwrap().view().ordering_lock_id() == lock_id.view()
                 &&& ret.1.unwrap().view().thread_id() == final(lctx).thread_id()
-                // LocalContext: lock acquired, kernel-view Release (the mark).
+                // LocalContext: lock acquired under the pre-mark id, kernel-view Release (the mark). The
+                // verified wrapper must `update_lock_id` the entry to the sunk id afterwards.
                 &&& final(lctx).thread_id() == old(lctx).thread_id()
                 &&& final(lctx).kernel_view_locking_state() is Release
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: lock_id.view(), mode: TypedLockMode::Write })
             }
     {
         if self.lock.try_wlock_and_mark_kill(killer_info).is_err() {
@@ -603,10 +609,12 @@ pub open spec fn update_ghost_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool
 
 impl<T: LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool> LockOwnerIdTrait for RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.view_rodata().container_depth() != LockOwnerId::NotApp { self.view_rodata().container_depth() } else { self.view().container_depth() }
+        if self.being_killed() { LockOwnerId::High }
+        else if self.view_rodata().container_depth() != LockOwnerId::NotApp { self.view_rodata().container_depth() } else { self.view().container_depth() }
     }
     open spec fn process_depth(&self) -> LockOwnerId {
-        if self.view_rodata().process_depth() != LockOwnerId::NotApp { self.view_rodata().process_depth() } else { self.view().process_depth() }
+        if self.being_killed() { LockOwnerId::High }
+        else if self.view_rodata().process_depth() != LockOwnerId::NotApp { self.view_rodata().process_depth() } else { self.view().process_depth() }
     }
 }
 

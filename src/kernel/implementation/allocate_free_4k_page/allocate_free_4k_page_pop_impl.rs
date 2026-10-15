@@ -9,7 +9,6 @@ use crate::*;
 
 verus! {
     /// Pops the head 4k page of the CPU cache (`source` is `Some`) or the global pool (`None`) and stages it on `thread_ptr`.
-    #[verifier::spinoff_prover]
     pub(super) fn pop_stage_4k_page(
         krnl: &mut KernelK, alloc_ptr_4k: RwLockPageAllocatorPtr, source: Option<CpuId>, thread_ptr: RwLockThreadPtr,
         container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(source_lock_perm): Tracked<&LockPerm>,

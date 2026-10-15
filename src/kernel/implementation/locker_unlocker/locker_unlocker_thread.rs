@@ -22,7 +22,6 @@ impl KernelK {
                 &&& match thread.state {
                     ThreadState::RUNNING { cpu_id } => {
                         let containers = old(lctx).container_lock_map().dom();
-                        let pcid_allocators = old(lctx).pcid_allocator_lock_map().dom();
                         &&& cpus.contains(cpu_id)
                         &&& (forall|held_cpu_id: CpuId|
                             #![trigger cpus.contains(held_cpu_id)]
@@ -51,7 +50,7 @@ impl KernelK {
                         &&& old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty()
                         &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
                         &&& containers.subset_of(set![thread.owning_container])
-                        &&& pcid_allocators.subset_of(set![old(self).ctn_mp.spec_index(thread.owning_container).view_rodata().view().pcid_allocator])
+                        &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
                     },
                     ThreadState::SCHEDULED { .. } => {
                         let cpu_id = old(lctx).cpu_id();
@@ -95,8 +94,8 @@ impl KernelK {
                         &&& old(lctx).thread_lock_map().dom() =~= set![callee_ptr]
                         &&& old(lctx).endpoint_lock_map().dom().len() <= 1
                         &&& old(lctx).page_lock_map().dom().is_empty()
-                        &&& old(lctx).container_lock_map().dom().is_empty()
-                        &&& old(lctx).process_lock_map().dom().is_empty()
+                        &&& old(lctx).container_lock_map().dom().subset_of(set![callee.owning_container])
+                        &&& old(lctx).process_lock_map().dom().subset_of(set![callee.owning_proc])
                         &&& old(lctx).scheduler_lock_map().dom().is_empty()
                         &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
                         &&& old(lctx).cpu_set_lock_map().dom().is_empty()
@@ -186,30 +185,32 @@ impl KernelK {
         proof {
             thread_perms_wf_at(old(self).thr_mp, thread_ptr);
             let target_thread = old(self).thr_mp.spec_index(thread_ptr).view();
-            match target_thread.state {
-                ThreadState::RUNNING { cpu_id } => {
-                    assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
-                        reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                        reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(process_thread_wf);
-                    };
-                },
-                ThreadState::SCHEDULED { .. } => {
-                    assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
-                        reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
-                        reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf);
-                        reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(cpu_array_wf);
-                    };
-                },
-                ThreadState::WAITING_REPLY => {
-                    assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
-                        reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                    };
-                },
-                _ => {
-                    assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
-                        reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                    };
-                },
+            if !old(self).thr_mp.spec_index(thread_ptr).being_killed() {
+                match target_thread.state {
+                    ThreadState::RUNNING { cpu_id } => {
+                        assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                            reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(process_thread_wf);
+                        };
+                    },
+                    ThreadState::SCHEDULED { .. } => {
+                        assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
+                            reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf);
+                            reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(cpu_array_wf);
+                        };
+                    },
+                    ThreadState::WAITING_REPLY => {
+                        assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                        };
+                    },
+                    _ => {
+                        assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
+                            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                        };
+                    },
+                }
             }
         }
         proof {
@@ -252,7 +253,6 @@ impl KernelK {
     /// before releasing the write lock, because once unlocked the global
     /// invariant `thread_free_quota_pending_empty_unless_wlocked` demands it.
     /// A freshly-created thread satisfies this (its pendings are all zero).
-    #[verifier::spinoff_prover]
     pub fn wunlock_thread(&mut self, thread_ptr: RwLockThreadPtr, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),

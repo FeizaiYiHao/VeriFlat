@@ -54,7 +54,7 @@ impl KernelK {
         proof {
             assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
             assert(scheduler_invariant_fields_unchanged(old(self).sched_mp, self.sched_mp));
-            assert(self.memory_management_inv()) by { reveal(scheduler_pages_wf); };
+            assert(self.memory_management_inv()) by { scheduler_pages_wf_preserved_for_page_state_eq(old(self).sched_mp, self.sched_mp, old(self).pg_arr, self.pg_arr); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };
@@ -110,7 +110,7 @@ impl KernelK {
         proof {
             assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
             assert(scheduler_invariant_fields_unchanged(old(self).sched_mp, self.sched_mp)) by { scheduler_lock_op_preserves_invariant_fields(old(self).sched_mp, self.sched_mp, scheduler_ptr, cpu_id); };
-            assert(self.memory_management_inv()) by { reveal(scheduler_pages_wf); };
+            assert(self.memory_management_inv()) by { scheduler_pages_wf_preserved_for_page_state_eq(old(self).sched_mp, self.sched_mp, old(self).pg_arr, self.pg_arr); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };

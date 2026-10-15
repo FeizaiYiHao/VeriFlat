@@ -21,4 +21,11 @@ verus! {
         &&& container_pages_forward_wf(page_array, container_map)
         &&& container_pages_backward_wf(page_array, container_map)
     }
+
+    pub proof fn container_pages_backward_at(page_array: PageLockedArray, container_map: ContainerLockedMap, container_ptr: RwLockContainerPtr)
+        requires
+            container_pages_wf(page_array, container_map),
+        ensures
+            container_map.dom().contains(container_ptr) ==> page_ptr_2m_valid(container_ptr) && (page_array.spec_index(page_ptr2page_index(container_ptr)).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsContainer }),
+    { reveal(container_pages_wf); }
 }

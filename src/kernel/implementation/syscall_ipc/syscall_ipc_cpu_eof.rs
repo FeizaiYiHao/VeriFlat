@@ -7,20 +7,20 @@ use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 
 verus! {
 /// Separate query: inside the combined process-management closure this leaf fails in the monolith.
-#[verifier::spinoff_prover]
-proof fn ipc_cpu_rendezvous_eof_thread_endpoint_ref_counter(
-    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
-    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
-    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType,
-    thread_id: LockThreadId,
-)
+proof fn ipc_cpu_rendezvous_eof_thread_endpoint_ref_counter(pre: KernelK, post: KernelK)
     requires
-        ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
-        post.subsystems_inv(),
+        thread_endpoint_ref_counter_wf(pre.thr_mp, pre.ep_mp),
+        post.thr_mp.dom() == pre.thr_mp.dom(),
+        post.ep_mp.dom() == pre.ep_mp.dom(),
+        forall|t: RwLockThreadPtr, i: EndpointIdx| #![trigger post.thr_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int)]
+            pre.thr_mp.dom().contains(t) ==>
+                post.thr_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int) == pre.thr_mp.spec_index(t).view().endpoint_descriptors.view().spec_index(i as int),
+        forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx| #![trigger post.ep_mp.spec_index(e).view().owning_threads.view().contains((t, i))]
+            pre.ep_mp.dom().contains(e) ==>
+                post.ep_mp.spec_index(e).view().owning_threads.view().contains((t, i)) == pre.ep_mp.spec_index(e).view().owning_threads.view().contains((t, i)),
     ensures thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
-{ reveal(ipc_cpu_rendezvous_transition); reveal(thread_endpoint_ref_counter_wf); }
+{ reveal(thread_endpoint_ref_counter_wf); }
 
-#[verifier::spinoff_prover]
 proof fn ipc_cpu_rendezvous_eof_process_management_inv(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
@@ -37,8 +37,7 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-        ipc_cpu_rendezvous_eof_thread_endpoint_ref_counter(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu,
-            source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
+        ipc_cpu_rendezvous_eof_thread_endpoint_ref_counter(pre, post);
         assert({
             &&& container_endpoint_wf(post.ctn_mp, post.ep_mp)
             &&& thread_caller_callee_wf(post.thr_mp)
@@ -48,9 +47,9 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
             &&& container_thread_wf(post.ctn_mp, post.thr_mp)
             &&& process_thread_wf(post.prc_mp, post.thr_mp)
         }) by { reveal(container_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); };
-        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
+        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { seq_skip_lemma::<RwLockThreadPtr>(); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); reveal(thread_endpoint_queue_wf); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_thread_endpoint_wf); };
+        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
             seq_push_lemma::<RwLockThreadPtr>();
             reveal(scheduler_perms_wf); reveal(LinkedList::wf_map); reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
@@ -73,19 +72,19 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
     reveal(ipc_cpu_rendezvous_transition);
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
-        assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
-        assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-        assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
+        assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
+        assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
         assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
-            reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf);
+            container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp); reveal(container_thread_wf);
             lemma_thread_effective_quota_4k_fold_sum_eq_forall();
             lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
         };
         assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
-            reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf);
+            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); reveal(container_thread_wf);
             lemma_thread_effective_quota_2m_fold_sum_eq_forall();
             lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
         };
@@ -107,6 +106,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
     requires
         ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.cpu_arr.inv(),
+        post.cpu_set_mp.perms_wf(),
         post.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.wf(),
         post.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.wf(),
         post.ep_mp.spec_index(endpoint_ptr).view().queue.wf(),

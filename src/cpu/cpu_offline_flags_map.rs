@@ -24,13 +24,14 @@ fn retype_container_page_tail_to_offline_flags(container_map: &ContainerLockedMa
 }
 
 impl UnLockedMap<usize, CpuOfflineFlags> {
-    pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, container_ptr: RwLockContainerPtr, flags: CpuOfflineFlags)
+    pub fn retype_container_page_tail_and_insert(&mut self, container_map: &ContainerLockedMap, container_ptr: RwLockContainerPtr, flags: CpuOfflineFlags, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
             container_map.dom().contains(container_ptr),
             page_ptr_2m_valid(container_ptr),
             !old(self).dom().contains(cpu_offline_flags_ptr(container_ptr)),
             flags.inv(),
+            lctx.kernel_view_locking_state() is Acquire,
         ensures
             final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(cpu_offline_flags_ptr(container_ptr)),

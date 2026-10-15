@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) proof fn eof_subsystems_inv(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -75,7 +74,6 @@ pub(super) proof fn eof_subsystems_inv(
     assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn eof_inv(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,

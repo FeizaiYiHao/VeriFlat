@@ -25,6 +25,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
     pub open spec fn perms_wf(&self) -> bool {
         &&& forall|k: usize|
             #![trigger self.view().spec_index(k).is_init()]
+            #![trigger self.view().dom().contains(k)]
             self.view().dom().contains(k) ==> {
                 &&& self.view().spec_index(k).is_init()
                 &&& self.view().spec_index(k).addr() == k
@@ -64,7 +65,8 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         &&& (forall|key: usize|
             #![trigger held_locks.index(key).lock_id]
             held_locks.dom().contains(key) ==> held_locks.index(key).lock_id == LockId {
-                container: self.spec_index(key).container_depth(), process: self.spec_index(key).process_depth(), major: self.spec_index(key).view().current_lock_major(), minor: key })
+                container: self.spec_index(key).container_depth(), process: self.spec_index(key).process_depth(),
+                major: if self.spec_index(key).being_killed() { KILLED_LOCK_MAJOR } else { self.spec_index(key).view().current_lock_major() }, minor: key })
         &&& (forall|key: usize|
             #![trigger typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read)]
             typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read) ==> {
@@ -333,6 +335,25 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     {
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
+
+    /// Remove an entry together with its permission so that the caller can retire the object.
+    /// No lctx change is done here (the caller handles lock retirement via the retire primitive).
+    pub fn remove_with_perm(&mut self, key: usize) -> (ret: Tracked<PointsTo<RwLock<T, ROT, GhostT, KILL_STATE>>>)
+        requires
+            old(self).dom().contains(key),
+        ensures
+            old(self).perms_wf() ==> final(self).perms_wf() && ret.view().is_init() && ret.view().addr() == key,
+            final(self).dom() =~= old(self).dom().remove(key),
+            forall|k: usize| #![trigger final(self).spec_index(k)] final(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
+            forall|k: usize|
+                #![trigger old(self).lock_id_by_key(k)]
+                #![trigger final(self).lock_id_by_key(k)]
+                final(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
+            ret.view().value() == old(self).spec_index(key),
+    {
+        let tracked perm = self.map.borrow_mut().tracked_remove(key);
+        Tracked(perm)
+    }
 }
 
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT> LockedMap<usize, T, ROT, GhostT, NO_KILL_STATE> {
@@ -392,7 +413,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             old(self).perms_wf(),
             old(self).dom().contains(key),
             wlock_requires(old(self).spec_index(key), old(lctx)),
-            old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
+            !old(self).spec_index(key).being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
@@ -414,7 +435,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         assert({
             &&& perm.addr() == key
-            &&& LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: perm.lock_minor() } == old(self).lock_id_by_key(key)
+            &&& perm.lock_id() == old(self).lock_id_by_key(key)
+            &&& !perm.value().being_killed() ==> LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: perm.lock_minor() } == old(self).lock_id_by_key(key)
         });
         proof { lctx.lemma_lock_id_eq_imply_acyclic_eq(); }
         let ret = wlock_unless_killed(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);

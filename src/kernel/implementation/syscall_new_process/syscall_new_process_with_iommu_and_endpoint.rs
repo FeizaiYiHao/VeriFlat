@@ -9,7 +9,6 @@ use super::syscall_new_process_spec::*;
 use super::syscall_new_process_common::syscall_new_process_common;
 
 verus! {
-#[verifier::spinoff_prover]
 pub fn syscall_new_process_with_iommu_and_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: EndpointIdx, initial_regs: &Registers) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),

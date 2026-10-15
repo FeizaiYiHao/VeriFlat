@@ -143,7 +143,9 @@ verus! {
                 map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: staged_page_lock_id, mode: TypedLockMode::Write }, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
                 map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
             };
-            assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, process_ptr, pagetable_ptr, va)) by { reveal(kernel_process_4k_mapping_changed); reveal(process_pagetable_match); };
+            assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, process_ptr, pagetable_ptr, va)) by {
+                process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); reveal(kernel_process_4k_mapping_changed); reveal(process_pagetable_match);
+            };
             assert({
                 &&& krnl.prc_mp.dom().contains(process_ptr)
                 &&& !krnl.prc_mp.spec_index(process_ptr).view().zombie
@@ -156,10 +158,10 @@ verus! {
                 kernel_thread_quota_4k_progress_and_4k_mapping_added_implies_u_step(&section_start, &*krnl, &*lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr, va);
                 mmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, va);
             };
-            krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable_ptr, va, process_ptr, pagetable_ptr, thread_ptr);
-            assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)) by { reveal(container_thread_wf); reveal(process_thread_wf); };
-            assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { reveal(container_allocator_wf); };
-            assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { reveal(pagetable_perms_wf); };
+            krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable_ptr, va, process_ptr, pagetable_ptr, thread_ptr, thread_ptr);
+            assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
+            assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
+            assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
         }
     }
 } // verus!

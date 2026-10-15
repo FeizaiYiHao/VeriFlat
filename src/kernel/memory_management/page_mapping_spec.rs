@@ -28,6 +28,18 @@ verus! {
                     && pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr)).view().view().owning_container
     }
 
+    pub proof fn mapped_4k_page_pagetable_wf_pagetable_at(pagetable_map: PageTableLockedMap, page_array: PageLockedArray, pt_ptr: RwLockPageTableRoot, va: VAddr)
+        requires
+            mapped_4k_page_pagetable_wf(pagetable_map, page_array),
+        ensures
+            pagetable_map.dom().contains(pt_ptr) && pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va) ==> ({
+                let p_i = page_ptr2page_index(pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr);
+                &&& page_array.spec_index(p_i).view().view().state == PageState::Mapped4k
+                &&& page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
+                &&& pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).owning_container.view() == page_array.spec_index(p_i).view().view().owning_container
+            }),
+    { reveal(mapped_4k_page_pagetable_wf); }
+
     #[verifier::opaque]
     pub open spec fn mapped_2m_page_pagetable_wf(pagetable_map: PageTableLockedMap, page_array: PageLockedArray) -> bool {
         &&& forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|

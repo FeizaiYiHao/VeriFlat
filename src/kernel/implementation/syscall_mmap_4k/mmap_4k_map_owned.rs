@@ -155,13 +155,13 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             assert(krnl.subsystems_inv()) by {
                 assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
-                assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
+                assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
                 assert(thread_perms_wf(krnl.thr_mp)) by {
                     reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
                 };
             };
             assert(krnl.memory_management_inv()) by {
-                assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); };
+                assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(old(krnl).cpu_set_mp, krnl.cpu_set_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
                     allocator_4k_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_4k_mp, krnl.allc_4k_mp);
                     allocator_2m_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_2m_mp, krnl.allc_2m_mp);
@@ -175,6 +175,7 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
                     reveal(process_thread_wf); reveal(process_pagetable_match);
                     container_process_page_pagetable_wf_preserved_for_4k_mapping_insert(krnl.ctn_mp, krnl.prc_mp, old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr, pagetable_ptr, page_ptr, va);
                 };
+                assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
                 assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr); };
@@ -199,9 +200,7 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
                 assert(container_allocator_free_1g_page_wf(krnl.allc_1g_mp, krnl.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(krnl.allc_1g_mp, old(krnl).pg_arr, krnl.pg_arr, page_index); };
             };
             assert(krnl.process_management_inv()) by {
-                assert(thread_caller_callee_wf(krnl.thr_mp)) by {
-                    thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp);
-                };
+                assert(thread_caller_callee_wf(krnl.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp); };
                 assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.ep_mp); };
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.ep_mp); };
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.ep_mp); };

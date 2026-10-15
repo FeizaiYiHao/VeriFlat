@@ -154,7 +154,7 @@ verus! {
             thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, endpoint_ptr, caller_ptr);
             container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, caller_ptr);
-            assert(krnl.cpu_arr.inv()) by { reveal(cpu_array_wf); };
+            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
         let callee = krnl.thr_mp.borrow_typed(callee_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&callee_lock_perm));
         let next_process = callee.owning_proc;
@@ -164,14 +164,14 @@ verus! {
             &&& krnl.prc_mp.spec_index(next_process).is_init()
             &&& krnl.prc_mp.view().spec_index(next_process).is_init()
             &&& krnl.prc_mp.view().spec_index(next_process).addr() == next_process
-        }) by { reveal(process_thread_wf); reveal(process_perms_wf); };
+        }) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, callee_ptr); process_perms_wf_at(krnl.prc_mp, next_process); };
         let process = krnl.prc_mp.borrow_rodata(next_process).borrow();
         let next_pagetable = process.pagetable;
         let cr3 = process.cr3;
         let pcid = process.pcid;
         let depth = process.depth;
         assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
-            reveal(process_pagetable_match); reveal(process_perms_wf); reveal(pagetable_perms_wf); reveal(process_pcid_allocator_wf);
+            process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
             reveal(PageTable::table_pages_wf);
         };
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
@@ -180,7 +180,7 @@ verus! {
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
-            }) by { reveal(cpu_array_wf); };
+            }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
         krnl.cpu_arr.switch_to_thread(cpu_id, next_process, callee_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), before_switch.cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
@@ -226,7 +226,6 @@ verus! {
 
     /// Under cpu, callee, endpoint, and caller locks: dequeue the caller at the queue head, park it waiting for
     /// the reply, and record it on the running callee, which keeps the CPU and returns the caller's payload.
-    #[verifier::spinoff_prover]
     fn ipc_accept_call(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
@@ -581,7 +580,7 @@ verus! {
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
-            }) by { reveal(cpu_array_wf); };
+            }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
         krnl.cpu_arr.switch_to_thread(cpu_id, next_process, caller_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), before_switch.cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
@@ -872,7 +871,6 @@ verus! {
 
     /// `call(ep)` / `call_usize(ep, v)`: enter the endpoint in the CALLING direction with `payload`; block, hand
     /// the CPU to a receive-call head of the same container, or take the rendezvous error step.
-    #[verifier::spinoff_prover]
     pub fn syscall_call(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, endpoint_index: EndpointIdx, payload: IPCPayLoad, pt_regs: &mut Registers) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -959,7 +957,6 @@ verus! {
 
     /// `receive_call(ep)`: enter the endpoint in the RECEIVING_CALL direction with no recorded caller; block,
     /// accept a calling head of the same container, or take the rendezvous error step.
-    #[verifier::spinoff_prover]
     pub fn syscall_receive_call(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, endpoint_index: EndpointIdx, pt_regs: &mut Registers) -> (ret: RetValueType)
         requires
             index_valid(NUM_CPUS, cpu_id),
@@ -1128,7 +1125,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY
                 &&& krnl.thr_mp.spec_index(caller_ptr).view().callee == Some(current_thread_ptr)
                 &&& krnl.thr_mp.spec_index(caller_ptr).view().owning_container == krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container
-            }) by { reveal(thread_caller_callee_wf); };
+            }) by { thread_caller_callee_wf_at(krnl.thr_mp, current_thread_ptr); };
             assert({
                 &&& ipc_recorded_caller(*old(krnl), cpu_id) == caller_ptr
                 &&& kernel_k_to_kernel_u(*old(krnl)).thread_map[caller_ptr].killed == krnl.thr_mp.spec_index(caller_ptr).being_killed()

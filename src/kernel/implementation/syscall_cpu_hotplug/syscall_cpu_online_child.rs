@@ -2,9 +2,11 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
+#[cfg(verus_keep_ghost)]
+use super::cpu_online_child_eof::{cpu_online_child_eof, cpu_online_child_transition_framing};
 
 verus! {
-/// Brings `target`, an Off cpu of the `child`-th child of the caller's live container, back to Idle under the
+/// Brings `target`, an Off cpu of the `child`-th child of the caller's live, non-zombie container, back to Idle under the
 /// cpu, the caller's container, the child's cpu-set, and the Off-cpu locks, then wakes it with an IPI. Any
 /// request bit of an Off cpu is already clear.
 pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, child: usize, target: CpuId) -> (ret: RetValueType)
@@ -50,7 +52,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
         }
         return RetValueType::ErrorCpuOwnerMismatch;
     }
-    proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { reveal(container_cpu_wf); }; }
+    proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); }; }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let caller_ptr = cpu.owning_container();
@@ -70,17 +72,18 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     proof { assert(!krnl.ctn_mp.spec_index(caller_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); }; }
     let caller = krnl.ctn_mp.borrow_typed(caller_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
     proof { caller.children.lemma_len_view(); }
-    if child >= caller.children.len() {
+    if caller.zombie || child >= caller.children.len() {
+        let result = if caller.zombie { RetValueType::ErrorContainerZombie } else { RetValueType::ErrorCpuOwnerMismatch };
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
-            cpu_online_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, RetValueType::ErrorCpuOwnerMismatch);
-            assert(cpu_online_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target) is ErrorCpuOwnerMismatch) by {
+            cpu_online_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, result);
+            assert(cpu_online_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target) == result) by {
                 kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), caller_ptr);
             };
         }
-        return RetValueType::ErrorCpuOwnerMismatch;
+        return result;
     }
     let child_ptr = caller.children.get(child);
     proof {
@@ -92,7 +95,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     }
     let child_ro = krnl.ctn_mp.borrow_rodata(child_ptr);
     let cpu_set_ptr = child_ro.borrow().cpu_set;
-    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); }; }
+    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(lctx));
     let cpu_set = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
     let result = if !cpu_set.owned_cpus.contains(target) { RetValueType::ErrorCpuOwnerMismatch }
@@ -122,10 +125,11 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
             &&& krnl.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr
             &&& target != cpu_id
             &&& !lctx.cpu_lock_map().dom().contains(target)
-        }) by { reveal(container_cpu_wf); reveal(cpu_array_wf); reveal(LockedArray::typed_lock_map_aligned); };
+        }) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ptr, target); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), target); reveal(LockedArray::typed_lock_map_aligned); };
     }
     let Tracked(target_lock_perm) = krnl.wlock_off_cpu(target, cpu_set_ptr, Tracked(lctx));
     let ghost old_target_lock_id = krnl.cpu_arr.lock_id_by_index(target);
+    let ghost online_pre = *krnl;
     {
         let cpu_set_mut = krnl.cpu_set_mp.borrow_mut_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
         cpu_set_mut.owned_cpus.mark_open(target);
@@ -135,13 +139,8 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Cpu(target), old_target_lock_id, krnl.cpu_arr.lock_id_by_index(target));
-        assert(krnl.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(cpu_set_perms_wf); reveal(KernelK::default_pagetable_wf); };
-        assert(krnl.memory_management_inv()) by { reveal(cpu_set_pages_wf); };
-        assert(krnl.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(cpu_array_wf); };
-        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
-            reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        };
-        assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+        assert(cpu_online_child_transition_framing(online_pre, *krnl, cpu_set_ptr, target, child_ptr)) by { reveal(cpu_online_child_transition_framing); };
+        cpu_online_child_eof(online_pre, *krnl, cpu_set_ptr, target, child_ptr);
     }
     krnl.wunlock_cpu(target, Tracked(lctx), Tracked(target_lock_perm));
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));

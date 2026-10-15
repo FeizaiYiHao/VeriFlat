@@ -275,6 +275,10 @@ pub enum RetValueType {
     /// Adding `alloc_amount` to the running thread's `quota_4k` would
     /// overflow `usize::MAX`.
     ErrorThreadQuotaOverflow,
+    /// The owning container's root process has exited; the container accepts no new resources.
+    ErrorContainerZombie,
+    /// The callee serving this call exited before replying.
+    ErrorIpcCalleeExited,
 }
 pub type PTType = bool;
 

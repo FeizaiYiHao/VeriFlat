@@ -29,6 +29,7 @@ pub open spec fn kernel_u_only_process_quota_4k_changed(old_u: KernelU, new_u: K
     &&& cpu.owning_container == container_ptr
     &&& old_u.container_map.dom().contains(container_ptr)
     &&& !container.killed
+    &&& !container.zombie
     &&& container.quota_4k >= delta
     &&& old_u.process_map.dom().contains(process_ptr)
     &&& !process.killed
@@ -77,6 +78,7 @@ pub open spec fn kernel_u_only_process_quota_2m_changed(old_u: KernelU, new_u: K
     &&& cpu.owning_container == container_ptr
     &&& old_u.container_map.dom().contains(container_ptr)
     &&& !container.killed
+    &&& !container.zombie
     &&& container.quota_2m >= delta
     &&& old_u.process_map.dom().contains(process_ptr)
     &&& !process.killed
@@ -209,6 +211,7 @@ pub open spec fn kernel_container_nonlock_fields_and_quotas_unchanged(pre: &Kern
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -263,6 +266,7 @@ pub open spec fn kernel_container_quota_4k_changed(pre: &KernelK, post: &KernelK
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -515,6 +519,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -1417,6 +1422,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -1643,6 +1649,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
     &&& cpu.owning_container == container_ptr
     &&& container.locking_thread() is None
     &&& !container.being_killed()
+    &&& !container.view().zombie
     &&& pre.allc_4k_mp.spec_index(container.view_rodata().view().allocator_ptr_4k).quota.view().view() >= delta
     &&& process.locking_thread() is None
     &&& !process.being_killed()
@@ -1672,6 +1679,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -1783,6 +1791,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
     &&& cpu.owning_container == container_ptr
     &&& container.locking_thread() is None
     &&& !container.being_killed()
+    &&& !container.view().zombie
     &&& pre.allc_2m_mp.spec_index(container.view_rodata().view().allocator_ptr_2m).quota.view().view() >= delta
     &&& process.locking_thread() is None
     &&& !process.being_killed()
@@ -1812,6 +1821,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -2134,7 +2144,7 @@ pub open spec fn kernel_u_container_root_published(
     &&& post.container_map[parent].owned_pages.contains(thread_page)
     &&& moved.contains(child) && moved.contains(process) && moved.contains(post.container_map[child].cpu_set)
     &&& post.container_map[child] == (ContainerU {
-        lock_state: LockStateU::WriteLocked, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+        lock_state: LockStateU::WriteLocked, zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
@@ -2197,7 +2207,7 @@ pub open spec fn kernel_u_container_root_created(
     &&& moved.len() == 2 * 512 + 9 + funding
     &&& moved.contains(child) && moved.contains(process) && moved.contains(post.container_map[child].cpu_set)
     &&& post.container_map[child] == (ContainerU {
-        lock_state: LockStateU::WriteLocked, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+        lock_state: LockStateU::WriteLocked, zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked,
@@ -2296,7 +2306,7 @@ pub open spec fn share_4k_objects_k(krnl: KernelK, cpu_id: CpuId) -> Share4kObje
     }
 }
 
-/// `container_ptr`, the running thread's container or a direct child of that live container, records an
+/// `container_ptr`, the running thread's container or a direct child of that live, non-zombie container, records an
 /// offline request for `target`, a non-Off cpu it owns whose request bit is clear.
 #[verifier::opaque]
 pub open spec fn kernel_u_cpu_offline_request_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
@@ -2305,7 +2315,8 @@ pub open spec fn kernel_u_cpu_offline_request_changed(old_u: KernelU, new_u: Ker
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
     &&& old_u.container_map.dom().contains(container_ptr)
-    &&& cpu.owning_container == container_ptr || (container.parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container) && !old_u.container_map[cpu.owning_container].killed)
+    &&& cpu.owning_container == container_ptr || (container.parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container)
+        && !old_u.container_map[cpu.owning_container].killed && !old_u.container_map[cpu.owning_container].zombie)
     &&& index_valid(NUM_CPUS, target)
     &&& old_u.cpu_array[target as int].owning_container == container_ptr
     &&& !(old_u.cpu_array[target as int].state is Off)
@@ -2318,7 +2329,7 @@ pub open spec fn kernel_u_cpu_offline_request_changed(old_u: KernelU, new_u: Ker
 }
 
 /// `target`, an Off cpu owned by `container_ptr`, the running thread's container or a direct child of that
-/// live container, becomes Idle.
+/// live, non-zombie container, becomes Idle.
 #[verifier::opaque]
 pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -2326,7 +2337,8 @@ pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
     &&& old_u.container_map.dom().contains(container_ptr)
-    &&& cpu.owning_container == container_ptr || (old_u.container_map[container_ptr].parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container) && !old_u.container_map[cpu.owning_container].killed)
+    &&& cpu.owning_container == container_ptr || (old_u.container_map[container_ptr].parent == Some(cpu.owning_container) && old_u.container_map.dom().contains(cpu.owning_container)
+        && !old_u.container_map[cpu.owning_container].killed && !old_u.container_map[cpu.owning_container].zombie)
     &&& index_valid(NUM_CPUS, target)
     &&& old_u.cpu_array.len() == NUM_CPUS
     &&& target_cpu.owning_container == container_ptr
@@ -2358,7 +2370,7 @@ pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu
 
 /// `syscall_cpu_offline_request` and `syscall_cpu_offline_request_child` with every lock released again:
 /// only the `target` request bit of the table of `container_ptr`, the caller's container or a direct child
-/// of that live container, is set. On the child path the caller's container was locked and released.
+/// of that live, non-zombie container, is set. On the child path the caller's container was locked and released.
 #[verifier::opaque]
 pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
@@ -2371,7 +2383,8 @@ pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &Kernel
     &&& cpu.state is Running
     &&& pre.ctn_mp.dom().contains(container_ptr)
     &&& pre.ctn_mp.dom().contains(cpu.owning_container)
-    &&& cpu.owning_container == container_ptr || (pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(cpu.owning_container) && caller.locking_thread() is None && !caller.being_killed())
+    &&& cpu.owning_container == container_ptr || (pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(cpu.owning_container) && caller.locking_thread() is None
+        && !caller.being_killed() && !caller.view().zombie)
     &&& pre.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
     &&& index_valid(NUM_CPUS, target)
     &&& pre.cpu_arr.spec_index(target).value.view().view().owning_container == container_ptr
@@ -2394,7 +2407,7 @@ pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &Kernel
 
 /// `syscall_cpu_online` and `syscall_cpu_online_child` with every lock released again: `target` left Off
 /// for Idle and was reopened in the cpu set of `container_ptr`, the caller's container or a direct child of
-/// that live container. On the child path the caller's container was locked and released.
+/// that live, non-zombie container. On the child path the caller's container was locked and released.
 #[verifier::opaque]
 pub open spec fn kernel_cpu_online_changed(pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
@@ -2407,7 +2420,8 @@ pub open spec fn kernel_cpu_online_changed(pre: &KernelK, post: &KernelK, cpu_id
     &&& cpu.state is Running
     &&& pre.ctn_mp.dom().contains(container_ptr)
     &&& pre.ctn_mp.dom().contains(cpu.owning_container)
-    &&& cpu.owning_container == container_ptr || (pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(cpu.owning_container) && caller.locking_thread() is None && !caller.being_killed())
+    &&& cpu.owning_container == container_ptr || (pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(cpu.owning_container) && caller.locking_thread() is None
+        && !caller.being_killed() && !caller.view().zombie)
     &&& pre.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
     &&& index_valid(NUM_CPUS, target)
     &&& pre.cpu_arr.spec_index(target).value.locking_thread() is None
@@ -2555,6 +2569,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
             &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
             &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
             &&& b.view().root_process == a.view().root_process
+            &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
             &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
@@ -2722,5 +2737,167 @@ pub open spec fn kernel_u_new_endpoint_changed(
         container_map: old_u.container_map.insert(container_ptr, ContainerU { owned_endpoints: container.owned_endpoints.insert(endpoint_ptr), ..container }),
         ..old_u
     })
+}
+
+/// The running thread `thread_ptr` exits from `cpu_id`, which goes idle. The thread leaves the thread map and its
+/// container's thread set; its process drops it, absorbs its quota, and becomes a zombie without threads; a zombie
+/// releases its PCID to its container; a zombie root process makes its container a zombie; the container owning the
+/// thread's page regains one 4K quota; and at most the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB entry is flushed.
+#[verifier::opaque]
+pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, flushed_default_pcid: bool) -> bool {
+    let thread = pre.thr_mp.spec_index(thread_ptr).view();
+    let process_ptr = thread.owning_proc;
+    let container_ptr = thread.owning_container;
+    let pre_process = pre.prc_mp.spec_index(process_ptr);
+    let post_process = post.prc_mp.spec_index(process_ptr);
+    let zombie = pre_process.view().owned_threads.view().remove_value(thread_ptr).len() == 0;
+    let pre_cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
+    let post_cpu = post.cpu_arr.spec_index(cpu_id).value.view().view();
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.thr_mp.dom().contains(thread_ptr)
+    &&& pre.prc_mp.dom().contains(process_ptr)
+    &&& !pre_process.view().zombie
+    &&& pre.ctn_mp.dom().contains(container_ptr)
+    &&& post.irt.view().owners() == pre.irt.view().owners()
+    &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
+    &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
+    &&& post.cpu_tlb.view() == if flushed_default_pcid {
+        pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+    } else { pre.cpu_tlb.view() }
+    &&& post.dflt_pt == pre.dflt_pt
+    &&& post.pt_mp == pre.pt_mp
+    &&& post.it_mp == pre.it_mp
+    &&& post.ep_mp == pre.ep_mp
+    &&& post.sched_mp == pre.sched_mp
+    &&& forall|c: RwLockContainerPtr| #![trigger post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let free = PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view());
+            PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
+                == if zombie && c == container_ptr { free.insert(pre_process.view_rodata().view().pcid) } else { free }
+        }
+    &&& post.cpu_set_mp == pre.cpu_set_mp
+    &&& post.cpu_offline_mp == pre.cpu_offline_mp
+    &&& post.allc_2m_mp == pre.allc_2m_mp
+    &&& post.allc_1g_mp == pre.allc_1g_mp
+    &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i)
+    &&& post_cpu.owning_container == pre_cpu.owning_container
+    &&& post_cpu.state == CpuState::Idle
+    &&& post_cpu.current_process is None
+    &&& post_cpu.current_thread is None
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let a = pre.ctn_mp.spec_index(c);
+            let b = post.ctn_mp.spec_index(c);
+            let quota = pre.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int;
+            &&& b.view() == if c == container_ptr { Container { zombie: a.view().zombie || (zombie && a.view().root_process == process_ptr), ..a.view() } } else { a.view() }
+            &&& b.view_rodata() == a.view_rodata()
+            &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
+            &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
+            &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
+            &&& b.view_ghost().owned_threads.view() == if c == container_ptr { a.view_ghost().owned_threads.view().remove(thread_ptr) } else { a.view_ghost().owned_threads.view() }
+            &&& b.being_killed() == a.being_killed()
+            &&& post.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int == quota + if a.view().owned_pages.view().contains(thread_ptr) { 1int } else { 0int }
+        }
+    &&& post.prc_mp.dom() == pre.prc_mp.dom()
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p)
+    &&& post_process.view() == (Process {
+        zombie, quota_4k: (pre_process.view().quota_4k + thread.quota_4k) as usize, quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize,
+        quota_1g: (pre_process.view().quota_1g + thread.quota_1g) as usize, owned_threads: post_process.view().owned_threads, ..pre_process.view()
+    })
+    &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().remove_value(thread_ptr)
+    &&& post_process.view_rodata() == pre_process.view_rodata()
+    &&& post_process.view_ghost() == pre_process.view_ghost()
+    &&& post_process.being_killed() == pre_process.being_killed()
+    &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(thread_ptr)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
+}
+
+/// The running thread `thread_ptr` exits from `cpu_id`, which goes idle. The thread leaves the thread map and its
+/// container's thread set; its process drops it, absorbs its quota, and becomes a zombie without threads; a zombie
+/// returns its PCID to its container's free set; a zombie root process makes its container a zombie; the container
+/// owning the thread's page regains one 4K quota; and at most the `(cpu_id, KERNEL_DEFAULT_PCID)` TLB entry is flushed.
+#[verifier::opaque]
+pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, flushed_default_pcid: bool) -> bool {
+    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let process_ptr = thread.owning_proc;
+    let container_ptr = thread.owning_container;
+    let process = old_u.process_map.spec_index(process_ptr);
+    let threads = process.owned_threads.remove_value(thread_ptr);
+    let zombie = threads.len() == 0;
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.thread_map.dom().contains(thread_ptr)
+    &&& old_u.process_map.dom().contains(process_ptr)
+    &&& old_u.container_map.dom().contains(container_ptr)
+    &&& new_u.container_map.dom() == old_u.container_map.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger new_u.container_map.spec_index(c)]
+        old_u.container_map.dom().contains(c) ==> {
+            let container = old_u.container_map.spec_index(c);
+            let quota_4k = if container.owned_pages.contains(thread_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k };
+            new_u.container_map.spec_index(c) == if c == container_ptr {
+                ContainerU {
+                    zombie: container.zombie || (zombie && container.root_process == process_ptr), owned_threads: container.owned_threads.remove(thread_ptr), quota_4k,
+                    free_pcids: if zombie { container.free_pcids.insert(process.pcid) } else { container.free_pcids }, ..container
+                }
+            } else { ContainerU { quota_4k, ..container } }
+        }
+    &&& new_u == (KernelU {
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[cpu_id as int] }),
+        container_map: new_u.container_map,
+        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+            zombie, pagetable: if zombie { None } else { process.pagetable }, iommu_table: if zombie { None } else { process.iommu_table },
+            quota_4k: (process.quota_4k + thread.quota_4k) as usize, quota_2m: (process.quota_2m + thread.quota_2m) as usize,
+            quota_1g: (process.quota_1g + thread.quota_1g) as usize, owned_threads: threads, ..process
+        }),
+        thread_map: old_u.thread_map.remove(thread_ptr),
+        cpu_tlb: if flushed_default_pcid {
+            old_u.cpu_tlb.insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { old_u.cpu_tlb },
+        ..old_u
+    })
+}
+
+/// Exit of a process's last thread returns the thread's and the process's whole `size` quota to their container's
+/// allocator; besides that only the thread's progress changes.
+#[verifier::opaque]
+pub open spec fn kernel_thread_exit_quota_returned(pre: &KernelK, post: &KernelK, thread_ptr: RwLockThreadPtr, size: PageSize) -> bool {
+    let thread = pre.thr_mp.spec_index(thread_ptr);
+    let process_ptr = thread.view().owning_proc;
+    let process = pre.prc_mp.spec_index(process_ptr);
+    let container_ptr = thread.view().owning_container;
+    let progress = post.thr_mp.spec_index(thread_ptr).view().syscall_progress;
+    &&& pre.thr_mp.dom().contains(thread_ptr)
+    &&& pre.prc_mp.dom().contains(process_ptr)
+    &&& pre.ctn_mp.dom().contains(container_ptr)
+    &&& *post == (KernelK { prc_mp: post.prc_mp, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre })
+    &&& post.thr_mp.dom() == pre.thr_mp.dom()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) && t != thread_ptr ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
+    &&& post.thr_mp.spec_index(thread_ptr).view() == match size {
+        PageSize::SZ4k => Thread { quota_4k: 0, syscall_progress: progress, ..thread.view() },
+        PageSize::SZ2m => Thread { quota_2m: 0, syscall_progress: progress, ..thread.view() },
+        PageSize::SZ1g => Thread { quota_1g: 0, syscall_progress: progress, ..thread.view() },
+    }
+    &&& post.thr_mp.spec_index(thread_ptr).locking_thread() == thread.locking_thread()
+    &&& post.thr_mp.spec_index(thread_ptr).being_killed() == thread.being_killed()
+    &&& post.prc_mp.dom() == pre.prc_mp.dom()
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p)
+    &&& post.prc_mp.spec_index(process_ptr).view() == match size {
+        PageSize::SZ4k => Process { quota_4k: 0, ..process.view() },
+        PageSize::SZ2m => Process { quota_2m: 0, ..process.view() },
+        PageSize::SZ1g => Process { quota_1g: 0, ..process.view() },
+    }
+    &&& post.prc_mp.spec_index(process_ptr).view_rodata() == process.view_rodata()
+    &&& post.prc_mp.spec_index(process_ptr).view_ghost() == process.view_ghost()
+    &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
+    &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int
+            == pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if c == container_ptr && size is SZ4k { process.view().quota_4k + thread.view().quota_4k } else { 0 }
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int
+            == pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int + if c == container_ptr && size is SZ2m { process.view().quota_2m + thread.view().quota_2m } else { 0 }
+    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g)]
+        pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
+            == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int + if c == container_ptr && size is SZ1g { process.view().quota_1g + thread.view().quota_1g } else { 0 }
 }
 }

@@ -11,9 +11,12 @@ they must point to these canonical sources instead of redefining their rules.
 ## Scope and semantics
 
 - Read this file before editing.
-- Do not use subagents without explicit user permission. When authorized,
-  give subagents explicit file ownership and require them to report changed
-  files plus verification run numbers.
+- One subagent may run at any time without asking, provided it obeys every
+  rule in this file and the routed skills: no concurrent heavy verification,
+  no edits to files under verification, the same approval, style, and
+  reporting rules. Give it explicit file ownership and require it to report
+  changed files plus verification run numbers. Larger fan-out still needs
+  explicit user permission.
 - Do not reset, overwrite, restage, or clean unrelated changes. Freeze shared
   APIs before parallel verification.
 - Diagnose questions read-only. Implement only when asked. If a proof exposes
@@ -101,6 +104,10 @@ they must point to these canonical sources instead of redefining their rules.
 - There is no fixed acceptable wall-time regression. Follow the build skill's
   measurement rules and bring a persistent slowdown beyond observed variation
   to the user with the concrete simplification and measurements.
+- Never use `#[verifier::spinoff_prover]` to paper over a flaky or unstable
+  proof (one that fails although every sub-assertion passes, or that flips
+  between the split workspace and the monolith). Find the cause — trigger
+  shape, quantified context, missing direct fact — and fix the proof itself.
 - A structurally large verification equation may use a higher rlimit; high
   rlimit alone is not a proof defect. Measure the uncapped equation and use the
   smallest practical ceiling. Any single equation exceeding 10 seconds of SMT

@@ -16,6 +16,7 @@ pub(super) proof fn alloc_quota_4k_step_from_u(pre: KernelU, post: KernelU, cpu_
             &&& pre.container_map.dom().contains(container_ptr)
             &&& pre.container_map.spec_index(container_ptr).lock_state is Unlocked
             &&& !pre.container_map.spec_index(container_ptr).killed
+            &&& !pre.container_map.spec_index(container_ptr).zombie
             &&& pre.container_map.spec_index(container_ptr).quota_4k >= alloc_amount as int
             &&& pre.process_map.dom().contains(process_ptr)
             &&& pre.process_map.spec_index(process_ptr).lock_state is Unlocked
@@ -108,6 +109,7 @@ pub(super) proof fn alloc_quota_2m_step_from_u(pre: KernelU, post: KernelU, cpu_
             &&& pre.container_map.dom().contains(container_ptr)
             &&& pre.container_map.spec_index(container_ptr).lock_state is Unlocked
             &&& !pre.container_map.spec_index(container_ptr).killed
+            &&& !pre.container_map.spec_index(container_ptr).zombie
             &&& pre.container_map.spec_index(container_ptr).quota_2m >= alloc_amount as int
             &&& pre.process_map.dom().contains(process_ptr)
             &&& pre.process_map.spec_index(process_ptr).lock_state is Unlocked

@@ -43,6 +43,12 @@ pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure_spec::*;
 use kernel::implementation::map_4k::unmap_4k_range::unmap_4k_range;
+use kernel::implementation::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
+use kernel::implementation::map_4k::unmap_4k_present::clear_4k_mapping_present;
+use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
+use kernel::implementation::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
+use kernel::implementation::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
+
 use kernel::implementation::map_4k::unmap_4k_spec::*;
 pub use kernel::implementation::map_4k::share_mapping_4k_spec::*;
 pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_build_and_share, share_mapping_4k_source_owner_precheck, share_mapping_4k_source_precheck};

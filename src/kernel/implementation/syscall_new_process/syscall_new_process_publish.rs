@@ -152,6 +152,7 @@ pub(super) fn publish_staged_process(
         final(krnl).prc_mp.dom().contains(ret.0),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), ret.0, TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(ret.0).being_killed(),
+        !final(krnl).prc_mp.spec_index(ret.0).view().zombie,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().owning_container == container_ptr,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pagetable == ret.1,
         final(krnl).prc_mp.spec_index(ret.0).view().iommu_table is None,
@@ -213,7 +214,6 @@ pub(super) fn publish_staged_process(
             page_ptr2page_index_neq(pagetable_page_ptr, l4_page_ptr);
         };
     }
-    proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     let (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm)) = create_process_from_staged_pages(
         krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, current_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
         Tracked(&mut *lctx), Tracked(&process_page_lock_perm), Tracked(&pagetable_page_lock_perm), Tracked(&l4_page_lock_perm),
@@ -222,7 +222,7 @@ pub(super) fn publish_staged_process(
     krnl.wunlock_page(page_ptr2page_index(l4_page_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(pagetable_page_ptr), Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(process_page_ptr), Tracked(&mut *lctx), Tracked(process_page_lock_perm));
-    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0) by { reveal(Seq::contains); reveal(process_thread_wf); }; }
+    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0) by { reveal(Seq::contains); process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; }
     krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
     krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
     let ghost sharing = Some(SyscallProgress::Share4k {
@@ -233,7 +233,7 @@ pub(super) fn publish_staged_process(
     proof {
         use_type_invariant(&*steps);
         assert(new_process_publish_step_pre(steps.snapshot_u(), cpu_id) && new_process_publish_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
-            reveal(create_process_from_staged_pages_kernel_state_framing); reveal(kernel_thread_quota_4k_changed); reveal(process_thread_wf); reveal(process_pagetable_match);
+            reveal(create_process_from_staged_pages_kernel_state_framing); reveal(kernel_thread_quota_4k_changed); reveal(process_thread_wf);
             kernel_write_held_context_projection(old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, None);
             kernel_process_published_and_parent_unlocked_implies_u_step(old(krnl), &*krnl, &*lctx, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
                 target_pagetable_ptr, None, pcid_allocator_ptr, pcid, sharing);
@@ -245,7 +245,7 @@ pub(super) fn publish_staged_process(
     }
     proof {
         assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
-        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { reveal(process_thread_wf); reveal(process_pagetable_match); };
+        assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by { reveal(KernelK::default_pagetable_wf); };
     }
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, target_pagetable_ptr, krnl.pt_mp.spec_index(target_pagetable_ptr).view())) by { reveal(tlb_wf_spec); }; }

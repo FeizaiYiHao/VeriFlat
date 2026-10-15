@@ -17,7 +17,7 @@ verus! {
 /// One step of a syscall, with the arguments its step specification takes.
 pub ghost enum StepLabel {
     Mmap4kEnter { range: VaRange4K }, Mmap4kDirectory, Mmap4kLeaf, Mmap4kExit,
-    Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
+    Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf { va: VAddr }, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
     AllocQuota4k { alloc_amount: usize }, AllocThreadQuota4k { alloc_amount: usize },
     AllocQuota2m { alloc_amount: usize }, AllocThreadQuota2m { alloc_amount: usize },
     Schedule { entry_regs: Registers, flushed_pcid: Option<Pcid> }, RebalancePull,
@@ -46,7 +46,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Mmap4kLeaf => mmap_4k_leaf_step_pre(old_u, cpu_id) && mmap_4k_leaf_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kExit => mmap_4k_exit_step_pre(old_u, cpu_id) && mmap_4k_exit_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kEnter { range } => unmap_4k_enter_step_pre(old_u, cpu_id, range) && unmap_4k_enter_step(old_u, new_u, cpu_id, range),
-        StepLabel::Unmap4kLeaf => unmap_4k_leaf_step_pre(old_u, cpu_id) && unmap_4k_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::Unmap4kLeaf { va } => unmap_4k_leaf_step_pre(old_u, cpu_id, va) && unmap_4k_leaf_step(old_u, new_u, cpu_id, va),
         StepLabel::Unmap4kTlbCleared { pcid } => unmap_4k_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, pcid),
         StepLabel::Unmap4kFlushed => unmap_4k_flush_step_pre(old_u, cpu_id) && unmap_4k_flushed_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kRefund => unmap_4k_refund_step_pre(old_u, cpu_id)
@@ -170,7 +170,8 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::Mmap4kLeaf => { mmap_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Mmap4kExit => { mmap_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kEnter { range } => { unmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, x, y); unmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
-            StepLabel::Unmap4kLeaf => { unmap_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Unmap4kLeaf { va } => { unmap_4k_leaf_step_lr(old_u, new_u, cpu_id, va, x, y); unmap_4k_leaf_step_iso(old_u, new_u, cpu_id, va, x, y); },
+
             StepLabel::Unmap4kTlbCleared { pcid } => { unmap_4k_tlb_cleared_step_lr(old_u, new_u, cpu_id, pcid, x, y); unmap_4k_tlb_cleared_step_iso(old_u, new_u, cpu_id, pcid, x, y); },
             StepLabel::Unmap4kFlushed => { unmap_4k_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kRefund => { unmap_4k_refund_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_refund_step_iso(old_u, new_u, cpu_id, x, y); },

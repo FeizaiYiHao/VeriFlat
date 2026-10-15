@@ -30,6 +30,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
             &&& pre.container_map.dom().contains(container_ptr)
             &&& container.lock_state is Unlocked
             &&& !container.killed
+            &&& !container.zombie
             &&& range.wf()
             &&& range.len > 0
             &&& user_va_range(pre, range)

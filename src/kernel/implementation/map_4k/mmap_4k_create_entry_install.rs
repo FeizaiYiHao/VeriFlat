@@ -116,8 +116,6 @@ pub(super) enum MissingPageTableLevel { L4, L3, L2 }
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, quota_thread_ptr),
             *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
-            held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![quota_thread_ptr]),
-            held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g() =~= old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
@@ -197,13 +195,13 @@ pub(super) enum MissingPageTableLevel { L4, L3, L2 }
             assert(krnl.subsystems_inv()) by {
                 assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
                 assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
-                assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); };
+                assert(page_array_wf(krnl.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
                 assert(thread_perms_wf(krnl.thr_mp)) by {
                     reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
                 };
             };
             assert(krnl.memory_management_inv()) by {
-                assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); };
+                assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(old(krnl).cpu_set_mp, krnl.cpu_set_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
                     allocator_4k_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_4k_mp, krnl.allc_4k_mp);
                     allocator_2m_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_2m_mp, krnl.allc_2m_mp);
@@ -213,8 +211,9 @@ pub(super) enum MissingPageTableLevel { L4, L3, L2 }
                 assert(hugepage_2m_wf(krnl.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
                 assert(hugepage_1g_wf(krnl.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
                 assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
-                assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
+                assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { process_pagetable_match_preserved_for_pagetable_fields_eq(krnl.prc_mp, old(krnl).pt_mp, krnl.pt_mp); };
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
+                assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { page_iommu_table_wf_preserved_for_nonmapped_page_change(krnl.ctn_mp, krnl.prc_mp, old(krnl).it_mp, krnl.it_mp, old(krnl).pg_arr, krnl.pg_arr, page_index); };
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
                 assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };

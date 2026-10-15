@@ -136,8 +136,6 @@ pub open spec fn cpu_went_off_transition(
         } else { post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)) })
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& (forall|ptr: RwLockCpuSetPtr| #![trigger pre.cpu_set_mp.spec_index(ptr)] #![trigger post.cpu_set_mp.spec_index(ptr)] pre.cpu_set_mp.dom().contains(ptr) ==> {
-        &&& post.cpu_set_mp.view().spec_index(ptr).is_init() == pre.cpu_set_mp.view().spec_index(ptr).is_init()
-        &&& post.cpu_set_mp.view().spec_index(ptr).addr() == pre.cpu_set_mp.view().spec_index(ptr).addr()
         &&& (ptr != cpu_set_ptr ==> post.cpu_set_mp.spec_index(ptr) == pre.cpu_set_mp.spec_index(ptr))
     })
     &&& cpu_set_after.is_init() == cpu_set_before.is_init()

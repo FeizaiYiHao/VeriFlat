@@ -3,7 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_4k_global_ptr_valid(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -37,7 +36,6 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_ptr_valid(
     if alloc_ptr == allocator_4k_page { funding_pages.to_set_ensures(); } else { reveal(allocator_free_page_ptrs_wf); }
 }
 
-#[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -100,7 +98,6 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
     }
 }
 
-#[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_1g_global_forward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -146,7 +143,6 @@ pub(super) broadcast proof fn eof_allocator_free_1g_global_forward(
     reveal(container_allocator_global_free_1g_page_wf);
 }
 
-#[verifier::spinoff_prover]
 pub(super) broadcast proof fn eof_allocator_free_1g_global_backward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -186,7 +182,6 @@ pub(super) broadcast proof fn eof_allocator_free_1g_global_backward(
     reveal(container_allocator_global_free_1g_page_wf);
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,

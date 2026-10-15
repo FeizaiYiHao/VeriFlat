@@ -145,7 +145,7 @@ pub fn remove_last_4k_mapping_to_allocator(
     }
     assert(krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr && index_valid(NUM_PAGES, page_index) && krnl.pg_arr.spec_index(page_index).view().is_init()
         && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))) by {
-        page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); reveal(mapped_4k_page_pagetable_wf); page_ptr_roundtrip();
+        page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pg_arr, pagetable, va); page_ptr_roundtrip();
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     assert(krnl.thr_mp.spec_index(thread_ptr).is_init() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && !krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)) by {

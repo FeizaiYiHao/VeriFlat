@@ -74,7 +74,7 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, own
         }
     };
     let amount = *counter;
-    assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { reveal(allocator_perms_wf); reveal(container_allocator_wf); };
+    assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { reveal(allocator_perms_wf); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); };
     thread_map_clear_free_quota_pending_4k(&mut krnl.thr_mp, thread_ptr, depth, counter, Tracked(&*lctx), thread_perm);
     {
         let quota = krnl.allc_4k_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), quota_perm);
@@ -87,7 +87,7 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, own
             assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
             assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
             assert(container_allocator_free_4k_page_wf(krnl.allc_4k_mp, krnl.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
-            assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); };
+            assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
             assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); };
             assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by {
                 reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);

@@ -131,6 +131,27 @@ verus! {
         &&& container_allocator_1g_backward_wf(container_map, allocator_1g_map)
     }
 
+    /// Container `container_ptr`'s 4K, 2M, and 1G allocators exist, belong to it, and carry its depth.
+    pub proof fn container_allocator_wf_at(container_map: ContainerLockedMap, allocator_4k_map: PageAllocatorUnLockedMap, allocator_2m_map: PageAllocatorUnLockedMap,
+        allocator_1g_map: PageAllocatorUnLockedMap, container_ptr: RwLockContainerPtr)
+        requires
+            container_allocator_wf(container_map, allocator_4k_map, allocator_2m_map, allocator_1g_map),
+            container_map.dom().contains(container_ptr),
+        ensures
+            ({
+                let ro = container_map.spec_index(container_ptr).view_rodata().view();
+                &&& allocator_4k_map.dom().contains(ro.allocator_ptr_4k)
+                &&& allocator_4k_map.spec_index(ro.allocator_ptr_4k).owning_container == container_ptr
+                &&& allocator_4k_map.spec_index(ro.allocator_ptr_4k).quota.view().container_depth == ro.depth
+                &&& allocator_2m_map.dom().contains(ro.allocator_ptr_2m)
+                &&& allocator_2m_map.spec_index(ro.allocator_ptr_2m).owning_container == container_ptr
+                &&& allocator_2m_map.spec_index(ro.allocator_ptr_2m).quota.view().container_depth == ro.depth
+                &&& allocator_1g_map.dom().contains(ro.allocator_ptr_1g)
+                &&& allocator_1g_map.spec_index(ro.allocator_ptr_1g).owning_container == container_ptr
+                &&& allocator_1g_map.spec_index(ro.allocator_ptr_1g).quota.view().container_depth == ro.depth
+            }),
+    { reveal(container_allocator_wf); }
+
     pub open spec fn container_page_owner_forward_wf(container_map: ContainerLockedMap, page_array: PageLockedArray) -> bool {
         forall|c_ptr:RwLockContainerPtr, page_ptr: PagePtr|
             #![trigger container_map.spec_index(c_ptr).view().owned_pages.view().contains(page_ptr)]

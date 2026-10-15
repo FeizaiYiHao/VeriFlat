@@ -3,7 +3,6 @@ use vstd::assert_sets_equal;
 use crate::*;
 
 verus! {
-#[verifier::spinoff_prover]
 pub(super) fn allocate_new_process_with_iommu_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     current_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, Tracked(current_thread_lock_perm): Tracked<&LockPerm>,

@@ -67,7 +67,6 @@ pub proof fn page_2m_all_ptrs_contains_index(head: PageIndex, index: PageIndex)
     page_2m_ptr_prefix_contains_index(head, 512, index);
 }
 
-#[verifier::spinoff_prover]
 pub(super) proof fn page_ptr_indices_disjoint_from_2m_tail(page_ptrs: Seq<PagePtr>, page_indices: Set<PageIndex>, head: PageIndex)
     requires
         page_index_2m_valid(head),
@@ -455,6 +454,9 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
             #![trigger final(pages).spec_index(index).view().view().mappings()]
             index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().mappings() == reference_pages.spec_index(index).view().view().mappings(),
         forall|index: PageIndex|
+            #![trigger final(pages).spec_index(index).view().view().iommu_mappings()]
+            index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().iommu_mappings() == reference_pages.spec_index(index).view().view().iommu_mappings(),
+        forall|index: PageIndex|
             #![trigger final(pages).spec_index(index).view().view().state]
             index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().state == reference_pages.spec_index(index).view().view().state,
         forall|index: PageIndex|
@@ -533,6 +535,7 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
                         &&& pages.spec_index(index).view().view().owning_container == owning_container
                         &&& pages.spec_index(index).view().view().state == old(pages).spec_index(index).view().view().state
                         &&& pages.spec_index(index).view().view().mappings() == old(pages).spec_index(index).view().view().mappings()
+                        &&& pages.spec_index(index).view().view().iommu_mappings() == old(pages).spec_index(index).view().view().iommu_mappings()
                         &&& pages.spec_index(index).view().locking_thread() == old(pages).spec_index(index).view().locking_thread()
                     } else {
                         pages.spec_index(index) == old(pages).spec_index(index)
@@ -565,11 +568,11 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         }
         let first_page = pages.borrow_mut_typed(first_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(first_perms.tracked_borrow(first_index)));
         first_page.owning_container = owning_container;
-        proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); }; }
+        proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); }; }
         let second_page = pages.borrow_mut_typed(second_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(second_perms.tracked_borrow(second_index)));
         second_page.owning_container = owning_container;
         proof {
-            assert(page_array_wf(*pages)) by { reveal(page_array_wf); };
+            assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
             broadcast use page_ptr_sequence_index_in_equal_set; broadcast use page_ptr_sequence_index_in_mapped_set;
             preserved_page_ptr_seq.to_set_ensures();
             assert(page_2m_tail_prefix_indices(first_head, (count + 1) as usize) == page_2m_tail_prefix_indices(first_head, count).insert(first_index)) by {

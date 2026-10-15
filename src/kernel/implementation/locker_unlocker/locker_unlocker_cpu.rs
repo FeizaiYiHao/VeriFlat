@@ -96,7 +96,7 @@ impl KernelK {
     {
         proof {
             assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { reveal(cpu_array_wf); };
-            assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); reveal(container_cpu_wf); };
+            assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by { container_cpu_set_wf_cpu_set_at(old(self).ctn_mp, old(self).cpu_set_mp, cpu_set_ptr); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); reveal(container_cpu_wf); };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedArray2D::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);

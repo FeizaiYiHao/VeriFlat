@@ -22,13 +22,14 @@ fn retype_4k_page_perm_to_allocator(page_ptr: PagePtr, allocator: PageAllocator,
 }
 
 impl UnLockedMap<usize, PageAllocator> {
-    pub fn retype_page_to_allocator_and_insert(&mut self, page_ptr: PagePtr, allocator: PageAllocator, Tracked(page_perm): Tracked<PagePerm4k>)
+    pub fn retype_page_to_allocator_and_insert(&mut self, page_ptr: PagePtr, allocator: PageAllocator, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
             !old(self).dom().contains(page_ptr),
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
             allocator.inv(),
+            lctx.kernel_view_locking_state() is Acquire,
         ensures
             final(self).perms_wf(),
             final(self).dom() =~= old(self).dom().insert(page_ptr),

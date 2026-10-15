@@ -50,6 +50,7 @@ verus! {
             container_lock_perm.view().lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
             typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
             old(krnl).ctn_mp.spec_index(container_ptr).being_killed() == false,
+            !old(krnl).ctn_mp.spec_index(container_ptr).view().zombie,
             old(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
             old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).quota.is_init(),
             quota_lock_perm.view().state() is WriteLock,
@@ -131,6 +132,7 @@ verus! {
             assert(krnl.memory_management_inv()) by {
                 assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall(); };
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
                 assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by {
                     reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); reveal(container_allocator_wf);
@@ -156,12 +158,17 @@ verus! {
                 assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
                 assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
                 assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
-                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_empty_lists_wlocked); reveal(process_thread_wf); lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall(); };
+                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by {
+                    reveal(process_empty_lists_wlocked);
+                    process_thread_wf_preserved_for_process_thread_link_eq(old(krnl).prc_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp);
+                    lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall();
+                };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(old(krnl).irt.view(), krnl.irt.view(), old(krnl).prc_mp, krnl.prc_mp, krnl.it_mp); };
         }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
@@ -301,7 +308,7 @@ verus! {
                 && krnl.thr_mp.perms_wf()
                 && krnl.prc_mp.spec_index(process_ptr).is_init()
                 && krnl.thr_mp.spec_index(thread_ptr).is_init()
-            ) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
+            ) by { process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
         }
         let process_mut = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
         process_mut.quota_4k = process_mut.quota_4k - alloc_amount;
@@ -315,8 +322,9 @@ verus! {
             };
             assert(krnl.memory_management_inv()) by {
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
-                assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); };
+                assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by {
                     thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
                     thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
@@ -352,13 +360,18 @@ verus! {
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.ep_mp); };
                 assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.sched_mp); };
                 assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp); };
-                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_empty_lists_wlocked); reveal(process_thread_wf); lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall(); };
+                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by {
+                    reveal(process_empty_lists_wlocked);
+                    process_thread_wf_preserved_for_process_thread_link_eq(old(krnl).prc_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp);
+                    lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall();
+                };
                 assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.cpu_arr); };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(old(krnl).irt.view(), krnl.irt.view(), old(krnl).prc_mp, krnl.prc_mp, krnl.it_mp); };
         }
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), thread_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
@@ -428,6 +441,7 @@ verus! {
             container_lock_perm.view().lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
             typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
             old(krnl).ctn_mp.spec_index(container_ptr).being_killed() == false,
+            !old(krnl).ctn_mp.spec_index(container_ptr).view().zombie,
             old(krnl).allc_2m_mp.dom().contains(alloc_ptr_2m),
             old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota.is_init(),
             quota_lock_perm.view().state() is WriteLock,
@@ -489,7 +503,7 @@ verus! {
             alloc_amount > 0 ==> alloc_quota_2m_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, alloc_amount),
             alloc_amount > 0 ==> alloc_quota_2m_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, alloc_amount),
     {
-        proof { assert(krnl.prc_mp.perms_wf() && krnl.allc_2m_mp.perms_wf() && krnl.prc_mp.spec_index(process_ptr).is_init()) by { reveal(process_perms_wf); reveal(allocator_perms_wf); }; }
+        proof { assert(krnl.prc_mp.perms_wf() && krnl.allc_2m_mp.perms_wf() && krnl.prc_mp.spec_index(process_ptr).is_init()) by { process_perms_wf_at(krnl.prc_mp, process_ptr); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); }; }
         if alloc_amount > 0 {
             let process_mut = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
             process_mut.quota_2m = process_mut.quota_2m + alloc_amount;
@@ -501,11 +515,12 @@ verus! {
             assert(allocator_perms_wf(krnl.allc_2m_mp) && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { reveal(allocator_perms_wf); };
             assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
             assert(krnl.memory_management_inv()) by {
-                assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(allocator_2m_pages_wf); };
+                assert(allocator_pages_wf(krnl.pg_arr, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { allocator_2m_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).allc_2m_mp, krnl.allc_2m_mp); };
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
                 assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by {
-                    reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); lemma_process_effective_quota_4k_fold_sum_eq_forall();
+                    container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(krnl.ctn_mp, krnl.thr_mp, krnl.allc_4k_mp, old(krnl).prc_mp, krnl.prc_mp); lemma_process_effective_quota_4k_fold_sum_eq_forall();
                 };
                 assert(container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_2m_mp)) by {
                     reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); reveal(container_allocator_wf);
@@ -515,7 +530,9 @@ verus! {
                 assert(container_process_allocator_quota_1g_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_1g_mp)) by {
                     container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(krnl.ctn_mp, krnl.thr_mp, krnl.allc_1g_mp, old(krnl).prc_mp, krnl.prc_mp);
                 };
-                assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
+                assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
+                    container_allocator_wf_preserved_for_owner_depth_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).allc_4k_mp, krnl.allc_4k_mp, old(krnl).allc_2m_mp, krnl.allc_2m_mp, old(krnl).allc_1g_mp, krnl.allc_1g_mp);
+                };
                 assert(allocator_free_page_ptrs_wf(krnl.allc_2m_mp)) by { lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall(); };
                 assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
                 assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
@@ -526,12 +543,17 @@ verus! {
                 assert(container_process_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
                 assert(per_container_process_tree_wf(krnl.ctn_mp, krnl.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
                 assert(process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
-                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_empty_lists_wlocked); reveal(process_thread_wf); lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall(); };
+                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by {
+                    reveal(process_empty_lists_wlocked);
+                    process_thread_wf_preserved_for_process_thread_link_eq(old(krnl).prc_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp);
+                    lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall();
+                };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(old(krnl).irt.view(), krnl.irt.view(), old(krnl).prc_mp, krnl.prc_mp, krnl.it_mp); };
         }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
@@ -671,7 +693,7 @@ verus! {
                 && krnl.thr_mp.perms_wf()
                 && krnl.prc_mp.spec_index(process_ptr).is_init()
                 && krnl.thr_mp.spec_index(thread_ptr).is_init()
-            ) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
+            ) by { process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
         }
         let process_mut = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm.borrow()));
         process_mut.quota_2m = process_mut.quota_2m - alloc_amount;
@@ -685,8 +707,9 @@ verus! {
             };
             assert(krnl.memory_management_inv()) by {
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+                assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
-                assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); };
+                assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by {
                     thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
                     thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr);
@@ -696,7 +719,7 @@ verus! {
                 assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
                 assert(container_process_allocator_quota_4k_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp)) by {
                     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(krnl.ctn_mp, old(krnl).prc_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.allc_4k_mp);
-                    reveal(container_process_allocator_quota_4k_wf); reveal(container_process_wf); lemma_process_effective_quota_4k_fold_sum_eq_forall();
+                    container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(krnl.ctn_mp, krnl.thr_mp, krnl.allc_4k_mp, old(krnl).prc_mp, krnl.prc_mp); reveal(container_process_wf); lemma_process_effective_quota_4k_fold_sum_eq_forall();
                 };
                 assert(container_process_allocator_quota_2m_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_2m_mp)) by {
                     reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); reveal(container_thread_wf);
@@ -722,13 +745,18 @@ verus! {
                 assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.ep_mp); };
                 assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.sched_mp); };
                 assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp); };
-                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_empty_lists_wlocked); reveal(process_thread_wf); lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall(); };
+                assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by {
+                    reveal(process_empty_lists_wlocked);
+                    process_thread_wf_preserved_for_process_thread_link_eq(old(krnl).prc_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp);
+                    lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall();
+                };
                 assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.cpu_arr); };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(old(krnl).irt.view(), krnl.irt.view(), old(krnl).prc_mp, krnl.prc_mp, krnl.it_mp); };
         }
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), thread_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);

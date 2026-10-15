@@ -76,6 +76,7 @@ pub const NR_CALL_USIZE: usize = 38;
 pub const NR_RECEIVE_CALL: usize = 39;
 pub const NR_REPLY_AND_RECEIVE: usize = 40;
 pub const NR_REPLY_AND_RECEIVE_USIZE: usize = 41;
+pub const NR_THREAD_EXIT: usize = 42;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -85,7 +86,7 @@ pub const ERR_INVALID_ARGUMENT: isize = -2;
 pub const MODEL_ERROR_BASE: isize = 100;
 
 /// `RetValueType` variants in declaration order; the kernel's `error_index` mirrors it.
-const RET_VALUE_NAMES: [&str; 42] = [
+const RET_VALUE_NAMES: [&str; 44] = [
     "SuccessUsize", "SuccessSeqUsize", "SuccessPairUsize", "SuccessThreeUsize", "Success", "ErrorNoQuota",
     "ErrorVaInUse", "CpuIdle", "Error", "Else", "NoQuota", "VaInUse", "ErrorContainerKilled",
     "ErrorContainerQuotaInsufficient", "ErrorProcessKilled", "ErrorThreadKilled", "ErrorNoPcid",
@@ -95,7 +96,8 @@ const RET_VALUE_NAMES: [&str; 42] = [
     "ErrorPciAlreadyAttached", "ErrorCpuOwnerMismatch", "ErrorCpuAlreadyOff", "ErrorCpuNotOff",
     "ErrorIpcSourceUnmapped", "ErrorIpcPageOwnerMismatch", "ErrorIpcEndpointSourceInvalid",
     "ErrorIpcEndpointTargetInUse", "ErrorIpcEndpointOwnerMismatch", "ErrorCallAcrossContainers",
-    "ErrorReplyOutOfPhase", "ErrorProcessQuotaOverflow", "ErrorThreadQuotaOverflow",
+    "ErrorReplyOutOfPhase", "ErrorProcessQuotaOverflow", "ErrorThreadQuotaOverflow", "ErrorContainerZombie",
+    "ErrorIpcCalleeExited",
 ];
 
 /// Names the result in `rax`.

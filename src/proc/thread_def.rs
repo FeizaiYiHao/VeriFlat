@@ -49,6 +49,17 @@ pub ghost enum SyscallProgress {
     NewThread { regs: Registers, endpoint_index: Option<EndpointIdx> },
     /// Endpoint creation that installs the new endpoint at descriptor `slot`.
     NewEndpoint { slot: EndpointIdx },
+    /// Thread exit that has released every descriptor below `next`.
+    ThreadExit { next: EndpointIdx },
+    /// Exit of a process's last thread while its page table is write-locked: 4k leaves are being unmapped,
+    /// and `flushed` records that the released translations are gone from every cpu.
+    ThreadExitReclaim { flushed: bool },
+    /// Exit of a process's last thread after the thread's and the process's quota of size `returned` and of every
+    /// smaller size went back to their container.
+    ThreadExitQuota { returned: PageSize },
+
+    /// Exit of a process's last thread after its page table is empty and unlocked, before the thread is destroyed.
+    ThreadExitZombie,
 }
 
 pub struct Thread {
@@ -671,6 +682,32 @@ impl Thread {
         self.callee = None;
         self.last_cpu = cpu_id;
         self.state = ThreadState::RUNNING { cpu_id };
+    }
+
+    /// A caller waiting for its reply is woken on shard `cpu_id` with `result` because its callee exited.
+    pub fn waiting_reply_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+        requires
+            old(self).inv(),
+            old(self).state is WAITING_REPLY,
+            index_valid(NUM_CPUS, cpu_id),
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread {
+                state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(result), scheduler_linkedlist_node: final(self).scheduler_linkedlist_node, ..*old(self)
+            }),
+            !final(self).scheduler_linkedlist_node.is_init(),
+            final(self).scheduler_linkedlist_node.addr() == old(self).scheduler_linkedlist_node.addr(),
+            ret.0 == final(self).scheduler_linkedlist_node.addr(),
+            ret.1.view().is_init(),
+            ret.1.view().addr() == ret.0,
+            ret.1.view().value().view() == thread_ptr,
+    {
+        let (node_addr, mut node_perm) = self.scheduler_linkedlist_node.take();
+        node_update_value(node_addr, &mut node_perm, thread_ptr);
+        self.callee = None;
+        self.error_code = Some(result);
+        self.state = ThreadState::SCHEDULED { cpu_id };
+        (node_addr, node_perm)
     }
 
     /// The running callee drops its recorded caller after replying to it.

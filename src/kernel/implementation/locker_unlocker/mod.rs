@@ -2,6 +2,7 @@ mod locker_unlocker_cpu;
 mod locker_unlocker_container;
 mod locker_unlocker_quota_4k;
 mod locker_unlocker_quota_2m;
+mod locker_unlocker_quota_1g;
 mod locker_unlocker_process;
 mod locker_unlocker_thread;
 mod locker_unlocker_allocator_cache;

@@ -6,6 +6,8 @@ use core::mem::offset_of;
 // Each container uses a 2 MiB pages
 #[repr(C)]
 pub struct Container {
+    // Set when the root process becomes zombie; independent of the lock's kill state.
+    pub zombie: bool,
     pub parent_linkedlist_node: ExternalNode<RwLockContainerPtr>,
     pub children: LinkedList<RwLockContainerPtr, 233>,
 
@@ -35,6 +37,7 @@ pub struct ContainerGhost {
 
 pub ghost struct ContainerU {
     pub lock_state: LockStateU,
+    pub zombie: bool,
     pub children: Seq<RwLockContainerPtr>,
     pub uppertree_seq: Seq<RwLockContainerPtr>,
     pub subtree_set: Set<RwLockContainerPtr>,
@@ -66,6 +69,7 @@ impl Container {
     pub fn new_boot_root(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, root_endpoint: RwLockEndpointPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
         ensures
             ret.inv(),
+            !ret.zombie,
             ret.parent_linkedlist_node.is_init(),
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
@@ -82,6 +86,7 @@ impl Container {
     pub fn new_staged(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, depth: usize) -> (ret: Self)
         ensures
             ret.inv(),
+            !ret.zombie,
             ret.parent_linkedlist_node.is_init(),
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
@@ -89,7 +94,8 @@ impl Container {
             ret.owned_endpoints.view() == Set::<RwLockEndpointPtr>::empty(),
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
-        Self { parent_linkedlist_node: ExternalNode::new(container_ptr), children: LinkedList::new(Some(depth), Some(container_ptr)), root_process, owned_endpoints: Ghost(Set::empty()), owned_pages: Ghost(Set::empty()) }
+        Self { zombie: false, parent_linkedlist_node: ExternalNode::new(container_ptr), children: LinkedList::new(Some(depth), Some(container_ptr)), root_process,
+            owned_endpoints: Ghost(Set::empty()), owned_pages: Ghost(Set::empty()) }
     }
 
     pub open spec fn wf(&self) -> bool { self.children.inv() }

@@ -6,8 +6,8 @@ verus! {
     pub open spec fn process_empty_lists_wlocked(process_map: ProcessLockedMap) -> bool {
         forall|p_ptr:RwLockProcessPtr|
             #![trigger process_map.dom().contains(p_ptr)]
-            process_map.dom().contains(p_ptr) && (if process_map.spec_index(p_ptr).view().zombie { process_map.spec_index(p_ptr).view().children.view().len() == 0 }
-                else { process_map.spec_index(p_ptr).view().owned_threads.view().len() == 0 }) ==> process_map.spec_index(p_ptr).wlocked()
+            process_map.dom().contains(p_ptr) && !process_map.spec_index(p_ptr).view().zombie && process_map.spec_index(p_ptr).view().owned_threads.view().len() == 0
+                ==> process_map.spec_index(p_ptr).wlocked()
     }
 
     // Proof dependencies (confirmed): process_empty_lists_wlocked.
@@ -29,6 +29,16 @@ verus! {
             thread_map.dom().contains(t_ptr)
                 ==> process_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc) && !process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc).view().zombie
                 && process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc).view().owned_threads.view().contains(t_ptr)
+        // A thread being killed belongs to a process being killed, and one killer write-holds both.
+        &&& forall|t_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(t_ptr).being_killed()]
+            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).being_killed() ==> {
+                let process = process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc);
+                &&& process.being_killed()
+                &&& process.locking_thread() is Write
+                &&& thread_map.spec_index(t_ptr).locking_thread() is Write
+                &&& thread_map.spec_index(t_ptr).locking_thread()->Write_thread_id == process.locking_thread()->Write_thread_id
+            }
     }
 
     pub proof fn process_thread_wf_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)

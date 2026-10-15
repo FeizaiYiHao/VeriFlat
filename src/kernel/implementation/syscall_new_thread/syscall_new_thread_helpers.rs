@@ -128,7 +128,7 @@ verus! {
                 }) by { kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, None); };
             }
 
-            proof { assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
+            proof { assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; }
             let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
                 krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&page_lock_perm),
                 Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,

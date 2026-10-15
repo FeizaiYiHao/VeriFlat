@@ -77,4 +77,21 @@ pub proof fn lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(pre
     ensures
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); }
+
+pub proof fn lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(pre: KernelK, post: KernelK)
+    requires
+        container_allocator_free_1g_page_wf(pre.allc_1g_mp, pre.pg_arr),
+        post.pg_arr == pre.pg_arr,
+        post.allc_1g_mp.dom() == pre.allc_1g_mp.dom(),
+        forall|a: RwLockPageAllocatorPtr|
+            #![trigger post.allc_1g_mp.spec_index(a).owning_container]
+            #![trigger post.allc_1g_mp.spec_index(a).global_pool.view()]
+            post.allc_1g_mp.dom().contains(a)
+                ==> post.allc_1g_mp.spec_index(a).owning_container == pre.allc_1g_mp.spec_index(a).owning_container && post.allc_1g_mp.spec_index(a).global_pool.view() == pre.allc_1g_mp.spec_index(a).global_pool.view(),
+        forall|a: RwLockPageAllocatorPtr, i: CpuId|
+            #![trigger post.allc_1g_mp.spec_index(a).cpu_caches.spec_index(i).view().view()]
+            post.allc_1g_mp.dom().contains(a) && index_valid(NUM_CPUS, i) ==> post.allc_1g_mp.spec_index(a).cpu_caches.spec_index(i).view().view() == pre.allc_1g_mp.spec_index(a).cpu_caches.spec_index(i).view().view(),
+    ensures
+        container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
+{ reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_cpu_cache_free_1g_page_wf); }
 }

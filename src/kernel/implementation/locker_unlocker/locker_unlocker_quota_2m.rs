@@ -95,7 +95,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ2m, alloc_ptr_2m)),
     {
         proof {
-            assert(old(self).allc_2m_mp.perms_wf()) by { reveal(allocator_perms_wf); };
+            assert(old(self).allc_2m_mp.perms_wf()) by { allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
             assert(old(lctx).lock_entry_contains(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota.lock_id(), KernelObjId::AllocatorQuota(PageSize::SZ2m, alloc_ptr_2m))) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         }
         assert(self.allc_2m_mp.spec_index(alloc_ptr_2m).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
@@ -104,7 +104,7 @@ impl KernelK {
             assert(allocator_perms_wf(self.allc_2m_mp)) by { reveal(allocator_perms_wf); };
             assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { reveal(allocator_2m_pages_wf); };
+            assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { allocator_2m_pages_wf_preserved_for_page_state_eq(old(self).pg_arr, self.pg_arr, old(self).allc_2m_mp, self.allc_2m_mp); };
             assert(allocator_free_page_ptrs_wf(self.allc_2m_mp)) by { lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall(); };
             assert(container_allocator_free_2m_page_wf(self.allc_2m_mp, self.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(*old(self), *self); };
             assert(self.memory_management_inv()) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); };
