@@ -53,8 +53,6 @@ verus! {
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
             final(krnl).ep_mp.lock_id_by_key(endpoint_ptr) == old(krnl).ep_mp.lock_id_by_key(endpoint_ptr),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.dom().contains(thread_ptr),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map == kernel_k_to_nonlock_kernel_u(*old(krnl)).thread_map.insert(thread_ptr, kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.spec_index(thread_ptr)),
             final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, endpoint_ptr),
             *final(krnl) == (KernelK { thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..*old(krnl) }),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -118,6 +116,5 @@ verus! {
         }
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        proof { kernel_thread_unchanged_except_implies_nonlock_u_thread_map_insert(old(krnl), &*krnl, thread_ptr); }
     }
 }

@@ -113,7 +113,14 @@ pub(super) fn thread_exit_finish(
                 &&& krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr)
                 &&& krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
-            }) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
+                &&& krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().container_depth.view() == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
+                &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
+                &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
+                &&& krnl.thr_mp.spec_index(thread_ptr).view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
+            }) by {
+                container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr);
+                container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
+            };
         }
         let Tracked(lock_perm) = krnl.wlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx));
         proof { pcid_allocator_lock_perm = Some(lock_perm); }

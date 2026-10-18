@@ -65,6 +65,8 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         &&& thread.state == (ThreadState::RUNNING { cpu_id })
         &&& cpu.view().process_depth == process.view_rodata().view().depth
         &&& cpu.view().container_depth == process.view_rodata().view().container_depth
+        &&& thread.container_depth == process.view_rodata().view().container_depth
+        &&& thread.process_depth == process.view_rodata().view().depth
     }) by {
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);

@@ -32,9 +32,15 @@ pub(crate) proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: C
             &&& (current_process is Some == current_thread is Some)
             &&& (current_process is Some ==> cpu.state is Running)
             &&& (current_process is Some ==> krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().owning_container == container_ptr)
+            &&& (current_process is Some ==> {
+                &&& krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().container_depth == cpu.container_depth
+                &&& krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().depth == cpu.process_depth
+            })
             &&& (current_thread is Some ==> {
                 let ptr = current_thread.unwrap();
                 &&& krnl.thr_mp.dom().contains(ptr)
+                &&& krnl.thr_mp.spec_index(ptr).view().container_depth == cpu.container_depth
+                &&& krnl.thr_mp.spec_index(ptr).view().process_depth == cpu.process_depth
                 &&& krnl.thr_mp.spec_index(ptr).view().state == (ThreadState::RUNNING { cpu_id })
                 &&& krnl.thr_mp.spec_index(ptr).view().owning_proc == current_process.unwrap()
                 &&& krnl.thr_mp.spec_index(ptr).view().owning_container == container_ptr
@@ -46,6 +52,7 @@ pub(crate) proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: C
     cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
     container_perms_wf_at(krnl.ctn_mp, cpu.owning_container); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
     if cpu.current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, cpu.current_thread.unwrap()); }
+    if cpu.current_process is Some { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, cpu.current_process.unwrap()); }
 }
 
 #[verifier::spinoff_prover]

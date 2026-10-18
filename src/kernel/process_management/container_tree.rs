@@ -169,6 +169,15 @@ verus! {
                 ==> container_perms.spec_index(c_ptr).view_ghost().subtree_set.view().contains(sub_c_ptr) == container_perms.spec_index(sub_c_ptr).view_ghost().uppertree_seq.view().contains(c_ptr)
     }
 
+    pub proof fn container_subtree_set_exclusive_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr, sub_c_ptr: RwLockContainerPtr)
+        requires
+            container_subtree_set_exclusive(root_container, container_perms),
+            container_perms.dom().contains(c_ptr),
+            container_perms.dom().contains(sub_c_ptr),
+        ensures
+            container_perms.spec_index(c_ptr).view_ghost().subtree_set.view().contains(sub_c_ptr) == container_perms.spec_index(sub_c_ptr).view_ghost().uppertree_seq.view().contains(c_ptr),
+    { reveal(container_subtree_set_exclusive); }
+
     pub open spec fn container_tree_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap) -> bool {
         &&& container_root_wf(root_container, container_perms)
         &&& container_children_parent_wf(root_container, container_perms)

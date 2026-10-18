@@ -67,6 +67,12 @@ pub fn syscall_pci_attach_dma(
     }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let process_ptr = cpu.current_process().unwrap();
+    assert({
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
+        &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
+    }) by {
+        process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
+    };
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
     if process_res.is_none() {
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));

@@ -92,7 +92,8 @@ impl KernelK {
             final(self).sched_mp.spec_index(scheduler_ptr).shards.unchanged_except(&old(self).sched_mp.spec_index(scheduler_ptr).shards, cpu_id),
             final(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id) == old(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id),
             !final(self).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locked(),
-            scheduler_shards_of(final(self).sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(self).sched_mp.spec_index(scheduler_ptr)),
+            forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(self).sched_mp.spec_index(s))]
+                old(self).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(self).sched_mp.spec_index(s)) == scheduler_shards_of(old(self).sched_mp.spec_index(s)),
             // NOTE: `unlock_ensures` flips the locking phase Acquire → Release.
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,

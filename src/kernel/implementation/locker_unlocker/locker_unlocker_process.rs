@@ -22,6 +22,7 @@ impl KernelK {
                 let cpus = old(lctx).cpu_lock_map().dom();
                 let container_ptr = old(self).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
                 let containers = old(lctx).container_lock_map().dom();
+                let process = old(self).prc_mp.spec_index(process_ptr).view_rodata().view();
                 &&& (forall|held_cpu_id: CpuId|
                     #![trigger cpus.contains(held_cpu_id)]
                     cpus.contains(held_cpu_id) ==> {
@@ -29,7 +30,10 @@ impl KernelK {
                         &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == container_ptr
                         &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
                         &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is None || old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process == Some(process_ptr)
+                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().container_depth == process.container_depth
+                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is Some ==> old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().process_depth == process.depth
                     })
+                &&& containers.contains(container_ptr) ==> old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth == process.container_depth
                 &&& cpus.contains(cpu_id)
                 &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr)
                 &&& {
@@ -94,10 +98,7 @@ impl KernelK {
             process_perms_wf_map(old(self).prc_mp);
             process_perms_wf_at(old(self).prc_mp, process_ptr);
             if !old(self).prc_mp.spec_index(process_ptr).being_killed() {
-                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {
-                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                    reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf);
-                };
+                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); };
             }
             assert(!old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id()) {

@@ -360,7 +360,7 @@ pub(super) fn share_new_container_range(
         };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_container_ptr, source_range)) by {
-            reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(process_thread_wf); reveal(container_subtree_set_exclusive);
+            reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(container_subtree_set_exclusive);
         };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, child_container_ptr, source_range)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert({
@@ -748,7 +748,8 @@ pub(super) fn create_new_container_root_thread_and_finish(
             assert(krnl.ctn_mp.dom().contains(owner)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); };
             assert(owner == child_container_ptr || krnl.ctn_mp.spec_index(owner).view_ghost().subtree_set.view().contains(child_container_ptr)) by {
                 container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index);
-                reveal(container_subtree_set_exclusive); vstd::seq_lib::lemma_seq_contains_after_push(parent_upper, parent_container_ptr, owner);
+                container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner, parent_container_ptr); container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner, child_container_ptr);
+                vstd::seq_lib::lemma_seq_contains_after_push(parent_upper, parent_container_ptr, owner);
             };
         }
     }

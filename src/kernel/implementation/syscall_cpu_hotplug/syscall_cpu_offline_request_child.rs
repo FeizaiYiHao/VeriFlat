@@ -61,6 +61,11 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
     }
     let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); }; }
+    proof {
+        assert(krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_rodata().view().depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth) by {
+            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
+        };
+    }
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let caller_ptr = cpu.owning_container();
     let container_res = krnl.wlock_container_unless_killed(caller_ptr, Tracked(&mut *lctx));

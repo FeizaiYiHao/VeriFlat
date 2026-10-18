@@ -5,20 +5,6 @@ use crate::*;
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
-/// Changing one existing thread's permission moves only that entry of the non-lock thread projection.
-pub proof fn kernel_thread_unchanged_except_implies_nonlock_u_thread_map_insert(pre: &KernelK, post: &KernelK, thread_ptr: RwLockThreadPtr)
-    requires
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
-    ensures
-        kernel_k_to_nonlock_kernel_u(*post).thread_map.dom().contains(thread_ptr),
-        kernel_k_to_nonlock_kernel_u(*post).thread_map == kernel_k_to_nonlock_kernel_u(*pre).thread_map.insert(thread_ptr, kernel_k_to_nonlock_kernel_u(*post).thread_map.spec_index(thread_ptr)),
-{
-    reveal(kernel_k_to_nonlock_kernel_u);
-    let pre_u = kernel_k_to_nonlock_kernel_u(*pre);
-    let post_u = kernel_k_to_nonlock_kernel_u(*post);
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, post_u.thread_map.spec_index(thread_ptr)), t => {});
-}
-
 #[verifier::spinoff_prover]
 pub(super) proof fn kernel_new_thread_fields_implies_u_step(
     pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,

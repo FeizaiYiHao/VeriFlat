@@ -39,6 +39,7 @@ impl KernelK {
                     &&& index_valid(NUM_CPUS, held_cpu_id)
                     &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == container_ptr
                     &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
+                    &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().container_depth == old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth
                 }),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -78,7 +79,7 @@ impl KernelK {
             container_perms_wf_map(old(self).ctn_mp);
             container_perms_wf_at(old(self).ctn_mp, container_ptr);
             if !old(self).ctn_mp.spec_index(container_ptr).being_killed() {
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(container_cpu_wf); };
+                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); };
             }
             assert(!old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()) {

@@ -360,15 +360,25 @@ pub fn cpu_offline_check(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
             &&& (current_process is Some ==> krnl.prc_mp.dom().contains(current_process.unwrap()))
             &&& (current_process is Some == current_thread is Some)
             &&& (current_process is Some ==> krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().owning_container == container_ptr)
+            &&& (current_process is Some ==> {
+                &&& krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().container_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+                &&& krnl.prc_mp.spec_index(current_process.unwrap()).view_rodata().view().depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth
+            })
             &&& (current_thread is Some ==> {
                 let ptr = current_thread.unwrap();
                 &&& krnl.thr_mp.dom().contains(ptr)
+                &&& krnl.thr_mp.spec_index(ptr).view().container_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+                &&& krnl.thr_mp.spec_index(ptr).view().process_depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth
                 &&& krnl.thr_mp.spec_index(ptr).view().state == (ThreadState::RUNNING { cpu_id })
                 &&& krnl.thr_mp.spec_index(ptr).view().owning_proc == current_process.unwrap()
                 &&& krnl.thr_mp.spec_index(ptr).view().owning_container == container_ptr
             })
             &&& old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
-        }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); if current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread.unwrap()); } };
+        }) by {
+            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
+            if current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread.unwrap()); }
+            if current_process is Some { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, current_process.unwrap()); }
+        };
     }
     let flags_ptr = container_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));

@@ -14,15 +14,18 @@ impl KernelK {
             ({
                 let cpus = old(lctx).cpu_lock_map().dom();
                 let container_ptr = old(self).pcid_allc_mp.spec_index(allocator_ptr).view().owning_container.view();
+                let depth = old(self).pcid_allc_mp.spec_index(allocator_ptr).view().container_depth.view();
                 &&& !cpus.is_empty()
                 &&& old(lctx).page_lock_map().dom().is_empty()
                 &&& old(lctx).container_lock_map().dom().subset_of(set![container_ptr])
+                &&& old(lctx).container_lock_map().dom().contains(container_ptr) ==> old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth == depth
                 &&& (forall|held_process: RwLockProcessPtr|
                     #![trigger old(lctx).process_lock_map().dom().contains(held_process)]
                     old(lctx).process_lock_map().dom().contains(held_process) ==> {
                         &&& old(self).prc_mp.dom().contains(held_process)
                         &&& !old(self).prc_mp.spec_index(held_process).being_killed()
                         &&& old(self).prc_mp.spec_index(held_process).view_rodata().view().owning_container == container_ptr
+                        &&& old(self).prc_mp.spec_index(held_process).view_rodata().view().container_depth == depth
                     })
                 &&& (forall|held_thread: RwLockThreadPtr|
                     #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
@@ -31,6 +34,7 @@ impl KernelK {
                         &&& !old(self).thr_mp.spec_index(held_thread).being_killed()
                         &&& old(self).thr_mp.spec_index(held_thread).view().state is RUNNING
                         &&& old(self).thr_mp.spec_index(held_thread).view().owning_container == container_ptr
+                        &&& old(self).thr_mp.spec_index(held_thread).view().container_depth == depth
                     })
                 &&& old(lctx).endpoint_lock_map().dom().is_empty()
                 &&& old(lctx).scheduler_lock_map().dom().is_empty()
@@ -56,6 +60,7 @@ impl KernelK {
                         &&& index_valid(NUM_CPUS, held_cpu_id)
                         &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == container_ptr
                         &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
+                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().container_depth == depth
                     })
             }) || ({
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
@@ -89,8 +94,6 @@ impl KernelK {
                     thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                     container_pcid_allocator_wf_allocator_at(old(self).ctn_mp, old(self).pcid_allc_mp, allocator_ptr); container_pcid_allocator_wf_container_at(old(self).ctn_mp, old(self).pcid_allc_mp, cpu.owning_container);
-                } else {
-                    reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); reveal(container_process_wf); reveal(container_thread_wf);
                 }
                 reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };

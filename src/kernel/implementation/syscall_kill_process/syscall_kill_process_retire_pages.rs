@@ -243,7 +243,7 @@ fn kill_retire_table_pages(
             } else {
                 pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pg_arr, table, page_ptr);
             }
-            assert(krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == krnl.thr_mp.spec_index(thread_ptr).view().owning_container) by { reveal(process_kernel_pages_owner_wf); };
+            assert(krnl.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == krnl.thr_mp.spec_index(thread_ptr).view().owning_container) by { process_kernel_pages_owner_wf_at(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp, page_ptr2page_index(page_ptr)); };
         }
         kill_retire_next_table_page(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thread_ptr, target, iommu, table, scan, page_ptr, Tracked(table_perm), Tracked(thread_perm),
             direct);

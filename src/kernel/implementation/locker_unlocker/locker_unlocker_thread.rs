@@ -31,7 +31,14 @@ impl KernelK {
                                 &&& index_valid(NUM_CPUS, held_cpu_id)
                                 &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == thread.owning_container
                                 &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is None || old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process == Some(thread.owning_proc)
+                                &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().container_depth == thread.container_depth
+                                &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is Some ==> old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().process_depth == thread.process_depth
                             })
+                        &&& old(lctx).process_lock_map().dom().contains(thread.owning_proc) ==> {
+                            &&& old(self).prc_mp.spec_index(thread.owning_proc).view_rodata().view().container_depth == thread.container_depth
+                            &&& old(self).prc_mp.spec_index(thread.owning_proc).view_rodata().view().depth == thread.process_depth
+                        }
+                        &&& containers.contains(thread.owning_container) ==> old(self).ctn_mp.spec_index(thread.owning_container).view_rodata().view().depth == thread.container_depth
                         &&& old(lctx).page_lock_map().dom().is_empty()
                         &&& old(lctx).process_lock_map().dom().subset_of(set![thread.owning_proc])
                         &&& old(lctx).thread_lock_map().dom().is_empty()
@@ -209,7 +216,6 @@ impl KernelK {
                     ThreadState::RUNNING { cpu_id } => {
                         assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
                             reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                            reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(container_pcid_allocator_wf); reveal(process_thread_wf);
                         };
                     },
                     ThreadState::SCHEDULED { .. } => {

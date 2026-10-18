@@ -264,6 +264,12 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
             }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            assert({
+                &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth
+                &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth
+            }) by {
+                process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
+            };
         }
         let current_thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
 
