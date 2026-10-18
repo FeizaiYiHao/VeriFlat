@@ -22,6 +22,16 @@ follow the dependency boundaries in the
 
 ## Verification
 
+The `verus` submodule tracks the `veriflat-verus-perf-series` branch of
+[FeizaiYiHao/verus](https://github.com/FeizaiYiHao/verus), upstream Verus plus
+front-end, SMT-scheduling, and pipelined-erasure performance changes. It needs
+Rust 1.98.1 and Z3 4.16.0 at `verus/source/z3`:
+
+```sh
+git submodule update --init verus
+cd verus/source && source ../tools/activate && vargo build --release
+```
+
 ```sh
 ./verify-workspace.sh
 ./verify.sh --num-threads 32 --time

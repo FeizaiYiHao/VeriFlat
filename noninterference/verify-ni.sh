@@ -18,7 +18,7 @@ if [[ ! -x "$CARGO_VERUS_BIN" ]]; then
     exit 127
 fi
 
-export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.97.1-x86_64-unknown-linux-gnu}"
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1-x86_64-unknown-linux-gnu}"
 export PATH="$HOME/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 mkdir -p "$COUNTER_DIR"

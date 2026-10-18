@@ -130,7 +130,11 @@ pub(super) proof fn eof_container_relations_wf(
             !post.ctn_mp.spec_index(container_page).view().owned_endpoints.view().contains(e));
         reveal(container_endpoint_wf);
     };
-    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by {
+        reveal(thread_endpoint_ref_counter_wf);
+        assert(forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr)] post.thr_mp.dom().contains(t_ptr)
+            ==> post.thr_mp.spec_index(t_ptr).view().endpoint_descriptors.view() == pre.thr_mp.spec_index(t_ptr).view().endpoint_descriptors.view());
+    };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };

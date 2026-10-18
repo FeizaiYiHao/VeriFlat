@@ -24,7 +24,11 @@ pub proof fn unmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         unmap_4k_enter_step_pre(old_u, cpu_id, range),
         unmap_4k_enter_step(old_u, new_u, cpu_id, range),
     ensures isolated(new_u, a, b),
-{ reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map.dom().contains(p) && new_u.process_map[p].pagetable is Some
+        ==> new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k);
+}
 
 /// An unmap leaf on a cpu of `a` removes one mapping of a process of `a`.
 pub proof fn unmap_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va: VAddr, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -46,7 +50,12 @@ pub proof fn unmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
         unmap_4k_leaf_step_pre(old_u, cpu_id, va),
         unmap_4k_leaf_step(old_u, new_u, cpu_id, va),
     ensures isolated(new_u, a, b),
-{ reveal(unmap_4k_leaf_trace_step_pre); reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(unmap_4k_leaf_trace_step_pre); reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf);
+    assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger new_u.process_map[p].pagetable->Some_0.mapping_4k[v]]
+        new_u.process_map.dom().contains(p) && new_u.process_map[p].pagetable is Some && new_u.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
+        ==> old_u.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v) && new_u.process_map[p].pagetable->Some_0.mapping_4k[v] == old_u.process_map[p].pagetable->Some_0.mapping_4k[v]);
+}
 
 
 /// An unmap TLB flush changes only cpu TLBs, which no domain view contains.
@@ -136,7 +145,11 @@ pub proof fn unmap_4k_exit_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
         unmap_4k_exit_step_pre(old_u, cpu_id),
         unmap_4k_exit_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(unmap_4k_exit_step_pre); reveal(unmap_4k_exit_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(unmap_4k_exit_step_pre); reveal(unmap_4k_exit_step); reveal(kernel_u_cpu_ownership_wf);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map.dom().contains(p) && new_u.process_map[p].pagetable is Some
+        ==> new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k);
+}
 
 /// The 4K unmap result of a running cpu of `b` reads only the view of `b`.
 pub proof fn unmap_4k_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, va: VAddr, range: usize, b: RwLockContainerPtr)

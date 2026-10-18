@@ -6,6 +6,7 @@ use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 use super::mmap_4k_build_structure_spec::*;
 
 verus! {
+    #[verifier::rlimit(15)]
     pub fn mmap_4k_build_one_structure(
         krnl: &mut KernelK, va: VAddr, alloc_ptr_4k: RwLockPageAllocatorPtr, quota_thread_ptr: RwLockThreadPtr,
         process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot,

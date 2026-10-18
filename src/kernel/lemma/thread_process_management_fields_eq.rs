@@ -48,7 +48,10 @@ pub proof fn thread_endpoint_ref_counter_wf_preserved_for_thread_process_managem
         thread_process_management_fields_unchanged(pre, post),
     ensures
         thread_endpoint_ref_counter_wf(post, endpoint_map),
-{ reveal(thread_endpoint_ref_counter_wf); }
+{
+    reveal(thread_endpoint_ref_counter_wf);
+    assert(forall|t_ptr: RwLockThreadPtr| #![trigger post.spec_index(t_ptr)] post.dom().contains(t_ptr) ==> post.spec_index(t_ptr).view().endpoint_descriptors.view() == pre.spec_index(t_ptr).view().endpoint_descriptors.view());
+}
 
 pub proof fn thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre: ThreadLockedMap, post: ThreadLockedMap, endpoint_map: EndpointLockedMap)
     requires

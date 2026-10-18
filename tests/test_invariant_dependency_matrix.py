@@ -17,7 +17,7 @@ class InvariantDependencyMatrixTest(unittest.TestCase):
             capture_output=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("68 invariant leaves", result.stdout)
+        self.assertIn("72 invariant leaves", result.stdout)
 
     def test_json_rows_use_kernel_fields(self):
         result = subprocess.run(
@@ -28,10 +28,10 @@ class InvariantDependencyMatrixTest(unittest.TestCase):
             check=True,
         )
         report = json.loads(result.stdout)
-        self.assertEqual(len(report["rows"]), 68)
+        self.assertEqual(len(report["rows"]), 72)
         self.assertEqual(report["errors"], [])
-        self.assertEqual(report["helper-count"], 86)
-        self.assertEqual(report["classified-helper-count"], 86)
+        self.assertEqual(report["helper-count"], 114)
+        self.assertEqual(report["classified-helper-count"], 114)
         self.assertEqual(report["unclassified-helpers"], [])
         self.assertTrue(all(row["fields"] for row in report["rows"]))
 

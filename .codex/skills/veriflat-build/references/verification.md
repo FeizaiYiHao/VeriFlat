@@ -15,9 +15,13 @@
   `./verify-workspace.sh`. Monolith:
   `./verify.sh --num-threads 32 --time`. Report each run number.
 - Pipeline measurement:
-  `VERUS_PIPELINE_SMT=1 verus/source/target-verus/release/cargo-verus verify --workspace --exclude VeriFlat -- --num-threads 32 --time`.
+  `./verify-pipeline.sh`, which runs
+  `verus/source/target-verus/release/cargo-verus verify --pipelined-erasure --workspace --exclude VeriFlat -- --num-threads 32 --time`.
   Use Cargo's default concurrency. Label vstd and every VeriFlat artifact
-  independently hot/cold; a fully cached no-op is not a benchmark.
+  independently hot/cold; a fully cached no-op is not a benchmark. For cold
+  vstd run `cargo clean -p vstd` in ordinary `target`; for hot vstd warm it
+  with one pipeline run, never through vstd's standalone manifest, then
+  `./verify-pipeline.sh --cold-veriflat`.
 - Batch edits between runs. During implementation, finish a coherent batch
   (contract edits plus every caller update they force) before launching
   verification, and fix all reported errors together in the next batch.

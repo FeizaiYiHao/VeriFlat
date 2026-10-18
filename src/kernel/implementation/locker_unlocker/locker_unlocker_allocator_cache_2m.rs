@@ -60,7 +60,7 @@ impl KernelK {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
             };
-            assert(wlock_requires(self.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cache_cpu).view(), &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
+            assert(wlock_requires(self.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cache_cpu).view(), &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); assert(!lctx.allocator_cache_2m_lock_map().dom().contains((alloc_ptr_2m, cache_cpu))); };
         }
         let ret = self.allc_2m_mp.wlock_cache(alloc_ptr_2m, cache_cpu, Tracked(&mut *lctx), Ghost(PageSize::SZ2m));
         proof {

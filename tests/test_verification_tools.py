@@ -99,18 +99,18 @@ class TimingToolsTest(unittest.TestCase):
                                     text=True, capture_output=True,
                                     env={**os.environ, 'TEST_VERIFY_EXIT': str(status)})
             self.assertEqual(result.returncode, status, result.stderr)
-            self.assertEqual(json.loads(result.stdout), ['verify', '--workspace', '--exclude',
+            self.assertEqual(json.loads(result.stdout), ['verify', '--pipelined-erasure', '--workspace', '--exclude',
                 'VeriFlat', '--', '--num-threads', '32', '--time', '--output-json'])
         result = subprocess.run([str(self.root / 'verify-pipeline.sh')],
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), ['verify', '--workspace', '--exclude',
+        self.assertEqual(json.loads(result.stdout), ['verify', '--pipelined-erasure', '--workspace', '--exclude',
             'VeriFlat', '--', '--num-threads', '32', '--time'])
         result = subprocess.run([str(self.root / 'verify-pipeline.sh'), '--',
                                  '--time', '--output-json', '--time'],
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), ['verify', '--workspace', '--exclude',
+        self.assertEqual(json.loads(result.stdout), ['verify', '--pipelined-erasure', '--workspace', '--exclude',
             'VeriFlat', '--', '--num-threads', '32', '--time', '--output-json'])
         result = subprocess.run([str(self.root / 'verify-pipeline.sh'), '--',
                                  '--num-threads', '4'],
