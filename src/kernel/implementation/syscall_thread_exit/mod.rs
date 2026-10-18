@@ -5,6 +5,7 @@ mod syscall_thread_exit_destroy;
 mod syscall_thread_exit_destroy_eof;
 mod syscall_thread_exit_destroy_spec;
 mod syscall_thread_exit_drop;
+mod syscall_thread_exit_entry;
 mod syscall_thread_exit_finish;
 mod syscall_thread_exit_quota;
 mod syscall_thread_exit_quota_eof;

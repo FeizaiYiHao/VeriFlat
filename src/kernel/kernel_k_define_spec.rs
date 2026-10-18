@@ -150,7 +150,10 @@ verus! {
                 self.pt_mp.dom().contains(pagetable_ptr) ==> self.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == self.dflt_pt.view().kernel_l4_end
         }
 
-        pub proof fn default_pagetable_view_inv(&self) requires self.default_pagetable_wf() ensures self.dflt_pt.view().inv() { reveal(KernelK::default_pagetable_wf); }
+        pub proof fn default_pagetable_view_inv(&self)
+            requires self.default_pagetable_wf()
+            ensures self.dflt_pt.view().inv(), page_ptr_valid(self.dflt_pt.view().cr3)
+        { reveal(KernelK::default_pagetable_wf); self.dflt_pt.view().table_pages_wf_cr3_at(); }
 
         /// Page table `pagetable_ptr` shares the default table's kernel L4 range end, `KERNEL_MEM_END_L4INDEX`.
         pub proof fn default_pagetable_wf_at(&self, pagetable_ptr: RwLockPageTableRoot)
