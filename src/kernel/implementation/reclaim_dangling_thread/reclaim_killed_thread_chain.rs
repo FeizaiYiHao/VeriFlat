@@ -196,7 +196,7 @@ fn release_killed_thread_caller(
             &&& krnl.thr_mp.spec_index(thread_ptr).view().call_depth.view() == krnl.thr_mp.spec_index(caller_ptr).view().call_depth.view() + 1
             &&& !lctx.thread_lock_map().dom().contains(caller_ptr)
         }) by { thread_caller_callee_wf_at(krnl.thr_mp, thread_ptr); };
-        assert(!krnl.thr_mp.spec_index(caller_ptr).being_killed()) by { reveal(process_thread_wf); };
+        assert(!krnl.thr_mp.spec_index(caller_ptr).being_killed()) by { process_thread_wf_killed_thread_at(krnl.prc_mp, krnl.thr_mp, caller_ptr); };
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, caller_ptr);
     }
     let ghost section_pre = *krnl;

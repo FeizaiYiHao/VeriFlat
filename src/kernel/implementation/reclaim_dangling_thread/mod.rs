@@ -12,6 +12,7 @@ mod wake_waiting_reply_caller_eof;
 mod wake_waiting_reply_caller_spec;
 pub mod drop_endpoint_descriptor;
 pub use drop_endpoint_descriptor::*;
+mod drop_endpoint_descriptor_eof;
 pub mod reclaim_killed_thread_chain;
 pub use reclaim_killed_thread_chain::*;
 pub mod reclaim_killed_thread_chain_trace;

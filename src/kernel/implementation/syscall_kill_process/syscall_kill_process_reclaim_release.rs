@@ -460,7 +460,7 @@ pub(super) fn kill_reclaim_unmap_leaves(
     }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
     proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_thread.indirect_free_quota_pending_4k.view()) by { reveal(thread_perms_wf); };
+        vstd::assert_seqs_equal!(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view(), entry_thread.indirect_free_quota_pending_4k.view());
         kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, child_index, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true },
             entry_thread.owning_container);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
@@ -794,21 +794,6 @@ fn kill_reclaim_return_quota_size(
     proof {
         let pre_u = kernel_k_to_kernel_u(entry_k);
         let post_u = kernel_k_to_kernel_u(*krnl);
-        assert({
-            let process = entry_k.prc_mp.spec_index(target).view();
-            &&& forall|c: RwLockContainerPtr| #![trigger returned_k.allc_4k_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k)]
-                entry_k.ctn_mp.dom().contains(c) ==> returned_k.allc_4k_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int
-                    == entry_k.allc_4k_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int
-                        + if c == container_ptr && size is SZ4k { process.quota_4k as int } else { 0 }
-            &&& forall|c: RwLockContainerPtr| #![trigger returned_k.allc_2m_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m)]
-                entry_k.ctn_mp.dom().contains(c) ==> returned_k.allc_2m_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int
-                    == entry_k.allc_2m_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view() as int
-                        + if c == container_ptr && size is SZ2m { process.quota_2m as int } else { 0 }
-            &&& forall|c: RwLockContainerPtr| #![trigger returned_k.allc_1g_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g)]
-                entry_k.ctn_mp.dom().contains(c) ==> returned_k.allc_1g_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
-                    == entry_k.allc_1g_mp.spec_index(entry_k.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
-                        + if c == container_ptr && size is SZ1g { process.quota_1g as int } else { 0 }
-        }) by { reveal(container_allocator_wf); };
         kernel_process_quota_returned_implies_u_step(&entry_k, &returned_k, target, size);
         kernel_thread_syscall_progress_changed_implies_u_step(&returned_k, &*krnl, thread_ptr);
         kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, process_ptr, thread_ptr, target, kill_process_quota_stage_before(size));
@@ -876,7 +861,7 @@ pub(super) fn kill_reclaim_unlock_table(
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         assert(krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable); reveal(KernelK::default_pagetable_wf); broadcast use spec_va_4k_valid_index_roundtrip;
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.default_pagetable_wf_at(pagetable); broadcast use spec_va_4k_valid_index_roundtrip;
         };
         if let Some(it) = iommu_table {
             assert(krnl.it_mp.spec_index(it).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
@@ -969,8 +954,9 @@ pub(super) fn kill_reclaim_zombify(
     }
     let pcid_allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().pcid_allocator;
     proof {
-        assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr)) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); };
-        assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr) by { reveal(container_pcid_allocator_wf); };
+        assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr) && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr) by {
+            container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr);
+        };
         assert({
             &&& krnl.prc_mp.spec_index(target).view().pcid == pcid
             &&& pcid_valid(pcid)

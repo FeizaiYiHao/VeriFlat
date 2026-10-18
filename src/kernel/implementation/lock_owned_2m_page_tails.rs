@@ -364,7 +364,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         decreases 511 - count,
     {
         let index = head + 1usize + count;
-        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { reveal(hugepage_2m_wf); }; }
+        proof { assert(krnl.pg_arr.spec_index(index).view().view().state is Merged2m) by { hugepage_2m_wf_tail_at(krnl.pg_arr, head, index); }; }
         let Tracked(perm) = krnl.wlock_page(index, Tracked(&mut *lctx));
         proof {
             perms.tracked_insert(index, perm);
@@ -467,7 +467,10 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
     while count < 511
         invariant
             pages.inv(),
-            page_array_wf(*pages),
+            page_array_wf(*old(pages)),
+            forall|index: PageIndex|
+                #![trigger pages.spec_index(index)]
+                index_valid(NUM_PAGES, index) ==> pages.spec_index(index) == old(pages).spec_index(index) || (pages.spec_index(index).view().inv() && pages.spec_index(index).view().view().addr == old(pages).spec_index(index).view().view().addr),
             page_index_2m_valid(first_head),
             page_index_2m_valid(second_head),
             first_head != second_head,
@@ -548,11 +551,11 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         }
         let first_page = pages.borrow_mut_typed(first_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(first_perms.tracked_borrow(first_index)));
         first_page.owning_container = owning_container;
-        proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); }; }
+        proof { assert(pages.spec_index(first_index).view().inv()) by { page_array_wf_at(*old(pages), first_index); reveal(Page::mappings_va_valid); }; }
         let second_page = pages.borrow_mut_typed(second_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(second_perms.tracked_borrow(second_index)));
         second_page.owning_container = owning_container;
         proof {
-            assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
+            assert(pages.spec_index(second_index).view().inv()) by { page_array_wf_at(*old(pages), second_index); reveal(Page::mappings_va_valid); };
             broadcast use page_ptr_sequence_index_in_equal_set; broadcast use page_ptr_sequence_index_in_mapped_set;
             preserved_page_ptr_seq.to_set_ensures();
             assert(page_2m_tail_prefix_indices(first_head, (count + 1) as usize) == page_2m_tail_prefix_indices(first_head, count).insert(first_index)) by {
@@ -567,6 +570,7 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
     proof {
         assert(page_2m_tail_prefix_indices(first_head, 511) == page_2m_tail_indices(first_head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(first_head, 511) == page_2m_tail_indices(first_head), index => {}); };
         assert(page_2m_tail_prefix_indices(second_head, 511) == page_2m_tail_indices(second_head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(second_head, 511) == page_2m_tail_indices(second_head), index => {}); };
+        create_container_from_staged_pages_eof_page_array_wf(*old(pages), *pages);
     }
 }
 

@@ -82,6 +82,7 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
     let ghost queues = scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr));
     let mut next: usize = 0;
     let mut found = false;
+    proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
     while !found && next < NUM_CPUS
         invariant
             krnl.inv(),
@@ -94,6 +95,7 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.kernel_view_locking_state() is Acquire,
             *krnl == (KernelK { sched_mp: krnl.sched_mp, ..*old(krnl) }),
+            kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
             krnl.sched_mp.unchanged_except(&old(krnl).sched_mp, scheduler_ptr),
             krnl.sched_mp.spec_index(scheduler_ptr).owning_container == old(krnl).sched_mp.spec_index(scheduler_ptr).owning_container,
             scheduler_shards_of(krnl.sched_mp.spec_index(scheduler_ptr)) == queues,
@@ -138,7 +140,10 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
         decreases NUM_CPUS - next,
     {
         let Tracked(perm) = krnl.wlock_scheduler_shard(scheduler_ptr, next, Tracked(&mut *lctx));
-        proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), next); krnl.sched_mp.spec_index(scheduler_ptr).shard(next).queue.lemma_len_view(); }
+        proof {
+            scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), next); krnl.sched_mp.spec_index(scheduler_ptr).shard(next).queue.lemma_len_view();
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        }
         let shard = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, next, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&perm));
         found = shard.queue.len() != 0;
         proof { shard_perms.tracked_insert(next, perm); }
@@ -147,7 +152,6 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_scheduler_wf); };
     }
     (next, found, Tracked(shard_perms))
 }
@@ -202,6 +206,7 @@ fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut
 {
     let tracked mut perms = shard_perms;
     let mut next: usize = 0;
+    proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
     while next < count
         invariant
             krnl.inv(),
@@ -212,6 +217,7 @@ fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut
             lctx.thread_id() == old(lctx).thread_id(),
             next > 0 ==> lctx.kernel_view_locking_state() is Release,
             *krnl == (KernelK { sched_mp: krnl.sched_mp, ..*old(krnl) }),
+            kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
             krnl.sched_mp.unchanged_except(&old(krnl).sched_mp, scheduler_ptr),
             krnl.sched_mp.spec_index(scheduler_ptr).owning_container == old(krnl).sched_mp.spec_index(scheduler_ptr).owning_container,
             scheduler_shards_of(krnl.sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr)),
@@ -245,12 +251,12 @@ fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut
     {
         let tracked perm = perms.tracked_remove(next);
         krnl.wunlock_scheduler_shard(scheduler_ptr, next, Tracked(&mut *lctx), Tracked(perm));
+        proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
         next = next + 1;
     }
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_scheduler_wf); };
     }
 }
 
@@ -379,7 +385,7 @@ fn rebalance_pull_move_head(
             let node = krnl.thr_mp.spec_index(thread_ptr).view().scheduler_linkedlist_node.addr();
             &&& queue.map().dom().contains(node)
             &&& queue.map().spec_index(node) == thread_ptr
-        }) by { reveal(container_thread_scheduler_wf); };
+        }) by { container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, thread_ptr); };
     }
     let node_addr = if let Some(local_perm) = &local_lock_perm {
         scheduler_map_move_shard_head(&mut krnl.sched_mp, scheduler_ptr, victim, cpu_id, Tracked(&*lctx), Tracked(shard_perms.tracked_borrow(victim)), Tracked(local_perm.borrow()))
@@ -460,7 +466,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         proof {
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
             rebalance_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { reveal(thread_cpu_wf); };
+            assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { thread_cpu_wf_killed_cpu_at(old(krnl).thr_mp, old(krnl).cpu_arr, cpu_id); };
             rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing);
         }
         return RebalanceResult::Nothing;

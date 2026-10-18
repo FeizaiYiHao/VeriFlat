@@ -11,6 +11,7 @@ mod syscall_ipc_endpoint;
 mod syscall_ipc_endpoint_eof;
 mod syscall_ipc_endpoint_spec;
 mod syscall_ipc_pages;
+mod syscall_ipc_pages_helpers;
 mod syscall_ipc_pci;
 mod syscall_ipc_pci_spec;
 mod syscall_ipc_pci_eof;

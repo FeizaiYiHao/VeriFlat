@@ -73,6 +73,21 @@ verus! {
         &&& hugepage_2m_tail_backward_wf(page_array)
     }
 
+    pub proof fn hugepage_2m_wf_tail_at(page_array: PageLockedArray, p_i: PageIndex, p_j: PageIndex)
+        requires
+            hugepage_2m_wf(page_array),
+        ensures
+            index_valid(NUM_PAGES, p_i) && index_valid(NUM_PAGES, p_j) && {
+                ||| page_array.spec_index(p_i).view().view().state is Free2m
+                ||| page_array.spec_index(p_i).view().view().state is Owned2m
+                ||| page_array.spec_index(p_i).view().view().state is Allocated2m
+                ||| page_array.spec_index(p_i).view().view().state is Mapped2m
+            } && spec_page_index_merge_2m_valid(p_i, p_j) ==> {
+                &&& page_array.spec_index(p_j).view().view().state is Merged2m
+                &&& page_array.spec_index(p_j).view().view().owning_container == page_array.spec_index(p_i).view().view().owning_container
+            },
+    { reveal(hugepage_2m_wf); }
+
     pub open spec fn hugepage_1g_head_valid_wf(page_array: PageLockedArray) -> bool {
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free1g]

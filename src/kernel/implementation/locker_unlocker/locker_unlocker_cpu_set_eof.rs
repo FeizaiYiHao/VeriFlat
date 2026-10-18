@@ -29,4 +29,14 @@ pub(super) proof fn cpu_set_lock_op_eof(pre: KernelK, post: KernelK, cpu_set_ptr
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
     reveal(container_cpu_set_wf);
 }
+
+/// Relocking one cpu set back to its original lock mode keeps every container field, quota, and cpu-set lock mode.
+pub proof fn container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock(pre: &KernelK, post: &KernelK, cpu_set_ptr: RwLockCpuSetPtr)
+    requires
+        container_cpu_set_wf(pre.ctn_mp, pre.cpu_set_mp),
+        *post == (KernelK { cpu_set_mp: post.cpu_set_mp, ..*pre }),
+        post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr),
+        post.cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u() == pre.cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u(),
+    ensures kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+{ reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_cpu_set_wf); }
 } // verus!

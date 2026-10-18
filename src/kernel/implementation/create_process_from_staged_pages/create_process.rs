@@ -175,7 +175,7 @@ pub fn create_process_from_staged_pages(
         assert(krnl.pg_arr.spec_index(process_page_index).view().is_init() && krnl.pg_arr.spec_index(process_page_index).view().view().inv()
             && krnl.pg_arr.spec_index(process_page_index).view().view().addr == process_page_ptr && krnl.pg_arr.spec_index(process_page_index).view().view().perm_4k.view().is_some()) by { page_array_wf_at(krnl.pg_arr, process_page_index); };
         assert(krnl.dflt_pt.view().wf()) by { krnl.default_pagetable_view_inv(); };
-        assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { reveal(PageTable::kernel_entries_wf); };
+        assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { krnl.dflt_pt.view().kernel_entries_wf_len_at(); };
     }
     let ghost parent_ancestors = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
     let ghost ancestors = parent_ancestors.push(parent_ptr);
@@ -195,7 +195,7 @@ pub fn create_process_from_staged_pages(
             process_children_parent_wf_children_dom_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr);
             lemma_kernel_object_ptr_seq_len_bounded(&*krnl, parent_children);
         };
-        assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().process_is_unallocated(process_page_ptr)) by { reveal(process_pcid_allocator_wf); };
+        assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().process_is_unallocated(process_page_ptr)) by { process_pcid_allocator_wf_unallocated_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, pcid_allocator_ptr, process_page_ptr); };
     }
     let ghost page_locks = lctx.page_lock_map();
     let ghost page_array_before_l4_retype = krnl.pg_arr;
@@ -210,7 +210,7 @@ pub fn create_process_from_staged_pages(
     let (l4_ptr, Tracked(mut l4_perm)) = page_perm_to_page_map(l4_page_ptr, Tracked(l4_page_perm));
     let default_pt = krnl.dflt_pt.borrow();
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
-    proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { reveal(PageTable::kernel_entries_wf); }; }
+    proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { default_pt.kernel_entries_wf_len_at(); }; }
     let pagetable_value = PageTable::<PT_TYPE>::new(Some(pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, process_page_ptr);
 
     let ghost page_array_before_pagetable_retype = krnl.pg_arr;

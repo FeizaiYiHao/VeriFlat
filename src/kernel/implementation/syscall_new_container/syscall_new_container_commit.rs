@@ -286,7 +286,7 @@ pub(super) fn commit_new_container(
             new_container_trace_publish_step(&*steps, publish_before, old(steps).view().len() as int, old(steps).snapshot_u(), caller_cpu_id, *source_range,
                 funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index_opt);
         };
-        assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by { reveal(PageTable::wf_mapping_4k); reveal(mapped_4k_page_pagetable_wf); source_range.va_range_lemma(); };
+        assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by { reveal(PageTable::wf_mapping_4k); share_mapping_4k_source_range_present_from_wf(krnl, source_pagetable_ptr, source_range); source_range.va_range_lemma(); };
     }
     let ghost share_before = steps.view();
     share_new_container_range(

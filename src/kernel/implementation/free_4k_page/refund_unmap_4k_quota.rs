@@ -185,12 +185,15 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() == 0,
         forall|d: int| #![trigger final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < final(krnl).thr_mp.spec_index(thread_ptr).view().container_depth
             ==> final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d) == 0,
+        final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().len() == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth,
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
             old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
 {
     hide(Seq::contains);
-    assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
+    assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv() && krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().len() == krnl.thr_mp.spec_index(thread_ptr).view().container_depth) by {
+        thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
+    };
     let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;
     let mut owner = thread.owning_container;
@@ -261,6 +264,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             remaining <= thread_depth + 1,
             thread_depth <= MAX_CONTAINER_TREE_DEPTH,
             thread_depth == krnl.thr_mp.spec_index(thread_ptr).view().container_depth,
+            krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().len() == thread_depth,
             krnl.ctn_mp.dom().contains(owner),
             remaining > 0 ==> krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == remaining - 1,
             remaining > 0 ==> (if remaining == thread_depth + 1 { owner == krnl.thr_mp.spec_index(thread_ptr).view().owning_container } else { krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(remaining as int - 1) == owner }),

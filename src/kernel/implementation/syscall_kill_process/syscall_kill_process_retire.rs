@@ -192,7 +192,10 @@ fn kill_retire_process(
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(process_ptr)) by {
-            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container); reveal(process_subtree_set_wf);
+            let owner = krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
+            let tree = krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view();
+            let root = krnl.ctn_mp.spec_index(owner).view().root_process;
+            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, owner); process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target);
         };
     }
     let tracked target_perm = chain_perms.tracked_remove(target);
@@ -240,7 +243,7 @@ fn kill_retire_process(
     proof {
         assert(lctx.page_lock_map().dom() =~= pages.view().to_set()) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert(index_valid(NUM_PAGES, pages.view()[0]) && lctx.page_lock_map().dom().contains(pages.view()[0])
-            && krnl.pg_arr.spec_index(pages.view()[0]).view().view().owning_container == container_ptr) by { reveal(process_kernel_pages_owner_wf); page_ptr_roundtrip(); };
+            && krnl.pg_arr.spec_index(pages.view()[0]).view().view().owning_container == container_ptr) by { page_ptr_roundtrip(); process_kernel_pages_owner_wf_at(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp, pages.view()[0]); };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

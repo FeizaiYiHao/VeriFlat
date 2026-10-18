@@ -63,4 +63,18 @@ verus! {
                 &&& thread_map.spec_index(thread_ptr).view().owning_container == scheduler_map.spec_index(scheduler_ptr).owning_container
             },
     { reveal(container_thread_scheduler_wf); }
+
+    pub proof fn container_thread_scheduler_wf_thread_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, scheduler_map: SchedulerUnLockedMap, thread_ptr: RwLockThreadPtr)
+        requires
+            container_thread_scheduler_wf(container_map, thread_map, scheduler_map),
+        ensures
+            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().state is SCHEDULED ==> {
+                let thread = thread_map.spec_index(thread_ptr).view();
+                let queue = scheduler_map.spec_index(container_map.spec_index(thread.owning_container).view_rodata().view().scheduler).shard(thread.state->SCHEDULED_cpu_id).queue;
+                &&& index_valid(NUM_CPUS, thread.state->SCHEDULED_cpu_id)
+                &&& queue.view().contains(thread_ptr)
+                &&& queue.map().dom().contains(thread.scheduler_linkedlist_node.addr())
+                &&& queue.map().spec_index(thread.scheduler_linkedlist_node.addr()) == thread_ptr
+            },
+    { reveal(container_thread_scheduler_wf); }
 }

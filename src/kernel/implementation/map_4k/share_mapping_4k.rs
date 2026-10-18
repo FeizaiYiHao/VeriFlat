@@ -73,6 +73,30 @@ pub open spec fn share_mapping_4k_range_owner_compatible_prefix(krnl: &KernelK, 
         0 <= i < upper ==> share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_range.view().spec_index(i))
 }
 
+/// A present source range of a well-formed 4K mapping resolves to `Mapped4k` pages that record each source leaf.
+pub proof fn share_mapping_4k_source_range_present_from_wf(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, source_range: &VaRange4K)
+    requires
+        mapped_4k_page_pagetable_wf(krnl.pt_mp, krnl.pg_arr),
+        krnl.pt_mp.dom().contains(source_pagetable),
+        krnl.pt_mp.spec_index(source_pagetable).view().spec_mapping_4k_va_range_present(source_range),
+    ensures
+        share_mapping_4k_source_range_present(krnl, source_pagetable, source_range),
+{ reveal(mapped_4k_page_pagetable_wf); page_ptr_valid_imply_page_index_valid(); }
+
+/// Every leaf of a present source range is owned by the source process's own container or one of its ancestors.
+pub proof fn share_mapping_4k_range_owner_compatible_own_container(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, container_ptr: RwLockContainerPtr, source_range: &VaRange4K)
+    requires
+        mapped_4k_page_pagetable_wf(krnl.pt_mp, krnl.pg_arr),
+        container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr),
+        container_subtree_set_exclusive(krnl.rt_ctn, krnl.ctn_mp),
+        krnl.pt_mp.dom().contains(source_pagetable),
+        krnl.ctn_mp.dom().contains(container_ptr),
+        krnl.prc_mp.spec_index(krnl.pt_mp.spec_index(source_pagetable).view().proc_ptr).view_rodata().view().owning_container == container_ptr,
+        krnl.pt_mp.spec_index(source_pagetable).view().spec_mapping_4k_va_range_present(source_range),
+    ensures
+        share_mapping_4k_range_owner_compatible(krnl, source_pagetable, container_ptr, source_range),
+{ reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_subtree_set_exclusive); page_ptr_valid_imply_page_index_valid(); }
+
 /// Target map after copying the first `upper` source-range mappings to the
 /// corresponding target-range addresses.
 #[verifier::opaque]
@@ -124,7 +148,7 @@ pub fn share_mapping_4k_source_precheck(krnl: &KernelK, source_range: &VaRange4K
     }) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); };
     let pagetable = krnl.pt_mp.borrow_typed(source_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(source_pagetable_lock_perm));
     let ret = pagetable.mapping_4k_va_range_present(source_range);
-    assert(ret == share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by { if ret { reveal(mapped_4k_page_pagetable_wf); page_ptr_valid_imply_page_index_valid(); } };
+    assert(ret == share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by { if ret { share_mapping_4k_source_range_present_from_wf(krnl, source_pagetable, source_range); } };
     ret
 }
 

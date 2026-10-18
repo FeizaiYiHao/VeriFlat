@@ -5,6 +5,8 @@ use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_ipc_pages_helpers::ipc_share_pages_source_owners_in_target_uppertree;
 
 verus! {
 /// Runs the pages checks under both write-locked page tables in the implementation's order without recording
@@ -227,10 +229,7 @@ fn ipc_check_pages_locked(
         let owners_compatible = if containers_compatible {
             proof {
                 assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by {
-                    source_range.va_range_lemma(); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread);
-                    reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_page_owner_wf);
-                    reveal(container_thread_wf); reveal(process_thread_wf); reveal(process_pagetable_match);
-                    reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf);
+                    ipc_share_pages_source_owners_in_target_uppertree(&*krnl, cpu_id, caller_thread, peer_thread, source_thread, source_pagetable, source_container, target_container, source_range);
                 };
             }
             true

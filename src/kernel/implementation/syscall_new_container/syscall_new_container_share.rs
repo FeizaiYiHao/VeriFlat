@@ -360,7 +360,7 @@ pub(super) fn share_new_container_range(
         };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_container_ptr, source_range)) by {
-            reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(container_subtree_set_exclusive);
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, parent_container_ptr, source_range);
         };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, child_container_ptr, source_range)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert({

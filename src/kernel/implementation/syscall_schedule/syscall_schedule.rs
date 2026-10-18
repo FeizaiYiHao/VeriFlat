@@ -258,7 +258,8 @@ fn schedule_switch_to_queue_head(
     let shard = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
     let (next_node, queue_head) = shard.queue.peek_head();
     assert(next_node == krnl.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()) by {
-        reveal(container_thread_scheduler_wf); reveal(LinkedList::value_list_unique);
+        container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, next_thread); container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, next_thread);
+        reveal(LinkedList::value_list_unique);
         krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.lemma_value_addr_unique(next_node, krnl.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr());
     };
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
@@ -405,7 +406,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof {
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
             schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-            assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { reveal(thread_cpu_wf); };
+            assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { thread_cpu_wf_killed_cpu_at(old(krnl).thr_mp, old(krnl).cpu_arr, cpu_id); };
             schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Idle);
         }
         return ScheduleResult::Idle;

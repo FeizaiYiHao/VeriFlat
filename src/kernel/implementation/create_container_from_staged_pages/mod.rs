@@ -13,6 +13,7 @@ mod eof_allocator;
 mod eof_process;
 mod eof_close;
 mod eof_publish;
+mod eof_page_array;
 
 pub use publish::*;
 pub use publish_objects::*;
@@ -21,3 +22,4 @@ pub use eof_allocator::*;
 pub use eof_process::*;
 pub use eof_close::*;
 pub use eof_publish::*;
+pub use eof_page_array::*;

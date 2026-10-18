@@ -1,6 +1,7 @@
 [package]
 name = "veriflat_kernel_core"
 version = "0.1.0"
+license = "MIT"
 edition = "2024"
 
 [lib]

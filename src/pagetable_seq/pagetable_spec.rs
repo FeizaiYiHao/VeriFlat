@@ -550,6 +550,11 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
     { reveal(PageTable::kernel_entries_wf); }
 
+    pub proof fn kernel_entries_wf_len_at(&self)
+        requires self.kernel_entries_wf()
+        ensures pei_valid(self.kernel_l4_end), self.kernel_entries.view().len() == self.kernel_l4_end as nat
+    { reveal(PageTable::kernel_entries_wf); }
+
     pub open spec fn wf(&self) -> bool {
         &&& self.va_addr_valid()
         &&& self.wf_l4()

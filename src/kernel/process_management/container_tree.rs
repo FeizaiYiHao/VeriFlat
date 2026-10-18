@@ -28,6 +28,8 @@ verus! {
             container_perms.spec_index(container_ptr).view_ghost().uppertree_seq.view().no_duplicates(),
             container_perms.spec_index(container_ptr).view_ghost().uppertree_seq.view().len() == container_perms.spec_index(container_ptr).view_rodata().view().depth,
             container_perms.spec_index(container_ptr).view_rodata().view().depth <= MAX_CONTAINER_TREE_DEPTH,
+            container_perms.spec_index(container_ptr).view().children.view().no_duplicates(),
+            !container_perms.spec_index(container_ptr).view().children.view().contains(container_ptr),
     { reveal(container_perms_wf); reveal(container_tree_fields_wf); }
 
     pub proof fn container_perms_wf_map(container_perms: ContainerLockedMap)

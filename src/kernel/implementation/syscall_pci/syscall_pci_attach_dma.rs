@@ -100,7 +100,7 @@ pub fn syscall_pci_attach_dma(
         else { RetValueType::Success };
     proof {
         assert(result == pci_attach_dma_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function)) by {
-            reveal(process_pci_function_ownership_wf); process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr);
+            process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), process_ptr); process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr);
             pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, result);
         };
     }
@@ -120,7 +120,7 @@ pub fn syscall_pci_attach_dma(
     }
     let root = iommu_cr3.unwrap();
     proof {
-        assert(old(krnl).prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { reveal(process_pci_function_ownership_wf); };
+        assert(old(krnl).prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, (bus, device, function), process_ptr); };
         assert(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table is Some && page_ptr_valid(root)) by {
             process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr); iommu_table_perms_wf_at(old(krnl).it_mp, old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0);
             old(krnl).it_mp.spec_index(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).view().table_pages_wf_cr3_at();

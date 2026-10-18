@@ -138,7 +138,10 @@ verus! {
                 &&& krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr
-            }) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
+            }) by {
+                process_cpu_wf_at(old(krnl).prc_mp, old(krnl).cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+                process_pagetable_match_process_at(old(krnl).prc_mp, old(krnl).pt_mp, process_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);
+            };
             let leaf_k = *krnl;
             let leaf_lctx = *lctx;
             krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable_ptr, va, process_ptr, pagetable_ptr, thread_ptr, thread_ptr);

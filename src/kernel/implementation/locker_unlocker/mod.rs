@@ -29,6 +29,8 @@ mod locker_unlocker_iommu_root_table;
 mod locker_unlocker_iommu_eof;
 mod locker_unlocker_cpu_set;
 mod locker_unlocker_cpu_set_eof;
+#[cfg(verus_keep_ghost)]
+pub use locker_unlocker_cpu_set_eof::container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock;
 mod locker_unlocker_pcid_needflush;
 mod locker_unlocker_cpu_offline_flag;
 mod locker_unlocker_cpu_offline_flag_eof;

@@ -63,4 +63,16 @@ verus! {
                 &&& cpu.wlocked_by_thread(thread.locking_thread()->Write_thread_id)
             }),
     { reveal(thread_cpu_wf); }
+
+    /// A running thread `t_ptr` is the current thread of its running cpu.
+    pub proof fn thread_cpu_wf_thread_at(thread_map: ThreadLockedMap, cpu_array: CpuLockedArray, t_ptr: RwLockThreadPtr)
+        requires
+            thread_cpu_wf(thread_map, cpu_array),
+        ensures
+            thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().state is RUNNING ==> {
+                &&& index_valid(NUM_CPUS, thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id)
+                &&& cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().state is Running
+                &&& cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().current_thread == Some(t_ptr)
+            },
+    { reveal(thread_cpu_wf); }
 }

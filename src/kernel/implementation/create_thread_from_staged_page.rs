@@ -100,6 +100,8 @@ pub fn create_thread_from_staged_page_merged(
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 1,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().state == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state,
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().owning_container,
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().endpoint_descriptors,
         final(krnl).thr_mp.dom().contains(staging_thread_ptr),
         final(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed(),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),

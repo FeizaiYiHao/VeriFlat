@@ -145,8 +145,8 @@ pub(super) fn kill_mark_child(
             process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
             per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
             process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, target); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, process_ptr);
-            assert(uppers.contains(target)) by { reveal(process_children_depth_wf); };
-            assert(uppers.contains(process_ptr)) by { reveal(process_subtree_set_wf); };
+            assert(uppers.contains(target)) by { process_children_depth_wf_at(root, tree, krnl.prc_mp, child_ptr); };
+            assert(uppers.contains(process_ptr)) by { process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target); };
         };
         assert(!krnl.prc_mp.spec_index(child_ptr).being_killed()) by { process_kill_mark_wf_at(krnl.prc_mp, child_ptr); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); };
     }
@@ -221,13 +221,13 @@ pub(super) fn kill_first_thread(
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         assert(!krnl.thr_mp.spec_index(victim_ptr).being_killed()) by {
             assert(!krnl.thr_mp.spec_index(victim_ptr).wlocked_by_thread(lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-            krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); reveal(process_thread_wf);
+            krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); process_thread_wf_killed_thread_at(krnl.prc_mp, krnl.thr_mp, victim_ptr);
         };
     }
     let Tracked(victim_perm) = krnl.wlock_thread_unless_killed(victim_ptr, Tracked(&mut *lctx)).unwrap();
     proof {
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_caller_callee_wf_at(krnl.thr_mp, victim_ptr);
-        assert(!(before.thr_mp.spec_index(victim_ptr).view().state is IPC_ENDPOINT_TRANSIT || before.thr_mp.spec_index(victim_ptr).view().state is KILLED)) by { reveal(thread_perms_wf); };
+        assert(!(before.thr_mp.spec_index(victim_ptr).view().state is IPC_ENDPOINT_TRANSIT || before.thr_mp.spec_index(victim_ptr).view().state is KILLED)) by { thread_endpoint_transit_only_when_wlocked_at(before.thr_mp, victim_ptr); };
     }
     let waiting_reply = match krnl.thr_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&victim_perm)).state {
         ThreadState::WAITING_REPLY => true,

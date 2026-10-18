@@ -100,7 +100,7 @@ pub(super) fn kill_retire_structure_pages(
     }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
     proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_thread.indirect_free_quota_pending_4k.view()) by { reveal(thread_perms_wf); };
+        vstd::assert_seqs_equal!(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view(), entry_thread.indirect_free_quota_pending_4k.view());
         kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, child_index, process_ptr, thread_ptr, target, KillStage::Retire,
             entry_thread.owning_container);
     }
@@ -231,7 +231,7 @@ fn kill_retire_table_pages(
                 } else {
                     assert(krnl.pt_mp.spec_index(table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, target); };
                     assert(krnl.pt_mp.spec_index(table).view().mapping_2m().dom() =~= Set::<VAddr>::empty() && krnl.pt_mp.spec_index(table).view().mapping_1g().dom() =~= Set::<VAddr>::empty()) by { pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.it_mp, table); };
-                    assert(krnl.pt_mp.spec_index(table).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { reveal(KernelK::default_pagetable_wf); };
+                    assert(krnl.pt_mp.spec_index(table).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(table); };
                 }
             }
             return;

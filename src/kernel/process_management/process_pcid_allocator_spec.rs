@@ -46,4 +46,14 @@ pub proof fn process_pcid_allocator_wf_process_at(container_map: ContainerLocked
             &&& process_map.spec_index(p_ptr).view().zombie ==> !pcid_allocator_map.spec_index(allocator_ptr).view().id_to_proc.view().spec_index(pcid as int).contains(p_ptr)
         }),
 { reveal(process_pcid_allocator_wf); }
+
+pub proof fn process_pcid_allocator_wf_unallocated_at(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pcid_allocator_map: PcidAllocatorLockedMap,
+    allocator_ptr: RwLockPcidAllocatorPtr, p_ptr: RwLockProcessPtr)
+    requires
+        process_pcid_allocator_wf(container_map, process_map, pcid_allocator_map),
+        pcid_allocator_map.dom().contains(allocator_ptr),
+        !process_map.dom().contains(p_ptr),
+    ensures
+        pcid_allocator_map.spec_index(allocator_ptr).view().process_is_unallocated(p_ptr),
+{ reveal(process_pcid_allocator_wf); }
 }

@@ -49,4 +49,13 @@ verus! {
             #![trigger thread_map.spec_index(thread_ptr).view().syscall_progress]
             thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().syscall_progress.view() is Some ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
     }
+
+    /// Thread `thread_ptr` in endpoint transit or killed is write-held.
+    pub proof fn thread_endpoint_transit_only_when_wlocked_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+        requires
+            thread_perms_wf(thread_map),
+            thread_map.dom().contains(thread_ptr),
+        ensures
+            thread_map.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT || thread_map.spec_index(thread_ptr).view().state is KILLED ==> thread_map.spec_index(thread_ptr).locking_thread() is Write,
+    { reveal(thread_perms_wf); }
 }
