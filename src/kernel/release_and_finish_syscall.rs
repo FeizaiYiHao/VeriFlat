@@ -30,6 +30,57 @@ verus! {
         reveal(UnLockedMap::typed_global_pool_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
     }
 
+    /// Write-locks the cpu at a syscall entry. A cpu that another cpu evicted is no longer Running: its lock is
+    /// released at once and the step ends without a user-visible change, so the syscall returns CpuIdle.
+    pub fn wlock_cpu_if_running(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id == old(lctx).cpu_id(),
+            old(krnl).inv(),
+            old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).no_locks_held(),
+            old(steps).snapshot_k() == *old(krnl),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(krnl).inv(),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            (ret is Some) == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running),
+            ret is None ==> {
+                &&& final(lctx).kernel_view_locking_state() is Release
+                &&& final(lctx).no_locks_held()
+                &&& final(krnl).all_objects_unlocked(final(lctx))
+                &&& final(steps).view() == old(steps).view()
+                &&& final(steps).nonlock_view() == old(steps).nonlock_view()
+                &&& final(steps).snapshot_k() == *final(krnl)
+                &&& kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl))
+                &&& kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl))
+            },
+            ret is Some ==> {
+                let cpu = final(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
+                &&& *final(steps) == *old(steps)
+                &&& final(lctx).kernel_view_locking_state() is Acquire
+                &&& final(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+                &&& kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl))
+                &&& kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp)
+                &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl))
+                &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, ..*old(krnl) })
+                &&& final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id)
+                &&& final(krnl).cpu_arr.inv()
+                &&& wlock_ensures(old(krnl).cpu_arr.spec_index(cpu_id).view(), final(krnl).cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.lock_id_by_index(cpu_id), final(lctx), ret.unwrap().view())
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(krnl).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write })
+            },
+    {
+        let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+        if let CpuState::Running = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm)).state() {
+            return Some(Tracked(cpu_lock_perm));
+        }
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        proof { steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None); }
+        None
+    }
+
     /// Releases the held CPU lock and finishes the syscall.
     pub fn release_cpu_and_finish_syscall(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, cpu_lock_perm: Tracked<LockPerm>)
         requires
@@ -210,6 +261,7 @@ verus! {
             old(krnl).inv(),
             old(krnl).thr_mp.dom().contains(thread_ptr),
             !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT),
+            !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
@@ -307,6 +359,7 @@ verus! {
             old(krnl).prc_mp.dom().contains(process_ptr),
             old(krnl).thr_mp.dom().contains(thread_ptr),
             !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT),
+            !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),

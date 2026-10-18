@@ -257,6 +257,7 @@ pub(super) fn share_new_container_range(
             origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_container_ptr), ..record }),
         }),
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
+        old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state is Running,
         old(krnl).ctn_mp.spec_index(child_container_ptr).view().root_process == child_process_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 1 + 3 * source_range.len,
@@ -344,6 +345,7 @@ pub(super) fn share_new_container_range(
 {
     proof {
         use_type_invariant(&*steps);
+        assert(!thread_is_husk(krnl.thr_mp.spec_index(current_thread_ptr))) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, caller_cpu_id); };
         assert(krnl.allc_4k_mp.dom().contains(child_allocator_4k_ptr)) by { reveal(container_allocator_wf); };
         assert(lctx.page_lock_map().dom().contains(page_ptr2page_index(thread_page_ptr)));
         assert(lctx.thread_lock_map().dom() == set![current_thread_ptr, current_thread_ptr]);
@@ -490,6 +492,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
             && origin->NewContainer_0.endpoint_index == if endpoint is Some { Some(endpoint_index) } else { None },
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == parent_container_ptr,
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
+        old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state is Running,
         old(krnl).ctn_mp.spec_index(child_container_ptr).view().root_process == child_process_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 1,
@@ -541,7 +544,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
         assert(steps.snapshot_u() == kernel_k_to_kernel_u(*krnl)) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps); use_type_invariant(&*steps);
         assert(new_container_finish_step_pre(steps.snapshot_u(), caller_cpu_id) && steps.snapshot_u().container_map[child_container_ptr].root_process == child_process_ptr) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(share_4k_objects_k);
+            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, caller_cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(share_4k_objects_k);
             kernel_write_held_context_projection(&*krnl, &*lctx, caller_cpu_id, parent_process_ptr, current_thread_ptr, endpoint);
             kernel_write_held_context_projection(&*krnl, &*lctx, caller_cpu_id, child_process_ptr, current_thread_ptr, None);
             kernel_share_4k_objects_projection(&*krnl, &*lctx, caller_cpu_id);
@@ -576,7 +579,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
         None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
     }
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    proof { assert(krnl.prc_mp.spec_index(parent_process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); }; }
+    proof { assert(krnl.prc_mp.spec_index(parent_process_ptr).view().owned_threads.view().len() != 0) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, caller_cpu_id); reveal(process_thread_wf); }; }
     krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(parent_process_lock_perm));
     proof {
         assert(!krnl.ctn_mp.spec_index(parent_container_ptr).view_ghost().owned_processes.view().is_empty() && !krnl.ctn_mp.spec_index(child_container_ptr).view_ghost().owned_processes.view().is_empty()) by {

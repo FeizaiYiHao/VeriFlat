@@ -9,7 +9,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -41,6 +41,15 @@ verus! {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert(
                 {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)
                     &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_ghost().owned_processes.view()
@@ -52,7 +61,6 @@ verus! {
                 }
             ) by { reveal(cpu_array_wf); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); reveal(process_cpu_wf); reveal(container_process_wf); };
 
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let container_ptr = cpu.owning_container();
@@ -170,7 +178,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -201,12 +209,20 @@ verus! {
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_thread_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    assert(alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
                 &&& krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().state == (ThreadState::RUNNING { cpu_id })
             }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let thread_ptr = cpu.current_thread().unwrap();
@@ -311,7 +327,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -343,6 +359,15 @@ verus! {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert(
                 {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)
                     &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_ghost().owned_processes.view()
@@ -359,7 +384,6 @@ verus! {
                 container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
             };
 
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let container_ptr = cpu.owning_container();
@@ -475,7 +499,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -506,12 +530,20 @@ verus! {
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_thread_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    assert(alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
                 &&& krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().state == (ThreadState::RUNNING { cpu_id })
             }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let thread_ptr = cpu.current_thread().unwrap();

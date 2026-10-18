@@ -13,7 +13,6 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -58,6 +57,14 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         return RetValueType::Error;
     }
     let va_range = VaRange4K::new(va, range);
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            assert(unmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_perm) = cpu_lock_res.unwrap();
     assert({
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view();
         &&& cpu.current_process() is Some
@@ -73,7 +80,6 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().owned_threads.view().len() != 0
         &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
     }) by { reveal(container_cpu_wf); reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
-    let Tracked(cpu_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_perm));
     let process_ptr = cpu.current_process().unwrap();
     let thread_ptr = cpu.current_thread().unwrap();

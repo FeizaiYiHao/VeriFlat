@@ -8,7 +8,7 @@ use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_
 
 verus! {
 /// The result of `syscall_new_process` and its endpoint and IOMMU variants from the state at entry, in
-/// the implementation's check order: malformed arguments, a killed process or caller, no free PCID in
+/// the implementation's check order: malformed arguments, a cpu no longer Running, a killed process or caller, no free PCID in
 /// the caller's container, an empty `endpoint_index` descriptor, too little caller 4K quota, and a
 /// range below the first user L4 index or with a page that has no present 4K leaf. `Success` stands for
 /// the variant's success value, whose fresh process, IOMMU table, and thread pointers the state does
@@ -20,7 +20,8 @@ pub open spec fn new_process_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAd
     let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
     if range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - base) / 3 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) {
         RetValueType::Error
-    } else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
+    } else if !(pre.cpu_array[cpu_id as int].state is Running) { RetValueType::CpuIdle }
+    else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if pre.container_map[thread.owning_container].free_pcids.is_empty() { RetValueType::ErrorNoPcid }
     else if endpoint_index is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] is None { RetValueType::Error }

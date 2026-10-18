@@ -2,12 +2,12 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_thread_exit_wake_spec::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_wake_eof::thread_exit_wake_caller_eof;
+use super::syscall_thread_exit_wake_eof::wake_waiting_reply_caller_eof;
 
 verus! {
-/// Schedule the caller the running exiting thread serves on shard `cpu_id` of its container's scheduler with
-/// `ErrorIpcCalleeExited`, drop the exiting thread's caller link, and release the caller.
-pub(super) fn thread_exit_wake_caller(
+/// Schedule the waiting caller that the exiting or killed thread `thread_ptr` serves on shard `cpu_id` of its container's
+/// scheduler with `ErrorIpcCalleeExited`, drop the callee's caller link, and release the caller.
+pub fn wake_waiting_reply_caller(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, container_ptr: RwLockContainerPtr, thread_ptr: RwLockThreadPtr,
     caller_ptr: RwLockThreadPtr, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(caller_lock_perm): Tracked<LockPerm>,
 )
@@ -18,7 +18,7 @@ pub(super) fn thread_exit_wake_caller(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).thr_mp.dom().contains(thread_ptr),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().state is RUNNING || old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED,
         old(krnl).thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         thread_lock_perm.state() is WriteLock,
@@ -26,6 +26,7 @@ pub(super) fn thread_exit_wake_caller(
         thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.dom().contains(caller_ptr),
         old(krnl).thr_mp.spec_index(caller_ptr).being_killed() == false,
+        old(krnl).thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
         old(krnl).thr_mp.spec_index(caller_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
@@ -34,7 +35,8 @@ pub(super) fn thread_exit_wake_caller(
         caller_lock_perm.state() is WriteLock,
         caller_lock_perm.thread_id() == old(lctx).thread_id(),
         caller_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(caller_ptr).locking_thread()->Write_lock_id,
-        old(lctx).thread_lock_map().dom() =~= set![thread_ptr, caller_ptr],
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
+            old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED) || old(krnl).thr_mp.spec_index(held_thread).being_killed(),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
@@ -73,7 +75,6 @@ pub(super) fn thread_exit_wake_caller(
     proof {
         container_perms_wf_at(krnl.ctn_mp, container_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_at(krnl.thr_mp, caller_ptr);
-        assert(krnl.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY) by { thread_caller_callee_wf_at(krnl.thr_mp, thread_ptr); };
     }
     let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
@@ -97,8 +98,8 @@ pub(super) fn thread_exit_wake_caller(
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(caller_ptr), old_caller_lock_id, krnl.thr_mp.lock_id_by_key(caller_ptr));
         scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr);
-        assert(thread_exit_wake_caller_transition(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id)) by { reveal(thread_exit_wake_caller_transition); };
-        thread_exit_wake_caller_eof(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
+        assert(wake_waiting_reply_caller_transition(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id)) by { reveal(wake_waiting_reply_caller_transition); };
+        wake_waiting_reply_caller_eof(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
     }
     krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));

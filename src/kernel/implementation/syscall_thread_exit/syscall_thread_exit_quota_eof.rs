@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_quota_spec::thread_exit_quota_transition;
 
 verus! {

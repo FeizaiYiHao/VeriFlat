@@ -15,6 +15,7 @@ proof fn prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl: &
         krnl.ctn_mp.dom().contains(owner),
         krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
         krnl.thr_mp.dom().contains(thread_ptr),
+        !thread_is_husk(krnl.thr_mp.spec_index(thread_ptr)),
         krnl.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable,
         krnl.thr_mp.spec_index(thread_ptr).view().container_depth == thread_depth,
     ensures
@@ -71,6 +72,7 @@ pub fn reclaim_unmapped_4k_page(
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).thr_mp.dom().contains(thread_ptr),
+        !thread_is_husk(old(krnl).thr_mp.spec_index(thread_ptr)),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         thread_perm.view().state() is WriteLock,
         thread_perm.view().thread_id() == old(lctx).thread_id(),

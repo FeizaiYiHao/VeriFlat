@@ -2,10 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Schedules the caller the exiting thread serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited`
-/// and drops the exiting thread's caller link.
+/// Schedules the caller `thread_ptr` serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited` and
+/// drops the callee's caller link. Shared by exit and kill.
 #[verifier::opaque]
-pub open spec fn thread_exit_wake_caller_transition(
+pub open spec fn wake_waiting_reply_caller_transition(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 ) -> bool {
     &&& pre.inv()

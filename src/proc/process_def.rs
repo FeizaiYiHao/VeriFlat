@@ -196,6 +196,36 @@ impl Process {
         node_perm
     }
 
+    /// A killer removes the killed thread at `node_addr` from this process, which absorbs the thread's quota.
+    pub fn remove_killed_thread(&mut self, node_addr: usize, quota_4k: usize, quota_2m: usize, quota_1g: usize) -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            !old(self).zombie,
+            old(self).owned_threads.dom().contains(node_addr),
+            old(self).quota_4k + quota_4k <= usize::MAX,
+            old(self).quota_2m + quota_2m <= usize::MAX,
+            old(self).quota_1g + quota_1g <= usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(self) == (Process {
+                quota_4k: (old(self).quota_4k + quota_4k) as usize, quota_2m: (old(self).quota_2m + quota_2m) as usize, quota_1g: (old(self).quota_1g + quota_1g) as usize,
+                owned_threads: final(self).owned_threads, ..*old(self)
+            }),
+            final(self).owned_threads.view() == old(self).owned_threads.view().remove_value(old(self).owned_threads.map().spec_index(node_addr)),
+            final(self).owned_threads.dom() == old(self).owned_threads.dom().remove(node_addr),
+            final(self).owned_threads.map() == old(self).owned_threads.map().remove(node_addr),
+            ret.view().is_init(),
+            ret.view().addr() == node_addr,
+            ret.view().value().view() == old(self).owned_threads.map().spec_index(node_addr),
+    {
+        proof { assert(self.owned_threads.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); }; }
+        let (_, node_perm) = self.owned_threads.remove(node_addr);
+        self.quota_4k = self.quota_4k + quota_4k;
+        self.quota_2m = self.quota_2m + quota_2m;
+        self.quota_1g = self.quota_1g + quota_1g;
+        node_perm
+    }
+
     pub fn add_child(&mut self, child_ptr: RwLockProcessPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockProcessPtr>>>)
         requires
             old(self).inv(),

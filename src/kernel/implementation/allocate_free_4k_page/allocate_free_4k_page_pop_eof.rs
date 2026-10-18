@@ -319,6 +319,34 @@ proof fn eof_pop_4k_cpu_cache(pre: KernelK, post: KernelK, allocator: RwLockPage
     }
 }
 
+proof fn eof_pop_4k_free_2m_pages(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+    requires
+        allocator_free_page_ptrs_wf(pre.allc_2m_mp),
+        container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
+        pop_stage_4k_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
+    ensures
+        container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
+        container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
+{
+    reveal(pop_stage_4k_page_transition_framing);
+    assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
+}
+
+proof fn eof_pop_4k_free_1g_pages(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+    requires
+        allocator_free_page_ptrs_wf(pre.allc_1g_mp),
+        container_allocator_free_1g_page_wf(pre.allc_1g_mp, pre.pg_arr),
+        pop_stage_4k_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
+    ensures
+        container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
+        container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
+{
+    reveal(pop_stage_4k_page_transition_framing);
+    assert(container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_1g_page_wf); reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); };
+}
+
 proof fn eof_pop_4k_allocator(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
         allocator_perms_wf(pre.allc_4k_mp),
@@ -341,10 +369,8 @@ proof fn eof_pop_4k_allocator(pre: KernelK, post: KernelK, allocator: RwLockPage
 {
     reveal(pop_stage_4k_page_transition_framing);
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_1g_page_wf); reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); };
+    eof_pop_4k_free_2m_pages(pre, post, allocator, thread, container, page, node, source);
+    eof_pop_4k_free_1g_pages(pre, post, allocator, thread, container, page, node, source);
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
     eof_pop_4k_global_pool(pre, post, allocator, thread, container, page, node, source);
     eof_pop_4k_cpu_cache(pre, post, allocator, thread, container, page, node, source);

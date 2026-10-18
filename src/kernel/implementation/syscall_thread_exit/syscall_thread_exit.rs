@@ -2,14 +2,15 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
-use super::syscall_thread_exit_wake::thread_exit_wake_caller;
+use super::syscall_thread_exit_wake::wake_waiting_reply_caller;
 use super::syscall_thread_exit_drop::thread_exit_drop_descriptors;
 use super::syscall_thread_exit_reclaim::thread_exit_reclaim;
 use super::syscall_thread_exit_finish::thread_exit_finish;
 
 verus! {
 /// Exit the running thread. Success records an entering step that write-locks the cpu, container, process, and thread
-/// and wakes the caller the thread serves with `ErrorIpcCalleeExited`; one step per descriptor holding an endpoint; for
+/// and wakes the caller the thread serves with `ErrorIpcCalleeExited` or takes over the husk of a killed caller; a step
+/// reclaiming that husk; one step per descriptor holding an endpoint; for
 /// the process's last thread, the reclaiming steps that unmap every user 4K page of the process, flush its PCID once, and
 /// return the thread's and the process's quota to their container; and a finishing step that removes the thread,
 /// returns its page and quotas, makes an emptied process a zombie that releases its PCID, leaves the cpu idle, and
@@ -20,7 +21,6 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -41,10 +41,19 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         ret == thread_exit_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
         thread_exit_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret is CpuIdle),
-        !(ret is CpuIdle) ==> final(steps).nonlock_view().len() == 0 && kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running),
+        !(ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) ==> final(steps).nonlock_view().len() == 0 && kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
     proof { use_type_invariant(&*steps); kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
+            assert(thread_exit_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     assert({
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view();
         &&& cpu.current_process() is Some
@@ -60,7 +69,6 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().owned_threads.view().len() != 0
         &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
     }) by { reveal(container_cpu_wf); reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let process_ptr = cpu.current_process().unwrap();
     let thread_ptr = cpu.current_thread().unwrap();
@@ -115,14 +123,17 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         assert(krnl.thr_mp.spec_index(thread_ptr).view().callee is None && (caller matches Some(caller_ptr) ==> {
             &&& krnl.thr_mp.dom().contains(caller_ptr)
             &&& caller_ptr != thread_ptr
-            &&& krnl.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY
+            &&& krnl.thr_mp.spec_index(caller_ptr).view().state.is_reply_waiting() || krnl.thr_mp.spec_index(caller_ptr).view().state is KILLED
+            &&& krnl.thr_mp.spec_index(caller_ptr).view().state is KILLED ==> krnl.thr_mp.spec_index(caller_ptr).being_killed()
             &&& krnl.thr_mp.spec_index(caller_ptr).view().callee == Some(thread_ptr)
             &&& krnl.thr_mp.spec_index(caller_ptr).view().owning_container == container_ptr
-        })) by { reveal(thread_caller_callee_wf); };
+        })) by { reveal(thread_caller_callee_wf); reveal(thread_perms_wf); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &locked_k)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &locked_k)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, locked_k.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
     }
+    let mut husk: Option<RwLockThreadPtr> = None;
+    let tracked mut husk_lock_perm: Option<LockPerm> = None;
     if let Some(caller_ptr) = caller {
         let caller_res = krnl.wlock_thread_unless_killed(caller_ptr, Tracked(&mut *lctx));
         if caller_res.is_none() {
@@ -141,7 +152,18 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
             return RetValueType::ErrorIpcPeerKilled;
         }
         let Tracked(caller_lock_perm) = caller_res.unwrap();
-        thread_exit_wake_caller(krnl, Tracked(&mut *lctx), cpu_id, container_ptr, thread_ptr, caller_ptr, Tracked(&thread_lock_perm), Tracked(caller_lock_perm));
+        proof { thread_perms_wf_at(krnl.thr_mp, caller_ptr); }
+        let dangling = match krnl.thr_mp.borrow_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm)).state {
+            ThreadState::DANGLING => true,
+            _ => false,
+        };
+        if dangling {
+            take_over_dangling_caller(krnl, Tracked(&mut *lctx), thread_ptr, caller_ptr, Tracked(&thread_lock_perm), Tracked(&caller_lock_perm));
+            husk = Some(caller_ptr);
+            proof { husk_lock_perm = Some(caller_lock_perm); }
+        } else {
+            wake_waiting_reply_caller(krnl, Tracked(&mut *lctx), cpu_id, container_ptr, thread_ptr, caller_ptr, Tracked(&thread_lock_perm), Tracked(caller_lock_perm));
+        }
     } else {
         proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     }
@@ -154,7 +176,10 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
             kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(old(krnl), &locked_k, &locked_lctx, cpu_id, process_ptr, thread_ptr, None, true, Some(container_ptr), false, None);
-            if let Some(caller_ptr) = caller { kernel_thread_exit_caller_woken_implies_u_step(&locked_k, &woken_k, cpu_id, thread_ptr, caller_ptr); kernel_thread_projection_at(&*old(krnl), caller_ptr); }
+            if let Some(caller_ptr) = caller {
+                if husk is Some { kernel_caller_husk_taken_over_implies_u_step(&locked_k, &woken_k, thread_ptr, caller_ptr, None); } else { kernel_thread_exit_caller_woken_implies_u_step(&locked_k, &woken_k, cpu_id, thread_ptr, caller_ptr); }
+                kernel_thread_projection_at(&*old(krnl), caller_ptr); kernel_thread_projection_at(&locked_k, caller_ptr);
+            }
             kernel_thread_syscall_progress_changed_implies_u_step(&woken_k, &entered_k, thread_ptr);
             kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_container_projection_at(&*old(krnl), container_ptr);
             thread_exit_enter_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(woken_k), kernel_k_to_kernel_u(entered_k), cpu_id, container_ptr, process_ptr, thread_ptr);
@@ -167,6 +192,27 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
     }
     let ghost start = old(steps).view().len() as int;
     let ghost pre = kernel_k_to_kernel_u(*old(krnl));
+    if let Some(husk_ptr) = husk {
+        let ghost reclaim_k = *krnl;
+        let ghost reclaim_lctx = *lctx;
+        let ghost reclaim_before = steps.view();
+        let tracked husk_perm = husk_lock_perm.tracked_unwrap();
+        reclaim_killed_husk(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, husk_ptr, Tracked(husk_perm));
+        proof {
+            let reclaim_pre = steps.snapshot_k();
+            let reclaim_post = *krnl;
+            use_type_invariant(&*steps);
+            assert(thread_exit_drop_step_pre(kernel_k_to_kernel_u(reclaim_pre), cpu_id)) by {
+                kernel_write_held_context_projection(&reclaim_k, &reclaim_lctx, cpu_id, process_ptr, thread_ptr, None);
+                kernel_cpu_thread_projection_at(&reclaim_k, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_thread_projection_at(&reclaim_pre, cpu_id, process_ptr, thread_ptr, None);
+                kernel_container_projection_at(&reclaim_k, container_ptr); kernel_container_projection_at(&reclaim_pre, container_ptr);
+                reveal(thread_exit_drop_step_pre);
+            };
+            kernel_killed_husk_reclaimed_implies_u_step(&reclaim_pre, &reclaim_post, husk_ptr);
+            krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
+            thread_exit_trace_push(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_pre), kernel_k_to_kernel_u(reclaim_post), cpu_id);
+        }
+    }
     thread_exit_drop_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&thread_lock_perm), Ghost(start), Ghost(pre));
     proof { process_perms_wf_at(krnl.prc_mp, process_ptr); krnl.prc_mp.spec_index(process_ptr).view().owned_threads.lemma_len_view(); }
     let last = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).owned_threads.len() == 1;

@@ -30,7 +30,7 @@ pub unsafe fn start_aps() {
             continue;
         }
         cpu::set_apic_id(count, apic_id);
-        interrupt::boot_ap(apic_id, count as u64, cpu::ap_boot_stack(count), ap_main as *const () as u64);
+        interrupt::boot_ap(apic_id, count as u64, cpu::idle_stack(count), ap_main as *const () as u64);
         let start = core::arch::x86_64::_rdtsc();
         while !cpu::is_started(count) {
             if core::arch::x86_64::_rdtsc() - start > AP_START_TIMEOUT {

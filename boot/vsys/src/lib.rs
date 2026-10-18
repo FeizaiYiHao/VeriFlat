@@ -86,7 +86,7 @@ pub const ERR_INVALID_ARGUMENT: isize = -2;
 pub const MODEL_ERROR_BASE: isize = 100;
 
 /// `RetValueType` variants in declaration order; the kernel's `error_index` mirrors it.
-const RET_VALUE_NAMES: [&str; 44] = [
+const RET_VALUE_NAMES: [&str; 46] = [
     "SuccessUsize", "SuccessSeqUsize", "SuccessPairUsize", "SuccessThreeUsize", "Success", "ErrorNoQuota",
     "ErrorVaInUse", "CpuIdle", "Error", "Else", "NoQuota", "VaInUse", "ErrorContainerKilled",
     "ErrorContainerQuotaInsufficient", "ErrorProcessKilled", "ErrorThreadKilled", "ErrorNoPcid",
@@ -97,7 +97,7 @@ const RET_VALUE_NAMES: [&str; 44] = [
     "ErrorIpcSourceUnmapped", "ErrorIpcPageOwnerMismatch", "ErrorIpcEndpointSourceInvalid",
     "ErrorIpcEndpointTargetInUse", "ErrorIpcEndpointOwnerMismatch", "ErrorCallAcrossContainers",
     "ErrorReplyOutOfPhase", "ErrorProcessQuotaOverflow", "ErrorThreadQuotaOverflow", "ErrorContainerZombie",
-    "ErrorIpcCalleeExited",
+    "ErrorIpcCalleeExited", "ErrorIpcCallerKilled", "ErrorInvalidChild",
 ];
 
 /// Names the result in `rax`.

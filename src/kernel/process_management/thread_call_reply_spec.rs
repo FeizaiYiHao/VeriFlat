@@ -14,7 +14,7 @@ pub open spec fn thread_caller_callee_wf(thread_map: ThreadLockedMap) -> bool {
             let callee_ptr = thread_map.spec_index(caller_ptr).view().callee.unwrap();
             &&& thread_map.dom().contains(callee_ptr)
             &&& caller_ptr != callee_ptr
-            &&& thread_map.spec_index(caller_ptr).view().state is WAITING_REPLY
+            &&& thread_map.spec_index(caller_ptr).view().state.is_reply_waiting() || thread_map.spec_index(caller_ptr).view().state is KILLED
             &&& thread_map.spec_index(callee_ptr).view().caller == Some(caller_ptr)
             &&& thread_map.spec_index(caller_ptr).view().owning_container == thread_map.spec_index(callee_ptr).view().owning_container
         }
@@ -24,7 +24,7 @@ pub open spec fn thread_caller_callee_wf(thread_map: ThreadLockedMap) -> bool {
             let caller_ptr = thread_map.spec_index(callee_ptr).view().caller.unwrap();
             &&& thread_map.dom().contains(caller_ptr)
             &&& caller_ptr != callee_ptr
-            &&& thread_map.spec_index(caller_ptr).view().state is WAITING_REPLY
+            &&& thread_map.spec_index(caller_ptr).view().state.is_reply_waiting() || thread_map.spec_index(caller_ptr).view().state is KILLED
             &&& thread_map.spec_index(caller_ptr).view().callee == Some(callee_ptr)
             &&& thread_map.spec_index(caller_ptr).view().owning_container == thread_map.spec_index(callee_ptr).view().owning_container
         }
@@ -38,7 +38,7 @@ pub proof fn thread_caller_callee_wf_at(thread_map: ThreadLockedMap, t_ptr: RwLo
             let callee_ptr = thread_map.spec_index(t_ptr).view().callee.unwrap();
             &&& thread_map.dom().contains(callee_ptr)
             &&& t_ptr != callee_ptr
-            &&& thread_map.spec_index(t_ptr).view().state is WAITING_REPLY
+            &&& thread_map.spec_index(t_ptr).view().state.is_reply_waiting() || thread_map.spec_index(t_ptr).view().state is KILLED
             &&& thread_map.spec_index(callee_ptr).view().caller == Some(t_ptr)
             &&& thread_map.spec_index(t_ptr).view().owning_container == thread_map.spec_index(callee_ptr).view().owning_container
         }),
@@ -46,7 +46,7 @@ pub proof fn thread_caller_callee_wf_at(thread_map: ThreadLockedMap, t_ptr: RwLo
             let caller_ptr = thread_map.spec_index(t_ptr).view().caller.unwrap();
             &&& thread_map.dom().contains(caller_ptr)
             &&& caller_ptr != t_ptr
-            &&& thread_map.spec_index(caller_ptr).view().state is WAITING_REPLY
+            &&& thread_map.spec_index(caller_ptr).view().state.is_reply_waiting() || thread_map.spec_index(caller_ptr).view().state is KILLED
             &&& thread_map.spec_index(caller_ptr).view().callee == Some(t_ptr)
             &&& thread_map.spec_index(caller_ptr).view().owning_container == thread_map.spec_index(t_ptr).view().owning_container
         }),

@@ -21,12 +21,13 @@ pub(super) proof fn eof_container_uppertree_seq_wf(
     ensures
         container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp),
 {
+    assert(container_uppertree_seq_wf(pre.rt_ctn, pre.ctn_mp)) by { reveal(KernelK::inv); };
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(KernelK::inv); reveal(container_perms_wf); };
     assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     let child_uppers = post.ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view();
     assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by {
         reveal(publish_staged_container_root_kernel_state_framing); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
-        seq_push_lemma::<RwLockContainerPtr>();
+        seq_push_lemma::<RwLockContainerPtr>(); seq_push_unique_lemma::<RwLockContainerPtr>();
     };
 }
 
@@ -158,18 +159,20 @@ pub(super) proof fn eof_container_relations_wf(
             && post.thr_mp.spec_index(t_ptr).view().process_depth == post.prc_mp.spec_index(p_ptr).view_rodata().view().depth
             && post.thr_mp.spec_index(t_ptr).view().proc_pagetable_ptr == post.prc_mp.spec_index(p_ptr).view().pagetable
             && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().dom().contains(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr())
-            && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().spec_index(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr()) == t_ptr by {
+            && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().spec_index(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr()) == t_ptr
+            && !post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.is_init() by {
         reveal(process_thread_wf);
         if p_ptr == process_page { assert(post.prc_mp.spec_index(p_ptr).view().owned_threads.view().len() == 0); }
         else { assert(pre.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)); }
     };
-    assert forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.dom().contains(t_ptr), post.thr_mp.spec_index(t_ptr).view().owning_proc] post.thr_mp.dom().contains(t_ptr)
-        implies post.prc_mp.dom().contains(post.thr_mp.spec_index(t_ptr).view().owning_proc) && !post.prc_mp.spec_index(post.thr_mp.spec_index(t_ptr).view().owning_proc).view().zombie
+    assert forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.dom().contains(t_ptr), post.thr_mp.spec_index(t_ptr).view().owning_proc]
+        post.thr_mp.dom().contains(t_ptr) && !thread_is_husk(post.thr_mp.spec_index(t_ptr)) implies post.prc_mp.dom().contains(post.thr_mp.spec_index(t_ptr).view().owning_proc) && !post.prc_mp.spec_index(post.thr_mp.spec_index(t_ptr).view().owning_proc).view().zombie
             && post.prc_mp.spec_index(post.thr_mp.spec_index(t_ptr).view().owning_proc).view().owned_threads.view().contains(t_ptr) by {
         reveal(process_thread_wf); assert(pre.thr_mp.dom().contains(t_ptr));
     };
     assert forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).being_killed()] post.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).being_killed() implies {
         let process = post.prc_mp.spec_index(post.thr_mp.spec_index(t_ptr).view().owning_proc);
+        &&& !thread_is_husk(post.thr_mp.spec_index(t_ptr))
         &&& process.being_killed()
         &&& process.locking_thread() is Write
         &&& post.thr_mp.spec_index(t_ptr).locking_thread() is Write

@@ -4,9 +4,11 @@ use crate::*;
 verus! {
 /// The result of `syscall_cpu_offline_request` from the state at entry: `target` must be a cpu of the
 /// caller's container that is not Off. A request already pending succeeds without a step.
+/// A cpu no longer Running returns CpuIdle after the argument checks.
 pub open spec fn cpu_offline_request_syscall_result(pre: KernelU, cpu_id: CpuId, target: CpuId) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
+    else if !(cpu.state is Running) { RetValueType::CpuIdle }
     else if pre.cpu_array[target as int].owning_container != cpu.owning_container { RetValueType::ErrorCpuOwnerMismatch }
     else if pre.cpu_array[target as int].state is Off { RetValueType::ErrorCpuAlreadyOff }
     else { RetValueType::Success }
@@ -57,9 +59,11 @@ pub open spec fn cpu_offline_request_syscall_trace(trace: Seq<KernelStep>, pre: 
 
 /// The result of `syscall_cpu_online` from the state at entry: `target` must be an Off cpu of the
 /// caller's container.
+/// A cpu no longer Running returns CpuIdle after the argument checks.
 pub open spec fn cpu_online_syscall_result(pre: KernelU, cpu_id: CpuId, target: CpuId) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
+    else if !(cpu.state is Running) { RetValueType::CpuIdle }
     else if pre.cpu_array[target as int].owning_container != cpu.owning_container { RetValueType::ErrorCpuOwnerMismatch }
     else if !(pre.cpu_array[target as int].state is Off) { RetValueType::ErrorCpuNotOff }
     else { RetValueType::Success }
@@ -103,9 +107,11 @@ pub open spec fn cpu_online_syscall_trace(trace: Seq<KernelStep>, pre: KernelU, 
 
 /// The result of `syscall_cpu_offline_request_child` from the state at entry: the caller's container must be
 /// live and not a zombie, and `target` a cpu, not Off, of its `child`-th child. A request already pending succeeds without a step.
+/// A cpu no longer Running returns CpuIdle after the argument checks.
 pub open spec fn cpu_offline_request_child_syscall_result(pre: KernelU, cpu_id: CpuId, child: usize, target: CpuId) -> RetValueType {
     let caller = pre.container_map[pre.cpu_array[cpu_id as int].owning_container];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
+    else if !(pre.cpu_array[cpu_id as int].state is Running) { RetValueType::CpuIdle }
     else if caller.killed { RetValueType::ErrorContainerKilled }
     else if caller.zombie { RetValueType::ErrorContainerZombie }
     else if child >= caller.children.len() || pre.cpu_array[target as int].owning_container != caller.children[child as int] { RetValueType::ErrorCpuOwnerMismatch }
@@ -162,9 +168,11 @@ pub open spec fn cpu_offline_request_child_syscall_trace(trace: Seq<KernelStep>,
 
 /// The result of `syscall_cpu_online_child` from the state at entry: the caller's container must be live and
 /// not a zombie, and `target` an Off cpu of its `child`-th child.
+/// A cpu no longer Running returns CpuIdle after the argument checks.
 pub open spec fn cpu_online_child_syscall_result(pre: KernelU, cpu_id: CpuId, child: usize, target: CpuId) -> RetValueType {
     let caller = pre.container_map[pre.cpu_array[cpu_id as int].owning_container];
     if !index_valid(NUM_CPUS, target) { RetValueType::ErrorCpuOwnerMismatch }
+    else if !(pre.cpu_array[cpu_id as int].state is Running) { RetValueType::CpuIdle }
     else if caller.killed { RetValueType::ErrorContainerKilled }
     else if caller.zombie { RetValueType::ErrorContainerZombie }
     else if child >= caller.children.len() || pre.cpu_array[target as int].owning_container != caller.children[child as int] { RetValueType::ErrorCpuOwnerMismatch }

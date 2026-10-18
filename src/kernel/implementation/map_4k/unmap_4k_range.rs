@@ -30,6 +30,7 @@ pub fn unmap_4k_range(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
         old(krnl).cpu_published[cpu_id as int].view() == (cr3, pcid),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         page_ptr_valid(cr3),
         pcid_valid(pcid),
         pcid != KERNEL_DEFAULT_PCID,
@@ -93,7 +94,7 @@ pub fn unmap_4k_range(
     let ghost process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
     let ghost container_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
-    assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
+    assert(krnl.thr_mp.spec_index(thread_ptr).inv() && !thread_is_husk(krnl.thr_mp.spec_index(thread_ptr))) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
     assert(krnl.prc_mp.dom().contains(process_ptr) && !krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable
         && krnl.pt_mp.spec_index(pagetable).view().proc_ptr == process_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
     let start = range.start;
@@ -169,6 +170,7 @@ pub fn unmap_4k_range(
             i <= range.len,
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).inv(),
+            !thread_is_husk(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(krnl).pt_mp.dom().contains(pagetable),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
@@ -323,6 +325,7 @@ pub fn unmap_4k_range(
             i <= range.len,
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).inv(),
+            !thread_is_husk(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(krnl).pt_mp.dom().contains(pagetable),
             old(steps).nonlock_view().len() + range.len + 1 <= steps.nonlock_view().len() <= old(steps).nonlock_view().len() + range.len + NUM_CPUS + 1,

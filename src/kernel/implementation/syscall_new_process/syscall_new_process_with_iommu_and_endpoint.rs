@@ -15,7 +15,6 @@ pub fn syscall_new_process_with_iommu_and_endpoint(krnl: &mut KernelK, Tracked(l
         cpu_id == old(lctx).cpu_id(),
         edp_idx_valid(endpoint_index),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),

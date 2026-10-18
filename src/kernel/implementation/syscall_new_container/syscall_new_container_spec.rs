@@ -8,7 +8,7 @@ use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_
 
 verus! {
 /// The result of `syscall_new_container` from the state at entry, in the implementation's check order:
-/// malformed arguments or funding, a killed or zombie parent container, a parent at the maximum tree depth, a
+/// malformed arguments or funding, a cpu no longer Running, a killed or zombie parent container, a parent at the maximum tree depth, a
 /// killed process or caller, an empty `endpoint_index` descriptor, too little caller 4K or 2M quota, a
 /// source range below the first user L4 index or with a page that has no present 4K leaf, and a transfer
 /// cpu that the parent container does not own or that is not Off. `Success` stands for
@@ -25,7 +25,8 @@ pub open spec fn new_container_syscall_result(
         || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota_4k > funding_page_count
         || funding_page_count > usize::MAX - 9 - 3 * range {
         RetValueType::Error
-    } else if parent.killed { RetValueType::ErrorContainerKilled }
+    } else if !(pre.cpu_array[cpu_id as int].state is Running) { RetValueType::CpuIdle }
+    else if parent.killed { RetValueType::ErrorContainerKilled }
     else if parent.zombie { RetValueType::ErrorContainerZombie }
     else if parent.depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }

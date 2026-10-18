@@ -4,9 +4,9 @@ use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 
 verus! {
-/// Release descriptor `index` of the exiting thread: clear it, record the position after it, drop the reference of its
-/// write-held endpoint, and release the endpoint.
-fn thread_exit_drop_descriptor(
+/// Release descriptor `index` of an exiting or killed thread: clear it, drop the reference of its write-held endpoint, and
+/// release the endpoint.
+pub fn drop_endpoint_descriptor(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, index: EndpointIdx,
     Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
 )
@@ -15,7 +15,7 @@ fn thread_exit_drop_descriptor(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
         old(krnl).thr_mp.dom().contains(thread_ptr),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().state is RUNNING,
+        old(krnl).thr_mp.spec_index(thread_ptr).view().state is RUNNING || old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED,
         old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[index as int] == Some(endpoint_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         thread_lock_perm.state() is WriteLock,
@@ -34,10 +34,7 @@ fn thread_exit_drop_descriptor(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         *final(krnl) == (KernelK { thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..*old(krnl) }),
         final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
-            endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
-            syscall_progress: Ghost(Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx })), ..old(krnl).thr_mp.spec_index(thread_ptr).view()
-        }),
+        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().update(index as int, None),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -61,7 +58,6 @@ fn thread_exit_drop_descriptor(
     {
         let thread_mut = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm));
         thread_mut.endpoint_descriptors.set(index, None);
-        thread_mut.syscall_progress = Ghost(Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx }));
     } {
         let endpoint_mut = krnl.ep_mp.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));
         endpoint_mut.rf_counter = endpoint_mut.rf_counter - 1;
@@ -250,7 +246,8 @@ pub(super) fn thread_exit_drop_descriptors(
             let ghost drop_lctx = *lctx;
             let ghost drop_before = steps.view();
             let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
-            thread_exit_drop_descriptor(krnl, Tracked(&mut *lctx), thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm), Tracked(endpoint_lock_perm));
+            drop_endpoint_descriptor(krnl, Tracked(&mut *lctx), thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm), Tracked(endpoint_lock_perm));
+            krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx })), Tracked(&*lctx), Tracked(thread_lock_perm));
             proof {
                 let drop_post = *krnl;
                 use_type_invariant(&*steps);

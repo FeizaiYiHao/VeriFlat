@@ -36,12 +36,17 @@ pub open spec fn kernel_u_process_ownership_wf(u: KernelU) -> bool {
         ==> u.process_map.dom().contains(q) && u.process_map[q].owning_container == u.process_map[p].owning_container
 }
 
-/// Thread-process-container membership and scheduler membership.
+/// Thread-process-container membership and scheduler membership. A killed or dangling thread may have left its process,
+/// which may already be gone.
 #[verifier::opaque]
 pub open spec fn kernel_u_thread_ownership_wf(u: KernelU) -> bool {
     &&& forall|t: RwLockThreadPtr| #![trigger u.thread_map.dom().contains(t)] u.thread_map.dom().contains(t) ==> {
         &&& u.container_map.dom().contains(u.thread_map[t].owning_container)
         &&& u.container_map[u.thread_map[t].owning_container].owned_threads.contains(t)
+        &&& u.thread_map[t].blocking_endpoint_ptr is Some ==> u.thread_map[t].state.is_endpoint_waiting()
+    }
+    &&& forall|t: RwLockThreadPtr| #![trigger u.thread_map.dom().contains(t)]
+        u.thread_map.dom().contains(t) && !(u.thread_map[t].state is KILLED) && !(u.thread_map[t].state is DANGLING) ==> {
         &&& u.process_map.dom().contains(u.thread_map[t].owning_proc)
         &&& u.process_map[u.thread_map[t].owning_proc].owning_container == u.thread_map[t].owning_container
         &&& u.process_map[u.thread_map[t].owning_proc].owned_threads.contains(t)
@@ -84,6 +89,7 @@ pub open spec fn kernel_u_cpu_ownership_wf(u: KernelU) -> bool {
     &&& forall|i: CpuId| #![trigger u.cpu_array[i as int]] index_valid(NUM_CPUS, i) ==> {
         &&& u.container_map.dom().contains(u.cpu_array[i as int].owning_container)
         &&& u.cpu_array[i as int].current_thread is Some ==> {
+            &&& u.cpu_array[i as int].state is Running
             &&& u.thread_map.dom().contains(u.cpu_array[i as int].current_thread->Some_0)
             &&& u.thread_map[u.cpu_array[i as int].current_thread->Some_0].owning_container == u.cpu_array[i as int].owning_container
         }
@@ -137,7 +143,7 @@ pub proof fn kernel_wf_implies_u_ownership_wf(krnl: &KernelK)
     };
     assert(kernel_u_process_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_process_ownership_wf); reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
     assert(kernel_u_thread_ownership_wf(kernel_k_to_kernel_u(*krnl))) by {
-        reveal(kernel_u_thread_ownership_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
+        reveal(kernel_u_thread_ownership_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); reveal(thread_perms_wf);
         reveal(scheduler_shards_of);
     };
     assert(kernel_u_endpoint_ownership_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_endpoint_ownership_wf); reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); };

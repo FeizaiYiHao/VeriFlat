@@ -11,7 +11,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -29,7 +28,7 @@ verus! {
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                 ThreadState::SENDING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -37,9 +36,9 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
+            (ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) || ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
@@ -68,7 +67,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -90,9 +88,9 @@ verus! {
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
-            final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
-            final(krnl).thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id }),
+            !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+            !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
+            !(ret is CpuIdle) ==> final(krnl).thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id }),
             ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection ==> {
                 let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap();
                 let endpoint_option = old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view().spec_index(endpoint_index as int);
@@ -117,12 +115,12 @@ verus! {
                 &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty)
             },
-            ret is Success || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
+            ret is Success || ret is CpuIdle || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING, false),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let ret = syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::SENDING, IPCPayLoad::Empty, false, pt_regs);
-        proof { assert(krnl.thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })) by { reveal(thread_cpu_wf); }; }
+        proof { if !(ret is CpuIdle) { assert(krnl.thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })) by { reveal(thread_cpu_wf); }; } }
         ret
     }
 
@@ -132,7 +130,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -150,7 +147,7 @@ verus! {
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                 ThreadState::RECEIVING, IPCPayLoad::Empty, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -158,9 +155,9 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
+            (ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) || ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
@@ -189,7 +186,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -211,9 +207,9 @@ verus! {
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
-            final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
-            final(krnl).thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id }),
+            !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+            !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
+            !(ret is CpuIdle) ==> final(krnl).thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id }),
             ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection ==> {
                 let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap();
                 let endpoint_option = old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view().spec_index(endpoint_index as int);
@@ -238,12 +234,12 @@ verus! {
                 &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
                 &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty)
             },
-            ret is Success || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
+            ret is Success || ret is CpuIdle || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch,
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING, false),
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let ret = syscall_ipc_ordinary(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, ThreadState::RECEIVING, IPCPayLoad::Empty, false, pt_regs);
-        proof { assert(krnl.thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })) by { reveal(thread_cpu_wf); }; }
+        proof { if !(ret is CpuIdle) { assert(krnl.thr_mp.spec_index(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().state == (ThreadState::RUNNING { cpu_id })) by { reveal(thread_cpu_wf); }; } }
         ret
     }
 
@@ -254,7 +250,6 @@ verus! {
             edp_idx_valid(endpoint_index),
             index_valid(NUM_CPUS, transfer_cpu_id),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -272,7 +267,7 @@ verus! {
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                 ThreadState::SENDING, IPCPayLoad::Cpu { cpu_id: transfer_cpu_id }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -281,9 +276,9 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
             ret is Success ==> final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off && final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
+            (ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) || ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
@@ -312,7 +307,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -333,7 +327,7 @@ verus! {
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                 ThreadState::RECEIVING, IPCPayLoad::ReceiveCpu, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -341,9 +335,9 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle || ret is SuccessUsize ==> final(steps).nonlock_view().len() == 1,
+            (ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) || ret is SuccessUsize ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
@@ -375,7 +369,6 @@ verus! {
             edp_idx_valid(endpoint_index),
             pci_bdf_valid(bus as usize, dev as usize, fun as usize),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -393,7 +386,7 @@ verus! {
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                 ThreadState::SENDING, IPCPayLoad::Pci { bus, dev, fun }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -401,9 +394,9 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
+            (ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) || ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
@@ -435,7 +428,6 @@ verus! {
             edp_idx_valid(endpoint_index),
             pci_bdf_valid(bus as usize, dev as usize, fun as usize),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -453,7 +445,7 @@ verus! {
             ipc_ordinary_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                 ThreadState::RECEIVING, IPCPayLoad::Pci { bus, dev, fun }, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id), ret),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -461,9 +453,9 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle || ret is Success ==> final(steps).nonlock_view().len() == 1,
+            (ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) || ret is Success ==> final(steps).nonlock_view().len() == 1,
             final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
                 &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
@@ -494,7 +486,6 @@ verus! {
             edp_idx_valid(endpoint_index),
             edp_idx_valid(source_endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -512,7 +503,7 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -520,7 +511,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> final(steps).nonlock_view().len() == 1,
             ret is Success ==> final(steps).nonlock_view().len() == 2,
             final(steps).nonlock_view().len() <= 2,
             ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch
@@ -538,7 +529,6 @@ verus! {
             edp_idx_valid(endpoint_index),
             edp_idx_valid(target_endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -556,7 +546,7 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -564,7 +554,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> final(steps).nonlock_view().len() == 1,
             ret is Success ==> final(steps).nonlock_view().len() == 2,
             final(steps).nonlock_view().len() <= 2,
             ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch
@@ -581,7 +571,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -600,7 +589,7 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::SENDING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -608,7 +597,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> final(steps).nonlock_view().len() == 1,
             ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
@@ -623,7 +612,6 @@ verus! {
             cpu_id == old(lctx).cpu_id(),
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -642,7 +630,7 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, ThreadState::RECEIVING)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -650,7 +638,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> final(steps).nonlock_view().len() == 1,
             ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
@@ -666,7 +654,6 @@ verus! {
             edp_idx_valid(endpoint_index),
             waiting_state is SENDING || waiting_state is RECEIVING,
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -685,7 +672,7 @@ verus! {
             final(lctx).no_locks_held(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -693,7 +680,7 @@ verus! {
             },
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> final(steps).nonlock_view().len() == 1,
             ret is Success ==> range + 5 <= final(steps).nonlock_view().len() <= 4 * range + 5,
             !(ret is CpuIdle) && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
             ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled

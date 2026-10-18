@@ -3,7 +3,7 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_transition;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_destroy_eof::{thread_exit_destroy_eof, thread_exit_destroy_eof_fields, thread_exit_owner_allocator_bounded, thread_exit_quota_sums_bounded};
+use super::syscall_thread_exit_destroy_eof::{thread_exit_destroy_eof, thread_exit_destroy_eof_fields, thread_exit_quota_sums_bounded};
 
 verus! {
 /// Remove the running exiting thread and release every lock of the finish step: `cpu_id` goes idle on the default page
@@ -146,7 +146,7 @@ pub(super) fn thread_exit_destroy(
         };
         page_array_wf_at(krnl.pg_arr, page_index);
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
-        thread_exit_owner_allocator_bounded(&*krnl, owner);
+        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thread_ptr)) by {
             reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);

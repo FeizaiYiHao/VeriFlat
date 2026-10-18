@@ -117,6 +117,15 @@ empty and `post == pre`. A rejection with a visible effect is an explicit step
 **R7 Traces.** A `*_syscall_trace` is the first step, the phase steps with
 exact length bounds, and the exit step, each with its pre and transition.
 
+**R8 Idle cpu.** Every syscall entry write-locks its cpu first and returns
+`CpuIdle` with an empty trace and `post == pre` when the cpu is no longer
+Running: a kill evicted its thread between the trap and the lock (§18). Entries
+that check their arguments before locking (mmap_4k, unmap_4k, new_process,
+new_container, the hotplug `target` index, the IPC pages range) report
+argument errors first. The result specs and traces state this as their first
+branch (after the argument checks); IPC traces that classify `CpuIdle` as a
+block step take that branch only when the cpu is Running at entry.
+
 ## 3. alloc_quota_4k, alloc_quota_2m — one step each
 
 Status: conforms (alloc_quota_4k focused run #27373; alloc_quota_2m workspace
@@ -138,7 +147,7 @@ run #28754, monolith run #28755, noninterference run #28756).
 - Effect: the container's `quota_4k` decreases by `amount` and the process's
   increases by it (`kernel_u_only_process_quota_4k_changed`).
 
-Stutters: ContainerKilled, ContainerZombie, ProcessKilled,
+Stutters: CpuIdle (cpu not Running), ContainerKilled, ContainerZombie, ProcessKilled,
 ContainerQuotaInsufficient, ProcessQuotaOverflow.
 
 ## 3a. alloc_thread_quota_4k, alloc_thread_quota_2m — one step each
@@ -164,7 +173,7 @@ noninterference run #28756).
 - Effect: the process's `quota_4k` decreases by `amount` and the thread's
   increases by it (`kernel_u_only_process2thread_quota_4k_changed`).
 
-Stutters: ProcessKilled, ThreadKilled, NoQuota, ThreadQuotaOverflow.
+Stutters: CpuIdle (cpu not Running), ProcessKilled, ThreadKilled, NoQuota, ThreadQuotaOverflow.
 
 ## 4. schedule — one step
 
@@ -237,6 +246,7 @@ progress, so their pres name `cpu.owning_container` directly (R3).
 Stutters:
 - CpuOwnerMismatch: an invalid or foreign `target`; on the child variant also
   `i >= P.children.len()` or a `target` that `P.children[i]` does not own;
+- CpuIdle: after the `target` index check, a cpu no longer Running;
 - ContainerKilled: child variant only, when `P` is killed;
 - ContainerZombie: child variant only, when `P` is a zombie;
 - CpuAlreadyOff;
@@ -252,7 +262,7 @@ Stutters:
   the request bit of an Off cpu is already clear. The caller then sends an IPI
   to `target` (no U effect).
 
-Stutters: CpuOwnerMismatch (with the same child cases), ContainerKilled and
+Stutters: CpuOwnerMismatch for an invalid `target` index, CpuIdle (cpu not Running), CpuOwnerMismatch (with the same child cases), ContainerKilled and
 ContainerZombie (child variant), CpuNotOff.
 
 ## 4b. cpu_offline_check — one step before each schedule
@@ -362,7 +372,7 @@ detaches.
   domain `pci_bdf_did`; that IOTLB domain is already empty, because a
   detached function's domain is empty.
 
-Stutters (in this order): ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
+Stutters (in this order): CpuIdle (cpu not Running), ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
 PciAlreadyAttached.
 
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
@@ -397,7 +407,7 @@ Status: conforms (focused run #27397).
   `C`'s thread set and the tail of `C.scheduler[cpu_id]`.
   The step unlocks `cpu`, `P`, `T`, and the endpoint and clears `prog`.
 
-Stutters: ProcessKilled, ThreadKilled, NoQuota, a missing endpoint descriptor.
+Stutters: CpuIdle (cpu not Running), ProcessKilled, ThreadKilled, NoQuota, a missing endpoint descriptor.
 
 ## 5a. new_endpoint — enter, finish
 
@@ -429,7 +439,7 @@ Status: conforms (workspace run #28754, monolith run #28755, noninterference run
   only at `(T, slot)`; `T.endpoint_descriptors[slot] = Some(E)` and `E` joins
   `C.owned_endpoints`. The step unlocks `cpu`, `C`, `P`, and `T` and clears `prog`.
 
-Stutters: ContainerKilled, ContainerZombie, ProcessKilled, ThreadKilled, an
+Stutters: CpuIdle (cpu not Running), ContainerKilled, ContainerZombie, ProcessKilled, ThreadKilled, an
 occupied descriptor (IpcEndpointTargetInUse), NoQuota.
 
 ## 6. mmap_4k — enter, directory/leaf steps, exit
@@ -473,7 +483,7 @@ Status: conforms (workspace run #27748).
 Trace: `range + 2 <= len <= 4 * range + 2`; enter, then directory or leaf
 steps, then exit.
 
-Stutters: argument errors, ThreadKilled, NoQuota, a kernel-range VA (Error),
+Stutters: argument errors, CpuIdle (cpu not Running), ThreadKilled, NoQuota, a kernel-range VA (Error),
 and VaInUse.
 
 ## 7. unmap_4k — enter, leaf/flush/flushed/refund steps, exit
@@ -529,7 +539,7 @@ Status: conforms (workspace run #27748).
 
 Trace: `range + 3 <= len <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4`.
 
-Stutters: argument errors, ContainerKilled, ContainerZombie, ProcessKilled,
+Stutters: argument errors, CpuIdle (cpu not Running), ContainerKilled, ContainerZombie, ProcessKilled,
 ThreadKilled, and an unmapped or kernel-range VA.
 
 ## 8. share_4k — directory and leaf sub-steps
@@ -621,7 +631,7 @@ finish.
 
 Trace: `range + 3 <= len <= 4 * range + 3`.
 
-Stutters: argument errors, ProcessKilled, ThreadKilled, NoPcid, a missing
+Stutters: argument errors, CpuIdle (cpu not Running), ProcessKilled, ThreadKilled, NoPcid, a missing
 endpoint, NoQuota, and an unmapped or kernel-range source VA. new_process does
 not check whether `C` is killed.
 
@@ -686,7 +696,7 @@ workspace run #28754, monolith run #28755, noninterference run #28756).
 
 Trace: `range + 3 <= len <= 4 * range + 3`.
 
-Stutters: argument errors, ContainerKilled, ContainerZombie, depth overflow,
+Stutters: argument errors, CpuIdle (cpu not Running), ContainerKilled, ContainerZombie, depth overflow,
 ProcessKilled, ThreadKilled, a missing endpoint descriptor (Error), NoQuota,
 a bad source range, IpcCpuOwnerMismatch, IpcCpuNotOff.
 
@@ -701,7 +711,7 @@ Status: conforms (workspace run #27751; Pci payload workspace run #28638).
   `!thr.killed`, `edp_idx_valid(i)`, `E(i)` present,
   `T` not in `E(i).queue`, and `Unlocked` for `cpu`, `T`, `E(i)`. `P` is never
   locked: a killed caller process is caught by its killed thread.
-- Stutters: ThreadKilled, InvalidEndpoint, PeerKilled (a killed
+- Stutters: CpuIdle (cpu not Running), ThreadKilled, InvalidEndpoint, PeerKilled (a killed
   peer stays queued), and for no_block the NoPeer and SameDirection results.
 
 **Block** (blocking entry points)
@@ -981,7 +991,7 @@ result. Every step changes a non-lock field (`prog`, or the receiver's
 `quota_4k` in a directory step), so the nonlock view has `len + 5` to
 `4 * len + 5` steps on success and 4 on a failed check.
 
-Stutters: argument errors (Error before any step), ThreadKilled,
+Stutters: argument errors (Error before any step), CpuIdle (cpu not Running), ThreadKilled,
 InvalidEndpoint, and PeerKilled.
 
 ## 14. Syscall entry list
@@ -1337,7 +1347,7 @@ reclaim steps in the order above), then finish; `2 <= len`, with no
 numeric upper bound. A stutter leaves an empty trace, `post == pre`, and no
 lock held.
 
-Stutters (in this order): ContainerKilled, ProcessKilled, ThreadKilled,
+Stutters (in this order): CpuIdle (cpu not Running), ContainerKilled, ProcessKilled, ThreadKilled,
 PeerKilled (a killed `R`, met when its lock is tried after `T`'s).
 
 Trusted primitive: `retype_thread_rwlock_to_4k_page_perm` (external_body;

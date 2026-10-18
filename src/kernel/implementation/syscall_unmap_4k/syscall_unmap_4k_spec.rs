@@ -5,11 +5,13 @@ verus! {
 /// The result of `syscall_unmap_4k` from the state at entry, in the implementation's check order:
 /// malformed arguments, a killed or zombie container, a killed process or caller, and then a range below the first user
 /// L4 index or with a page that has no present 4K leaf.
+/// A cpu no longer Running returns CpuIdle after the argument checks.
 pub open spec fn unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let mapping = pre.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k;
     let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
     if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) { RetValueType::Error }
+    else if !(pre.cpu_array[cpu_id as int].state is Running) { RetValueType::CpuIdle }
     else if pre.container_map[thread.owning_container].killed { RetValueType::ErrorContainerKilled }
     else if pre.container_map[thread.owning_container].zombie { RetValueType::ErrorContainerZombie }
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }

@@ -94,8 +94,7 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
     requires
         pre.process_management_inv(),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
-        forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).being_killed()]
-            pre.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).being_killed() ==> pre.thr_mp.spec_index(t_ptr).being_killed() && post.thr_mp.spec_index(t_ptr).locking_thread() == pre.thr_mp.spec_index(t_ptr).locking_thread(),
+        process_thread_wf(post.prc_mp, post.thr_mp),
         post.cpu_arr == pre.cpu_arr,
         post.ctn_mp == pre.ctn_mp,
         post.sched_mp == pre.sched_mp,
@@ -115,7 +114,6 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.ep_mp); };
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
 }
 

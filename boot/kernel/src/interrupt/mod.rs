@@ -15,6 +15,7 @@ pub mod x86_xapic;
 
 use core::arch::{asm, naked_asm};
 use core::convert::{Into, TryFrom};
+use core::mem::offset_of;
 
 use x86::io::{inb, outb};
 use x86::Ring;
@@ -61,10 +62,10 @@ pub struct TrampolineMarker(());
 
 /// Builds a naked trampoline that saves the interrupted registers as a `Registers` frame, calls
 /// `handler(&mut frame)`, restores the frame, and returns with `iretq`. `prologue` runs first,
-/// with `rsp` at the CPU-pushed part of the frame, and `epilogue` runs after the registers are
-/// restored, with `rsp` at `[error_code][rip][cs]...`.
+/// with `rsp` at the CPU-pushed part of the frame, and `epilogue` runs after the handler, with `rsp`
+/// at the frame; `operands` are extra `naked_asm!` operands for both.
 macro_rules! trampoline {
-    ($handler:path, [$($prologue:literal),* $(,)?], [$($epilogue:literal),* $(,)?]) => {{
+    ($handler:path, [$($prologue:literal),* $(,)?], [$($epilogue:literal),* $(,)?] $(, $($operands:tt)+)?) => {{
         let _: unsafe extern "C" fn(&mut Registers) = $handler;
 
         /// Interrupt trampoline
@@ -93,6 +94,7 @@ macro_rules! trampoline {
                 "sub rsp, 8",
                 "call {handler}",
                 "add rsp, 8",
+                $($epilogue,)*
 
                 "pop r15",
                 "pop r14",
@@ -109,11 +111,11 @@ macro_rules! trampoline {
                 "pop rsi",
                 "pop rdi",
                 "pop rax",
-                $($epilogue,)*
                 "add rsp, 8", // error_code
                 "iretq",
 
                 handler = sym $handler,
+                $($($operands)+)?
             );
         }
 
@@ -122,13 +124,15 @@ macro_rules! trampoline {
 }
 
 /// Wraps a `Registers` handler for a vector whose frame carries a CPU error code. A frame from
-/// ring 3 (`cs` at `[rsp + 16]` has RPL 3) needs `swapgs` on the way in and out; a frame from the
-/// kernel already has the kernel GS base.
+/// ring 3 (`cs` at `[rsp + 16]` has RPL 3) needs `swapgs` on the way in, and leaves through
+/// `restore_frame`, the only exit to ring 3 (an eviction relies on it); a frame from the kernel
+/// already has the kernel GS base.
 macro_rules! wrap_interrupt_with_error_code {
     ($handler:path) => {
         // Here rsp is at [error_code][rip][cs][rflags][rsp][ss]
         trampoline!($handler, ["cld", "test byte ptr [rsp + 16], 3", "jz 1f", "swapgs", "1:"],
-            ["test byte ptr [rsp + 16], 3", "jz 2f", "swapgs", "2:"])
+            ["test byte ptr [rsp + {frame_cs}], 3", "jnz {restore}"],
+            frame_cs = const offset_of!(Registers, cs), restore = sym crate::syscalls::restore_frame)
     };
 }
 
@@ -137,13 +141,15 @@ macro_rules! wrap_interrupt {
     ($handler:path) => {
         // Here rsp is at [rip][cs][rflags][rsp][ss]; push 0 as the error code first
         trampoline!($handler, ["cld", "push 0", "test byte ptr [rsp + 16], 3", "jz 1f", "swapgs", "1:"],
-            ["test byte ptr [rsp + 16], 3", "jz 2f", "swapgs", "2:"])
+            ["test byte ptr [rsp + {frame_cs}], 3", "jnz {restore}"],
+            frame_cs = const offset_of!(Registers, cs), restore = sym crate::syscalls::restore_frame)
     };
 }
 
 /// Wraps the NMI handler. An NMI can land between a `swapgs` and the ring crossing it belongs to,
 /// where the frame's `cs` says nothing about which GS base is loaded, so the NMI path never touches
-/// `gs` at all and the handler uses `cpu_id_without_gs`.
+/// `gs` at all and the handler uses `cpu_id_without_gs`. It returns with `iretq` to the frame as the
+/// handler left it, which an eviction rewrites.
 macro_rules! wrap_nmi {
     ($handler:path) => {
         trampoline!($handler, ["cld", "push 0"], [])
@@ -197,7 +203,6 @@ fatal_handlers! {
     segment_not_present => "Segment Not Present",
     stack_segment_fault => "Stack Segment Fault",
     general_protection_fault => "General Protection Fault",
-    page_fault => "Page Fault",
     x87_floating_point => "x87 Floating-Point",
     alignment_check => "Alignment Check",
     machine_check => "Machine Check",
@@ -211,9 +216,17 @@ unsafe extern "C" fn breakpoint(regs: &mut Registers) {
     log::warn!("CPU {}: Breakpoint: {:#x?}", crate::cpu::get_cpu_id(), regs);
 }
 
-/// NMI: the remote TLB flush request.
-unsafe extern "C" fn non_maskable_interrupt(_regs: &mut Registers) {
-    crate::platform::handle_flush_nmi();
+/// Page fault: a fault of the user-memory copy resumes at the copy's exit; any other is fatal.
+unsafe extern "C" fn page_fault(regs: &mut Registers) {
+    match crate::syscalls::user_copy_fixup(regs) {
+        Some(rip) => regs.rip = rip,
+        None => fatal_exception("Page Fault", regs),
+    }
+}
+
+/// NMI: remote TLB flush and eviction requests.
+unsafe extern "C" fn non_maskable_interrupt(regs: &mut Registers) {
+    crate::platform::handle_nmi(regs);
 }
 
 /// Timer handler.

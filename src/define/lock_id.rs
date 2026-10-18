@@ -24,6 +24,9 @@ pub const THREAD_LOCK_MAJOR: LockMajorId = 106;
 // Above the thread lock so a process's last exiting thread can release its PCID after locking P and T;
 // new_process therefore takes the allocator after T.
 pub const PCID_ALLOCATOR_LOCK_MAJOR: LockMajorId = THREAD_LOCK_MAJOR + 1;
+// A KILLED thread stays write-held across sections; its id sits above the killer's own thread and the PCID allocator
+// and below pages, so the holder can still reclaim its page and allocator slots afterwards.
+pub const THREAD_KILLED_LOCK_MAJOR: LockMajorId = PCID_ALLOCATOR_LOCK_MAJOR + 1;
 
 pub const ALLOCATOR_INNER_MAJOR: LockMajorId = 1000;
 

@@ -11,7 +11,6 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -49,8 +48,16 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
         }
         return RetValueType::ErrorCpuOwnerMismatch;
     }
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            cpu_online_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, RetValueType::CpuIdle);
+            assert(cpu_online_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { reveal(container_cpu_wf); }; }
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let container_ptr = cpu.owning_container();
     proof { assert(krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr) by { reveal(container_perms_wf); }; }

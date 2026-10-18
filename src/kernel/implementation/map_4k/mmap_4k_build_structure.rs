@@ -28,6 +28,7 @@ verus! {
             old(krnl).thr_mp.dom().contains(quota_thread_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
             old(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
+            !thread_is_husk(old(krnl).thr_mp.spec_index(quota_thread_ptr)),
             transfer_source is None ==> old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_container == container_ptr,
             transfer_source is Some ==> {
                 let source = transfer_source->Some_0;
@@ -115,6 +116,7 @@ verus! {
             final(krnl).thr_mp.dom().contains(quota_thread_ptr),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
+            !thread_is_husk(final(krnl).thr_mp.spec_index(quota_thread_ptr)),
             mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), quota_thread_ptr, container_ptr),
             ((final(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && final(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
                 || (typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write) && !final(krnl).prc_mp.spec_index(process_ptr).view().zombie)),

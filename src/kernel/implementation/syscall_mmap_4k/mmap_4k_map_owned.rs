@@ -29,6 +29,7 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             va_4k_valid(va),
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_husk(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).pt_mp.dom().contains(pagetable_ptr),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0,
             pei_valid(spec_va2index(va).0),
@@ -77,6 +78,7 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list,
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_husk(final(krnl).thr_mp.spec_index(thread_ptr)),
             final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
                 temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k,
                 quota_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,

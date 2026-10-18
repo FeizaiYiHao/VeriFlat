@@ -31,8 +31,9 @@ const IST_STACK_SIZE: usize = 64 * 1024;
 /// Size of the per-CPU kernel stack used by syscalls, interrupts from user mode, and the idle loop.
 pub const KERNEL_STACK_SIZE: usize = 1024 * 1024;
 
-/// Bytes at the top of an AP's kernel stack kept free for its trap frame while it boots.
-const AP_FRAME_RESERVE: usize = 4096;
+/// Bytes at the top of a kernel stack kept free for the trap-frame slot while code below it starts
+/// from scratch: an AP booting, or a CPU evicted to its idle loop.
+pub const FRAME_SLOT_RESERVE: usize = 4096;
 
 const NEW_CPU: Cpu = Cpu::new();
 
@@ -103,6 +104,11 @@ pub struct Cpu {
     /// Whether the timer handler re-arms the one-shot LAPIC timer (false while the CPU is Off).
     pub timer_on: bool,
 
+    /// Set by an eviction NMI (`platform::veriflat_remote_evict`), cleared on entry to the idle loop.
+    /// While it is set the CPU runs on the kernel page table and must not return to ring 3:
+    /// `restore_frame` diverts to the idle loop instead.
+    pub evicted: AtomicBool,
+
     /// Returns of `restore_frame` through `sysretq` and through `iretq`.
     pub sysret_exits: u64,
     pub iret_exits: u64,
@@ -153,6 +159,7 @@ impl Cpu {
             id: 0,
             syscall_sp: 0,
             timer_on: false,
+            evicted: AtomicBool::new(false),
             sysret_exits: 0,
             iret_exits: 0,
             xapic: MaybeUninit::uninit(),
@@ -193,9 +200,10 @@ pub fn top_frame() -> *mut veriflat_monolith::Registers {
     (sp - core::mem::size_of::<veriflat_monolith::Registers>()) as *mut _
 }
 
-/// The initial stack pointer of an AP: below the trap-frame slot of its kernel stack.
-pub fn ap_boot_stack(cpu_id: usize) -> u64 {
-    unsafe { (*(&raw const KERNEL_STACKS))[cpu_id].bottom() as u64 - AP_FRAME_RESERVE as u64 }
+/// The stack pointer an AP boots with and an evicted CPU restarts with: below the trap-frame slot
+/// of its kernel stack.
+pub fn idle_stack(cpu_id: usize) -> u64 {
+    unsafe { (*(&raw const KERNEL_STACKS))[cpu_id].bottom() as u64 - FRAME_SLOT_RESERVE as u64 }
 }
 
 pub fn set_apic_id(cpu_id: usize, apic_id: u32) {
@@ -220,6 +228,19 @@ pub fn mark_started(cpu_id: usize) {
 
 pub fn is_started(cpu_id: usize) -> bool {
     STARTED[cpu_id].load(Ordering::Acquire)
+}
+
+/// Marks `cpu_id` evicted. For the NMI handler, which cannot use `gs`.
+pub fn set_evicted(cpu_id: usize) {
+    unsafe { (*(&raw const CPUS))[cpu_id].evicted.store(true, Ordering::Relaxed) };
+}
+
+pub fn is_evicted() -> bool {
+    get_current().evicted.load(Ordering::Relaxed)
+}
+
+pub fn clear_evicted() {
+    get_current().evicted.store(false, Ordering::Relaxed);
 }
 
 /// Returns of `restore_frame` through `sysretq` and through `iretq` on all CPUs so far.

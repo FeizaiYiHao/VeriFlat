@@ -222,6 +222,7 @@ pub(in super::super) fn commit_new_process(
     }
     proof {
         use_type_invariant(&*steps);
+        assert(!thread_is_husk(krnl.thr_mp.spec_index(current_thread_ptr))) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
         assert({
             &&& share_4k_objects_k(*krnl, cpu_id).source_thread == current_thread_ptr && share_4k_objects_k(*krnl, cpu_id).quota_thread == current_thread_ptr
             &&& share_4k_objects_k(*krnl, cpu_id).target == child_ptr && share_4k_objects_k(*krnl, cpu_id).target_container == container_ptr

@@ -3,8 +3,10 @@
 use core::arch::asm;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use veriflat_monolith::Registers;
+
 use crate::cpu::{self, MAX_CPUS};
-use crate::interrupt;
+use crate::{interrupt, syscalls};
 
 /// Toggling CR4.PGE invalidates every TLB entry of every PCID, global ones included.
 const CR4_PGE: u64 = 1 << 7;
@@ -17,8 +19,14 @@ const INVPCID_SINGLE_CONTEXT: u64 = 1;
 /// that arrived while another one was pending.
 static FLUSH_REQUESTS: [[AtomicUsize; MAX_CPUS]; MAX_CPUS] = [const { [const { AtomicUsize::new(0) }; MAX_CPUS] }; MAX_CPUS];
 
+/// `EVICT_REQUESTS[target]` is the default `cr3` while the caller of `veriflat_remote_evict` waits
+/// for `target` to load it, else 0. Only the holder of `target`'s CPU lock evicts it, so one slot
+/// per target suffices.
+static EVICT_REQUESTS: [AtomicUsize; MAX_CPUS] = [const { AtomicUsize::new(0) }; MAX_CPUS];
+
 pub static REMOTE_FLUSHES: AtomicUsize = AtomicUsize::new(0);
 pub static NMI_FLUSHES: AtomicUsize = AtomicUsize::new(0);
+pub static REMOTE_EVICTIONS: AtomicUsize = AtomicUsize::new(0);
 pub static WAKE_IPIS: AtomicUsize = AtomicUsize::new(0);
 
 /// Whether this CPU implements `INVPCID` (CPUID.07H:EBX[10]).
@@ -61,8 +69,27 @@ pub extern "C" fn veriflat_remote_flush_pcid(cpu_id: usize, pcid: usize) {
     }
 }
 
-/// NMI handler: serves every pending flush request for this CPU. Must not log or lock.
-pub fn handle_flush_nmi() {
+/// Makes `cpu_id` (another CPU, whose CPU lock the caller holds) abandon the thread it runs: it
+/// loads `default_cr3` (page aligned) with the kernel PCID 0, flushing that PCID, and enters its idle
+/// loop once it next leaves the kernel. Returns once the target's `cr3` is `default_cr3`. The target
+/// serves the request in its NMI handler, which takes no locks, so the caller may hold kernel locks.
+#[unsafe(no_mangle)]
+pub extern "C" fn veriflat_remote_evict(cpu_id: usize, default_cr3: usize) {
+    if !cpu::is_started(cpu_id) {
+        return;
+    }
+    REMOTE_EVICTIONS.fetch_add(1, Ordering::Relaxed);
+    let slot = &EVICT_REQUESTS[cpu_id];
+    slot.store(default_cr3, Ordering::Release);
+    interrupt::send_nmi(cpu::apic_id(cpu_id));
+    while slot.load(Ordering::Acquire) != 0 {
+        core::hint::spin_loop();
+    }
+}
+
+/// NMI handler: serves every pending flush request for this CPU, then a pending eviction. Runs with
+/// either GS base loaded (see `wrap_nmi`), so it uses `cpu_id_without_gs`. Must not log or lock.
+pub fn handle_nmi(regs: &mut Registers) {
     let me = cpu::cpu_id_without_gs();
     for slot in FLUSH_REQUESTS[me].iter() {
         let request = slot.load(Ordering::Acquire);
@@ -71,6 +98,14 @@ pub fn handle_flush_nmi() {
             NMI_FLUSHES.fetch_add(1, Ordering::Relaxed);
             slot.store(0, Ordering::Release);
         }
+    }
+    let evict = &EVICT_REQUESTS[me];
+    let default_cr3 = evict.load(Ordering::Acquire);
+    if default_cr3 != 0 {
+        // PCID 0 in bits 11:0 and bit 63 clear: flushes PCID 0's non-global translations.
+        unsafe { asm!("mov cr3, {}", in(reg) default_cr3, options(nostack, preserves_flags)) };
+        syscalls::evict_from_nmi(regs, me);
+        evict.store(0, Ordering::Release);
     }
 }
 

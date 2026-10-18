@@ -1,18 +1,18 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_wake_spec::thread_exit_wake_caller_transition;
+use super::syscall_thread_exit_wake_spec::wake_waiting_reply_caller_transition;
 
 verus! {
-proof fn thread_exit_wake_caller_eof_memory_management_inv(
+proof fn wake_waiting_reply_caller_eof_memory_management_inv(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 )
     requires
-        thread_exit_wake_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        wake_waiting_reply_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    reveal(thread_exit_wake_caller_transition);
+    reveal(wake_waiting_reply_caller_transition);
     assert(post.memory_management_inv()) by {
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
@@ -37,15 +37,15 @@ proof fn thread_exit_wake_caller_eof_memory_management_inv(
     };
 }
 
-proof fn thread_exit_wake_caller_eof_process_management_inv(
+proof fn wake_waiting_reply_caller_eof_process_management_inv(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 )
     requires
-        thread_exit_wake_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        wake_waiting_reply_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(thread_exit_wake_caller_transition);
+    reveal(wake_waiting_reply_caller_transition);
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
@@ -65,23 +65,23 @@ proof fn thread_exit_wake_caller_eof_process_management_inv(
 }
 
 /// The woken caller and the cleared caller link keep the kernel invariant.
-pub(super) proof fn thread_exit_wake_caller_eof(
+pub(super) proof fn wake_waiting_reply_caller_eof(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 )
     requires
-        thread_exit_wake_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        wake_waiting_reply_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
         post.thr_mp.perms_wf(),
         scheduler_perms_wf(post.sched_mp),
     ensures post.inv(),
 {
-    reveal(thread_exit_wake_caller_transition);
+    reveal(wake_waiting_reply_caller_transition);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         };
         reveal(KernelK::default_pagetable_wf);
     };
-    thread_exit_wake_caller_eof_memory_management_inv(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
-    thread_exit_wake_caller_eof_process_management_inv(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
+    wake_waiting_reply_caller_eof_memory_management_inv(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
+    wake_waiting_reply_caller_eof_process_management_inv(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
 }
 } // verus!

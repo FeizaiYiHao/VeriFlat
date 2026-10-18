@@ -163,7 +163,6 @@ fn new_container_lock_owners(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -306,7 +305,18 @@ fn new_container_lock_owners(
         }
         return Err(RetValueType::Error);
     }
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
+                RetValueType::CpuIdle);
+            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is CpuIdle) by {
+                kernel_cpu_projection_at(&*old(krnl), cpu_id);
+            };
+        }
+        return Err(RetValueType::CpuIdle);
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let parent_container_ptr = cpu.owning_container();
     let parent_process_ptr = cpu.current_process().unwrap();
@@ -440,7 +450,6 @@ fn new_container_lock_entry(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -693,7 +702,6 @@ fn syscall_new_container_common(
         cpu_id == old(lctx).cpu_id(),
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -748,7 +756,6 @@ pub fn syscall_new_container(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -787,7 +794,6 @@ pub fn syscall_new_container_with_endpoint(
         cpu_id == old(lctx).cpu_id(),
         edp_idx_valid(endpoint_index),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),

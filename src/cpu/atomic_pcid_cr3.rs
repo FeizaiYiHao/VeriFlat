@@ -1,5 +1,12 @@
 use vstd::prelude::*;
 use crate::*;
+use super::cpu_cr3_pcid::CpuCr3Pcid;
+
+// Platform implementation: NMI the running cpu `cpu_id`, which loads `cr3` with the default PCID without flushing, leaves
+// its interrupted context for the idle loop, and acknowledges before this returns.
+unsafe extern "C" {
+    fn veriflat_remote_evict(cpu_id: usize, cr3: usize);
+}
 
 verus! {
 pub struct AtomicPcidCr3 {
@@ -42,6 +49,32 @@ impl AtomicPcidCr3 {
     {
         let packed = self.atomic.load(Tracked(&mut *lctx));
         (packed & MEM_MASK as usize, packed & 0xfffusize)
+    }
+
+    /// Platform eviction of the remote cpu `cpu_id` that owns this entry: its NMI handler loads `cr3` with the default PCID
+    /// without flushing and acknowledges; this cpu then publishes that context on its behalf.
+    #[verifier::external_body]
+    pub(super) fn evict_remote_cpu(&mut self, hardware: &mut CpuCr3Pcid, cpu_id: CpuId, cr3: PageTableRoot, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(hardware).wf(),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id != lctx.cpu_id(),
+            page_ptr_valid(cr3),
+            old(self).owner_cpu() == cpu_id,
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            final(hardware).wf(),
+            final(hardware).cr3() == cr3,
+            final(hardware).pcid() == KERNEL_DEFAULT_PCID,
+            final(self).inv(),
+            final(self).view() == (cr3, KERNEL_DEFAULT_PCID),
+            final(self).owner_cpu() == cpu_id,
+    {
+        unsafe { veriflat_remote_evict(cpu_id, cr3); }
+        hardware.hardware = Ghost((cr3, KERNEL_DEFAULT_PCID));
+        hardware.current_cr3 = cr3;
+        hardware.current_pcid = KERNEL_DEFAULT_PCID;
+        self.atomic.store(pack_pcid_cr3(cr3, KERNEL_DEFAULT_PCID), Tracked(lctx));
     }
 
     pub fn store(&mut self, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>)

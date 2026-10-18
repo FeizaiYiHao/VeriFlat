@@ -5,6 +5,7 @@ use vstd::prelude::*;
 
 use veriflat_kernel_core::*;
 use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_quota};
+use veriflat_alloc_page::reclaim_killed_husk::{take_over_dangling_caller, reclaim_killed_husk};
 use veriflat_map_4k::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 use veriflat_map_4k::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use veriflat_map_4k::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;

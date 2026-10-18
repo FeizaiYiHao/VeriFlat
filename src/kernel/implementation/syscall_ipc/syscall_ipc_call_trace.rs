@@ -142,7 +142,7 @@ pub(super) proof fn ipc_reply_handoff_step_from_u(pre: KernelU, post: KernelU, c
 pub(super) proof fn ipc_rejection_trace_stutters(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
     requires
         ipc_ordinary_syscall_trace(trace, pre, post, cpu_id, endpoint_index, waiting_state, payload, regs, flushed_default_pcid, ret),
-        !(ret is CpuIdle),
+        !(ret is CpuIdle) || !(pre.cpu_array[cpu_id as int].state is Running),
         !ipc_rendezvous_ret(ret),
     ensures
         trace.len() == 0,
@@ -157,7 +157,7 @@ pub(super) proof fn ipc_call_trace_block_step(steps: &KernelSteps, before: Seq<K
         ipc_block_step(pre, post, cpu_id, endpoint_index, ThreadState::CALLING, payload, regs, flushed_default_pcid),
     ensures
         ipc_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, endpoint_index, payload, regs, flushed_default_pcid, flushed_pcid, RetValueType::CpuIdle),
-{ reveal(ipc_call_syscall_trace); }
+{ reveal(ipc_call_syscall_trace); reveal(ipc_block_step_pre); reveal(ipc_step_pre); }
 
 /// The one block step pushed since `before` is the blocking receive-call trace.
 pub(super) proof fn ipc_receive_call_trace_block_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, regs: Registers, flushed_default_pcid: bool)
@@ -167,7 +167,7 @@ pub(super) proof fn ipc_receive_call_trace_block_step(steps: &KernelSteps, befor
         ipc_block_step(pre, post, cpu_id, endpoint_index, ThreadState::RECEIVING_CALL, IPCPayLoad::Empty, regs, flushed_default_pcid),
     ensures
         ipc_receive_call_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, endpoint_index, regs, flushed_default_pcid, RetValueType::CpuIdle),
-{ reveal(ipc_receive_call_syscall_trace); }
+{ reveal(ipc_receive_call_syscall_trace); reveal(ipc_block_step_pre); reveal(ipc_step_pre); }
 
 /// The one rendezvous error step pushed since `before` is the rejected call trace.
 pub(super) proof fn ipc_call_trace_error_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
@@ -230,7 +230,8 @@ pub(super) proof fn ipc_reply_and_receive_trace_handoff_step(steps: &KernelSteps
 pub(super) proof fn ipc_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         trace.len() == 0,
-        !(ret is CpuIdle) && !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
+        !(ret is CpuIdle) || !(pre.cpu_array[cpu_id as int].state is Running),
+        !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
     ensures
         ipc_call_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, payload, regs, flushed_default_pcid, flushed_pcid, ret),
 { reveal(ipc_call_syscall_trace); }
@@ -239,7 +240,8 @@ pub(super) proof fn ipc_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU,
 pub(super) proof fn ipc_receive_call_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
     requires
         trace.len() == 0,
-        !(ret is CpuIdle) && !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
+        !(ret is CpuIdle) || !(pre.cpu_array[cpu_id as int].state is Running),
+        !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcTypeMismatch) && !(ret is ErrorCallAcrossContainers),
     ensures
         ipc_receive_call_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, regs, flushed_default_pcid, ret),
 { reveal(ipc_receive_call_syscall_trace); }
@@ -248,7 +250,7 @@ pub(super) proof fn ipc_receive_call_trace_stutter(trace: Seq<KernelStep>, pre: 
 pub(super) proof fn ipc_reply_and_receive_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, payload: IPCPayLoad, regs: Registers, flushed_pcid: Option<Pcid>, ret: RetValueType)
     requires
         trace.len() == 0,
-        !(ret is Success) && !(ret is SuccessUsize),
+        !(ret is Success) && !(ret is SuccessUsize) && !(ret is ErrorIpcCallerKilled),
     ensures
         ipc_reply_and_receive_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, payload, regs, flushed_pcid, ret),
 { reveal(ipc_reply_and_receive_syscall_trace); }

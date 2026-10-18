@@ -48,6 +48,7 @@ fn ipc_check_pages_locked(
         old(krnl).thr_mp.spec_index(peer_thread).view().syscall_progress.view() is None,
         (source_thread == caller_thread) == (old(krnl).thr_mp.spec_index(peer_thread).view().state is RECEIVING),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_thread),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), target_thread, TypedLockMode::Write),
         !old(krnl).thr_mp.spec_index(target_thread).being_killed(),
         old(krnl).thr_mp.spec_index(target_thread).view().free_quota_pending_clean(),
@@ -224,7 +225,7 @@ fn ipc_check_pages_locked(
         let owners_compatible = if containers_compatible {
             proof {
                 assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by {
-                    source_range.va_range_lemma();
+                    source_range.va_range_lemma(); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread);
                     reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(container_page_owner_wf);
                     reveal(container_thread_wf); reveal(process_thread_wf); reveal(process_pagetable_match);
                     reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf);
@@ -262,6 +263,7 @@ fn ipc_check_pages_locked(
             &&& krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable
             &&& krnl.ctn_mp.dom().contains(target_container)
         }) by {
+            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(old(krnl).thr_mp, peer_thread);
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
             reveal(process_pagetable_match); reveal(container_thread_wf);
         };
@@ -327,6 +329,7 @@ fn ipc_share_pages_locked(
         old(krnl).thr_mp.spec_index(peer_thread).view().syscall_progress.view() is None,
         (source_thread == caller_thread) == (old(krnl).thr_mp.spec_index(peer_thread).view().state is RECEIVING),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_thread),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), target_thread, TypedLockMode::Write),
         !old(krnl).thr_mp.spec_index(target_thread).being_killed(),
         old(krnl).thr_mp.spec_index(target_thread).view().free_quota_pending_clean(),
@@ -509,6 +512,9 @@ fn ipc_share_pages_locked(
     let target_allocator = krnl.ctn_mp.borrow_rodata(target_container).borrow().allocator_ptr_4k;
     proof {
         assert(krnl.allc_4k_mp.dom().contains(target_allocator)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, target_container); };
+        assert(!thread_is_husk(krnl.thr_mp.spec_index(source_thread)) && !thread_is_husk(krnl.thr_mp.spec_index(target_thread))) by {
+            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread);
+        };
         assert({
             &&& share_4k_objects_k(*krnl, cpu_id).source_thread == source_thread && share_4k_objects_k(*krnl, cpu_id).quota_thread == target_thread
             &&& share_4k_objects_k(*krnl, cpu_id).target == target_process && share_4k_objects_k(*krnl, cpu_id).target_container == target_container

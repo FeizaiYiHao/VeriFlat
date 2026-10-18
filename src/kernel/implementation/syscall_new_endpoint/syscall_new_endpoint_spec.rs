@@ -3,11 +3,12 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_new_endpoint` from the state at entry, in the implementation's check order:
-/// a killed or zombie container, a killed process or caller, an occupied descriptor, and a caller without 4K quota.
+/// a cpu no longer Running, a killed or zombie container, a killed process or caller, an occupied descriptor, and a caller without 4K quota.
 pub open spec fn new_endpoint_syscall_result(pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
-    if pre.container_map[cpu.owning_container].killed { RetValueType::ErrorContainerKilled }
+    if !(cpu.state is Running) { RetValueType::CpuIdle }
+    else if pre.container_map[cpu.owning_container].killed { RetValueType::ErrorContainerKilled }
     else if pre.container_map[cpu.owning_container].zombie { RetValueType::ErrorContainerZombie }
     else if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }

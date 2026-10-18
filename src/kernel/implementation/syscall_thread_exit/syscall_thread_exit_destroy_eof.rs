@@ -64,44 +64,6 @@ pub(super) proof fn thread_exit_quota_sums_bounded(krnl: &KernelK, container_ptr
     };
 }
 
-/// The quota of the 4K allocator of `owner` is a summand of the container's conservation law, so it is within the
-/// allocator's free pages, which the physical memory keeps below `usize::MAX`.
-pub(super) proof fn thread_exit_owner_allocator_bounded(krnl: &KernelK, owner: RwLockContainerPtr)
-    requires
-        krnl.inv(),
-        krnl.ctn_mp.dom().contains(owner),
-    ensures
-        krnl.allc_4k_mp.dom().contains(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k),
-        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k).quota.view().value
-            <= krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k).total_free_pages.view(),
-        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k).total_free_pages.view() < usize::MAX,
-{
-    let allocator_ptr = krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k;
-    let allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
-    let threads = krnl.ctn_mp.spec_index(owner).view_ghost().owned_threads.view();
-    reveal(container_allocator_wf);
-    assert(allocator.quota.view().value <= allocator.total_free_pages.view()) by {
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
-        lemma_process_effective_quota_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
-        let effective = |t: RwLockThreadPtr| thread_effective_quota_4k(krnl.thr_mp.spec_index(t));
-        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t)))
-            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, effective); };
-        lemma_thread_direct_pending_4k_fold_nonneg(threads, krnl.thr_mp);
-        lemma_thread_indirect_pending_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thr_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
-    };
-    assert(allocator.total_free_pages.view() < usize::MAX) by {
-        allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        reveal(allocator_free_page_ptrs_wf);
-        assert(allocator.global_pool.view().len() <= NUM_PAGES * 4096) by {
-            reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); allocator.global_pool.view().lemma_len_view();
-            seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize);
-        };
-        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
-            lemma_cache_len_fold_upper_bound(allocator.cpu_caches);
-        };
-    };
-}
-
 proof fn thread_exit_destroy_eof_subsystems_inv(
     pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,

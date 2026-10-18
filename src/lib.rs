@@ -30,6 +30,7 @@ pub use pagetable_seq::*;
 pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;
+pub use kernel::implementation::reclaim_killed_husk::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_base::{allocate_free_4k_page, allocate_free_4k_page_k};
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::allocate_free_4k_pages;
 #[cfg(verus_keep_ghost)]

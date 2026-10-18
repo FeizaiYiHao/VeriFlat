@@ -444,6 +444,71 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         return ret;
     }
 
+    /// Write-lock `key` and mark it for its killer. On success the ledger holds the entry under the pre-mark id; the
+    /// caller moves it to the sunk id that a marked object reports.
+    pub fn try_wlock_and_mark_kill(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>, killer_info: KillerInfo) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            wlock_requires(old(self).spec_index(key), old(lctx)),
+            !old(self).spec_index(key).being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            ret is None ==> {
+                &&& old(self).spec_index(key).being_killed()
+                &&& final(self).spec_index(key) == old(self).spec_index(key)
+                &&& *final(lctx) == *old(lctx)
+            },
+            ret is Some ==> {
+                &&& !old(self).spec_index(key).being_killed()
+                &&& !old(self).spec_index(key).locked()
+                &&& final(self).spec_index(key).being_killed()
+                &&& final(self).spec_index(key).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.unwrap().view().lock_id() }
+                &&& final(self).spec_index(key).inv()
+                &&& final(self).spec_index(key).view() == old(self).spec_index(key).view()
+                &&& final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata()
+                &&& final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost()
+                &&& final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: key })
+                &&& ret.unwrap().view().state() is WriteLock
+                &&& ret.unwrap().view().thread_id() == final(lctx).thread_id()
+                &&& final(lctx).kernel_view_locking_state() is Release
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: old(self).lock_id_by_key(key), mode: TypedLockMode::Write })
+            },
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        assert(perm.addr() == key && perm.lock_id() == old(self).lock_id_by_key(key));
+        let (marked, ret) = try_wlock_and_mark_kill(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id, killer_info);
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
+        if marked { ret } else { None }
+    }
+
+    /// Clear the being-killed mark of `key`, which this thread write-holds.
+    pub fn unmark_kill(&mut self, key: usize, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            old(self).spec_index(key).wlocked_by(lctx),
+            old(self).spec_index(key).being_killed(),
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+            !final(self).spec_index(key).being_killed(),
+            final(self).spec_index(key).locking_thread() == old(self).spec_index(key).locking_thread(),
+            final(self).spec_index(key).is_init() == old(self).spec_index(key).is_init(),
+            final(self).spec_index(key).view() == old(self).spec_index(key).view(),
+            final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata(),
+            final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost(),
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        assert(perm.addr() == key);
+        unmark_kill(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx));
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
+    }
+
     pub fn wunlock(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
         requires
             old(self).perms_wf(),

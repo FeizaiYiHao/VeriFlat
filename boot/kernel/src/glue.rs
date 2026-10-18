@@ -196,6 +196,7 @@ fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: u
         ref_count,
         owning_container,
         mappings: Ghost::assume_new(),
+        iommu_mappings: Ghost::assume_new(),
         free_list_node_storage: ExternalNode::new(0),
         free_list: 0,
         perm_4k: Tracked::assume_new(),

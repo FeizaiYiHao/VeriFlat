@@ -36,10 +36,15 @@ verus! {
             thread_map.spec_index(thread_ptr).view().inv(),
     { reveal(thread_perms_wf); }
 
+    /// A thread in endpoint transit or killed is write-held; a killed thread that still has a callee is being killed.
     pub open spec fn thread_endpoint_transit_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
         forall|thread_ptr: RwLockThreadPtr|
             #![trigger thread_map.spec_index(thread_ptr).view().state]
-            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+            thread_map.dom().contains(thread_ptr) ==> {
+                &&& (thread_map.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT || thread_map.spec_index(thread_ptr).view().state is KILLED)
+                    ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+                &&& thread_map.spec_index(thread_ptr).view().state is KILLED && thread_map.spec_index(thread_ptr).view().callee is Some ==> thread_map.spec_index(thread_ptr).being_killed()
+            }
     }
 
     #[verifier::opaque]

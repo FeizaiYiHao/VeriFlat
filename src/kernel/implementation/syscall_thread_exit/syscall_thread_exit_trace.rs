@@ -36,7 +36,7 @@ pub(super) proof fn thread_exit_enter_step_from_u(
                 &&& pre.thread_map.dom().contains(thread.caller->Some_0)
                 &&& caller.lock_state is Unlocked
                 &&& !caller.killed
-                &&& caller.state is WAITING_REPLY
+                &&& caller.state.is_reply_waiting()
             }
         },
         locked == (KernelU {
@@ -47,7 +47,14 @@ pub(super) proof fn thread_exit_enter_step_from_u(
             ..pre
         }),
         woken == match pre.thread_map.spec_index(thread_ptr).caller {
-            Some(caller_ptr) => {
+            Some(caller_ptr) => if locked.thread_map[caller_ptr].state is DANGLING {
+                KernelU {
+                    thread_map: locked.thread_map.insert(thread_ptr, ThreadU { caller: None, ..locked.thread_map[thread_ptr] }).insert(caller_ptr, ThreadU {
+                        state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked.thread_map[caller_ptr]
+                    }),
+                    ..locked
+                }
+            } else {
                 let container = locked.thread_map[caller_ptr].owning_container;
                 KernelU {
                     container_map: locked.container_map.insert(container, ContainerU {

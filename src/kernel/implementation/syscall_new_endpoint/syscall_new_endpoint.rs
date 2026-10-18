@@ -16,7 +16,6 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         cpu_id == old(lctx).cpu_id(),
         edp_idx_valid(endpoint_index),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(steps).nonlock_view().len() == 0,
@@ -37,6 +36,15 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         ret == new_endpoint_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index),
 {
     proof { use_type_invariant(&*steps); kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            new_endpoint_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index);
+            assert(new_endpoint_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     assert({
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view();
         &&& cpu.current_process() is Some
@@ -52,7 +60,6 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().owned_threads.view().len() != 0
         &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
     }) by { reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let process_ptr = cpu.current_process().unwrap();
     let thread_ptr = cpu.current_thread().unwrap();

@@ -4,7 +4,7 @@ pub(crate) mod syscall_thread_exit_trace;
 mod syscall_thread_exit_destroy;
 mod syscall_thread_exit_destroy_eof;
 mod syscall_thread_exit_destroy_spec;
-mod syscall_thread_exit_drop;
+pub mod syscall_thread_exit_drop;
 mod syscall_thread_exit_finish;
 mod syscall_thread_exit_quota;
 mod syscall_thread_exit_quota_eof;
@@ -12,6 +12,6 @@ mod syscall_thread_exit_quota_spec;
 mod syscall_thread_exit_reclaim;
 mod syscall_thread_exit_reclaim_release;
 
-mod syscall_thread_exit_wake;
+pub mod syscall_thread_exit_wake;
 mod syscall_thread_exit_wake_eof;
 mod syscall_thread_exit_wake_spec;

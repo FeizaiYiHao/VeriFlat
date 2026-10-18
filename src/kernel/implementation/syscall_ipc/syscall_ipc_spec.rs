@@ -20,7 +20,7 @@ pub open spec fn ipc_rendezvous_ret(ret: RetValueType) -> bool {
     ||| ret is ErrorIpcPciOwnerMismatch
 }
 
-/// The rejection decided before any rendezvous from the state at entry: a killed caller, a receive-call
+/// The rejection decided before any rendezvous from the state at entry: a cpu no longer Running, a killed caller, a receive-call
 /// caller that still holds a caller, a missing descriptor, an empty or same-direction queue (where a blocking
 /// caller waits instead), or a killed queue head.
 #[verifier::opaque]
@@ -28,7 +28,8 @@ pub open spec fn ipc_entry_result(pre: KernelU, cpu_id: CpuId, endpoint_index: E
     let cpu = pre.cpu_array[cpu_id as int];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
     let endpoint = pre.endpoint_map[thread.endpoint_descriptors[endpoint_index as int]->Some_0];
-    if thread.killed { Some(RetValueType::ErrorThreadKilled) }
+    if !(cpu.state is Running) { Some(RetValueType::CpuIdle) }
+    else if thread.killed { Some(RetValueType::ErrorThreadKilled) }
     else if waiting_state is RECEIVING_CALL && thread.caller is Some { Some(RetValueType::ErrorReplyOutOfPhase) }
     else if thread.endpoint_descriptors[endpoint_index as int] is None { Some(RetValueType::ErrorInvalidEndpoint) }
     else if endpoint.queue.len() == 0 || (endpoint.queue_state is SEND) == waiting_state.is_endpoint_send_waiting() {
@@ -162,13 +163,16 @@ pub open spec fn ipc_rendezvous_step(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         ipc_cpu_transfer(old_u, cpu_id, endpoint_index, payload, result), ipc_pci_transfer(old_u, cpu_id, endpoint_index, waiting_state, payload, result))
 }
 
-/// Ordinary IPC is one block/rendezvous transition, or a stuttering rejection.
+/// Ordinary IPC is one block/rendezvous transition, or a stuttering rejection; a cpu no longer Running stutters with CpuIdle.
 #[verifier::opaque]
 pub open spec fn ipc_ordinary_syscall_trace(
     trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx,
     waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType,
 ) -> bool {
-    if ret is CpuIdle {
+    if ret is CpuIdle && !(pre.cpu_array[cpu_id as int].state is Running) {
+        &&& trace.len() == 0
+        &&& post == pre
+    } else if ret is CpuIdle {
         &&& trace.len() == 1
         &&& trace[0].old_u == pre
         &&& trace[0].new_u == post
@@ -514,6 +518,7 @@ pub open spec fn ipc_pages_unlock_tables_step_pre(old_u: KernelU, cpu_id: CpuId)
     let source = old_u.thread_map[objects.source_thread].owning_proc;
     &&& share_4k_locked(old_u, cpu_id)
     &&& progress->Share4k_origin is IpcPages
+    &&& old_u.thread_map[progress->Share4k_origin->IpcPages_peer].blocking_endpoint_ptr is Some
     &&& progress->Share4k_shared == progress->Share4k_source_range.len
     &&& source != objects.target
     &&& old_u.process_map.dom().contains(source)

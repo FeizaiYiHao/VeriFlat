@@ -238,6 +238,55 @@ pub fn scheduler_map_enqueue_scheduled_thread(
     }
 }
 
+/// Removes the thread at `node_addr` from anywhere in shard `cpu_id` of `scheduler_ptr` and returns its node.
+pub fn scheduler_map_remove_scheduled_thread(scheduler_map: &mut SchedulerUnLockedMap, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, node_addr: usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(shard_lock_perm): Tracked<&LockPerm>)
+    -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    requires
+        scheduler_perms_wf(*old(scheduler_map)),
+        old(scheduler_map).dom().contains(scheduler_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        old(scheduler_map).typed_shard_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.scheduler_lock_map(), (scheduler_ptr, cpu_id), TypedLockMode::Write),
+        shard_lock_perm.state() is WriteLock,
+        shard_lock_perm.thread_id() == lctx.thread_id(),
+        shard_lock_perm.lock_id() == old(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.dom().contains(node_addr),
+    ensures
+        scheduler_perms_wf(*final(scheduler_map)),
+        final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),
+        final(scheduler_map).typed_shard_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
+        final(scheduler_map).spec_index(scheduler_ptr).owning_container == old(scheduler_map).spec_index(scheduler_ptr).owning_container,
+        final(scheduler_map).spec_index(scheduler_ptr).shards.entries_unchanged_except(&old(scheduler_map).spec_index(scheduler_ptr).shards, cpu_id),
+        final(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread() == old(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread(),
+        final(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().being_killed() == old(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().being_killed(),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.view()
+            == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.view().remove_value(old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr)),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().remove(node_addr),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.dom() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.dom().remove(node_addr),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.length == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.length - 1,
+        ret.view().is_init(),
+        ret.view().addr() == node_addr,
+        ret.view().value().view() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr),
+        scheduler_shards_of(final(scheduler_map).spec_index(scheduler_ptr)) == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int,
+            scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].remove_value(old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr))),
+{
+    proof { scheduler_perms_wf_at(*scheduler_map, scheduler_ptr); }
+    let shard = scheduler_map.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(shard_lock_perm));
+    assert(shard.queue.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
+    let (_, node_perm) = shard.queue.remove(node_addr);
+    proof {
+        let thread_ptr = old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr);
+        assert(scheduler_perms_wf(*scheduler_map)) by { reveal(scheduler_perms_wf); };
+        assert(scheduler_shards_of(scheduler_map.spec_index(scheduler_ptr))
+            == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].remove_value(thread_ptr))) by {
+            reveal(scheduler_shards_of);
+            assert_seqs_equal!(scheduler_shards_of(scheduler_map.spec_index(scheduler_ptr))
+                == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].remove_value(thread_ptr)));
+        };
+    }
+    node_perm
+}
+
 /// Moves the head of shard `from` of `scheduler_ptr` to the tail of shard `to` and returns the head's node address.
 pub fn scheduler_map_move_shard_head(scheduler_map: &mut SchedulerUnLockedMap, scheduler_ptr: RwLockSchedulerPtr, from: CpuId, to: CpuId, Tracked(lctx): Tracked<&LocalContext>, Tracked(from_lock_perm): Tracked<&LockPerm>, Tracked(to_lock_perm): Tracked<&LockPerm>) -> (ret: usize)
     requires
@@ -726,6 +775,7 @@ proof fn process_subsystem_create_scheduled_thread_eof_process_thread_wf(
         thread_value.container_depth == pre_process.spec_index(process_ptr).view_rodata().view().container_depth,
         thread_value.proc_pagetable_ptr == pre_process.spec_index(process_ptr).view().pagetable,
         thread_value.proc_linkedlist_node.addr() == process_node_addr,
+        !thread_value.proc_linkedlist_node.is_init(),
     ensures
         process_thread_wf(post_process, post_thread),
 {
@@ -1306,6 +1356,7 @@ pub fn thread_map_set_endpoint_descriptor(
         thread_lock_perm.lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         edp_idx_valid(endpoint_index),
         !old(thread_map).spec_index(thread_ptr).view().state.is_endpoint_waiting(),
+        !(old(thread_map).spec_index(thread_ptr).view().state is DANGLING),
     ensures
         thread_perms_wf(*final(thread_map)),
         final(thread_map).perms_wf(),

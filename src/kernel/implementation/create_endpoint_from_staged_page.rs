@@ -19,6 +19,7 @@ pub fn create_endpoint_from_staged_page(
         old(krnl).thr_mp.dom().contains(staging_thread_ptr),
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().owning_container == container_ptr,
         !old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state.is_endpoint_waiting(),
+        !(old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state is DANGLING),
         edp_idx_valid(endpoint_index),
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int] is None,
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(page_ptr),

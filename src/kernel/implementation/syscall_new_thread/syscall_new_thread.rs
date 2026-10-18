@@ -12,7 +12,6 @@ verus! {
                 index_valid(NUM_CPUS, cpu_id),
                 cpu_id == old(lctx).cpu_id(),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(steps).nonlock_view().len() == 0,
@@ -34,13 +33,23 @@ verus! {
             proof {
                 use_type_invariant(&*steps);
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            }
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None);
+                    assert(new_thread_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, None) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
+            proof {
                 assert({
                     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
                     &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
                     &&& krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().state == (ThreadState::RUNNING { cpu_id })
                 }) by { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
             }
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let current_thread_ptr = cpu.current_thread().unwrap();

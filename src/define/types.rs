@@ -47,6 +47,10 @@ pub enum ThreadState {
     RECEIVING_CALL,
     WAITING_REPLY,
     RUNNING { cpu_id: CpuId },
+    /// Write-held by a killer, or by the callee reclaiming a killed caller's husk, until the thread is destroyed or husked.
+    KILLED,
+    /// Husk of a killed caller: detached from its process, and left in its container's thread sets until its callee reclaims it.
+    DANGLING,
 }
 
 impl ThreadState {
@@ -67,6 +71,14 @@ impl ThreadState {
     pub open spec fn is_endpoint_receive_waiting(&self) -> bool {
         match self {
             ThreadState::RECEIVING | ThreadState::RECEIVING_CALL => true,
+            _ => false,
+        }
+    }
+
+    /// The thread has a callee that still owes it a reply (a live caller or a killed caller's husk).
+    pub open spec fn is_reply_waiting(&self) -> bool {
+        match self {
+            ThreadState::WAITING_REPLY | ThreadState::DANGLING => true,
             _ => false,
         }
     }
@@ -279,6 +291,10 @@ pub enum RetValueType {
     ErrorContainerZombie,
     /// The callee serving this call exited before replying.
     ErrorIpcCalleeExited,
+    /// The caller this reply was for was killed; its husk is reclaimed instead.
+    ErrorIpcCallerKilled,
+    /// The running process has no child at the requested position.
+    ErrorInvalidChild,
 }
 pub type PTType = bool;
 

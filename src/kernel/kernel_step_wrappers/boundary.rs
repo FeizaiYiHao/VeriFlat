@@ -1875,6 +1875,7 @@ impl KernelK {
             old(lctx).thread_lock_map().dom().contains(stable_owner_thread_ptr),
             old(self).thr_mp.dom().contains(stable_owner_thread_ptr),
             old(self).thr_mp.spec_index(stable_owner_thread_ptr).view().owning_proc == stable_process_ptr,
+            !thread_is_husk(old(self).thr_mp.spec_index(stable_owner_thread_ptr)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -2707,5 +2708,147 @@ pub proof fn kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(pre: &
     assert_maps_equal!(post_u.process_map, pre_u.process_map, ptr => { reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map, ptr => {});
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, ptr => {});
+}
+
+/// A callee taking over its dangling caller `husk_ptr` drops its caller link and turns the write-locked husk into a
+/// killed thread without a callee; the write-held `endpoint`, if any, is released.
+pub proof fn kernel_caller_husk_taken_over_implies_u_step(
+    before: &KernelK, after: &KernelK, callee_ptr: RwLockThreadPtr, husk_ptr: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>,
+)
+    requires
+        before.thr_mp.dom().contains(callee_ptr),
+        before.thr_mp.dom().contains(husk_ptr),
+        callee_ptr != husk_ptr,
+        *after == (KernelK { thr_mp: after.thr_mp, ep_mp: after.ep_mp, ..*before }),
+        match endpoint {
+            Some(e) => before.ep_mp.dom().contains(e) && after.ep_mp.unchanged_except(&before.ep_mp, e) && wunlock_ensures(before.ep_mp.spec_index(e), after.ep_mp.spec_index(e)),
+            None => after.ep_mp == before.ep_mp,
+        },
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
+            before.thr_mp.dom().contains(t) && t != callee_ptr && t != husk_ptr ==> after.thr_mp.spec_index(t) == before.thr_mp.spec_index(t),
+        after.thr_mp.spec_index(callee_ptr).view() == (Thread { caller: None, ..before.thr_mp.spec_index(callee_ptr).view() }),
+        after.thr_mp.spec_index(callee_ptr).locking_thread() == before.thr_mp.spec_index(callee_ptr).locking_thread(),
+        after.thr_mp.spec_index(callee_ptr).being_killed() == before.thr_mp.spec_index(callee_ptr).being_killed(),
+        after.thr_mp.spec_index(husk_ptr).view() == (Thread { state: ThreadState::KILLED, callee: None, ..before.thr_mp.spec_index(husk_ptr).view() }),
+        after.thr_mp.spec_index(husk_ptr).locking_thread() is Write,
+        after.thr_mp.spec_index(husk_ptr).being_killed() == before.thr_mp.spec_index(husk_ptr).being_killed(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after) == (KernelU {
+                thread_map: pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] })
+                    .insert(husk_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre.thread_map[husk_ptr] }),
+                endpoint_map: match endpoint { Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..pre.endpoint_map[e] }), None => pre.endpoint_map },
+                ..pre
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    assert_maps_equal!(post.thread_map, pre.thread_map.insert(callee_ptr, ThreadU { caller: None, ..pre.thread_map[callee_ptr] })
+        .insert(husk_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..pre.thread_map[husk_ptr] }), t => {
+        if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+    });
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
+    assert_maps_equal!(post.container_map, pre.container_map, p => {
+        if before.ctn_mp.dom().contains(p) { kernel_container_projection_at(before, p); kernel_container_projection_at(after, p); }
+    });
+    assert_maps_equal!(post.process_map, pre.process_map, p => {
+        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
+    });
+    assert_maps_equal!(post.endpoint_map,
+        match endpoint { Some(e) => pre.endpoint_map.insert(e, EndpointU { lock_state: LockStateU::Unlocked, ..pre.endpoint_map[e] }), None => pre.endpoint_map }, e => {
+        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
+    });
+    reveal(kernel_k_to_kernel_u);
+}
+
+/// Releasing a held cpu and its running thread changes only their lock modes.
+pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        before.thr_mp.dom().contains(thread_ptr),
+        *after == (KernelK { cpu_arr: after.cpu_arr, thr_mp: after.thr_mp, ..*before }),
+        after.cpu_arr.unchanged_except(&before.cpu_arr, cpu_id),
+        after.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        after.thr_mp.unchanged_except(&before.thr_mp, thread_ptr),
+        after.thr_mp.spec_index(thread_ptr).locking_thread() is None,
+        kernel_cpu_process_thread_nonlock_fields_unchanged(before, after),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after) == (KernelU {
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+                thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thread_ptr] }),
+                ..pre
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map[thread_ptr] }), t => {
+        if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+    });
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }), i => {
+        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
+    });
+    assert_maps_equal!(post.container_map, pre.container_map, p => {
+        if before.ctn_mp.dom().contains(p) { kernel_container_projection_at(before, p); kernel_container_projection_at(after, p); }
+    });
+    assert_maps_equal!(post.process_map, pre.process_map, p => {
+        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
+    });
+    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
+        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
+    });
+    reveal(kernel_k_to_kernel_u);
+}
+
+/// Reclaiming a killed husk projects to `kernel_u_killed_husk_reclaimed`.
+pub proof fn kernel_killed_husk_reclaimed_implies_u_step(before: &KernelK, after: &KernelK, husk_ptr: RwLockThreadPtr)
+    requires kernel_killed_husk_reclaimed_fields(before, after, husk_ptr),
+    ensures
+        kernel_u_killed_husk_reclaimed(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
+        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
+{
+    reveal(kernel_killed_husk_reclaimed_fields);
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    let removed = pre.thread_map.dom().difference(post.thread_map.dom());
+    assert(removed =~= set![husk_ptr]);
+    assert(kernel_k_to_nonlock_kernel_u(*before).thread_map.dom().contains(husk_ptr) && !kernel_k_to_nonlock_kernel_u(*after).thread_map.dom().contains(husk_ptr)) by {
+        reveal(kernel_k_to_nonlock_kernel_u);
+    };
+    kernel_thread_projection_at(before, husk_ptr);
+    assert_maps_equal!(post.thread_map, pre.thread_map.remove(husk_ptr), t => {
+        if after.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
+    });
+    let husk = pre.thread_map[husk_ptr];
+    assert_maps_equal!(post.container_map, Map::new(pre.container_map.dom(), |c: RwLockContainerPtr| {
+        let container = pre.container_map[c];
+        ContainerU {
+            owned_threads: if c == husk.owning_container { container.owned_threads.remove(husk_ptr) } else { container.owned_threads },
+            quota_4k: if container.owned_pages.contains(husk_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k }, ..container
+        }
+    }), c => {
+        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
+    });
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
+    assert_maps_equal!(post.process_map, pre.process_map, p => {
+        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
+    });
+    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
+        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
+    });
+    assert(post.iommu_root_table == pre.iommu_root_table && post.cpu_tlb == pre.cpu_tlb && post.iommu_tlb == pre.iommu_tlb && post.kernel_l4_end == pre.kernel_l4_end) by {
+        reveal(kernel_k_to_kernel_u);
+    };
+    reveal(kernel_u_killed_husk_reclaimed);
 }
 } // verus!

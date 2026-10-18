@@ -8,8 +8,14 @@
 //!
 //! Per-CPU data is reached through the GS base. Ring 3 can reload `gs` and so zero that base, so
 //! every crossing executes `swapgs`: `sys_entry` and the interrupt trampolines (for frames from
-//! ring 3) on the way in, [`restore_frame`] and the trampolines on the way out. The NMI handler and
-//! the fatal-exception path may run with either base and use [`cpu::cpu_id_without_gs`] instead.
+//! ring 3) on the way in, [`restore_frame`], the only exit to ring 3, on the way out. The NMI handler
+//! and the fatal-exception path may run with either base and use [`cpu::cpu_id_without_gs`] instead.
+//!
+//! An eviction (`platform::veriflat_remote_evict`) makes this CPU abandon its thread at another CPU's
+//! request. Its NMI loads the kernel page table and sets `Cpu::evicted` ([`evict_from_nmi`]). Code
+//! past the flag check at the start of [`restore_frame`], or in ring 3, is sent to the idle loop by
+//! the NMI itself; code elsewhere in the kernel finishes its path, which ends in [`run_idle`] (it
+//! clears the flag) or [`restore_frame`] (it diverts to the idle loop).
 //!
 //! TODO: the frame is not the whole user-visible CPU state. The x87/MMX registers (CR0.EM is 0)
 //! and the `fs`/`gs` selectors are neither saved nor reset across a thread switch, so the next
@@ -68,6 +74,23 @@ const MODEL_ERROR_BASE: i64 = 100;
 
 /// LAPIC timer cycles per scheduling tick (about 10 ms under KVM).
 const TICK: Cycles = Cycles(5_000_000);
+
+/// RFLAGS with only the always-set bit 1: interrupts off.
+const RFLAGS_RESERVED: u64 = 1 << 1;
+
+/// User addresses lie in the lower canonical half; a non-canonical read raises #GP, which
+/// [`copy_from_user`] has no fixup for.
+const USER_END: usize = 1 << 47;
+
+unsafe extern "C" {
+    /// The `sysretq` and `iretq` of [`restore_frame`], and its end.
+    static veriflat_restore_frame_sysret: u8;
+    static veriflat_restore_frame_iret: u8;
+    static veriflat_restore_frame_end: u8;
+    /// The loop of [`copy_from_user`] and its exit.
+    static veriflat_user_copy_begin: u8;
+    static veriflat_user_copy_end: u8;
+}
 
 /// Initializes syscalls.
 ///
@@ -158,9 +181,14 @@ unsafe extern "C" fn sys_entry() -> ! {
 /// non-canonical address faults in ring 0 after the user `rsp` is already loaded. Interrupts stay
 /// off until `sysretq`; NMIs and machine checks taken after the user `rsp` is loaded run on IST stacks.
 /// The frame is always a ring 3 frame, so both returns `swapgs` unconditionally.
+///
+/// An evicted CPU goes to the idle loop instead. An eviction NMI that lands after the check
+/// redirects there itself; it classifies `rip` by the exported labels.
 #[unsafe(naked)]
-unsafe extern "C" fn restore_frame() -> ! {
+pub(crate) unsafe extern "C" fn restore_frame() -> ! {
     naked_asm!(
+        "cmp byte ptr gs:[{evicted}], 0",
+        "jne {evict}",
         // ZF = 1 selects sysretq. pop leaves the flags alone.
         "mov rcx, [rsp + {frame_rip}]",
         "mov r11, [rsp + {frame_rflags}]",
@@ -196,12 +224,21 @@ unsafe extern "C" fn restore_frame() -> ! {
         "inc qword ptr gs:[{sysret_exits}]",
         "mov rsp, [rsp + {user_rsp}]", // error_code, rip, cs, rflags, then the user rsp
         "swapgs",
+        ".globl veriflat_restore_frame_sysret",
+        "veriflat_restore_frame_sysret:",
         "sysretq",
         "3:",
         "inc qword ptr gs:[{iret_exits}]",
         "add rsp, 8", // error_code
         "swapgs",
+        ".globl veriflat_restore_frame_iret",
+        "veriflat_restore_frame_iret:",
         "iretq",
+        ".globl veriflat_restore_frame_end",
+        "veriflat_restore_frame_end:",
+
+        evicted = const offset_of!(Cpu, evicted),
+        evict = sym evict_to_idle_kernel_gs,
 
         frame_rip = const offset_of!(Registers, rip),
         frame_rflags = const offset_of!(Registers, flags),
@@ -226,6 +263,67 @@ unsafe extern "C" fn enter_frame(frame: *const Registers) -> ! {
         "jmp {restore}",
         restore = sym restore_frame,
     );
+}
+
+/// Abandons the current thread for the idle loop: restarts on this CPU's kernel stack below the
+/// frame slot. Entered with the kernel GS base and interrupts off.
+#[unsafe(naked)]
+unsafe extern "C" fn evict_to_idle_kernel_gs() -> ! {
+    naked_asm!(
+        "mov rsp, gs:{syscall_sp_offset}",
+        "sub rsp, {reserve}",
+        "call {entry}",
+        "ud2",
+        syscall_sp_offset = const offset_of!(Cpu, syscall_sp),
+        reserve = const cpu::FRAME_SLOT_RESERVE,
+        entry = sym evict_idle_entry,
+    );
+}
+
+/// [`evict_to_idle_kernel_gs`] entered with the user GS base loaded.
+#[unsafe(naked)]
+unsafe extern "C" fn evict_to_idle_user_gs() -> ! {
+    naked_asm!(
+        "swapgs",
+        "jmp {kernel_gs}",
+        kernel_gs = sym evict_to_idle_kernel_gs,
+    );
+}
+
+/// The NMI half of an eviction, after the switch to the kernel page table: marks this CPU evicted.
+/// Ring 3 and [`restore_frame`] past its check of the mark would resume the thread, so the NMI
+/// returns to an idle-loop trampoline instead, the one with `swapgs` for ring 3 and for the
+/// `sysretq`/`iretq` (which run after `swapgs`). Anywhere else in the kernel the CPU finishes its
+/// path, which sees the mark. Never touches `gs`.
+pub fn evict_from_nmi(regs: &mut Registers, cpu_id: usize) {
+    cpu::set_evicted(cpu_id);
+    let rip = regs.rip;
+    let sysret = &raw const veriflat_restore_frame_sysret as u64;
+    let iret = &raw const veriflat_restore_frame_iret as u64;
+    let end = &raw const veriflat_restore_frame_end as u64;
+    let target = if from_user(regs) || rip == sysret || rip == iret {
+        evict_to_idle_user_gs as *const () as u64
+    } else if (restore_frame as *const () as u64..end).contains(&rip) {
+        evict_to_idle_kernel_gs as *const () as u64
+    } else {
+        return;
+    };
+    regs.rip = target;
+    regs.cs = GlobalDescriptorTable::KERNEL_CS as u64;
+    regs.ss = GlobalDescriptorTable::KERNEL_SS as u64;
+    regs.flags = RFLAGS_RESERVED;
+    regs.rsp = cpu::idle_stack(cpu_id);
+}
+
+/// The idle loop of an evicted CPU, then the thread it finds. Like [`enter_first_thread`], but the
+/// timer already runs.
+extern "C" fn evict_idle_entry() -> ! {
+    unsafe {
+        let frame = cpu::top_frame();
+        frame.write(Registers::zeroed());
+        run_idle(&mut *frame);
+        enter_frame(frame);
+    }
 }
 
 /// Runs the idle loop on the boot CPU until a thread is chosen, then enters it. Called once
@@ -347,6 +445,8 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorThreadQuotaOverflow => 41,
         ErrorContainerZombie => 42,
         ErrorIpcCalleeExited => 43,
+        ErrorIpcCallerKilled => 44,
+        ErrorInvalidChild => 45,
     }
 }
 
@@ -582,12 +682,50 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
     }
 }
 
+/// Copies `len` bytes from `src` to `dst` and returns how many it copied: fewer when a read of `src`
+/// page faults, and `page_fault` resumes at the exit.
+#[unsafe(naked)]
+unsafe extern "C" fn copy_from_user(dst: *mut u8, src: *const u8, len: usize) -> usize {
+    naked_asm!(
+        "xor eax, eax",
+        ".globl veriflat_user_copy_begin",
+        "veriflat_user_copy_begin:",
+        "2:",
+        "cmp rax, rdx",
+        "je 3f",
+        "mov cl, byte ptr [rsi + rax]",
+        "mov byte ptr [rdi + rax], cl",
+        "inc rax",
+        "jmp 2b",
+        "3:",
+        ".globl veriflat_user_copy_end",
+        "veriflat_user_copy_end:",
+        "ret",
+    );
+}
+
+/// Where a kernel page fault at `regs.rip` resumes: the exit of [`copy_from_user`] for a fault in its loop.
+pub fn user_copy_fixup(regs: &Registers) -> Option<u64> {
+    let (begin, end) = (&raw const veriflat_user_copy_begin as u64, &raw const veriflat_user_copy_end as u64);
+    (!from_user(regs) && (begin..end).contains(&regs.rip)).then_some(end)
+}
+
 fn debug_print(data: usize, len: usize) {
-    // dom0 shares the kernel's identity map, and every user mapping is readable from ring 0.
-    let bytes = unsafe { core::slice::from_raw_parts(data as *const u8, len.min(4096)) };
-    match core::str::from_utf8(bytes) {
+    let len = len.min(4096);
+    if data.checked_add(len).is_none_or(|end| end > USER_END) {
+        return;
+    }
+    // The thread's page table is loaded, and every user mapping is readable from ring 0.
+    let mut buffer = [0u8; 4096];
+    let copied = unsafe { copy_from_user(buffer.as_mut_ptr(), data as *const u8, len) };
+    // An eviction during the copy switched to the kernel page table: the bytes need not be the thread's.
+    if cpu::is_evicted() {
+        return;
+    }
+    match core::str::from_utf8(&buffer[..copied]) {
+        _ if copied < len => log::info!("[user@{}] <page fault reading {:#x}>", cpu::get_cpu_id(), data + copied),
         Ok(s) => log::info!("[user@{}] {}", cpu::get_cpu_id(), s.trim_end()),
-        Err(_) => log::info!("[user@{}] <{} non-UTF-8 bytes>", cpu::get_cpu_id(), bytes.len()),
+        Err(_) => log::info!("[user@{}] <{} non-UTF-8 bytes>", cpu::get_cpu_id(), len),
     }
 }
 
@@ -616,8 +754,10 @@ fn schedule_from_running(regs: &mut Registers) {
 }
 
 /// The idle loop of a CPU without a running thread. Returns once `regs` holds the frame of the
-/// thread the CPU switched to.
+/// thread the CPU switched to. An eviction ends here: it happens only while the CPU is Running, and
+/// the CPU learns it is Idle only after the eviction NMI.
 fn run_idle(regs: &mut Registers) {
+    cpu::clear_evicted();
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
     loop {

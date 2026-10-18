@@ -117,6 +117,74 @@ pub fn wlock_unless_killed<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 }
 
 #[verifier::external_body]
+pub fn try_wlock_and_mark_kill<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>,
+    obj_id: Ghost<KernelObjId>, killer_info: KillerInfo) -> (ret: (bool, Option<Tracked<LockPerm>>))
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        wlock_requires(old(perm).value(), old(lctx)),
+        !old(perm).value().being_killed() ==> old(lctx).lock_id_acyclic(old(perm).lock_id()),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        ret.0 == false ==> {
+            &&& old(perm).value().being_killed() == true
+            &&& old(perm).value() == final(perm).value()
+            &&& ret.1 is None
+            &&& *final(lctx) == *old(lctx)
+        },
+        ret.0 == true ==> {
+            &&& old(perm).value().being_killed() == false
+            &&& old(perm).value().locked() == false
+            &&& final(perm).value().being_killed() == true
+            &&& ret.1 is Some
+            &&& final(perm).value().locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap().view().lock_id() }
+            &&& final(perm).value().inv()
+            &&& final(perm).value().view() == old(perm).value().view()
+            &&& final(perm).value().view_rodata() == old(perm).value().view_rodata()
+            &&& final(perm).value().view_ghost() == old(perm).value().view_ghost()
+            &&& ret.1.unwrap().view().state() is WriteLock
+            &&& ret.1.unwrap().view().thread_id() == final(lctx).thread_id()
+            &&& final(lctx).kernel_view_locking_state() is Release
+            &&& typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: old(perm).lock_id(), mode: TypedLockMode::Write })
+        },
+{
+    unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>;
+        let lock_id = Ghost(LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: perm.lock_minor() });
+        (*uptr).assume_init_mut().try_wlock_and_mark_kill(Tracked(lctx), lock_id, obj_id, killer_info)
+    }
+}
+
+#[verifier::external_body]
+pub fn unmark_kill<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
+    Tracked(lctx): Tracked<&LocalContext>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        old(perm).value().wlocked_by(lctx),
+        old(perm).value().being_killed(),
+        lctx.kernel_view_locking_state() is Release,
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        !final(perm).value().being_killed(),
+        final(perm).value().locking_thread() == old(perm).value().locking_thread(),
+        final(perm).value().is_init() == old(perm).value().is_init(),
+        final(perm).value().view() == old(perm).value().view(),
+        final(perm).value().view_rodata() == old(perm).value().view_rodata(),
+        final(perm).value().view_ghost() == old(perm).value().view_ghost(),
+{
+    unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>;
+        (*uptr).assume_init_mut().unmark_kill(Tracked(lctx));
+    }
+}
+
+#[verifier::external_body]
 pub fn has_kill_state_wunlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
     requires

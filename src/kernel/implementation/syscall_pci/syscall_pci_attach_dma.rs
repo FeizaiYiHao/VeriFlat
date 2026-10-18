@@ -17,7 +17,6 @@ pub fn syscall_pci_attach_dma(
         cpu_id == old(lctx).cpu_id(),
         pci_bdf_valid(bus, device, function),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -50,6 +49,15 @@ pub fn syscall_pci_attach_dma(
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            pci_attach_dma_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function, RetValueType::CpuIdle);
+            assert(pci_attach_dma_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     assert({
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
         &&& cpu.current_process is Some
@@ -57,7 +65,6 @@ pub fn syscall_pci_attach_dma(
         &&& !krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view().zombie
         &&& krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view_rodata().view().owning_container == cpu.owning_container
     }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let process_ptr = cpu.current_process().unwrap();
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));

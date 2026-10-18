@@ -284,8 +284,8 @@ pub(super) proof fn eof_allocator_free_pages_wf(
     };
     assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr,)) by { reveal(container_allocator_free_2m_page_wf); };
     assert(container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by {
-        broadcast use eof_unmodified_object_page_state_eq;
-        reveal(container_allocator_free_1g_page_wf); reveal(container_allocator_global_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf);
+        broadcast use eof_unmodified_object_page_state_eq, eof_allocator_free_1g_global_forward, eof_allocator_free_1g_global_backward;
+        reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(container_allocator_global_free_1g_page_wf);
     };
     assert(container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr,)) by {
         page_ptr_roundtrip(); broadcast use eof_unmodified_object_page_state_eq;

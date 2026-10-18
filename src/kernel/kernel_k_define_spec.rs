@@ -360,4 +360,40 @@ verus! {
         &&& k.allc_1g_mp.typed_cache_lock_map_aligned(lctx.allocator_cache_1g_lock_map(), lctx.thread_id())
         &&& k.allc_1g_mp.typed_global_pool_lock_map_aligned(lctx.allocator_global_pool_1g_lock_map(), lctx.thread_id())
     }
+
+    /// Locks a killer holds between steps: its running CPU, process and thread, plus the objects it marked.
+    pub open spec fn killer_held_context(k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr) -> bool {
+        let cpu_id = lctx.cpu_id();
+        let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
+        &&& index_valid(NUM_CPUS, cpu_id)
+        &&& lctx.cpu_lock_map().dom() =~= set![cpu_id]
+        &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
+        &&& cpu.state is Running
+        &&& cpu.current_process == Some(killer_process)
+        &&& cpu.current_thread == Some(killer_thread)
+        &&& typed_lock_map_contains_mode(lctx.process_lock_map(), killer_process, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), killer_thread, TypedLockMode::Write)
+        &&& forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)] lctx.process_lock_map().dom().contains(p) && p != killer_process ==> k.prc_mp.spec_index(p).being_killed()
+        &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) && t != killer_thread ==> k.thr_mp.spec_index(t).being_killed()
+        &&& lctx.page_lock_map().dom().is_empty()
+        &&& lctx.pcid_needflush_lock_map().dom().is_empty()
+        &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
+        &&& lctx.container_lock_map().dom().is_empty()
+        &&& lctx.endpoint_lock_map().dom().is_empty()
+        &&& lctx.scheduler_lock_map().dom().is_empty()
+        &&& lctx.pcid_allocator_lock_map().dom().is_empty()
+        &&& lctx.cpu_set_lock_map().dom().is_empty()
+        &&& lctx.pagetable_lock_map().dom().is_empty()
+        &&& lctx.iommu_table_lock_map().dom().is_empty()
+        &&& lctx.iommu_root_table_lock_map().dom().is_empty()
+        &&& lctx.allocator_quota_4k_lock_map().dom().is_empty()
+        &&& lctx.allocator_cache_4k_lock_map().dom().is_empty()
+        &&& lctx.allocator_global_pool_4k_lock_map().dom().is_empty()
+        &&& lctx.allocator_quota_2m_lock_map().dom().is_empty()
+        &&& lctx.allocator_cache_2m_lock_map().dom().is_empty()
+        &&& lctx.allocator_global_pool_2m_lock_map().dom().is_empty()
+        &&& lctx.allocator_quota_1g_lock_map().dom().is_empty()
+        &&& lctx.allocator_cache_1g_lock_map().dom().is_empty()
+        &&& lctx.allocator_global_pool_1g_lock_map().dom().is_empty()
+    }
 }

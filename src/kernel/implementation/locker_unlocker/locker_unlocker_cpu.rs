@@ -10,7 +10,13 @@ impl KernelK {
             old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off ==> cpu_id == old(lctx).cpu_id(),
             old(lctx).kernel_view_locking_state() is Acquire,
             !old(lctx).cpu_lock_map().dom().contains(cpu_id),
-            old(lctx).no_locks_held(),
+            old(lctx).no_locks_held() || old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id)) || {
+                let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
+                &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0)
+                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
+                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().container_depth == cpu.container_depth
+                &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().process_depth > cpu.process_depth
+            },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -37,7 +43,14 @@ impl KernelK {
     {
         proof {
             assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { reveal(cpu_array_wf); };
-            assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); };
+            assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
+                reveal(LocalContext::lock_id_acyclic);
+                let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
+                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0) {
+                    reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                    reveal(cpu_array_wf); reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(container_process_wf);
+                }
+            };
         }
         assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         let ret = self.cpu_arr.wlock(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));

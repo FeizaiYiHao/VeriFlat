@@ -526,6 +526,7 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
         krnl.thr_mp.spec_index(layout.root_thread).view().process_depth == 0,
         krnl.thr_mp.spec_index(layout.root_thread).view().proc_pagetable_ptr == layout.cpu_pagetable,
         krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.addr() == process_node_addr,
+        !krnl.thr_mp.spec_index(layout.root_thread).view().proc_linkedlist_node.is_init(),
         !krnl.thr_mp.spec_index(layout.root_thread).being_killed(),
     ensures
         process_thread_wf(krnl.prc_mp, krnl.thr_mp),

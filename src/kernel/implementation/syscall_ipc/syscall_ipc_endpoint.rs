@@ -29,6 +29,7 @@ pub(super) fn ipc_copy_endpoint_reference(
         edp_idx_valid(target_endpoint_index),
         old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.wf(),
         old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.spec_index(target_endpoint_index) is None,
+        !(old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().state is DANGLING),
         old(krnl).ep_mp.dom().contains(payload_endpoint_ptr),
         old(krnl).ep_mp.spec_index(payload_endpoint_ptr).is_init(),
         typed_lock_map_contains_mode(lctx.endpoint_lock_map(), payload_endpoint_ptr, TypedLockMode::Write),

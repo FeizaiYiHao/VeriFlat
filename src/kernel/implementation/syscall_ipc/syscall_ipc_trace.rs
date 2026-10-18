@@ -409,6 +409,7 @@ pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_u(pre: KernelU, cpu_id
             let source = pre.thread_map[objects.source_thread].owning_proc;
             &&& share_4k_locked(pre, cpu_id)
             &&& progress->Share4k_origin is IpcPages
+            &&& pre.thread_map[progress->Share4k_origin->IpcPages_peer].blocking_endpoint_ptr is Some
             &&& progress->Share4k_shared == progress->Share4k_source_range.len
             &&& source != objects.target
             &&& pre.process_map.dom().contains(source)
@@ -493,7 +494,7 @@ pub(super) proof fn ipc_ordinary_trace_block_step(steps: &KernelSteps, before: S
     ensures
         ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, endpoint_index, waiting_state,
             payload, regs, flushed_default_pcid, RetValueType::CpuIdle),
-{ reveal(ipc_ordinary_syscall_trace); }
+{ reveal(ipc_ordinary_syscall_trace); reveal(ipc_block_step_pre); reveal(ipc_step_pre); }
 
 /// A blocking trace since `before` is the payload's syscall trace.
 pub(super) proof fn ipc_syscall_trace_from_block(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
@@ -538,7 +539,9 @@ pub(super) proof fn ipc_syscall_trace_from_rendezvous(steps: &KernelSteps, befor
 pub(super) proof fn ipc_syscall_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
     requires
         trace.len() == 0,
-        ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorIpcPeerKilled || ret is ErrorReplyOutOfPhase,
+        ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorIpcPeerKilled || ret is ErrorReplyOutOfPhase
+            || (ret is CpuIdle && !(pre.cpu_array[cpu_id as int].state is Running)),
+        ret is CpuIdle && payload is Pages ==> payload->Pages_va_range.wf() && payload->Pages_va_range.len > 0,
     ensures
         payload is Pages ==> ipc_pages_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, waiting_state, payload->Pages_va_range, regs, flushed_default_pcid, ret),
         payload is Endpoint ==> ipc_endpoint_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, waiting_state, payload->Endpoint_endpoint_index, regs, flushed_default_pcid, ret),

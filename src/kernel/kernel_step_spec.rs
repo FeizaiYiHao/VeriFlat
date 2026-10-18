@@ -2900,4 +2900,65 @@ pub open spec fn kernel_thread_exit_quota_returned(pre: &KernelK, post: &KernelK
         pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
             == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int + if c == container_ptr && size is SZ1g { process.view().quota_1g + thread.view().quota_1g } else { 0 }
 }
+
+/// The killed husk `husk_ptr`, write-held, unmarked, and linked to no thread, leaves the thread map and its container's
+/// thread set, and its page returns to a 4K allocator: the allocator of the container owning the page regains one quota.
+#[verifier::opaque]
+pub open spec fn kernel_killed_husk_reclaimed_fields(pre: &KernelK, post: &KernelK, husk_ptr: RwLockThreadPtr) -> bool {
+    let husk = pre.thr_mp.spec_index(husk_ptr);
+    &&& pre.thr_mp.dom().contains(husk_ptr)
+    &&& husk.view().state is KILLED
+    &&& husk.locking_thread() is Write
+    &&& !husk.being_killed()
+    &&& husk.view().caller is None
+    &&& husk.view().callee is None
+    &&& *post == (KernelK { ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre })
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let a = pre.ctn_mp.spec_index(c);
+            let b = post.ctn_mp.spec_index(c);
+            &&& b.view() == a.view()
+            &&& b.view_rodata() == a.view_rodata()
+            &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
+            &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
+            &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
+            &&& b.view_ghost().owned_threads.view() == if c == husk.view().owning_container { a.view_ghost().owned_threads.view().remove(husk_ptr) } else { a.view_ghost().owned_threads.view() }
+            &&& b.locking_thread() == a.locking_thread()
+            &&& b.being_killed() == a.being_killed()
+            &&& post.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int
+                == pre.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if a.view().owned_pages.view().contains(husk_ptr) { 1int } else { 0int }
+        }
+    &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(husk_ptr)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
+}
+
+/// One killed husk, write-locked, unmarked, and linked to no thread, leaves the thread map and its container's thread
+/// set, and the container owning its page regains one 4K quota; the kernel chooses the husk (R1).
+#[verifier::opaque]
+pub open spec fn kernel_u_killed_husk_reclaimed(old_u: KernelU, new_u: KernelU) -> bool {
+    let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
+    &&& new_u.thread_map.dom().subset_of(old_u.thread_map.dom())
+    &&& removed.len() == 1
+    &&& forall|husk_ptr: RwLockThreadPtr| #![trigger removed.contains(husk_ptr)]
+        removed.contains(husk_ptr) ==> {
+            let husk = old_u.thread_map.spec_index(husk_ptr);
+            &&& husk.state is KILLED
+            &&& husk.lock_state is WriteLocked
+            &&& !husk.killed
+            &&& husk.caller is None
+            &&& husk.callee is None
+            &&& new_u == (KernelU {
+                container_map: Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
+                    let container = old_u.container_map[c];
+                    ContainerU {
+                        owned_threads: if c == husk.owning_container { container.owned_threads.remove(husk_ptr) } else { container.owned_threads },
+                        quota_4k: if container.owned_pages.contains(husk_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k }, ..container
+                    }
+                }),
+                thread_map: old_u.thread_map.remove(husk_ptr),
+                ..old_u
+            })
+        }
+}
 }

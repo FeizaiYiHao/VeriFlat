@@ -69,7 +69,6 @@ verus! {
                 _ => false,
             },
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -93,7 +92,8 @@ verus! {
                 let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap();
                 let endpoint_option = old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view().spec_index(endpoint_index as int);
                 let endpoint_ptr = endpoint_option.unwrap();
-                &&& r is ErrorThreadKilled || r is ErrorInvalidEndpoint || r is ErrorIpcNoPeer || r is ErrorIpcSameDirection || r is ErrorReplyOutOfPhase
+                &&& r is ErrorThreadKilled || r is ErrorInvalidEndpoint || r is ErrorIpcNoPeer || r is ErrorIpcSameDirection || r is ErrorReplyOutOfPhase || r is CpuIdle
+                &&& r is CpuIdle ==> !(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) && !(kernel_k_to_kernel_u(*old(krnl)).cpu_array[cpu_id as int].state is Running)
                 &&& r is ErrorIpcNoPeer || r is ErrorIpcSameDirection ==> !blocking
                 &&& r is ErrorReplyOutOfPhase ==> waiting_state is RECEIVING_CALL
                 &&& !expect_caller ==> ipc_rejection(r) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state, blocking)
@@ -105,8 +105,8 @@ verus! {
                 &&& final(steps).nonlock_view().len() == 0
                 &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
                 &&& final(steps).snapshot_k() == *final(krnl)
-                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
-                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread
+                &&& !(r is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
+                &&& !(r is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread
                 &&& payload is Pages ==> ipc_pages_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                     kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, waiting_state, payload->Pages_va_range,
                     *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), r)
@@ -229,7 +229,20 @@ verus! {
                     else { None }
             }),
     {
-        let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+        let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+        if cpu_lock_res.is_none() {
+            proof {
+                kernel_cpu_projection_at(&*old(krnl), cpu_id);
+                ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index,
+                    waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::CpuIdle);
+                assert({
+                    &&& ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state, blocking) == Some(RetValueType::CpuIdle)
+                    &&& ipc_reply_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index) == Some(RetValueType::CpuIdle)
+                }) by { reveal(ipc_entry_result); reveal(ipc_reply_entry_result); };
+            }
+            return Err(RetValueType::CpuIdle);
+        }
+        let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
 
         let cpu_ref = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
         let process_ptr = cpu_ref.current_process().unwrap();
@@ -411,7 +424,6 @@ verus! {
                 _ => false,
             },
             old(krnl).inv(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
@@ -445,9 +457,9 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             *final(pt_regs) =~= *old(pt_regs),
-            !blocking ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
-            !blocking ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
-            !blocking ==> !(ret is CpuIdle),
+            !blocking && !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+            !blocking && !(ret is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread,
+            !blocking && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> !(ret is CpuIdle),
             ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection ==> !blocking,
             ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection ==> {
                 let current_thread_ptr = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap();
@@ -468,8 +480,8 @@ verus! {
                 && final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is SuccessUsize ==> final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().state is Off
                 && final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            ret is CpuIdle ==> final(steps).nonlock_view().len() == 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> final(steps).nonlock_view().len() == 1,
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
@@ -481,9 +493,9 @@ verus! {
                 _ => final(steps).nonlock_view().len() == 1,
             },
             ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value) && final(steps).nonlock_view().len() == 1,
-            !(payload is Pages) && !(ret is CpuIdle) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
+            !(payload is Pages) && !(ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
             payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci ==> final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle ==> {
+            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running ==> {
                 let step = final(steps).nonlock_view()[0];
                 &&& final(steps).nonlock_view().len() == 1
                 &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())

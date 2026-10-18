@@ -47,3 +47,5 @@ pub(crate) mod allocator_cache_spec;
 
 #[cfg(not(feature = "split-crates"))]
 pub mod free_4k_page;
+#[cfg(not(feature = "split-crates"))]
+pub mod reclaim_killed_husk;

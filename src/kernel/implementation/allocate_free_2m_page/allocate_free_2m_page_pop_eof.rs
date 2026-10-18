@@ -275,9 +275,10 @@ proof fn eof_pop_2m_staged_pages(pre: KernelK, post: KernelK, allocator: RwLockP
 
 proof fn eof_pop_2m_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
-        pre.inv(),
+        allocator_perms_wf(pre.allc_2m_mp),
+        allocator_free_page_ptrs_wf(pre.allc_2m_mp),
+        container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
         pop_stage_2m_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        post.subsystems_inv(),
     ensures container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
     hide(Seq::contains);
@@ -299,9 +300,11 @@ proof fn eof_pop_2m_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPa
 
 proof fn eof_pop_2m_cpu_cache(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
-        pre.inv(),
+        allocator_perms_wf(pre.allc_2m_mp),
+        allocator_perms_wf(post.allc_2m_mp),
+        allocator_free_page_ptrs_wf(pre.allc_2m_mp),
+        container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
         pop_stage_2m_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        post.subsystems_inv(),
     ensures container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
     hide(Seq::contains);

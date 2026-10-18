@@ -34,7 +34,6 @@ fn new_process_lock_entry(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         with_iommu ==> endpoint_index is Some,
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -211,7 +210,15 @@ fn new_process_lock_entry(
         return Err(RetValueType::Error);
     }
     let source_range = VaRange4K::new(va, range);
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, RetValueType::CpuIdle);
+            assert(new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is CpuIdle) by { kernel_cpu_projection_at(&*old(krnl), cpu_id); };
+        }
+        return Err(RetValueType::CpuIdle);
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
 
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let parent_ptr = cpu.current_process().unwrap();
@@ -379,7 +386,6 @@ pub(super) fn syscall_new_process_common(krnl: &mut KernelK, Tracked(lctx): Trac
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         with_iommu ==> endpoint_index is Some,
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),

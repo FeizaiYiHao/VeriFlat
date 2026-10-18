@@ -80,6 +80,18 @@ impl RwLockInner {
     }
 
     #[verifier::external_body]
+    pub fn unmark_kill(&mut self) {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                debug_assert!(self.writing, "unmark_kill called on object that is not write-locked");
+                self.killer_info = None;
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+    }
+
+    #[verifier::external_body]
     pub fn wunlock(&mut self) {
         loop {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
@@ -518,6 +530,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
             },
             ret.0 == true ==> {
                 &&& old(self).being_killed() == false
+                // Like `wlock`, the mark is taken only once the lock is free.
+                &&& old(self).locked() == false
                 &&& final(self).being_killed() == true
                 &&& final(self).killer_info_inner() == Some(killer_info)
                 &&& ret.1 is Some
@@ -544,6 +558,25 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
         } else {
             (true, Some(Tracked::assume_new()))
         }
+    }
+
+    /// Clear the being-killed mark of an object this thread write-holds; the write lock stays. Like the mark, this is
+    /// a kernel-view Release: once the object is released, other threads lock it normally again.
+    #[verifier::external_body]
+    pub fn unmark_kill(&mut self, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(self).wlocked_by(lctx),
+            old(self).being_killed(),
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            !final(self).being_killed(),
+            final(self).locking_thread() == old(self).locking_thread(),
+            final(self).is_init() == old(self).is_init(),
+            final(self).view() == old(self).view(),
+            final(self).view_rodata() == old(self).view_rodata(),
+            final(self).view_ghost() == old(self).view_ghost(),
+    {
+        self.lock.unmark_kill();
     }
 }
 

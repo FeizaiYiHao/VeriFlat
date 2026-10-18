@@ -18,6 +18,7 @@ pub open spec fn thread_process_management_fields_unchanged(pre: ThreadLockedMap
             &&& post.spec_index(t_ptr).view().process_depth == pre.spec_index(t_ptr).view().process_depth
             &&& post.spec_index(t_ptr).view().proc_pagetable_ptr == pre.spec_index(t_ptr).view().proc_pagetable_ptr
             &&& post.spec_index(t_ptr).view().proc_linkedlist_node.addr() == pre.spec_index(t_ptr).view().proc_linkedlist_node.addr()
+            &&& post.spec_index(t_ptr).view().proc_linkedlist_node.is_init() == pre.spec_index(t_ptr).view().proc_linkedlist_node.is_init()
             &&& post.spec_index(t_ptr).view().endpoint_descriptors == pre.spec_index(t_ptr).view().endpoint_descriptors
             &&& post.spec_index(t_ptr).view().blocking_endpoint_ptr == pre.spec_index(t_ptr).view().blocking_endpoint_ptr
             &&& post.spec_index(t_ptr).view().endpoint_linkedlist_node.addr() == pre.spec_index(t_ptr).view().endpoint_linkedlist_node.addr()
