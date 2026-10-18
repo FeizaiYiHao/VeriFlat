@@ -1,9 +1,11 @@
 mod staged_4k_page_chain;
+mod staged_4k_page_chain_eof;
 mod syscall_new_container;
 mod syscall_new_container_helpers;
 mod syscall_new_container_allocation;
 mod syscall_new_container_publish;
 mod syscall_new_container_finish;
+mod syscall_new_container_finish_eof;
 mod syscall_new_container_commit;
 mod syscall_new_container_share;
 pub mod syscall_new_container_spec;

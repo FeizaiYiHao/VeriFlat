@@ -40,6 +40,17 @@ verus! {
             }),
     { reveal(mapped_4k_page_pagetable_wf); }
 
+    /// A `(pt_ptr, va)` record on the `Mapped4k` page `p_i` names a 4K leaf of `pt_ptr` that points back at the page.
+    pub proof fn mapped_4k_page_pagetable_wf_page_at(pagetable_map: PageTableLockedMap, page_array: PageLockedArray, p_i: PageIndex, pt_ptr: RwLockPageTableRoot, va: VAddr)
+        requires
+            mapped_4k_page_pagetable_wf(pagetable_map, page_array),
+            index_valid(NUM_PAGES, p_i),
+            page_array.spec_index(p_i).view().view().state == PageState::Mapped4k,
+        ensures
+            page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
+                ==> pagetable_map.dom().contains(pt_ptr) && pagetable_map.spec_index(pt_ptr).view().mapping_4k().contains_key(va) && pagetable_map.spec_index(pt_ptr).view().mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i),
+    { reveal(mapped_4k_page_pagetable_wf); }
+
     #[verifier::opaque]
     pub open spec fn mapped_2m_page_pagetable_wf(pagetable_map: PageTableLockedMap, page_array: PageLockedArray) -> bool {
         &&& forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|

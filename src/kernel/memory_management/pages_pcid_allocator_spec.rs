@@ -15,4 +15,11 @@ pub open spec fn pcid_allocator_pages_wf(page_array: PageLockedArray, pcid_alloc
         pcid_allocator_map.dom().contains(allocator_ptr)
             ==> page_ptr_valid(allocator_ptr) && (page_array.spec_index(page_ptr2page_index(allocator_ptr)).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator })
 }
+
+pub proof fn pcid_allocator_pages_wf_at(page_array: PageLockedArray, pcid_allocator_map: PcidAllocatorLockedMap, allocator_ptr: RwLockPcidAllocatorPtr)
+    requires pcid_allocator_pages_wf(page_array, pcid_allocator_map)
+    ensures
+        pcid_allocator_map.dom().contains(allocator_ptr)
+            ==> page_ptr_valid(allocator_ptr) && (page_array.spec_index(page_ptr2page_index(allocator_ptr)).view().view().state matches PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }),
+{ reveal(pcid_allocator_pages_wf); }
 }

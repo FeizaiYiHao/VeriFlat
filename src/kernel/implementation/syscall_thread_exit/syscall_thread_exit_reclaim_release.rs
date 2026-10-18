@@ -540,7 +540,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     let ghost refund_before = steps.view();
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { reveal(thread_perms_wf); };
+        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_at(old(krnl).thr_mp, thread_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_before, start, pre, cpu_id, thread_ptr, process_ptr, container_ptr);
         assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_pt && krnl.prc_mp.spec_index(process_ptr) == entry_k.prc_mp.spec_index(process_ptr)
             && krnl.ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));
@@ -906,7 +906,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     let ghost refund_before = steps.view();
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { reveal(thread_perms_wf); };
+        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_at(old(krnl).thr_mp, thread_ptr); };
         thread_exit_trace_from_refund(&*steps, refund_before, start, pre, cpu_id, thread_ptr, process_ptr, container_ptr);
         assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_pt && krnl.it_mp.spec_index(iommu_table) == reclaimed_it && krnl.prc_mp.spec_index(process_ptr) == entry_k.prc_mp.spec_index(process_ptr)
             && krnl.ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));

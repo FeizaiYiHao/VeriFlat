@@ -2,6 +2,86 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// Blocks the running caller on the write-held endpoint and idles its cpu on the default page table; no other object
+/// changes.
+#[verifier::opaque]
+pub open spec fn ipc_block_current_eof_transition_framing(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    waiting_state: ThreadState, payload: IPCPayLoad, default_cr3: PageTableRoot,
+) -> bool {
+    let thread_before = pre.thr_mp.spec_index(current_thread_ptr);
+    let thread_after = post.thr_mp.spec_index(current_thread_ptr);
+    let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
+    let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
+    let node = thread_after.view().endpoint_linkedlist_node.addr();
+    let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
+    let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
+    let flush_before = pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
+    let flush_after = post.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, ..pre })
+    &&& post.thr_mp.unchanged_except(&pre.thr_mp, current_thread_ptr)
+    &&& thread_after.locking_thread() == thread_before.locking_thread()
+    &&& thread_after.being_killed() == thread_before.being_killed()
+    &&& thread_after.view().non_ipc_fields_unchanged(&thread_before.view())
+    &&& thread_after.view().caller == thread_before.view().caller
+    &&& thread_after.view().syscall_progress == thread_before.view().syscall_progress
+    &&& thread_after.view().callee == thread_before.view().callee
+    &&& thread_after.view().error_code == thread_before.view().error_code
+    &&& thread_after.view().state == waiting_state
+    &&& thread_after.view().blocking_endpoint_ptr == Some(endpoint_ptr)
+    &&& thread_after.view().blocking_endpoint_index == Some(endpoint_index)
+    &&& thread_after.view().ipc_payload == payload
+    &&& thread_after.view().trap_frame.is_some()
+    &&& post.ep_mp.unchanged_except(&pre.ep_mp, endpoint_ptr)
+    &&& endpoint_after.is_init() == endpoint_before.is_init()
+    &&& endpoint_after.view_rodata() == endpoint_before.view_rodata()
+    &&& endpoint_after.view_ghost() == endpoint_before.view_ghost()
+    &&& endpoint_after.locking_thread() == endpoint_before.locking_thread()
+    &&& endpoint_after.being_killed() == endpoint_before.being_killed()
+    &&& endpoint_after.view().queue.wf()
+    &&& endpoint_after.view().queue.container_depth == endpoint_before.view().queue.container_depth
+    &&& endpoint_after.view().queue.lock_minor() == endpoint_before.view().queue.lock_minor()
+    &&& endpoint_after.view().queue.length as int == endpoint_before.view().queue.length as int + 1
+    &&& endpoint_after.view().queue.dom() == endpoint_before.view().queue.dom().insert(node)
+    &&& endpoint_after.view().rf_counter == endpoint_before.view().rf_counter
+    &&& endpoint_after.view().owning_threads == endpoint_before.view().owning_threads
+    &&& endpoint_after.view().owning_container == endpoint_before.view().owning_container
+    &&& endpoint_after.view().queue.view() == endpoint_before.view().queue.view().push(current_thread_ptr)
+    &&& endpoint_after.view().queue.map() == endpoint_before.view().queue.map().insert(node, current_thread_ptr)
+    &&& !endpoint_before.view().queue.map().dom().contains(node)
+    &&& endpoint_after.view().queue_state == if endpoint_before.view().queue.length == 0 {
+        match waiting_state { ThreadState::SENDING | ThreadState::CALLING => EndpointState::SEND, _ => EndpointState::RECEIVE }
+    } else {
+        endpoint_before.view().queue_state
+    }
+    &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id)
+    &&& cpu_after.is_init()
+    &&& cpu_after.view().wf()
+    &&& cpu_after.locking_thread() == cpu_before.locking_thread()
+    &&& cpu_after.being_killed() == cpu_before.being_killed()
+    &&& cpu_after.killer_info() == cpu_before.killer_info()
+    &&& cpu_after.view_rodata() == cpu_before.view_rodata()
+    &&& cpu_after.view_ghost() == cpu_before.view_ghost()
+    &&& cpu_after.view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..cpu_before.view().view() })
+    &&& post.cpu_tlb.view() == if flush_before.view().needflush { pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
+    &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))]
+        index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush_before.view().needflush && c == cpu_id && p == KERNEL_DEFAULT_PCID {
+            SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
+        } else { pre.cpu_tlb.spec_index((c, p)) }
+    &&& flush_after.view() == (PcidNeedFlush { needflush: false, ..flush_before.view() })
+    &&& flush_after.is_init()
+    &&& flush_after.locking_thread() == flush_before.locking_thread()
+    &&& flush_after.view_ghost() == flush_before.view_ghost()
+    &&& flush_after.view_rodata() == flush_before.view_rodata()
+    &&& flush_after.being_killed() == flush_before.being_killed()
+    &&& forall|c: CpuId, p: Pcid| #![trigger post.pcid_needflush.spec_index(c, p)] #![trigger pre.pcid_needflush.spec_index(c, p)]
+        index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p)
+    &&& post.cpu_published[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID)
+    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
+    &&& forall|c: CpuId| #![trigger post.cpu_published[c as int]] #![trigger pre.cpu_published[c as int]]
+        index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int]
+}
+
 /// Dequeues the endpoint waiter and schedules it on `wake_cpu`; no other object changes.
 #[verifier::opaque]
 pub open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
@@ -104,6 +184,7 @@ pub open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
         &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
         &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr(), peer_thread_ptr)
         &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
+        &&& scheduler_shards_of(after) == scheduler_shards_of(before).update(wake_cpu as int, scheduler_shards_of(before)[wake_cpu as int].push(peer_thread_ptr))
     }
 }
 } // verus!

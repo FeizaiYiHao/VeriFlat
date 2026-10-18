@@ -174,7 +174,7 @@ pub(super) fn commit_new_container(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thread_ptr);
         assert(new_container_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(steps).snapshot_u(), caller_cpu_id,
             *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index_opt)) by {
-            reveal(process_thread_wf); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx),
                 caller_cpu_id, parent_process_ptr, current_thread_ptr, endpoint, true, Some(parent_container_ptr), true,
                 Some(KernelK { cpu_set_mp: old(steps).snapshot_k().cpu_set_mp, ..*old(krnl) }));
@@ -209,9 +209,9 @@ pub(super) fn commit_new_container(
         owned_2m_all_ptrs_belong_to_container(krnl, page_ptr2page_index(container_page), parent_container_ptr);
         owned_2m_all_ptrs_belong_to_container(krnl, page_ptr2page_index(pcid_allocator_page), parent_container_ptr);
         let ghost parent_owned_pages = krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view();
-        assert(!krnl.ctn_mp.dom().contains(container_page)) by { page_ptr_roundtrip(); reveal(container_pages_wf); };
-        assert(!krnl.pcid_allc_mp.dom().contains(pcid_allocator_page)) by { page_ptr_roundtrip(); reveal(pcid_allocator_pages_wf); };
-        assert(!krnl.cpu_set_mp.dom().contains(child_cpu_set)) by { reveal(cpu_set_pages_wf); assert(page_4k_lock_perms.dom().contains(child_cpu_set)) by { pages_4k.view().to_set_ensures(); }; };
+        assert(!krnl.ctn_mp.dom().contains(container_page)) by { page_ptr_roundtrip(); if krnl.ctn_mp.dom().contains(container_page) { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_page); } };
+        assert(!krnl.pcid_allc_mp.dom().contains(pcid_allocator_page)) by { page_ptr_roundtrip(); pcid_allocator_pages_wf_at(krnl.pg_arr, krnl.pcid_allc_mp, pcid_allocator_page); };
+        assert(!krnl.cpu_set_mp.dom().contains(child_cpu_set)) by { cpu_set_pages_wf_at(krnl.cpu_set_mp, krnl.pg_arr, child_cpu_set); assert(page_4k_lock_perms.dom().contains(child_cpu_set)) by { pages_4k.view().to_set_ensures(); }; };
         assert({
             &&& krnl.pg_arr.spec_index(page_ptr2page_index(allocator_4k_page)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr })
             &&& krnl.pg_arr.spec_index(page_ptr2page_index(allocator_2m_page)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr })
@@ -229,11 +229,11 @@ pub(super) fn commit_new_container(
                 &&& page_4k_lock_perms.dom().contains(child_pagetable_ptr)
             }) by { pages_4k.view().to_set_ensures(); };
         };
-        assert(!krnl.allc_4k_mp.dom().contains(allocator_4k_page)) by { page_ptr_roundtrip(); reveal(allocator_4k_pages_wf); };
-        assert(!krnl.allc_2m_mp.dom().contains(allocator_2m_page)) by { page_ptr_roundtrip(); reveal(allocator_2m_pages_wf); };
-        assert(!krnl.allc_1g_mp.dom().contains(allocator_1g_page)) by { page_ptr_roundtrip(); reveal(allocator_1g_pages_wf); };
-        assert(!krnl.sched_mp.dom().contains(child_scheduler_ptr)) by { page_ptr_roundtrip(); reveal(scheduler_pages_wf); };
-        assert(!krnl.prc_mp.dom().contains(child_process_ptr)) by { page_ptr_roundtrip(); reveal(process_pages_wf); };
+        assert(!krnl.allc_4k_mp.dom().contains(allocator_4k_page)) by { page_ptr_roundtrip(); allocator_4k_pages_wf_at(krnl.pg_arr, krnl.allc_4k_mp, allocator_4k_page); };
+        assert(!krnl.allc_2m_mp.dom().contains(allocator_2m_page)) by { page_ptr_roundtrip(); allocator_2m_pages_wf_at(krnl.pg_arr, krnl.allc_2m_mp, allocator_2m_page); };
+        assert(!krnl.allc_1g_mp.dom().contains(allocator_1g_page)) by { page_ptr_roundtrip(); allocator_1g_pages_wf_at(krnl.pg_arr, krnl.allc_1g_mp, allocator_1g_page); };
+        assert(!krnl.sched_mp.dom().contains(child_scheduler_ptr)) by { page_ptr_roundtrip(); scheduler_pages_wf_at(krnl.sched_mp, krnl.pg_arr, child_scheduler_ptr); };
+        assert(!krnl.prc_mp.dom().contains(child_process_ptr)) by { page_ptr_roundtrip(); if krnl.prc_mp.dom().contains(child_process_ptr) { process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, child_process_ptr); } };
         assert(!krnl.pt_mp.dom().contains(child_pagetable_ptr)) by { page_ptr_roundtrip(); if krnl.pt_mp.dom().contains(child_pagetable_ptr) { pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pg_arr, child_pagetable_ptr); } };
         new_container_staged_pages_disjoint(krnl, lctx, &pages_4k, funding_pages, page_4k_lock_perms, funding_page_lock_perms, current_thread_ptr, parent_container_ptr, container_page, pcid_allocator_page);
         assert(new_container_moved_pages(
@@ -246,7 +246,10 @@ pub(super) fn commit_new_container(
             &&& krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable == source_pagetable_ptr
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container_ptr
-        }) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(container_cpu_wf); reveal(cpu_array_wf); reveal(cpu_set_perms_wf); };
+        }) by {
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_process_ptr);
+            cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id);
+        };
         new_container_publish_step_pre_from_k(&*krnl, &*lctx, caller_cpu_id, parent_process_ptr, current_thread_ptr, parent_container_ptr, record);
     }
     let ghost publish_before = steps.view();
@@ -310,7 +313,9 @@ pub(super) fn commit_new_container(
                 &&& endpoint_lock_perm->Some_0.lock_id() == krnl.ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id
             }) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
             assert(krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf()
-                && krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)) by { thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); reveal(thread_endpoint_ref_counter_wf); };
+                && krnl.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)) by {
+                thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_endpoint_ref_counter_wf_endpoint_at(krnl.thr_mp, krnl.ep_mp, endpoint_ptr, current_thread_ptr, endpoint_index);
+            };
         }
     }
     let ghost finish_before = steps.view();

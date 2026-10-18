@@ -120,7 +120,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
-        assert(krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
+        iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
     }
     let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), iommu_table_perm);
     assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };
@@ -129,7 +129,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
     let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
     let page_ptr = it.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap().addr;
     let page_index = page_ptr2page_index(page_ptr);
-    proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { reveal(page_iommu_table_wf); }; }
+    proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); }; }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
     proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
     let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));

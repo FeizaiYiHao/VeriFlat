@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_eof_transition_framing;
+use super::syscall_thread_exit_reclaim_spec::{thread_exit_tables_emptied_eof_transition_framing, thread_exit_detach_process_functions_eof_transition_framing};
 
 verus! {
 proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
@@ -63,5 +63,26 @@ pub(super) proof fn thread_exit_tables_emptied_eof(pre: KernelK, post: KernelK, 
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
+}
+
+/// Detaching one function of the exiting process keeps every invariant; the slot's IOTLB domain was already present.
+pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post: KernelK, bus: usize, device: usize, function: usize)
+    requires
+        pre.inv(),
+        thread_exit_detach_process_functions_eof_transition_framing(pre, post, bus, device, function),
+        pci_bdf_valid(bus, device, function),
+        post.irt.inv(),
+        post.iommu_tlb.inv(),
+    ensures
+        post.inv(),
+        pre.iommu_tlb.view().dom().contains(pci_bdf_did(bus, device, function)),
+{
+    reveal(thread_exit_detach_process_functions_eof_transition_framing);
+    assert(pre.iommu_tlb.view().dom().contains(pci_bdf_did(bus, device, function))) by { reveal(IommuTLB::inv); };
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
+    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); };
+    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(pre.irt.view(), post.irt.view(), pre.prc_mp, post.prc_mp, post.it_mp); };
+    assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!

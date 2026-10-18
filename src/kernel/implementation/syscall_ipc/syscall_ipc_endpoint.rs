@@ -5,9 +5,9 @@ use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_endpoint_eof::ipc_finish_endpoint_transit_eof;
+use super::syscall_ipc_endpoint_eof::{ipc_begin_endpoint_transfer_eof, ipc_copy_endpoint_reference_eof, ipc_finish_endpoint_transit_eof};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_endpoint_spec::ipc_finish_endpoint_transit_eof_transition_framing;
+use super::syscall_ipc_endpoint_spec::{ipc_begin_endpoint_transfer_eof_transition_framing, ipc_copy_endpoint_reference_eof_transition_framing, ipc_finish_endpoint_transit_eof_transition_framing};
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
@@ -91,7 +91,7 @@ pub(super) fn ipc_copy_endpoint_reference(
         assert({
             &&& !krnl.ep_mp.spec_index(payload_endpoint_ptr).view().owning_threads.view().contains((receiver_thread_ptr, target_endpoint_index))
             &&& krnl.ep_mp.spec_index(payload_endpoint_ptr).view().rf_counter < usize::MAX
-        }) by { reveal(thread_endpoint_ref_counter_wf); endpoint_ref_counter_bounded(&*krnl, payload_endpoint_ptr); };
+        }) by { thread_endpoint_ref_counter_wf_endpoint_at(krnl.thr_mp, krnl.ep_mp, payload_endpoint_ptr, receiver_thread_ptr, target_endpoint_index); endpoint_ref_counter_bounded(&*krnl, payload_endpoint_ptr); };
     }
     {
         let receiver_thread_mut = krnl.thr_mp.borrow_mut_typed(receiver_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(receiver_thread_lock_perm));
@@ -103,24 +103,10 @@ pub(super) fn ipc_copy_endpoint_reference(
     }
 
     proof {
-        assert(krnl.subsystems_inv()) by {
-            assert(thread_perms_wf(krnl.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-            assert(endpoint_perms_wf(krnl.ep_mp)) by { reveal(endpoint_perms_wf); };
-            reveal(KernelK::default_pagetable_wf);
+        assert(ipc_copy_endpoint_reference_eof_transition_framing(*old(krnl), *krnl, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr)) by {
+            reveal(ipc_copy_endpoint_reference_eof_transition_framing);
         };
-        assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
-        assert(krnl.process_management_inv()) by {
-            assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
-            assert(thread_caller_callee_wf(krnl.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(old(krnl).thr_mp, krnl.thr_mp); };
-            assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).ep_mp, krnl.ep_mp); };
-            assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
-            assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(old(krnl).thr_mp, krnl.thr_mp, old(krnl).ep_mp, krnl.ep_mp); };
-            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); };
-            assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.sched_mp); };
-            assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp); };
-            assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(old(krnl).prc_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp); };
-            assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).cpu_arr, krnl.cpu_arr); };
-        };
+        ipc_copy_endpoint_reference_eof(*old(krnl), *krnl, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr);
         assert({
             &&& typed_lock_maps_aligned(krnl, lctx)
             &&& krnl.thr_mp.lock_id_by_key(receiver_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(receiver_thread_ptr)
@@ -334,25 +320,10 @@ pub(super) fn ipc_begin_endpoint_transfer(
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
-        assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-        assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
-        assert(krnl.process_management_inv()) by {
-            assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
-            assert({
-                &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
-                &&& thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)
-                &&& thread_caller_callee_wf(krnl.thr_mp)
-            }) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(thread_caller_callee_wf); };
-            assert({
-                &&& container_scheduler_wf(krnl.ctn_mp, krnl.sched_mp)
-                &&& container_thread_wf(krnl.ctn_mp, krnl.thr_mp)
-                &&& process_thread_wf(krnl.prc_mp, krnl.thr_mp)
-                &&& thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)
-            }) by { reveal(container_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(thread_cpu_wf); };
-            assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(LinkedList::wf_map); reveal(thread_endpoint_queue_wf); };
-            assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(thread_endpoint_queue_wf); reveal(container_thread_endpoint_wf); };
-            assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
+        assert(ipc_begin_endpoint_transfer_eof_transition_framing(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, channel_endpoint_ptr)) by {
+            reveal(ipc_begin_endpoint_transfer_eof_transition_framing);
         };
+        ipc_begin_endpoint_transfer_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, channel_endpoint_ptr);
     }
 
     krnl.wunlock_endpoint(channel_endpoint_ptr, Tracked(&mut *lctx), Tracked(channel_endpoint_lock_perm));

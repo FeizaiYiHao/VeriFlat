@@ -51,4 +51,24 @@ pub open spec fn cpu_published_wf(published: CpuPublishedArray, cpus: CpuLockedA
             })
         }
 }
+
+pub proof fn cpu_published_wf_at(published: CpuPublishedArray, cpus: CpuLockedArray, needflush: PcidNeedFlushArray, cpu_id: CpuId)
+    requires
+        cpu_published_wf(published, cpus, needflush),
+        index_valid(NUM_CPUS, cpu_id),
+    ensures
+        ({
+            let hardware = cpus.spec_index(cpu_id).view().view().view();
+            let entry = needflush.spec_index(cpu_id, hardware.current_pcid);
+            &&& published[cpu_id as int].owner_cpu() == cpu_id
+            &&& published[cpu_id as int].inv()
+            &&& page_ptr_valid(hardware.current_cr3)
+            &&& pcid_valid(hardware.current_pcid)
+            &&& (published[cpu_id as int].view() != (hardware.current_cr3, hardware.current_pcid) ==> {
+                &&& cpus.spec_index(cpu_id).view().wlocked()
+                &&& entry.wlocked()
+                &&& entry.view_ghost() == Some(cpu_id)
+            })
+        }),
+{ reveal(cpu_published_wf); }
 }

@@ -77,7 +77,7 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
         && held_cpu_sets_unchanged(krnl.cpu_set_mp, krnl.cpu_set_mp, lctx) && held_pages_unchanged(krnl.pg_arr, krnl.pg_arr, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)
         && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx) && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> krnl.ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(t).view().owning_container)) by { reveal(container_thread_wf); };
-    assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { reveal(allocator_perms_wf); };
+    assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); };
     let pool = krnl.allc_4k_mp.borrow_global_pool_typed(allocator, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
     proof { pool.lemma_len_view(); }
     let pool_len = pool.len();
@@ -146,15 +146,15 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
                     ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
         decreases target - moved,
     {
-        assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { reveal(allocator_perms_wf); };
+        assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); };
         let pool = krnl.allc_4k_mp.borrow_global_pool_typed(allocator, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
         proof { pool.lemma_len_view(); }
         let (_, page_ptr) = pool.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_global_at(krnl.allc_4k_mp, allocator, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
         assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by {
-            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, page_ptr); reveal(page_array_wf);
-            reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid(); seq_skip_lemma::<PagePtr>();
+            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, page_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid(); seq_skip_lemma::<PagePtr>();
+            page_array_wf_at(krnl.pg_arr, page_index);
         };
         let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
         move_pool_page_to_cache(krnl, allocator, cpu_id, page_ptr, Tracked(&mut *lctx), cache_perm, pool_perm, Tracked(&page_perm));

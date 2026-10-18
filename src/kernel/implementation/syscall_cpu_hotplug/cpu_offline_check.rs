@@ -196,7 +196,8 @@ fn cpu_offline_commit(
         }) by {
             scheduler_perms_wf_map(krnl.sched_mp);
             scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); reveal(LinkedList::wf_value_list); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr);
-            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); reveal(cpu_offline_flags_wf); cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
+            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, flags_ptr);
+            cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
             scheduler_queue_len_bounded(&*krnl, scheduler_ptr, cpu_id);
         };
         if current_thread is Some { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread.unwrap()); }
@@ -222,7 +223,7 @@ fn cpu_offline_commit(
                 &&& krnl.cpu_published[cpu_id as int].inv()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == default_cr3
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
-            }) by { reveal(cpu_published_wf); reveal(cpu_array_wf); };
+            }) by { cpu_published_wf_at(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
     }
     let ghost idle_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
@@ -235,7 +236,7 @@ fn cpu_offline_commit(
     proof {
         lctx.update_lock_id(KernelObjId::Cpu(cpu_id), idle_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
         assert(cpu_went_off_eof_transition_framing(before, *krnl, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, *pt_regs)) by {
-            reveal(cpu_went_off_eof_transition_framing); reveal(scheduler_perms_wf); reveal(cpu_set_perms_wf); reveal(pcid_needflush_wf);
+            reveal(cpu_went_off_eof_transition_framing); scheduler_perms_wf_at(before.sched_mp, scheduler_ptr); cpu_set_perms_wf_at(before.cpu_set_mp, cpu_set_ptr); reveal(pcid_needflush_wf);
             assert(krnl.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(before.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(before, cpu_id))) by {
                 vstd::assert_maps_equal!(krnl.cpu_tlb.view(), cpu_tlb_after_cpu_went_off(before.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(before, cpu_id)), key => {});
             };

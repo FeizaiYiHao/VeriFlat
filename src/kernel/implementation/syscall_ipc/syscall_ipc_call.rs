@@ -194,7 +194,7 @@ verus! {
                 &&& before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(callee_node_addr)
                 &&& before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.map().spec_index(callee_node_addr) == callee_ptr
                 &&& endpoint_node_perm.addr() == callee_node_addr
-            }) by { reveal(thread_endpoint_queue_wf); endpoint_perms_wf_at(before_switch.ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
+            }) by { thread_endpoint_queue_wf_thread_at(before_switch.thr_mp, before_switch.ep_mp, callee_ptr); endpoint_perms_wf_at(before_switch.ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
         }
         let caller = krnl.thr_mp.borrow_mut_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
         caller.running_caller_to_waiting_reply(callee_ptr, caller_ptr, &*pt_regs);
@@ -383,7 +383,7 @@ verus! {
                 &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(caller_node_addr)
                 &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().spec_index(caller_node_addr) == caller_ptr
                 &&& endpoint_node_perm.addr() == caller_node_addr
-            }) by { reveal(thread_endpoint_queue_wf); endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
+            }) by { thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, caller_ptr); endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
         }
         let caller = krnl.thr_mp.borrow_mut_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
         caller.endpoint_caller_to_waiting_reply(caller_ptr, callee_ptr, Tracked(endpoint_node_perm));
@@ -1301,7 +1301,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(caller_ptr).view().state.is_reply_waiting()
                 &&& krnl.thr_mp.spec_index(caller_ptr).view().callee == Some(current_thread_ptr)
                 &&& krnl.thr_mp.spec_index(caller_ptr).view().owning_container == krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container
-            }) by { thread_caller_callee_wf_at(krnl.thr_mp, current_thread_ptr); reveal(thread_perms_wf); };
+            }) by { thread_caller_callee_wf_at(krnl.thr_mp, current_thread_ptr); };
             assert({
                 &&& ipc_recorded_caller(*old(krnl), cpu_id) == caller_ptr
                 &&& old(krnl).thr_mp.spec_index(caller_ptr).being_killed() == krnl.thr_mp.spec_index(caller_ptr).being_killed()

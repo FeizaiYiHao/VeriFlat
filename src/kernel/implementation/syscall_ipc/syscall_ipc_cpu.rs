@@ -540,7 +540,7 @@ verus! {
                 &&& source_cpu_set != target_cpu_set
                 &&& !lctx.cpu_set_lock_map().dom().contains(source_cpu_set)
                 &&& !lctx.cpu_set_lock_map().dom().contains(target_cpu_set)
-            }) by { reveal(container_cpu_set_wf); };
+            }) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, source_container); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, target_container); };
         }
         proof {
             assert({
@@ -588,7 +588,10 @@ verus! {
                     &&& !lctx.cpu_lock_map().dom().contains(transfer_cpu_id)
                     &&& !krnl.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
                 }
-            }) by { reveal(container_cpu_wf); };
+            }) by {
+                container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, source_container, transfer_cpu_id);
+                container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target_container, transfer_cpu_id);
+            };
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, caller_result);
         }
         let transfer_cpu_lock_perm = ipc_transfer_closed_cpu(

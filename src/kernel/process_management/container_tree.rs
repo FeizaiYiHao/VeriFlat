@@ -84,6 +84,27 @@ verus! {
             }
     }
 
+    pub proof fn container_root_wf_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr)
+        requires container_root_wf(root_container, container_perms)
+        ensures
+            c_ptr == root_container ==> container_perms.spec_index(c_ptr).view_rodata().view().depth == 0,
+            container_perms.dom().contains(c_ptr) && c_ptr != root_container ==> {
+                &&& container_perms.spec_index(c_ptr).view_rodata().view().depth != 0
+                &&& container_perms.spec_index(c_ptr).view().parent_linkedlist_node.is_init() == false
+                &&& container_perms.spec_index(c_ptr).view_rodata().view().parent is Some
+            },
+    { reveal(container_root_wf); }
+
+    pub proof fn container_children_parent_wf_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr, child_c_ptr: RwLockContainerPtr)
+        requires container_children_parent_wf(root_container, container_perms)
+        ensures
+            container_perms.dom().contains(c_ptr) && container_perms.spec_index(c_ptr).view().children.view().contains(child_c_ptr) ==> {
+                &&& container_perms.dom().contains(child_c_ptr)
+                &&& container_perms.spec_index(child_c_ptr).view_rodata().view().parent.unwrap() == c_ptr
+                &&& container_perms.spec_index(child_c_ptr).view_rodata().view().depth == container_perms.spec_index(c_ptr).view_rodata().view().depth + 1
+            },
+    { reveal(container_children_parent_wf); }
+
     #[verifier::opaque]
     pub open spec fn containers_linkedlist_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap) -> bool {
         &&& forall|c_ptr: RwLockContainerPtr|

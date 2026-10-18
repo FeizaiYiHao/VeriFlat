@@ -5,4 +5,5 @@ mod allocate_free_4k_wrappers;
 mod allocate_free_4k_page_pop_eof;
 mod allocate_free_4k_page_pop_postconditions;
 mod move_pool_page_to_cache;
+mod move_pool_page_to_cache_eof;
 mod refill_4k_cache_batch;

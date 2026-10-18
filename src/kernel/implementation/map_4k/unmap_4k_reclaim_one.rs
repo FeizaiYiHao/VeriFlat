@@ -126,7 +126,7 @@ pub fn reclaim_unmapped_4k_page(
     let l2 = pt.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
     let page_ptr = pt.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap().addr;
     let page_index = page_ptr2page_index(page_ptr);
-    proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { reveal(mapped_4k_page_pagetable_wf); }; }
+    proof { mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pg_arr, pagetable, va); }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
     proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
     let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));

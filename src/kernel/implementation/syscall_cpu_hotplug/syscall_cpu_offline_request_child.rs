@@ -79,7 +79,6 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         return RetValueType::ErrorContainerKilled;
     }
     let Tracked(container_lock_perm) = container_res.unwrap();
-    proof { assert(!krnl.ctn_mp.spec_index(caller_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); }; }
     let caller = krnl.ctn_mp.borrow_typed(caller_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
     if caller.zombie {
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
@@ -108,18 +107,18 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
             &&& krnl.ctn_mp.dom().contains(child_ptr)
             &&& krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().parent == Some(caller_ptr)
             &&& child_ptr != caller_ptr
-        }) by { reveal(container_children_parent_wf); reveal(container_root_wf); };
-        assert(page_ptr_2m_valid(child_ptr)) by { reveal(container_pages_wf); };
+        }) by { container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, caller_ptr, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, krnl.rt_ctn); };
+        assert(page_ptr_2m_valid(child_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, child_ptr); };
         assert({
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ptr)).owning_container.view() == child_ptr
-        }) by { reveal(container_cpu_offline_flags_wf); };
+        }) by { container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, child_ptr); };
     }
     let flags_ptr = child_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx));
     let child_ro = krnl.ctn_mp.borrow_rodata(child_ptr);
     let cpu_set_ptr = child_ro.borrow().cpu_set;
-    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); }; }
+    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(lctx));
     let cpu_set = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
     let result = if !cpu_set.owned_cpus.contains(target) { RetValueType::ErrorCpuOwnerMismatch }

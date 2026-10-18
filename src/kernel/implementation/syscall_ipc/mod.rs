@@ -15,6 +15,7 @@ mod syscall_ipc_pci;
 mod syscall_ipc_pci_spec;
 mod syscall_ipc_pci_eof;
 mod syscall_ipc_queue;
+mod syscall_ipc_queue_eof;
 pub mod syscall_ipc_spec;
 mod syscall_ipc_trace;
 mod syscall_ipc_transition;

@@ -365,7 +365,7 @@ verus! {
         let result = if transferred { RetValueType::Success } else { RetValueType::ErrorIpcPciOwnerMismatch };
         let ghost pci_transfer = if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None };
         proof {
-            assert(transferred == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains(bdf)) by { reveal(process_pci_function_ownership_wf); };
+            assert(transferred == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains(bdf)) by { process_pci_function_ownership_wf_at(krnl.irt.view(), krnl.prc_mp, bdf, sender_proc); };
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, result);
         }
         let wake_cpu = if peer_container == current_container { cpu_id } else { peer_last_cpu };

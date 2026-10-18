@@ -62,4 +62,17 @@ verus! {
                 &&& thread_map.spec_index(thread_ptr).view().container_depth == container_map.spec_index(container_ptr).view_rodata().view().depth
             }),
     { reveal(container_thread_wf); }
+
+    /// Thread `t_ptr`'s owning container exists and its uppertree is the thread's recorded upper-container sequence.
+    pub proof fn container_thread_wf_uppertree_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, t_ptr: RwLockThreadPtr)
+        requires
+            container_thread_wf(container_map, thread_map),
+            thread_map.dom().contains(t_ptr),
+        ensures
+            ({
+                let c_ptr = thread_map.spec_index(t_ptr).view().owning_container;
+                &&& container_map.dom().contains(c_ptr)
+                &&& container_map.spec_index(c_ptr).view_ghost().uppertree_seq == thread_map.spec_index(t_ptr).view().upper_container_seq
+            }),
+    { reveal(container_thread_wf); }
 }

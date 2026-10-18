@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_seqs_equal;
 use crate::*;
 
 verus! {
@@ -328,5 +329,28 @@ pub(super) proof fn eof_create_thread_inv(
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(container_cpu_wf);
     };
+}
+
+/// The create-thread summary yields the new-thread step fields; container scheduler injectivity comes from `pre`.
+pub(super) proof fn eof_create_thread_new_thread_fields(
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+    scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize, initial_regs: Registers,
+)
+    requires
+        pre.inv(),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        !pre.thr_mp.dom().contains(page_ptr),
+        pre.thr_mp.spec_index(staging_thread_ptr).view().quota_4k >= 1,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr,
+        create_thread_from_staged_page_eof_transition_framing(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr),
+        post.thr_mp.spec_index(page_ptr).view().trap_frame.is_some(),
+        *post.thr_mp.spec_index(page_ptr).view().trap_frame.get_some_0() == initial_regs,
+    ensures
+        kernel_new_thread_fields(&pre, &post, process_ptr, staging_thread_ptr, container_ptr, cpu_id, page_ptr, initial_regs, None, pre.thr_mp.spec_index(staging_thread_ptr).view().syscall_progress.view()),
+{
+    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(kernel_new_thread_fields); reveal(container_scheduler_wf);
+    assert_seqs_equal!(Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None::<RwLockEndpointPtr>) == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { None } else { None }), i => {});
 }
 }

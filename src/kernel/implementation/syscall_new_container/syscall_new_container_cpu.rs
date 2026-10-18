@@ -85,7 +85,7 @@ pub(super) fn transfer_new_container_cpu(
             &&& krnl.cpu_set_mp.dom().contains(parent_cpu_set)
             &&& krnl.cpu_set_mp.dom().contains(child_cpu_set)
             &&& parent_cpu_set != child_cpu_set
-        }) by { reveal(container_cpu_set_wf); };
+        }) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_container_ptr); };
         assert({
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container_ptr
@@ -98,7 +98,11 @@ pub(super) fn transfer_new_container_cpu(
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().wf()
             &&& !krnl.cpu_arr.spec_index(transfer_cpu_id).view().being_killed()
-        }) by { reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_array_wf); reveal(thread_cpu_wf); };
+        }) by {
+            cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, child_cpu_set);
+            container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_container_ptr, transfer_cpu_id);
+            cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, transfer_cpu_id);
+        };
     }
     let child_container_depth = krnl.ctn_mp.borrow_rodata(child_container_ptr).borrow().depth;
     let ghost locked_k = *krnl;

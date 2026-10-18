@@ -245,16 +245,16 @@ verus! {
         let current_thread_ptr = cpu_ref.current_thread().unwrap();
 
         proof {
-            assert(krnl.prc_mp.dom().contains(process_ptr)) by { reveal(process_cpu_wf); };
+            assert(krnl.prc_mp.dom().contains(process_ptr)) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
             process_perms_wf_at(krnl.prc_mp, process_ptr);
             assert({
                 &&& krnl.prc_mp.dom().contains(process_ptr)
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
-            }) by { reveal(process_cpu_wf); reveal(container_process_wf); };
+            }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
         }
 
         proof {
-            assert(krnl.thr_mp.dom().contains(current_thread_ptr)) by { reveal(thread_cpu_wf); };
+            assert(krnl.thr_mp.dom().contains(current_thread_ptr)) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
             process_perms_wf_at(krnl.prc_mp, process_ptr);
             assert({
                 &&& krnl.thr_mp.dom().contains(current_thread_ptr)
@@ -263,7 +263,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().container_depth
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
-            }) by { reveal(thread_cpu_wf); reveal(process_thread_wf); };
+            }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth == krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth
@@ -332,7 +332,7 @@ verus! {
             },
         };
 
-        proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { reveal(thread_endpoint_ref_counter_wf); }; }
+        proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); }; }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
         proof {
             assert({

@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing};
 use super::*;
 
 verus! {
@@ -208,8 +210,8 @@ pub(super) fn finish_staged_container_publish(
         Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm),
     );
     proof {
-        assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-        assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_page_invariant_fields(*old(krnl), *krnl); };
+        assert(finish_staged_container_publish_eof_transition_framing(*old(krnl), *krnl)) by { reveal(finish_staged_container_publish_eof_transition_framing); };
+        finish_staged_container_publish_eof(*old(krnl), *krnl);
     }
     krnl.wunlock_pcid_allocator(pcid_allocator_page, Tracked(&mut *lctx), Tracked(child_pcid_allocator_lock_perm));
     proof { kernel_page_then_pcid_allocator_unlocks_implies_u_eq(old(krnl), &*krnl); }
@@ -305,7 +307,7 @@ fn release_container_backing_page_locks(
         forall|index: PageIndex| #![trigger final(pages).spec_index(index)] index_valid(NUM_PAGES, index) && !set![indices.0, indices.1, indices.2, indices.3, indices.4, indices.5, indices.6, indices.7, indices.8, indices.9].contains(index)
             ==> final(pages).spec_index(index) == old(pages).spec_index(index),
 {
-    assert(pages.inv()) by { reveal(page_array_wf); };
+    proof { page_array_wf_map(*pages); }
     assert({
         &&& pages.spec_index(indices.0).view().wlocked_by(&*lctx)
         &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.0), KernelObjId::Page(indices.0))

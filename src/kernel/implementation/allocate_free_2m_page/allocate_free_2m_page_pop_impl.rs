@@ -98,7 +98,7 @@ verus! {
     {
         assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.inv()
             && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.inv() && krnl.thr_mp.perms_wf() && krnl.pg_arr.inv()
-        ) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); reveal(page_array_wf); };
+        ) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); page_array_wf_map(krnl.pg_arr); };
         let (node_addr, page_ptr) = match source {
             Some(cpu_id) => krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_2m_mp.borrow_global_pool_typed(alloc_ptr_2m, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
@@ -113,12 +113,10 @@ verus! {
                 assert({
                     &&& old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)
                     &&& krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }
-                }) by { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); };
+                }) by { container_allocator_free_2m_page_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, cpu_id, page_ptr); };
             } else {
                 assert(old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().view().contains(page_ptr)) by { reveal(LinkedList::wf_value_list); };
-                assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by {
-                    reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf);
-                };
+                assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, page_ptr); };
             }
         }
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
@@ -142,8 +140,8 @@ verus! {
         {
             let mut page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             assert(page.owning_container == container_ptr && node_addr == page.free_list_node_storage.addr()) by {
-                reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_wf); reveal(LinkedList::wf_map);
-                reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf);
+                container_allocator_free_2m_page_wf_at(old(krnl).allc_2m_mp, old(krnl).pg_arr, page_index);
+                container_allocator_wf_at(old(krnl).ctn_mp, old(krnl).allc_4k_mp, old(krnl).allc_2m_mp, old(krnl).allc_1g_mp, container_ptr); reveal(LinkedList::wf_map);
             };
             page.state = PageState::Owned2m { thread_ptr };
             page.free_list_node_storage.put(Tracked(node_perm));
@@ -158,7 +156,7 @@ verus! {
         }
         assert(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr) == false) by {
             if old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr) {
-                assert(old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned2m { thread_ptr }) by { reveal(thread_staged_pages_2m_wf); };
+                assert(old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned2m { thread_ptr }) by { thread_staged_pages_2m_wf_at(old(krnl).thr_mp, old(krnl).pg_arr, thread_ptr, page_ptr); };
             }
         };
         proof {

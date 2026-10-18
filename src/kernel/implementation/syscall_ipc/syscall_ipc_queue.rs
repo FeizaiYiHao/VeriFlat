@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_ipc_queue_eof::*;
 verus! {
 pub(super) fn ipc_block_thread_on_endpoint(
     thread_map: &mut ThreadLockedMap, Tracked(lctx): Tracked<&LocalContext>, thread_ptr: RwLockThreadPtr,
@@ -51,7 +53,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.block_on_endpoint(thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, pt_regs)
     };
-    proof { assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); }; }
+    proof { ipc_block_thread_on_endpoint_eof(*old(thread_map), *thread_map, thread_ptr); }
     ret
 }
 
@@ -110,7 +112,7 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thread_ptr, waiting_state, node_addr, node_perm);
     }
-    proof { assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf); }; assert(endpoint_map.lock_id_by_key(endpoint_ptr) == old(endpoint_map).lock_id_by_key(endpoint_ptr)) by { reveal(endpoint_perms_wf); }; }
+    proof { ipc_enqueue_endpoint_waiter_eof(*old(endpoint_map), *endpoint_map, endpoint_ptr); assert(endpoint_map.lock_id_by_key(endpoint_ptr) == old(endpoint_map).lock_id_by_key(endpoint_ptr)) by { lock_id_fields_eq_imply_eq(); }; }
 }
 
 pub(super) fn ipc_schedule_endpoint_waiter(
@@ -172,9 +174,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_scheduled(thread_ptr, wake_cpu, result, endpoint_node_perm)
     };
-    proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-    }
+    proof { ipc_schedule_endpoint_waiter_eof(*old(thread_map), *thread_map, thread_ptr); }
     ret
 }
 
@@ -221,9 +221,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedM
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_endpoint_transit(thread_ptr, endpoint_node_perm);
     }
-    proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-    }
+    proof { ipc_move_endpoint_waiter_to_transit_eof(*old(thread_map), *thread_map, thread_ptr); }
 }
 
 pub(super) fn ipc_schedule_endpoint_transit(
@@ -273,9 +271,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_transit_to_scheduled(thread_ptr, wake_cpu, result)
     };
-    proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-    }
+    proof { ipc_schedule_endpoint_transit_eof(*old(thread_map), *thread_map, thread_ptr); }
     ret
 }
 
@@ -333,7 +329,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(endpoint_map: &mut EndpointLockedMap, 
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thread_ptr)
     };
-    proof { assert(endpoint_perms_wf(*endpoint_map)) by { reveal(endpoint_perms_wf); }; }
+    proof { ipc_dequeue_endpoint_waiter_eof(*old(endpoint_map), *endpoint_map, endpoint_ptr); }
     ret
 }
 } // verus!

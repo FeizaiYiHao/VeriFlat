@@ -2,6 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 use super::free_quota_4k::return_free_quota_4k;
 use super::refund_unmap_4k_quota_trace::refund_unmap_4k_step_pre_from_k;
+#[cfg(verus_keep_ghost)]
+use super::refund_unmap_4k_quota_eof::refund_unmap_4k_quota_parent_facts;
 
 verus! {
 /// Returns `thread_ptr`'s pending 4K quota at `depth` to `owner`'s allocator and records the quota step.
@@ -88,7 +90,9 @@ fn refund_unmap_4k_quota_level(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, 
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
     proof {
         assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).allocator_quota_4k_lock_map(), allocator_ptr, TypedHeldLock { lock_id: krnl.allc_4k_mp.spec_index(allocator_ptr).quota.lock_id(), mode: TypedLockMode::Write }); };
-        assert(kernel_container_quota_4k_changed(&steps.snapshot_k(), &*krnl, owner, amount as int)) by { reveal(kernel_container_quota_4k_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(container_allocator_wf); };
+        assert(kernel_container_quota_4k_changed(&steps.snapshot_k(), &*krnl, owner, amount as int)) by {
+            reveal(kernel_container_quota_4k_changed); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+        };
         krnl.kernel_step_boundary_container_quota_4k_changed(&mut *lctx, &mut *steps, owner, amount as int, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container);
         assert(krnl.ctn_mp.dom().contains(owner) && (depth > 0 ==> krnl.ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth - 1))
             && krnl.ctn_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth - 1)).view_rodata().view().depth == depth - 1)) by {
@@ -192,9 +196,9 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
     let mut owner = thread.owning_container;
     assert(held_containers_unchanged(krnl.ctn_mp, krnl.ctn_mp, lctx) && held_processes_unchanged(krnl.prc_mp, krnl.prc_mp, lctx) && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx)
         && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx) && held_pages_unchanged(krnl.pg_arr, krnl.pg_arr, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
-    assert(krnl.ctn_mp.dom().contains(owner)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
-    assert(krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == thread_depth) by { reveal(container_thread_wf); };
-    assert(thread_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == thread_depth && thread_depth <= MAX_CONTAINER_TREE_DEPTH) by {
+        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, owner);
+    };
     let mut remaining = thread_depth + 1;
     while remaining > 0
         invariant
@@ -290,8 +294,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         let allocator_ptr = ro.allocator_ptr_4k;
         assert(depth > 0 ==> parent is Some && krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1
             && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == parent.unwrap()) by {
-            reveal(Seq::contains); reveal(container_thread_wf); reveal(container_root_wf); reveal(container_children_depth_wf); reveal(container_uppertree_seq_wf);
-            reveal(container_perms_wf); reveal(container_tree_fields_wf);
+            if depth > 0 { refund_unmap_4k_quota_parent_facts(*krnl, thread_ptr, owner, depth); }
         };
         let counter = if depth == thread_depth { *direct } else { indirect[depth] };
         if counter != 0 {

@@ -1,8 +1,7 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::create_thread_from_staged_page_eof::{create_thread_from_staged_page_eof_transition_framing, eof_create_thread_inv};
+use super::create_thread_from_staged_page_eof::{create_thread_from_staged_page_eof_transition_framing, eof_create_thread_inv, eof_create_thread_new_thread_fields};
 verus! {
 /// Consume a staged page to create a scheduled thread in `process_ptr`.
 pub fn create_thread_from_staged_page_merged(
@@ -207,13 +206,7 @@ pub fn create_thread_from_staged_page_merged(
             *old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr,
         )) by { reveal(create_thread_from_staged_page_eof_transition_framing); };
         eof_create_thread_inv(*old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr);
-    }
-    proof {
-        assert_seqs_equal!(Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None::<RwLockEndpointPtr>) == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { None } else { None }), i => {});
-        assert(kernel_new_thread_fields(
-            old(krnl), krnl, process_ptr, staging_thread_ptr, container_ptr, cpu_id, page_ptr, *initial_regs, None,
-            old(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress.view(),
-        )) by { reveal(kernel_new_thread_fields); reveal(container_scheduler_wf); };
+        eof_create_thread_new_thread_fields(*old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr, *initial_regs);
     }
     (page_ptr, Tracked(thread_perm))
 }

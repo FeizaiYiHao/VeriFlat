@@ -373,6 +373,7 @@ verus! {
             typed_lock_map_contains_mode(final(lctx).allocator_global_pool_4k_lock_map(), alloc_ptr_4k, TypedLockMode::Write),
     {
         let tracked mut cache_perms: Map<CpuId, LockPerm> = Map::tracked_empty();
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
 
         let mut cpu: CpuId = 0;
         while cpu < NUM_CPUS
@@ -383,6 +384,7 @@ verus! {
                 *krnl == (KernelK { allc_4k_mp: krnl.allc_4k_mp, ..*old(krnl) }),
                 krnl.allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, alloc_ptr_4k),
                 krnl.allc_4k_mp.spec_index(alloc_ptr_4k).quota == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).quota,
+                kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.cpu_id() == old(lctx).cpu_id(),
                 lctx.kernel_view_locking_state() is Acquire,
@@ -435,6 +437,7 @@ verus! {
                     vstd::assert_seqs_equal!(allocator_cache_key_prefix_seq(alloc_ptr_4k, (cpu + 1) as CpuId), allocator_cache_key_prefix_seq(alloc_ptr_4k, cpu).push((alloc_ptr_4k, cpu)));
                     allocator_cache_key_prefix_seq(alloc_ptr_4k, cpu).lemma_push_to_set_commute((alloc_ptr_4k, cpu));
                 };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 cache_perms.tracked_insert(cpu, cache_perm);
             }
             cpu = cpu + 1;
@@ -443,7 +446,7 @@ verus! {
         let Tracked(pool_perm) = krnl.wlock_allocator_global_pool_4k(alloc_ptr_4k, Tracked(&mut *lctx));
         proof { assert(cache_perms_match_lctx(krnl.allc_4k_mp, alloc_ptr_4k, &*lctx, &cache_perms)) by { reveal(cache_perms_match_lctx); }; }
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         (Tracked(cache_perms), Tracked(pool_perm))
     }
 
@@ -489,6 +492,7 @@ verus! {
             allocator_caches_unlocked(final(krnl).allc_4k_mp, alloc_ptr_4k),
     {
         let tracked mut perms = cache_perms;
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         assert(cache_perms_match_lctx_from(krnl.allc_4k_mp, alloc_ptr_4k, &*lctx, &perms, 0)) by { reveal(cache_perms_match_lctx); reveal(cache_perms_match_lctx_from); };
         let mut cpu: CpuId = 0;
         while cpu < NUM_CPUS
@@ -500,6 +504,7 @@ verus! {
                 krnl.allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, alloc_ptr_4k),
                 krnl.allc_4k_mp.spec_index(alloc_ptr_4k).quota == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).quota,
                 krnl.allc_4k_mp.spec_index(alloc_ptr_4k).global_pool == old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool,
+                kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl),
                 lctx.thread_id() == old(lctx).thread_id(),
                 lctx.cpu_id() == old(lctx).cpu_id(),
                 0 <= cpu <= NUM_CPUS,
@@ -547,6 +552,7 @@ verus! {
             let tracked cache_perm = perms.tracked_remove(cpu);
             krnl.wunlock_allocator_cache_4k(alloc_ptr_4k, cpu, Tracked(&mut *lctx), Tracked(cache_perm));
             proof {
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                 assert(allocator_cache_key_prefix(alloc_ptr_4k, (cpu + 1) as CpuId) =~= allocator_cache_key_prefix(alloc_ptr_4k, cpu).insert((alloc_ptr_4k, cpu))) by {
                     vstd::assert_seqs_equal!(allocator_cache_key_prefix_seq(alloc_ptr_4k, (cpu + 1) as CpuId), allocator_cache_key_prefix_seq(alloc_ptr_4k, cpu).push((alloc_ptr_4k, cpu)));
                     allocator_cache_key_prefix_seq(alloc_ptr_4k, cpu).lemma_push_to_set_commute((alloc_ptr_4k, cpu));
@@ -559,7 +565,6 @@ verus! {
             assert(allocator_caches_unlocked(krnl.allc_4k_mp, alloc_ptr_4k)) by { reveal(allocator_caches_unlocked); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
         }
     }
 

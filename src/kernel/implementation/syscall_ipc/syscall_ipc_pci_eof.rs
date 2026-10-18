@@ -6,6 +6,7 @@ use super::syscall_ipc_pci_spec::ipc_pci_rendezvous_eof_transition_framing;
 use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 
 verus! {
+
 #[verifier::spinoff_prover]
 proof fn ipc_pci_rendezvous_eof_process_management_inv(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,

@@ -30,6 +30,14 @@ pub proof fn iommu_table_perms_wf_at(iommu_table_map: IommuTableLockedMap, iommu
         iommu_table_map.spec_index(iommu_table_ptr).view().inv(),
 { reveal(iommu_table_perms_wf); }
 
+/// IOMMU table `iommu_table` maps no kernel L4 entries.
+pub proof fn iommu_table_perms_wf_kernel_l4_end_at(iommu_table_map: IommuTableLockedMap, iommu_table: RwLockPageTableRoot)
+    requires
+        iommu_table_perms_wf(iommu_table_map),
+        iommu_table_map.dom().contains(iommu_table),
+    ensures iommu_table_map.spec_index(iommu_table).view().kernel_l4_end == 0,
+{ reveal(iommu_table_perms_wf); reveal(PageTable::kernel_entries_wf); }
+
 pub proof fn iommu_table_perms_wf_map(iommu_table_map: IommuTableLockedMap)
     requires iommu_table_perms_wf(iommu_table_map)
     ensures iommu_table_map.perms_wf()

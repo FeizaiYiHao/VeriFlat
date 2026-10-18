@@ -15,4 +15,11 @@ pub open spec fn scheduler_pages_wf(scheduler_map: SchedulerUnLockedMap, page_ar
         scheduler_map.dom().contains(scheduler_ptr)
             ==> page_ptr_valid(scheduler_ptr) && (page_array.spec_index(page_ptr2page_index(scheduler_ptr)).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsScheduler })
 }
+
+pub proof fn scheduler_pages_wf_at(scheduler_map: SchedulerUnLockedMap, page_array: PageLockedArray, scheduler_ptr: RwLockSchedulerPtr)
+    requires scheduler_pages_wf(scheduler_map, page_array)
+    ensures
+        scheduler_map.dom().contains(scheduler_ptr)
+            ==> page_ptr_valid(scheduler_ptr) && (page_array.spec_index(page_ptr2page_index(scheduler_ptr)).view().view().state matches PageState::Allocated4k { state: Allocated4KPageState::AsScheduler }),
+{ reveal(scheduler_pages_wf); }
 }

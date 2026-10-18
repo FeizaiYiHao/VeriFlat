@@ -77,7 +77,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
         return RetValueType::ErrorContainerKilled;
     }
     let Tracked(container_lock_perm) = container_res.unwrap();
-    proof { assert(!krnl.ctn_mp.spec_index(caller_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); }; }
+    proof { assert(!krnl.ctn_mp.spec_index(caller_ptr).view_ghost().owned_processes.view().is_empty()); }
     let caller = krnl.ctn_mp.borrow_typed(caller_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
     proof { caller.children.lemma_len_view(); }
     if caller.zombie || child >= caller.children.len() {
@@ -97,7 +97,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
             &&& krnl.ctn_mp.dom().contains(child_ptr)
             &&& krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().parent == Some(caller_ptr)
             &&& child_ptr != caller_ptr
-        }) by { reveal(container_children_parent_wf); reveal(container_root_wf); };
+        }) by { container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, caller_ptr, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, krnl.rt_ctn); };
     }
     let child_ro = krnl.ctn_mp.borrow_rodata(child_ptr);
     let cpu_set_ptr = child_ro.borrow().cpu_set;

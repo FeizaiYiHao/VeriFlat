@@ -129,15 +129,15 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
                     ==> pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pt, krnl.pt_mp.spec_index(pt).view()),
         decreases ALLOCATOR_BATCH - moved,
     {
-        assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { reveal(allocator_perms_wf); };
+        assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); };
         let cache = krnl.allc_4k_mp.borrow_cache_typed(allocator, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), cache_perm);
         assert(cache.linked_list.len() > 0) by { cache.linked_list.lemma_len_view(); };
         let (_, page_ptr) = cache.linked_list.peek_head();
-        assert(page_ptr_valid(page_ptr)) by { reveal(allocator_free_page_ptrs_wf); };
+        assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_4k_mp, allocator, cpu_id, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
         assert(page_ptr_valid(page_ptr) && index_valid(NUM_PAGES, page_index) && krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by {
-            reveal(allocator_free_page_ptrs_wf); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(page_array_wf);
-            reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid();
+            container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cpu_id, page_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid();
+            page_array_wf_at(krnl.pg_arr, page_index);
         };
         let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
         move_cache_page_to_pool(krnl, allocator, cpu_id, page_ptr, Tracked(&mut *lctx), cache_perm, pool_perm, Tracked(&page_perm));

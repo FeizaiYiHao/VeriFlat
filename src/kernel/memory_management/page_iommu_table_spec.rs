@@ -47,4 +47,21 @@ verus! {
                 }
             }
     }
+
+    /// The 4K leaf `iova` of IOMMU table `it_ptr` names a `Mapped4k` page that records the mapping.
+    pub proof fn page_iommu_table_wf_table_at(
+        container_map: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, page_array: PageLockedArray, it_ptr: RwLockPageTableRoot, iova: VAddr,
+    )
+        requires
+            page_iommu_table_wf(container_map, process_map, iommu_table_map, page_array),
+            iommu_table_map.dom().contains(it_ptr),
+            iommu_table_map.spec_index(it_ptr).view().mapping_4k().contains_key(iova),
+        ensures
+            ({
+                let p_i = page_ptr2page_index(iommu_table_map.spec_index(it_ptr).view().mapping_4k().spec_index(iova).addr);
+                &&& page_array.spec_index(p_i).view().view().state == PageState::Mapped4k
+                &&& page_array.spec_index(p_i).view().view().iommu_mappings().contains((it_ptr, iova))
+                &&& iommu_table_map.spec_index(it_ptr).view().mapping_4k().spec_index(iova).owning_container.view() == page_array.spec_index(p_i).view().view().owning_container
+            }),
+    { reveal(page_iommu_table_wf); }
 }

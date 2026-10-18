@@ -3,6 +3,10 @@ use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_reclaim_release::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_thread_exit_reclaim_spec::thread_exit_detach_process_functions_eof_transition_framing;
+#[cfg(verus_keep_ghost)]
+use super::syscall_thread_exit_reclaim_eof::thread_exit_detach_process_functions_eof;
 
 verus! {
 /// Reclaim the user memory of the running last thread's process inside its exit: write-lock the process's page table,
@@ -409,14 +413,10 @@ fn thread_exit_detach_process_functions(krnl: &mut KernelK, process_ptr: RwLockP
         let attached = krnl.irt.borrow(Tracked(irt_lock_perm)).is_attached(bus, device, function);
         if owner == process_ptr && attached {
             let ghost detach_k = *krnl;
-            proof { assert(detach_k.iommu_tlb.view().dom().contains(pci_bdf_did(bus, device, function))) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf_spec); }; }
             iommu_root_table_detach(&mut krnl.irt, &mut krnl.iommu_tlb, bus, device, function, Tracked(lctx), Tracked(irt_lock_perm));
             proof {
-                assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
-                assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-                assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-                assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(detach_k.irt.view(), krnl.irt.view(), detach_k.prc_mp, krnl.prc_mp, krnl.it_mp); };
-                assert(krnl.inv()) by { reveal(KernelK::default_pagetable_wf); };
+                assert(thread_exit_detach_process_functions_eof_transition_framing(detach_k, *krnl, bus, device, function)) by { reveal(thread_exit_detach_process_functions_eof_transition_framing); };
+                thread_exit_detach_process_functions_eof(detach_k, *krnl, bus, device, function);
             }
         }
         if function + 1 < PCI_FUNCTION_COUNT {

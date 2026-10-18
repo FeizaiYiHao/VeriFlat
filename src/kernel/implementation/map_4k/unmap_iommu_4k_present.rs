@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::unmap_iommu_4k_present_eof::*;
 
 verus! {
 /// Clears the present bit of one 4K leaf of a write-locked IOMMU table. No attached function translates through a
@@ -48,7 +50,7 @@ pub fn clear_iommu_4k_mapping_present(
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
-        assert(krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
+        iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
     }
     let l1_ptr;
     {
@@ -62,18 +64,8 @@ pub fn clear_iommu_4k_mapping_present(
     iommu_table_map_clear_4k_present(&mut krnl.it_mp, iommu_table, indices, l1_ptr, Tracked(&mut *lctx), iommu_table_perm);
     proof {
         old(krnl).it_mp.typed_lock_map_aligned_write_at(old(lctx).iommu_table_lock_map(), old(lctx).thread_id(), iommu_table);
-        assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-        assert(krnl.memory_management_inv()) by {
-            assert(pagetable_pages_wf(krnl.it_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); };
-            assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); };
-            assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
-            assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-            assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
-            assert(process_kernel_pages_owner_wf(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(krnl), *krnl); };
-        };
-        assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
-        assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(iommu_table_lock_wf); };
-        assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_table_lock_wf); };
+        assert(clear_iommu_4k_mapping_present_eof_transition_framing(*old(krnl), *krnl, iommu_table, spec_index2va(indices))) by { reveal(clear_iommu_4k_mapping_present_eof_transition_framing); };
+        clear_iommu_4k_mapping_present_eof(*old(krnl), *krnl, iommu_table, spec_index2va(indices));
     }
 }
 }

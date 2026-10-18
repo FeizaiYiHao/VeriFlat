@@ -2,6 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
+#[cfg(verus_keep_ghost)]
+use super::cpu_offline_request_eof::{cpu_offline_request_eof, cpu_offline_request_eof_transition_framing};
 
 verus! {
 /// Asks `target`, a cpu of the caller's container, to go Off at its next schedule check: the caller's
@@ -107,11 +109,11 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         }
         return result;
     }
+    let ghost request_pre = *krnl;
     krnl.cpu_offline_mp.set_flag(flags_ptr, target, true, Tracked(&*lctx), Tracked(&flag_lock_perm));
     proof {
-        assert(cpu_offline_flags_wf(krnl.cpu_offline_mp, krnl.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
-        assert(container_cpu_offline_flags_wf(krnl.ctn_mp, krnl.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
-        assert(krnl.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+        assert(cpu_offline_request_eof_transition_framing(request_pre, *krnl, flags_ptr, target, container_ptr)) by { reveal(cpu_offline_request_eof_transition_framing); };
+        cpu_offline_request_eof(request_pre, *krnl, flags_ptr, target, container_ptr);
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
     }
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));

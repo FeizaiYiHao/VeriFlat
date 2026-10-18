@@ -4,11 +4,9 @@ use super::syscall_ipc_queue::{ipc_block_thread_on_endpoint, ipc_dequeue_endpoin
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
+use super::syscall_ipc_transition_spec::{ipc_block_current_eof_transition_framing, ipc_schedule_waiting_peer_eof_transition_framing};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_transition_spec::ipc_schedule_waiting_peer_eof_transition_framing;
-#[cfg(verus_keep_ghost)]
-use super::syscall_ipc_transition_eof::ipc_schedule_waiting_peer_eof;
+use super::syscall_ipc_transition_eof::{ipc_block_current_eof, ipc_schedule_waiting_peer_eof, ipc_schedule_waiting_peer_eof_rendezvous_fields};
 verus! {
     #[verifier::spinoff_prover]
     pub(super) fn ipc_block_current(
@@ -119,6 +117,7 @@ verus! {
         let tracked endpoint_lock_perm = endpoint_lock_perm.get();
 
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
+        let ghost locked_k = *krnl;
         let ghost old_current_thread_lock_id = krnl.thr_mp.lock_id_by_key(current_thread_ptr);
         proof {
             assert({
@@ -143,40 +142,10 @@ verus! {
         proof {
             lctx.update_lock_id(KernelObjId::Thread(current_thread_ptr), old_current_thread_lock_id, krnl.thr_mp.lock_id_by_key(current_thread_ptr));
             lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
-            assert(krnl.subsystems_inv()) by {
-                assert({
-                    &&& cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())
-                    &&& thread_perms_wf(krnl.thr_mp)
-                    &&& endpoint_perms_wf(krnl.ep_mp)
-                }) by { reveal(cpu_array_wf); reveal(thread_perms_wf); };
-                reveal(KernelK::default_pagetable_wf); reveal(cpu_offline_flags_wf);
+            assert(ipc_block_current_eof_transition_framing(locked_k, *krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, default_cr3)) by {
+                reveal(ipc_block_current_eof_transition_framing);
             };
-            assert(krnl.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(krnl), *krnl); };
-            assert(krnl.process_management_inv()) by {
-                assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
-                assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
-                assert({
-                    &&& container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)
-                    &&& thread_caller_callee_wf(krnl.thr_mp)
-                }) by { reveal(container_endpoint_wf); reveal(thread_caller_callee_wf); };
-                assert({
-                    &&& container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)
-                    &&& container_thread_wf(krnl.ctn_mp, krnl.thr_mp)
-                    &&& process_thread_wf(krnl.prc_mp, krnl.thr_mp)
-                }) by { reveal(container_thread_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); };
-                assert({
-                    &&& container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)
-                    &&& process_cpu_wf(krnl.prc_mp, krnl.cpu_arr)
-                    &&& thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)
-                }) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-                assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { seq_push_lemma::<RwLockThreadPtr>(); reveal(thread_endpoint_queue_wf); };
-                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_thread_endpoint_wf); };
-            };
-            assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
-                reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-                reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-            };
-            assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+            ipc_block_current_eof(locked_k, *krnl, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, default_cr3);
         }
 
         krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -410,6 +379,10 @@ verus! {
                 reveal(ipc_schedule_waiting_peer_eof_transition_framing);
             };
             ipc_schedule_waiting_peer_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, result, lctx.thread_id());
+            if let Some((endpoint_index, waiting_state, _)) = u_step {
+                ipc_schedule_waiting_peer_eof_rendezvous_fields(steps.snapshot_k(), *old(krnl), *krnl, cpu_id, process_ptr, current_thread_ptr, peer_thread_ptr, endpoint_ptr, endpoint_index, waiting_state,
+                    peer_scheduler_ptr, wake_cpu, result, lctx.thread_id());
+            }
         }
         krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
         krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
@@ -434,10 +407,9 @@ verus! {
             match u_step {
                 Some((endpoint_index, waiting_state, payload)) => {
                     assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, result, None, None)) by {
-                        running_thread_not_in_endpoint_queue(old(krnl), endpoint_ptr, current_thread_ptr); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, current_thread_ptr);
-                        reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-                        reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-                        reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
+                        broadcast use kernel_process_nonlock_fields_unchanged_transitive;
+                        reveal(kernel_ipc_rendezvous_fields); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+                        reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
                     };
                     steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, result, None, None, payload, false);
                     assert({

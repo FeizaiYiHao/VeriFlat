@@ -30,6 +30,7 @@ pub mod syscall_cpu_hotplug;
 pub mod syscall_pci;
 pub mod locker_unlocker;
 pub mod attach_endpoint_reference_and_unlock;
+mod attach_endpoint_reference_and_unlock_eof;
 pub mod create_thread_from_staged_page;
 mod create_thread_from_staged_page_eof;
 pub mod create_endpoint_from_staged_page;

@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::cpu_online_resume_eof::{cpu_online_resume_eof, cpu_online_resume_eof_transition_framing};
 
 verus! {
 pub enum OnlineResumeResult {
@@ -67,12 +69,8 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
-        assert(krnl.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
-        assert(krnl.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-        assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
-            reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        };
-        assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+        assert(cpu_online_resume_eof_transition_framing(locked, *krnl, cpu_id)) by { reveal(cpu_online_resume_eof_transition_framing); };
+        cpu_online_resume_eof(locked, *krnl, cpu_id);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&locked, &*krnl)) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
         };

@@ -97,7 +97,7 @@ verus! {
     {
         assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf() && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.inv()
             && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.inv() && krnl.thr_mp.perms_wf() && krnl.pg_arr.inv()
-        ) by { reveal(allocator_perms_wf); reveal(thread_perms_wf); reveal(page_array_wf); };
+        ) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); thread_perms_wf_map(krnl.thr_mp); page_array_wf_map(krnl.pg_arr); };
         let (node_addr, page_ptr) = match source {
             Some(cpu_id) => krnl.allc_4k_mp.borrow_cache_typed(alloc_ptr_4k, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_4k_mp.borrow_global_pool_typed(alloc_ptr_4k, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
@@ -139,7 +139,8 @@ verus! {
         {
             let mut page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             assert(page.owning_container == container_ptr && node_addr == page.free_list_node_storage.addr()) by {
-                container_allocator_free_4k_page_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, page_index); reveal(container_allocator_wf); reveal(LinkedList::wf_map);
+                container_allocator_free_4k_page_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, page_index);
+                container_allocator_wf_at(old(krnl).ctn_mp, old(krnl).allc_4k_mp, old(krnl).allc_2m_mp, old(krnl).allc_1g_mp, container_ptr); reveal(LinkedList::wf_map);
             };
             page.state = PageState::Owned4k { thread_ptr };
             page.free_list_node_storage.put(Tracked(node_perm));
@@ -154,7 +155,7 @@ verus! {
         }
         assert(old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) == false) by {
             if old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr) {
-                assert(old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k { thread_ptr }) by { reveal(thread_staged_pages_4k_wf); };
+                assert(old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k { thread_ptr }) by { thread_staged_pages_4k_wf_at(old(krnl).thr_mp, old(krnl).pg_arr, thread_ptr, page_ptr); };
             }
         };
         proof {

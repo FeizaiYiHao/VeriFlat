@@ -23,6 +23,16 @@ pub open spec fn thread_staged_pages_4k_wf(thread_map: ThreadLockedMap, page_arr
             ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k{thread_ptr: p_ptr}
 }
 
+/// A page staged in thread `thread_ptr`'s 4k temp cache is a valid page owned by that thread.
+pub proof fn thread_staged_pages_4k_wf_at(thread_map: ThreadLockedMap, page_array: PageLockedArray, thread_ptr: RwLockThreadPtr, page_ptr: PagePtr)
+    requires
+        thread_staged_pages_4k_wf(thread_map, page_array),
+        thread_map.dom().contains(thread_ptr),
+    ensures
+        thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
+            ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr }),
+{ reveal(thread_staged_pages_4k_wf); }
+
 // ---------- 2m ----------
 
 pub open spec fn thread_staged_pages_2m_forward_wf(thread_map: ThreadLockedMap, page_array: PageLockedArray) -> bool {
@@ -47,6 +57,16 @@ pub open spec fn thread_staged_pages_2m_wf(thread_map: ThreadLockedMap, page_arr
     &&& thread_staged_pages_2m_forward_wf(thread_map, page_array)
     &&& thread_staged_pages_2m_backward_wf(thread_map, page_array)
 }
+
+/// A page staged in thread `thread_ptr`'s 2m temp cache is a valid page owned by that thread.
+pub proof fn thread_staged_pages_2m_wf_at(thread_map: ThreadLockedMap, page_array: PageLockedArray, thread_ptr: RwLockThreadPtr, page_ptr: PagePtr)
+    requires
+        thread_staged_pages_2m_wf(thread_map, page_array),
+        thread_map.dom().contains(thread_ptr),
+    ensures
+        thread_map.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
+            ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned2m { thread_ptr }),
+{ reveal(thread_staged_pages_2m_wf); }
 
 // ---------- 1g ----------
 

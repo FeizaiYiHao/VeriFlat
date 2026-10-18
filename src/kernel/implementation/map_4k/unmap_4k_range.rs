@@ -237,7 +237,7 @@ pub fn unmap_4k_range(
         };
     }
     assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
-    assert(krnl.thr_mp.spec_index(thread_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { reveal(container_thread_wf); reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(krnl.thr_mp.spec_index(thread_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, krnl.thr_mp.spec_index(thread_ptr).view().owning_container); };
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
     i = 0;
@@ -338,7 +338,7 @@ pub fn unmap_4k_range(
     let ghost refund_progress = krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { reveal(thread_perms_wf); };
+        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
         assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id)) by {
             unmap_4k_range_steps_from_refund(&*steps, refund_before, old(steps).view().len() as int, cpu_id, thread_ptr, process_ptr, container_ptr, refund_progress);
         };

@@ -73,6 +73,21 @@ verus! {
         &&& allocator_1g_pages_backward_wf(page_array, allocator_1g_map)
     }
 
+    pub proof fn allocator_4k_pages_wf_at(page_array: PageLockedArray, allocator_4k_map: PageAllocatorUnLockedMap, a_ptr: RwLockPageAllocatorPtr)
+        requires allocator_4k_pages_wf(page_array, allocator_4k_map)
+        ensures allocator_4k_map.dom().contains(a_ptr) ==> page_ptr_valid(a_ptr) && page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As4KAllocator},
+    { reveal(allocator_4k_pages_wf); }
+
+    pub proof fn allocator_2m_pages_wf_at(page_array: PageLockedArray, allocator_2m_map: PageAllocatorUnLockedMap, a_ptr: RwLockPageAllocatorPtr)
+        requires allocator_2m_pages_wf(page_array, allocator_2m_map)
+        ensures allocator_2m_map.dom().contains(a_ptr) ==> page_ptr_valid(a_ptr) && page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As2MAllocator},
+    { reveal(allocator_2m_pages_wf); }
+
+    pub proof fn allocator_1g_pages_wf_at(page_array: PageLockedArray, allocator_1g_map: PageAllocatorUnLockedMap, a_ptr: RwLockPageAllocatorPtr)
+        requires allocator_1g_pages_wf(page_array, allocator_1g_map)
+        ensures allocator_1g_map.dom().contains(a_ptr) ==> page_ptr_valid(a_ptr) && page_array.spec_index(page_ptr2page_index(a_ptr)).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::As1GAllocator},
+    { reveal(allocator_1g_pages_wf); }
+
     pub open spec fn container_allocator_4k_forward_wf(container_map: ContainerLockedMap, allocator_4k_map: PageAllocatorUnLockedMap) -> bool {
         forall|alloc_ptr:RwLockPageAllocatorPtr,|
             #![trigger allocator_4k_map.spec_index(alloc_ptr).owning_container]
@@ -349,6 +364,63 @@ verus! {
         &&& container_allocator_global_free_2m_page_wf(allocator_2m_map, page_array)
         &&& container_allocator_cpu_cache_free_2m_page_wf(allocator_2m_map, page_array)
     }
+
+    /// A free 2m page `page_index` sits, under its free-list node address, in the global pool or CPU cache that its state names.
+    pub proof fn container_allocator_free_2m_page_wf_at(allocator_2m_map: PageAllocatorUnLockedMap, page_array: PageLockedArray, page_index: PageIndex)
+        requires
+            container_allocator_free_2m_page_wf(allocator_2m_map, page_array),
+            index_valid(NUM_PAGES, page_index),
+        ensures
+            ({
+                let page = page_array.spec_index(page_index).view().view();
+                let allocator_ptr_2m = page.state->Free2m_allocator_ptr.view();
+                (page.state matches PageState::Free2m { allocator_ptr: _, state: FreePageAllocatorState::GlobalList }) ==> {
+                    &&& allocator_2m_map.dom().contains(allocator_ptr_2m)
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).owning_container == page.owning_container
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).global_pool.view().view().contains(page_index2page_ptr(page_index))
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).global_pool.view().map().dom().contains(page.free_list_node_storage.addr())
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).global_pool.view().map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(page_index)
+                }
+            }),
+            ({
+                let page = page_array.spec_index(page_index).view().view();
+                let allocator_ptr_2m = page.state->Free2m_allocator_ptr.view();
+                let cpu_id = page.state->Free2m_state->PreCpuCache_cpu_id;
+                (page.state matches PageState::Free2m { allocator_ptr: _, state: FreePageAllocatorState::PreCpuCache { cpu_id } }) ==> {
+                    &&& index_valid(NUM_CPUS, cpu_id)
+                    &&& allocator_2m_map.dom().contains(allocator_ptr_2m)
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).owning_container == page.owning_container
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(page_index))
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(page.free_list_node_storage.addr())
+                    &&& allocator_2m_map.spec_index(allocator_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(page.free_list_node_storage.addr()) == page_index2page_ptr(page_index)
+                }
+            }),
+    { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); }
+
+    /// A page in allocator `alloc_ptr`'s 2m global pool is free on that global list and shares the allocator's container.
+    pub proof fn container_allocator_free_2m_page_wf_global_at(allocator_2m_map: PageAllocatorUnLockedMap, page_array: PageLockedArray, alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr)
+        requires
+            container_allocator_free_2m_page_wf(allocator_2m_map, page_array),
+            allocator_2m_map.dom().contains(alloc_ptr),
+        ensures
+            allocator_2m_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr) ==> {
+                &&& page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr), state: FreePageAllocatorState::GlobalList }
+                &&& page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_2m_map.spec_index(alloc_ptr).owning_container
+            },
+    { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); }
+
+    /// A page in allocator `alloc_ptr`'s 2m CPU `cpu_i` cache is free in that cache and shares the allocator's container.
+    pub proof fn container_allocator_free_2m_page_wf_cache_at(allocator_2m_map: PageAllocatorUnLockedMap, page_array: PageLockedArray, alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr)
+        requires
+            container_allocator_free_2m_page_wf(allocator_2m_map, page_array),
+            allocator_2m_map.dom().contains(alloc_ptr),
+            index_valid(NUM_CPUS, cpu_i),
+        ensures
+            allocator_2m_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr) ==> {
+                &&& page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id: cpu_i } }
+                &&& page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == allocator_2m_map.spec_index(alloc_ptr).owning_container
+            },
+    { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); }
 
     #[verifier::opaque]
     pub open spec fn container_allocator_global_free_1g_page_wf(allocator_1g_map: PageAllocatorUnLockedMap, page_array: PageLockedArray) -> bool {
