@@ -176,6 +176,6 @@ pub(super) fn thread_exit_return_quota(
         }
     }
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitQuota { returned: size })), Tracked(&*lctx), Tracked(thread_lock_perm));
-    proof { assert(kernel_thread_exit_quota_returned(old(krnl), &*krnl, thread_ptr, size)) by { reveal(kernel_thread_exit_quota_returned); reveal(container_allocator_wf); }; }
+    proof { assert(kernel_thread_exit_quota_returned(old(krnl), &*krnl, thread_ptr, size)) by { reveal(kernel_thread_exit_quota_returned); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
 }
 } // verus!

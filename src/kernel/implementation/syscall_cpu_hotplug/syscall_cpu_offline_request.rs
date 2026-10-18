@@ -101,9 +101,7 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by {
-                reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_cpu_set_wf);
-            };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
             cpu_offline_request_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, result);
         }

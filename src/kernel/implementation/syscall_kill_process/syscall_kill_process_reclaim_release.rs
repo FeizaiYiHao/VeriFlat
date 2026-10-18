@@ -217,7 +217,7 @@ pub(super) fn kill_reclaim_flush(
             &&& pcid != KERNEL_DEFAULT_PCID
         }) by {
             process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, target);
-            reveal(PageTable::table_pages_wf);
+            krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
         };
     }
     let mut c: usize = 0;

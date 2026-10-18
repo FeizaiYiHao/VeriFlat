@@ -205,7 +205,7 @@ fn cpu_offline_commit(
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
     let ghost before = *krnl;
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); reveal(PageTable::table_pages_wf); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); krnl.dflt_pt.view().table_pages_wf_cr3_at(); };
     let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
     if let Some(prev) = current_thread {
         let ghost old_prev_lock_id = krnl.thr_mp.lock_id_by_key(prev);

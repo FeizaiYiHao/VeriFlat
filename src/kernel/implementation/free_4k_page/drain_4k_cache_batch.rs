@@ -69,7 +69,6 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         && held_pcid_allocators_unchanged(krnl.pcid_allc_mp, krnl.pcid_allc_mp, lctx)
 
         && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
-    assert(forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> krnl.ctn_mp.dom().contains(old(krnl).pg_arr.spec_index(p).view().view().owning_container)) by { reveal(container_page_owner_wf); };
     let mut moved = 0usize;
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     while moved < ALLOCATOR_BATCH
@@ -111,7 +110,7 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
             old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().len() >= ALLOCATOR_BATCH,
             krnl.allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().len() == old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().len() - moved,
             krnl.allc_4k_mp.spec_index(allocator).global_pool.view().view().len() == old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().len() + moved,
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] #![trigger krnl.pg_arr.spec_index(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
+            moved > 0 ==> forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] #![trigger krnl.pg_arr.spec_index(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
                 let owner = old(krnl).pg_arr.spec_index(p).view().view().owning_container;
                 &&& krnl.ctn_mp.dom().contains(owner)
                 &&& krnl.ctn_mp.spec_index(owner).view_rodata() == old(krnl).ctn_mp.spec_index(owner).view_rodata()
@@ -153,7 +152,6 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
                 } else { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); }
             };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> krnl.ctn_mp.dom().contains(old(krnl).pg_arr.spec_index(p).view().view().owning_container)) by { reveal(container_page_owner_wf); };
         }
         moved = moved + 1;
     }

@@ -453,7 +453,7 @@ fn kill_reclaim_lock_table(
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end_valid();
         if iommu_table is Some {
             iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0);
-            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
+            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_entries_wf_l4_end_at(); };
         }
     }
     (Tracked(pagetable_perm), iommu_perm)

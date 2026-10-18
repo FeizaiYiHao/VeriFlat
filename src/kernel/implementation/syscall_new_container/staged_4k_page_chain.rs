@@ -3,7 +3,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::*;
 #[cfg(verus_keep_ghost)]
-use super::staged_4k_page_chain_eof::{set_4k_page_staging_next_eof, set_4k_page_staging_next_eof_transition_framing};
+use super::staged_4k_page_chain_eof::{allocate_staged_4k_page_chain_eof_owned_pages, set_4k_page_staging_next_eof, set_4k_page_staging_next_eof_transition_framing};
 
 verus! {
 pub(super) proof fn page_ptr_sets_disjoint_from_index_disjoint(left: Seq<PagePtr>, right: Seq<PagePtr>)
@@ -551,9 +551,7 @@ pub(super) fn allocate_staged_4k_page_chain(
         head = page_ptr;
         i = i + 1;
     }
-    proof {
-        assert(page_ptrs.to_set().subset_of(krnl.ctn_mp.spec_index(container_ptr).view().owned_pages.view())) by { page_ptrs.to_set_ensures(); page_ptr_roundtrip(); reveal(container_page_owner_wf); };
-    }
+    proof { allocate_staged_4k_page_chain_eof_owned_pages(*krnl, &*lctx, page_ptrs, page_lock_perms, thread_ptr, container_ptr); }
     (head, Ghost(page_ptrs), Tracked(page_lock_perms))
 }
 }

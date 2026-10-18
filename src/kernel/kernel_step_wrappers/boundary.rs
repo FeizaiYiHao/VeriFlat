@@ -990,6 +990,28 @@ impl KernelK {
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
             held_allocator_objects_unchanged(old(self).allc_2m_mp, final(self).allc_2m_mp, old(lctx), PageSize::SZ2m),
             held_allocator_objects_unchanged(old(self).allc_1g_mp, final(self).allc_1g_mp, old(lctx), PageSize::SZ1g),
+            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
+                let owner = old(self).pg_arr.spec_index(p).view().view().owning_container;
+                &&& final(self).ctn_mp.dom().contains(owner)
+                &&& final(self).ctn_mp.spec_index(owner).view_rodata() == old(self).ctn_mp.spec_index(owner).view_rodata()
+            },
+            forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
+                let owner = old(self).thr_mp.spec_index(t).view().owning_container;
+                &&& old(self).ctn_mp.dom().contains(owner)
+                &&& final(self).ctn_mp.dom().contains(owner)
+                &&& final(self).ctn_mp.spec_index(owner).view_rodata() == old(self).ctn_mp.spec_index(owner).view_rodata()
+                &&& final(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq == old(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq
+            },
+            forall|pt: RwLockPageTableRoot, va: VAddr| #![trigger old(lctx).pagetable_lock_map().dom().contains(pt), old(self).pt_mp.spec_index(pt).view().mapping_4k().spec_index(va)]
+                old(lctx).pagetable_lock_map().dom().contains(pt) && old(self).pt_mp.spec_index(pt).view().mapping_4k().dom().contains(va) && page_ptr_valid(old(self).pt_mp.spec_index(pt).view().mapping_4k().spec_index(va).addr) ==> {
+                    let entry = old(self).pt_mp.spec_index(pt).view().mapping_4k().spec_index(va);
+                    let page_index = page_ptr2page_index(entry.addr);
+                    &&& old(self).pg_arr.spec_index(page_index).view().view().owning_container == entry.owning_container.view()
+                    &&& old(self).ctn_mp.dom().contains(entry.owning_container.view())
+                    &&& final(self).ctn_mp.dom().contains(entry.owning_container.view())
+                    &&& final(self).pg_arr.spec_index(page_index).view().view().state == PageState::Mapped4k
+                    &&& final(self).pg_arr.spec_index(page_index).view().view().mappings().contains((pt, va))
+                },
     {
         use_type_invariant(&*steps);
         reveal(KernelSteps::nonlock_view);
@@ -997,6 +1019,8 @@ impl KernelK {
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
+        old(self).thr_mp.typed_lock_map_aligned_held_in_dom(old(lctx).thread_lock_map(), old(lctx).thread_id()); old(self).pt_mp.typed_lock_map_aligned_held_in_dom(old(lctx).pagetable_lock_map(), old(lctx).thread_id());
+        reveal(container_page_owner_wf); reveal(container_thread_wf); reveal(mapped_4k_page_pagetable_wf);
     }
 
     pub proof fn kernel_step_boundary_cpu_tlb_updated(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps, cpu_id: CpuId, pcid: Pcid, flushed: bool)

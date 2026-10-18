@@ -253,7 +253,7 @@ fn schedule_switch_to_queue_head(
     let depth = process.depth;
     assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
-        reveal(PageTable::table_pages_wf);
+        krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
     };
     let shard = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
     let (next_node, queue_head) = shard.queue.peek_head();

@@ -2,6 +2,8 @@ use vstd::assert_sets_equal;
 use vstd::prelude::*;
 use crate::*;
 use super::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_new_container_allocation_eof::allocate_new_container_pages_eof;
 
 verus! {
 #[verifier::spinoff_prover]
@@ -157,19 +159,13 @@ pub(super) fn allocate_new_container_pages(
                 page_ptr2page_index(pages_4k.view().spec_index(5)), page_ptr2page_index(pages_4k.view().spec_index(6)), page_ptr2page_index(pages_4k.view().spec_index(7)),
             ], page_index => { mapped.to_set_ensures(); });
         };
-        assert(page_index_2m_valid(page_ptr2page_index(container_page))) by { reveal(hugepage_2m_wf); };
-        assert(page_index_2m_valid(page_ptr2page_index(pcid_allocator_page))) by { reveal(hugepage_2m_wf); };
+        allocate_new_container_pages_eof(*krnl, &*lctx, pages_4k.view(), page_4k_lock_perms, container_page, pcid_allocator_page, current_thread_ptr, parent_container_ptr);
         page_ptr_roundtrip();
         assert(krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view() == set![container_page, pcid_allocator_page]) by {
             assert_sets_equal!(krnl.thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view() == set![container_page, pcid_allocator_page]);
         };
         assert(lctx.page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set())) by {
             seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set_ensures();
-        };
-        assert(pages_4k.view().to_set().subset_of(krnl.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view())) by { pages_4k.view().to_set_ensures(); page_ptr_roundtrip(); reveal(container_page_owner_wf); };
-        assert(!krnl.thr_mp.dom().contains(pages_4k.view().spec_index(7))) by {
-            assert(page_4k_lock_perms.dom().contains(pages_4k.view().spec_index(7))) by { pages_4k.view().to_set_ensures(); };
-            reveal(thread_pages_wf); page_ptr_roundtrip();
         };
     }
     (pages_4k, container_page, pcid_allocator_page, Tracked(page_4k_lock_perms), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm))

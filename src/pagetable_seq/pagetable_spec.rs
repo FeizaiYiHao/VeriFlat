@@ -351,6 +351,11 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         &&& self.l2_tables.view().dom().disjoint(self.l1_tables.view().dom())
     }
 
+    pub proof fn table_pages_wf_cr3_at(&self)
+        requires self.table_pages_wf()
+        ensures page_ptr_valid(self.cr3)
+    { reveal(PageTable::table_pages_wf); }
+
     pub open spec fn spec_resolve_mapping_l4(&self, l4i: L4Index) -> Option<PageEntry>
         recommends
             self.kernel_l4_end <= l4i && pei_valid(l4i),
@@ -539,6 +544,11 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     {
         reveal(PageTable::kernel_entries_wf);
     }
+
+    pub proof fn kernel_entries_wf_l4_end_at(&self)
+        requires self.kernel_entries_wf()
+        ensures TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
+    { reveal(PageTable::kernel_entries_wf); }
 
     pub open spec fn wf(&self) -> bool {
         &&& self.va_addr_valid()

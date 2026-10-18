@@ -122,7 +122,8 @@ pub fn syscall_pci_attach_dma(
     proof {
         assert(old(krnl).prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { reveal(process_pci_function_ownership_wf); };
         assert(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table is Some && page_ptr_valid(root)) by {
-            process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr); reveal(iommu_table_perms_wf); reveal(PageTable::table_pages_wf);
+            process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr); iommu_table_perms_wf_at(old(krnl).it_mp, old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0);
+            old(krnl).it_mp.spec_index(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).view().table_pages_wf_cr3_at();
         };
         let iommu_table = krnl.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);

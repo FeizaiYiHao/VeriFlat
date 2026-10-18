@@ -17,6 +17,9 @@ pub(super) proof fn cpu_set_lock_op_eof(pre: KernelK, post: KernelK, cpu_set_ptr
         post.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() == pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
     ensures
         post.inv(),
+        forall|c: RwLockContainerPtr| #![trigger post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
+            pre.ctn_mp.dom().contains(c) && pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set != cpu_set_ptr
+                ==> post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set) == pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set),
 {
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -24,5 +27,6 @@ pub(super) proof fn cpu_set_lock_op_eof(pre: KernelK, post: KernelK, cpu_set_ptr
     assert(cpu_set_invariant_fields_unchanged(pre.cpu_set_mp, post.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(pre.cpu_set_mp, post.cpu_set_mp, cpu_set_ptr); };
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
+    reveal(container_cpu_set_wf);
 }
 } // verus!

@@ -29,6 +29,9 @@ impl KernelK {
             *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
             final(self).cpu_set_mp.perms_wf(),
+            forall|c: RwLockContainerPtr| #![trigger final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
+                old(self).ctn_mp.dom().contains(c) && old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set != cpu_set_ptr
+                    ==> final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set) == old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set),
             wlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr)),
     {
@@ -70,6 +73,9 @@ impl KernelK {
             *final(self) == (KernelK { cpu_set_mp: final(self).cpu_set_mp, ..*old(self) }),
             final(self).cpu_set_mp.unchanged_except(&old(self).cpu_set_mp, cpu_set_ptr),
             final(self).cpu_set_mp.perms_wf(),
+            forall|c: RwLockContainerPtr| #![trigger final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
+                old(self).ctn_mp.dom().contains(c) && old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set != cpu_set_ptr
+                    ==> final(self).cpu_set_mp.spec_index(final(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set) == old(self).cpu_set_mp.spec_index(old(self).ctn_mp.spec_index(c).view_rodata().view().cpu_set),
             final(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr) == old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr),
             wunlock_ensures(old(self).cpu_set_mp.spec_index(cpu_set_ptr), final(self).cpu_set_mp.spec_index(cpu_set_ptr)),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr)),

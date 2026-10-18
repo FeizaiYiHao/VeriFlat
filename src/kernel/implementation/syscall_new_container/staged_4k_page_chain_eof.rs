@@ -64,4 +64,15 @@ pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, pa
     assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, page_index); };
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_index); };
 }
+
+/// The pages of an allocated staged chain belong to the owning container's owned pages, from the invariants after the chain.
+pub(super) proof fn allocate_staged_4k_page_chain_eof_owned_pages(
+    post: KernelK, lctx: &LocalContext, page_ptrs: Seq<PagePtr>, perms: Map<PagePtr, LockPerm>, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+)
+    requires
+        post.inv(),
+        perms.dom() == page_ptrs.to_set(),
+        allocated_4k_page_lock_perms_wf(perms, &post, lctx, thread_ptr, container_ptr),
+    ensures page_ptrs.to_set().subset_of(post.ctn_mp.spec_index(container_ptr).view().owned_pages.view()),
+{ page_ptrs.to_set_ensures(); page_ptr_roundtrip(); reveal(container_page_owner_wf); }
 } // verus!

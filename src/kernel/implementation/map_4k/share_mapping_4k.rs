@@ -723,9 +723,6 @@ pub fn share_mapping_4k_source_owner_precheck(
                 &&& ((krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process && krnl.thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable)
                     || (typed_lock_map_contains_mode(lctx.process_lock_map(), target_process, TypedLockMode::Write) && !krnl.prc_mp.spec_index(target_process).view().zombie))
             }) by { process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process); };
-            assert(share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by { reveal(mapped_4k_page_pagetable_wf); page_ptr_valid_imply_page_index_valid(); };
-            assert(page_compatible == share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_va)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
-            assert(all_compatible == share_mapping_4k_range_owner_compatible_prefix(krnl, source_pagetable, target_container, source_range, i as int)) by { reveal(mapped_4k_page_pagetable_wf); reveal(container_page_owner_wf); reveal(container_thread_wf); };
         }
         all_compatible = all_compatible && page_compatible;
         i = i + 1;

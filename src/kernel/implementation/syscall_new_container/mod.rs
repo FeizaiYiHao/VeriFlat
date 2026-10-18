@@ -3,6 +3,7 @@ mod staged_4k_page_chain_eof;
 mod syscall_new_container;
 mod syscall_new_container_helpers;
 mod syscall_new_container_allocation;
+mod syscall_new_container_allocation_eof;
 mod syscall_new_container_publish;
 mod syscall_new_container_finish;
 mod syscall_new_container_finish_eof;

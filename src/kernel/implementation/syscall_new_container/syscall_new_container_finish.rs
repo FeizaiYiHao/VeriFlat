@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing};
+use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing, release_container_backing_page_locks_eof, release_container_backing_page_locks_eof_transition_framing};
 use super::*;
 
 verus! {
@@ -340,7 +340,10 @@ fn release_container_backing_page_locks(
     pages.wunlock(indices.7, Tracked(&mut *lctx), Tracked(perm7), Ghost(KernelObjId::Page(indices.7)));
     pages.wunlock(indices.8, Tracked(&mut *lctx), Tracked(perm8), Ghost(KernelObjId::Page(indices.8)));
     pages.wunlock(indices.9, Tracked(&mut *lctx), Tracked(perm9), Ghost(KernelObjId::Page(indices.9)));
-    assert(page_array_wf(*pages)) by { reveal(page_array_wf); };
+    proof {
+        assert(release_container_backing_page_locks_eof_transition_framing(*old(pages), *pages, indices)) by { reveal(release_container_backing_page_locks_eof_transition_framing); };
+        release_container_backing_page_locks_eof(*old(pages), *pages, indices);
+    }
     assert(pages.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
 }
 }

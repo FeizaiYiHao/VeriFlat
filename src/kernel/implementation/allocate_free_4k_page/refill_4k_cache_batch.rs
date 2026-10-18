@@ -76,7 +76,6 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
         && held_endpoints_unchanged(krnl.ep_mp, krnl.ep_mp, lctx) && held_schedulers_unchanged(krnl.sched_mp, krnl.sched_mp, lctx) && held_pcid_allocators_unchanged(krnl.pcid_allc_mp, krnl.pcid_allc_mp, lctx)
         && held_cpu_sets_unchanged(krnl.cpu_set_mp, krnl.cpu_set_mp, lctx) && held_pages_unchanged(krnl.pg_arr, krnl.pg_arr, lctx) && held_cpus_unchanged(krnl.cpu_arr, krnl.cpu_arr, lctx)
         && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx) && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
-    assert(forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> krnl.ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(t).view().owning_container)) by { reveal(container_thread_wf); };
     assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); };
     let pool = krnl.allc_4k_mp.borrow_global_pool_typed(allocator, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
     proof { pool.lemma_len_view(); }
@@ -125,7 +124,7 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
             pool_perm.view().lock_id() == krnl.allc_4k_mp.spec_index(allocator).global_pool.locking_thread()->Write_lock_id,
             krnl.allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().len() == moved,
             krnl.allc_4k_mp.spec_index(allocator).global_pool.view().view().len() == old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().len() - moved,
-            forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
+            moved > 0 ==> forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
                 let owner = old(krnl).thr_mp.spec_index(t).view().owning_container;
                 &&& krnl.ctn_mp.dom().contains(owner)
                 &&& krnl.ctn_mp.spec_index(owner).view_rodata() == old(krnl).ctn_mp.spec_index(owner).view_rodata()
@@ -171,7 +170,6 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
                 }
             };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> krnl.ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(t).view().owning_container)) by { reveal(container_thread_wf); };
         }
         moved = moved + 1;
     }

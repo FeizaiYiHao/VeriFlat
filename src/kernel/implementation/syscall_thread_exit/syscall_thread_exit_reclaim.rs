@@ -296,7 +296,7 @@ fn thread_exit_reclaim_lock_table(
         &&& pcid != KERNEL_DEFAULT_PCID
     }) by {
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);
-        process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, process_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable); reveal(PageTable::table_pages_wf);
+        process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, process_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().table_pages_wf_cr3_at();
     };
     assert({
         &&& !krnl.prc_mp.spec_index(process_ptr).view().zombie
@@ -345,7 +345,7 @@ fn thread_exit_reclaim_lock_table(
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end_valid();
         if iommu_table is Some {
             iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0); iommu_table_perms_wf_at(locked_k.it_mp, iommu_table->Some_0);
-            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
+            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_entries_wf_l4_end_at(); };
         }
     }
     (Tracked(pagetable_lock_perm), iommu_table_lock_perm, Ghost(table_lctx))

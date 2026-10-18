@@ -227,7 +227,7 @@ fn kill_retire_table_pages(
                 if iommu {
                     assert(krnl.it_mp.spec_index(table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, target); };
                     assert(krnl.it_mp.spec_index(table).view().mapping_2m().dom() =~= Set::<VAddr>::empty() && krnl.it_mp.spec_index(table).view().mapping_1g().dom() =~= Set::<VAddr>::empty()) by { pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.it_mp, table); };
-                    assert(krnl.it_mp.spec_index(table).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
+                    assert(krnl.it_mp.spec_index(table).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(table).view().kernel_entries_wf_l4_end_at(); };
                 } else {
                     assert(krnl.pt_mp.spec_index(table).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by { process_perms_wf_at(krnl.prc_mp, target); process_emptied_tables_wf_at(krnl.prc_mp, krnl.pt_mp, krnl.it_mp, target); };
                     assert(krnl.pt_mp.spec_index(table).view().mapping_2m().dom() =~= Set::<VAddr>::empty() && krnl.pt_mp.spec_index(table).view().mapping_1g().dom() =~= Set::<VAddr>::empty()) by { pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.it_mp, table); };

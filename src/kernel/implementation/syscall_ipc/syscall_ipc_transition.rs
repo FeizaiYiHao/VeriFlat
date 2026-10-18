@@ -136,7 +136,7 @@ verus! {
 
         let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
         let default_cr3 = krnl.dflt_pt.borrow().cr3;
-        assert(page_ptr_valid(default_cr3)) by { old(krnl).default_pagetable_view_inv(); reveal(PageTable::table_pages_wf); };
+        assert(page_ptr_valid(default_cr3)) by { old(krnl).default_pagetable_view_inv(); old(krnl).dflt_pt.view().table_pages_wf_cr3_at(); };
         krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
 
         proof {
