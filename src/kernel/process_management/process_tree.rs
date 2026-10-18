@@ -118,6 +118,14 @@ verus! {
             },
     { reveal(process_children_parent_wf); }
 
+    /// Every child of member `p_ptr` is a member.
+    pub proof fn process_children_parent_wf_children_dom_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_children_parent_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures forall|child_p_ptr: RwLockProcessPtr| #[trigger] process_perms.spec_index(p_ptr).view().children.view().contains(child_p_ptr) ==> process_tree_dom.contains(child_p_ptr),
+    { reveal(process_children_parent_wf); }
+
     #[verifier::opaque]
     pub open spec fn process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         &&& forall|p_ptr: RwLockProcessPtr|
@@ -132,6 +140,19 @@ verus! {
             }
     }
 
+    /// The parent of non-root member `p_ptr` lists `p_ptr` in its child list at `p_ptr`'s parent node.
+    pub proof fn process_linkedlist_wf_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_linkedlist_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            p_ptr != root_process ==> {
+                &&& process_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()).view().children.view().contains(p_ptr)
+                &&& process_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()).view().children.map().dom().contains(process_perms.spec_index(p_ptr).view().parent_linkedlist_node.addr())
+                &&& process_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()).view().children.map().spec_index(process_perms.spec_index(p_ptr).view().parent_linkedlist_node.addr()) == p_ptr
+            },
+    { reveal(process_linkedlist_wf); }
+
     #[verifier::opaque]
     pub open spec fn process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         forall|p_ptr: RwLockProcessPtr|
@@ -139,6 +160,15 @@ verus! {
             process_tree_dom.contains(p_ptr) && p_ptr != root_process
                 ==> process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().spec_index(process_perms.spec_index(p_ptr).view_rodata().view().depth - 1) == process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()
     }
+
+    /// The upper-tree sequence of non-root member `p_ptr` ends with its parent.
+    pub proof fn process_children_depth_wf_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_children_depth_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            p_ptr != root_process ==> process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().spec_index(process_perms.spec_index(p_ptr).view_rodata().view().depth - 1) == process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap(),
+    { reveal(process_children_depth_wf); }
 
     #[verifier::opaque]
     pub open spec fn process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
@@ -177,6 +207,14 @@ verus! {
                 &&& process_perms.spec_index(u_ptr).view_ghost().subtree_set.view().contains(p_ptr)
                 &&& process_perms.spec_index(u_ptr).view_ghost().uppertree_seq.view() =~= process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().subrange(0, process_perms.spec_index(u_ptr).view_rodata().view().depth as int)
             },
+    { reveal(process_uppertree_seq_wf); }
+
+    /// Every ancestor of member `p_ptr` is a member.
+    pub proof fn process_uppertree_seq_wf_dom_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_uppertree_seq_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures forall|u_ptr: RwLockProcessPtr| #[trigger] process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(u_ptr) ==> process_tree_dom.contains(u_ptr),
     { reveal(process_uppertree_seq_wf); }
 
     #[verifier::opaque]

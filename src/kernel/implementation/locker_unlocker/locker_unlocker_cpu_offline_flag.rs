@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_cpu_offline_flag_eof::{cpu_offline_flag_lock_op_eof};
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
 use crate::*;
@@ -41,10 +43,6 @@ impl KernelK {
         }
         let ret = self.cpu_offline_mp.wlock_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));
         proof {
-            assert(cpu_offline_flags_invariant_fields_unchanged(old(self).cpu_offline_mp, self.cpu_offline_mp)) by { cpu_offline_flags_lock_op_preserves_invariant_fields(old(self).cpu_offline_mp, self.cpu_offline_mp, flags_ptr, cpu_id); };
-            assert(cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
-            assert(container_cpu_offline_flags_wf(self.ctn_mp, self.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -52,7 +50,7 @@ impl KernelK {
                 reveal(cpu_offline_requests_of);
                 assert_seqs_equal!(cpu_offline_requests_of(self.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).cpu_offline_mp.spec_index(flags_ptr)));
             };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_cpu_offline_flags_wf); };
+            cpu_offline_flag_lock_op_eof(*old(self), *self, flags_ptr, cpu_id);
         }
         ret
     }
@@ -90,10 +88,6 @@ impl KernelK {
         }
         self.cpu_offline_mp.wunlock_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), lock_perm);
         proof {
-            assert(cpu_offline_flags_invariant_fields_unchanged(old(self).cpu_offline_mp, self.cpu_offline_mp)) by { cpu_offline_flags_lock_op_preserves_invariant_fields(old(self).cpu_offline_mp, self.cpu_offline_mp, flags_ptr, cpu_id); };
-            assert(cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
-            assert(container_cpu_offline_flags_wf(self.ctn_mp, self.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -101,7 +95,7 @@ impl KernelK {
                 reveal(cpu_offline_requests_of);
                 assert_seqs_equal!(cpu_offline_requests_of(self.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).cpu_offline_mp.spec_index(flags_ptr)));
             };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_cpu_offline_flags_wf); };
+            cpu_offline_flag_lock_op_eof(*old(self), *self, flags_ptr, cpu_id);
         }
     }
 }

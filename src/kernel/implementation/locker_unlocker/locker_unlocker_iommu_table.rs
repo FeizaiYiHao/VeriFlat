@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_iommu_eof::{wlock_iommu_table_eof, wunlock_iommu_table_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -55,18 +57,6 @@ impl KernelK {
         }
         let ret = self.it_mp.wlock(iommu_table_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(iommu_table_ptr)));
         proof {
-            assert(self.it_mp.spec_index(iommu_table_ptr).view().leaves_present()) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
-            assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
-            assert(self.memory_management_inv()) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(self), *self); reveal(pagetable_pages_wf); reveal(process_iommu_table_match); reveal(page_iommu_table_wf); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-            assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by {
-                reveal(iommu_table_lock_wf); reveal(process_iommu_table_match);
-                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), old(self).it_mp.spec_index(iommu_table_ptr).view().proc_ptr);
-            };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -74,6 +64,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_iommu_table_eof(*old(self), *self, *old(lctx), iommu_table_ptr);
         }
         ret
     }
@@ -107,17 +98,6 @@ impl KernelK {
         assert(self.it_mp.spec_index(iommu_table_ptr).wlocked_by(&*lctx)) by { old(self).it_mp.typed_lock_map_aligned_write_at(old(lctx).iommu_table_lock_map(), old(lctx).thread_id(), iommu_table_ptr); };
         self.it_mp.wunlock(iommu_table_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::IommuTable(iommu_table_ptr)));
         proof {
-            assert(iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
-            assert(self.memory_management_inv()) by {
-                process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(self), *self);
-                pagetable_pages_wf_preserved_for_page_state_eq(old(self).it_mp, self.it_mp, old(self).pg_arr, self.pg_arr); reveal(process_iommu_table_match); reveal(page_iommu_table_wf);
-            };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_root_table_process_wf); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-            assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_table_lock_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -125,6 +105,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_iommu_table_eof(*old(self), *self, iommu_table_ptr);
         }
     }
 }

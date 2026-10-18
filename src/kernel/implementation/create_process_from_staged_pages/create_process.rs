@@ -186,13 +186,13 @@ pub fn create_process_from_staged_pages(
         assert(process_tree_dom.contains(parent_ptr)) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); };
         assert(process_tree_wf(root_process, process_tree_dom, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, container_ptr); };
         assert(process_tree_dom.subset_of(krnl.prc_mp.dom())) by { container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, container_ptr, parent_ptr); };
-        assert(parent_ancestors.to_set().subset_of(process_tree_dom)) by { parent_ancestors.to_set_ensures(); reveal(process_uppertree_seq_wf); };
+        assert(parent_ancestors.to_set().subset_of(process_tree_dom)) by { parent_ancestors.to_set_ensures(); process_uppertree_seq_wf_dom_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr); };
         assert(parent_ancestors.no_duplicates()) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
         assert(!parent_ancestors.contains(parent_ptr)) by { process_uppertree_seq_wf_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr, parent_ptr); };
         assert(!krnl.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_page_ptr)) by { process_children_parent_wf_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr, process_page_ptr); };
         assert(parent_children.len() <= NUM_PAGES) by {
             assert(parent_children.no_duplicates()) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
-            reveal(process_children_parent_wf);
+            process_children_parent_wf_children_dom_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr);
             lemma_kernel_object_ptr_seq_len_bounded(&*krnl, parent_children);
         };
         assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().process_is_unallocated(process_page_ptr)) by { reveal(process_pcid_allocator_wf); };

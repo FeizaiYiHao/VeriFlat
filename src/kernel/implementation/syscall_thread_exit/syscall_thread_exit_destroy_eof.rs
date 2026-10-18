@@ -162,12 +162,9 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
-        vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_4k.view());
-        vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_2m.view());
-        vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_1g.view());
-        reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
-    };
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_4k.view()); reveal(thread_staged_pages_4k_wf); };
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_2m.view()); reveal(thread_staged_pages_2m_wf); };
+    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_1g.view()); reveal(thread_staged_pages_1g_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(pre.prc_mp, post.prc_mp, post.pt_mp); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };

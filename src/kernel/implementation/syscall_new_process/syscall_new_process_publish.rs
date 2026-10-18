@@ -196,7 +196,13 @@ pub(super) fn publish_staged_process(
         assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
             let uppers = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
             assert(uppers.no_duplicates() && uppers.len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
-            assert(uppers.len() <= NUM_PAGES) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers); };
+            assert(uppers.len() <= NUM_PAGES) by {
+                let c = krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container;
+                let tree = krnl.ctn_mp.spec_index(c).view_ghost().owned_processes.view();
+                container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, c, parent_ptr);
+                per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, c); process_uppertree_seq_wf_dom_at(krnl.ctn_mp.spec_index(c).view().root_process, tree, krnl.prc_mp, parent_ptr);
+                lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
+            };
         };
         assert(page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(l4_page_ptr)
             && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(l4_page_ptr)) by {

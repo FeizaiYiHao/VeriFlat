@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_allocator_eof::allocator_2m_lock_op_eof;
 use vstd::prelude::*;
 use crate::*;
 
@@ -46,16 +48,11 @@ impl KernelK {
         assert(!self.allc_2m_mp.spec_index(alloc_ptr_2m).quota.locked_by_thread(lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         let ret = self.allc_2m_mp.wlock_quota(alloc_ptr_2m, Tracked(&mut *lctx), Ghost(PageSize::SZ2m));
         proof {
-            assert(allocator_perms_wf(self.allc_2m_mp)) by { reveal(allocator_perms_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { reveal(allocator_2m_pages_wf); };
-            assert(allocator_free_page_ptrs_wf(self.allc_2m_mp)) by { lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall(); };
-            assert(container_allocator_free_2m_page_wf(self.allc_2m_mp, self.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(*old(self), *self); };
-            assert(self.memory_management_inv()) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+            allocator_2m_lock_op_eof(*old(self), *self, alloc_ptr_2m);
         }
         ret
     }
@@ -99,17 +96,11 @@ impl KernelK {
         assert(self.allc_2m_mp.spec_index(alloc_ptr_2m).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         self.allc_2m_mp.wunlock_quota(alloc_ptr_2m, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ2m));
         proof {
-            assert(allocator_perms_wf(self.allc_2m_mp)) by { reveal(allocator_perms_wf); };
             assert(allocator_invariant_fields_unchanged(old(self).allc_2m_mp, self.allc_2m_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_2m_mp, self.allc_2m_mp, alloc_ptr_2m); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(allocator_pages_wf(self.pg_arr, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)) by { allocator_2m_pages_wf_preserved_for_page_state_eq(old(self).pg_arr, self.pg_arr, old(self).allc_2m_mp, self.allc_2m_mp); };
-            assert(allocator_free_page_ptrs_wf(self.allc_2m_mp)) by { lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall(); };
-            assert(container_allocator_free_2m_page_wf(self.allc_2m_mp, self.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(*old(self), *self); };
-            assert(self.memory_management_inv()) by { reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+            allocator_2m_lock_op_eof(*old(self), *self, alloc_ptr_2m);
         }
     }
 }

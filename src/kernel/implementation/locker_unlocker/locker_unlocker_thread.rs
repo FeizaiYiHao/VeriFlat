@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_thread_eof::{wlock_thread_eof, mark_thread_kill_eof, wunlock_thread_eof, set_thread_syscall_progress_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -239,26 +241,14 @@ impl KernelK {
         }
         let res = self.thr_mp.wlock_unless_killed(thread_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Thread(thread_ptr)));
         proof {
-            assert(thread_perms_wf(self.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-            assert(thread_invariant_fields_unchanged(old(self).thr_mp, self.thr_mp)) by { thread_lock_op_preserves_invariant_fields(old(self).thr_mp, self.thr_mp, thread_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by {
-                thread_invariant_fields_unchanged_implies_process_management_fields(old(self).thr_mp, self.thr_mp);
-                process_thread_wf_preserved_for_thread_process_management_fields(self.prc_mp, old(self).thr_mp, self.thr_mp);
-            };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            if res.is_some() {
-                assert(self.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean() && self.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean() && self.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
-                ) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-            }
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_thread_eof(*old(self), *self, thread_ptr, *lctx, res);
         }
         res
     }
@@ -305,13 +295,8 @@ impl KernelK {
             let entry = TypedHeldLock { lock_id: old(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write };
             lctx.update_lock_id(KernelObjId::Thread(thread_ptr), old(self).thr_mp.lock_id_by_key(thread_ptr), self.thr_mp.lock_id_by_key(thread_ptr));
             map_insert_overwrite_lemma(old(lctx).thread_lock_map(), thread_ptr, entry, TypedHeldLock { lock_id: self.thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write });
-            assert(thread_perms_wf(self.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-            assert(thread_invariant_fields_unchanged(old(self).thr_mp, self.thr_mp)) by { thread_lock_op_preserves_invariant_fields(old(self).thr_mp, self.thr_mp, thread_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            mark_thread_kill_eof(*old(self), *self, *old(lctx), thread_ptr, process_ptr);
         }
     }
 
@@ -371,15 +356,6 @@ impl KernelK {
         assert(self.thr_mp.spec_index(thread_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         self.thr_mp.wunlock(thread_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Thread(thread_ptr)));
         proof {
-            assert(thread_perms_wf(self.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-            assert(thread_invariant_fields_unchanged(old(self).thr_mp, self.thr_mp)) by { thread_lock_op_preserves_invariant_fields(old(self).thr_mp, self.thr_mp, thread_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by {
-                thread_invariant_fields_unchanged_implies_process_management_fields(old(self).thr_mp, self.thr_mp);
-                process_thread_wf_preserved_for_thread_process_management_fields(self.prc_mp, old(self).thr_mp, self.thr_mp);
-            };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(*old(self), *self); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -387,6 +363,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_thread_eof(*old(self), *self, thread_ptr);
         }
     }
 
@@ -417,24 +394,8 @@ impl KernelK {
             thread.syscall_progress = progress;
         }
         proof {
-            assert(self.subsystems_inv()) by {
-                assert(thread_perms_wf(self.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
-                reveal(KernelK::default_pagetable_wf);
-            };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(*old(self), *self); };
-            assert(self.process_management_inv()) by {
-                assert(thread_process_management_fields_unchanged(old(self).thr_mp, self.thr_mp)) by { reveal(thread_perms_wf); };
-                thread_caller_callee_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp);
-                thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp, self.ep_mp);
-                thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp, self.ep_mp);
-                container_thread_endpoint_wf_preserved_for_thread_process_management_fields(self.ctn_mp, old(self).thr_mp, self.thr_mp, self.ep_mp);
-                container_thread_scheduler_wf_preserved_for_thread_process_management_fields(self.ctn_mp, old(self).thr_mp, self.thr_mp, self.sched_mp);
-                container_thread_wf_preserved_for_thread_process_management_fields(self.ctn_mp, old(self).thr_mp, self.thr_mp);
-                process_thread_wf_preserved_for_thread_process_management_fields(self.prc_mp, old(self).thr_mp, self.thr_mp);
-                thread_cpu_wf_preserved_for_thread_process_management_fields(old(self).thr_mp, self.thr_mp, self.cpu_arr);
-                assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
-            };
             assert(typed_lock_maps_aligned(self, lctx) && self.thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr)) by { lock_id_fields_eq_imply_eq(); };
+            set_thread_syscall_progress_eof(*old(self), *self, *lctx, thread_ptr, progress);
         }
     }
 }

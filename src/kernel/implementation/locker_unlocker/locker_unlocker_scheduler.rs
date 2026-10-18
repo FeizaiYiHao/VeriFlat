@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_scheduler_eof::{scheduler_shard_lock_op_eof};
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
 use crate::*;
@@ -54,11 +56,6 @@ impl KernelK {
         }
         let ret = self.sched_mp.wlock_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
         proof {
-            assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
-            assert(scheduler_invariant_fields_unchanged(old(self).sched_mp, self.sched_mp));
-            assert(self.memory_management_inv()) by { scheduler_pages_wf_preserved_for_page_state_eq(old(self).sched_mp, self.sched_mp, old(self).pg_arr, self.pg_arr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -66,7 +63,7 @@ impl KernelK {
                 reveal(scheduler_shards_of);
                 assert_seqs_equal!(scheduler_shards_of(self.sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(self).sched_mp.spec_index(scheduler_ptr)));
             };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_scheduler_wf); };
+            scheduler_shard_lock_op_eof(*old(self), *self, scheduler_ptr, cpu_id);
         }
         ret
     }
@@ -111,11 +108,6 @@ impl KernelK {
         }
         self.sched_mp.wunlock_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), lock_perm);
         proof {
-            assert(scheduler_perms_wf(self.sched_mp)) by { reveal(scheduler_perms_wf); };
-            assert(scheduler_invariant_fields_unchanged(old(self).sched_mp, self.sched_mp)) by { scheduler_lock_op_preserves_invariant_fields(old(self).sched_mp, self.sched_mp, scheduler_ptr, cpu_id); };
-            assert(self.memory_management_inv()) by { scheduler_pages_wf_preserved_for_page_state_eq(old(self).sched_mp, self.sched_mp, old(self).pg_arr, self.pg_arr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.process_management_inv()) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -123,7 +115,7 @@ impl KernelK {
                 reveal(scheduler_shards_of);
                 assert_seqs_equal!(scheduler_shards_of(self.sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(self).sched_mp.spec_index(scheduler_ptr)));
             };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_scheduler_wf); };
+            scheduler_shard_lock_op_eof(*old(self), *self, scheduler_ptr, cpu_id);
         }
     }
 }

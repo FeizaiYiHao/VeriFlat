@@ -221,7 +221,7 @@ fn ipc_check_pages_locked(
                 &&& krnl.ctn_mp.dom().contains(target_container)
                 &&& container_perms_wf(krnl.ctn_mp)
                 &&& container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)
-            }) by { reveal(container_thread_wf); };
+            }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, source_thread); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); };
         }
         let containers_compatible = if source_container == target_container { true } else { container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, source_container, target_container) };
         let owners_compatible = if containers_compatible {

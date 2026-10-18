@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_endpoint_eof::{endpoint_lock_op_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -168,18 +170,11 @@ impl KernelK {
         assert(wlock_requires(self.ep_mp.spec_index(endpoint_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.ep_mp.wlock(endpoint_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Endpoint(endpoint_ptr)));
         proof {
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); lemma_endpoint_perms_wf_preserved_for_lock_op_forall(); };
-            assert(self.memory_management_inv()) by { lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall(); };
-            assert(self.process_management_inv()) by {
-                lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
-                lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall();
-                lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall();
-                lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
-            };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            endpoint_lock_op_eof(*old(self), *self, endpoint_ptr);
         }
         ret
     }
@@ -215,19 +210,11 @@ impl KernelK {
         assert(self.ep_mp.spec_index(endpoint_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         self.ep_mp.wunlock(endpoint_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Endpoint(endpoint_ptr)));
         proof {
-            assert(endpoint_invariant_fields_unchanged(old(self).ep_mp, self.ep_mp));
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); lemma_endpoint_perms_wf_preserved_for_lock_op_forall(); };
-            assert(self.memory_management_inv()) by { lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall(); };
-            assert(self.process_management_inv()) by {
-                lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
-                lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall();
-                lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall();
-                lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
-            };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            endpoint_lock_op_eof(*old(self), *self, endpoint_ptr);
         }
     }
 }

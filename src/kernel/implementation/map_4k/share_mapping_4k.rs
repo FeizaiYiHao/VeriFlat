@@ -735,7 +735,7 @@ pub fn share_mapping_4k_source_owner_precheck(
                     &&& container_tree_wf(krnl.rt_ctn, krnl.ctn_mp)
                     &&& krnl.ctn_mp.dom().contains(page_owner)
                     &&& krnl.ctn_mp.dom().contains(target_container)
-                }) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); reveal(container_thread_wf); };
+                }) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); };
             }
             page_compatible = container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, page_owner, target_container);
         }

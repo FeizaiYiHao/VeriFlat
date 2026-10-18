@@ -174,7 +174,7 @@ pub fn create_thread_from_staged_page_merged(
             &&& !krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(page_ptr)
         }) by {
             let threads = krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view();
-            reveal(process_thread_wf);
+            process_thread_wf_owned_threads_dom_at(krnl.prc_mp, krnl.thr_mp, process_ptr);
             lemma_kernel_object_ptr_seq_len_bounded(&*krnl, threads);
         };
         assert({

@@ -131,6 +131,21 @@ verus! {
             }
     }
 
+    /// Ancestor `u_ptr` of container `c_ptr` is a container at its own depth in `c_ptr`'s upper-tree sequence, whose subtree holds `c_ptr`.
+    pub proof fn container_uppertree_seq_wf_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr, u_ptr: RwLockContainerPtr)
+        requires
+            container_uppertree_seq_wf(root_container, container_perms),
+            container_perms.dom().contains(c_ptr),
+        ensures
+            container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().contains(u_ptr) ==> {
+                &&& container_perms.dom().contains(u_ptr)
+                &&& container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().spec_index(container_perms.spec_index(u_ptr).view_rodata().view().depth as int) == u_ptr
+                &&& container_perms.spec_index(u_ptr).view_rodata().view().depth == container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().index_of(u_ptr)
+                &&& container_perms.spec_index(u_ptr).view_ghost().subtree_set.view().contains(c_ptr)
+                &&& container_perms.spec_index(u_ptr).view_ghost().uppertree_seq.view() =~= container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().subrange(0, container_perms.spec_index(u_ptr).view_rodata().view().depth as int)
+            },
+    { reveal(container_uppertree_seq_wf); }
+
     pub proof fn container_uppertree_seq_in_dom(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, container_ptr: RwLockContainerPtr)
         requires
             container_uppertree_seq_wf(root_container, container_perms),

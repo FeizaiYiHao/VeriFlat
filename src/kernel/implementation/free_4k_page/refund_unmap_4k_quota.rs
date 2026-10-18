@@ -77,7 +77,8 @@ fn refund_unmap_4k_quota_level(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, 
     proof {
         let origin = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
         assert(steps.snapshot_k().ctn_mp.dom().contains(origin) && (owner == origin || steps.snapshot_k().ctn_mp.spec_index(origin).view_ghost().uppertree_seq.view().contains(owner))) by {
-            reveal(container_thread_wf); thread_perms_wf_at(krnl.thr_mp, thread_ptr); broadcast use vstd::seq::Seq::lemma_index_contains;
+            container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thr_mp, origin, thread_ptr); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
+            broadcast use vstd::seq::Seq::lemma_index_contains;
         };
     }
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
@@ -91,7 +92,11 @@ fn refund_unmap_4k_quota_level(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, 
         krnl.kernel_step_boundary_container_quota_4k_changed(&mut *lctx, &mut *steps, owner, amount as int, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container);
         assert(krnl.ctn_mp.dom().contains(owner) && (depth > 0 ==> krnl.ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth - 1))
             && krnl.ctn_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth - 1)).view_rodata().view().depth == depth - 1)) by {
-            thread_perms_wf_at(krnl.thr_mp, thread_ptr); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); broadcast use vstd::seq::Seq::lemma_index_contains;
+            let origin = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
+            let uppers = krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view();
+            thread_perms_wf_at(krnl.thr_mp, thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_thread_wf_owned_thread_at(krnl.ctn_mp, krnl.thr_mp, origin, thread_ptr);
+            container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, owner); container_uppertree_seq_wf_at(krnl.rt_ctn, krnl.ctn_mp, origin, uppers[depth - 1]);
+            broadcast use vstd::seq::Seq::lemma_index_contains;
         };
     }
 }

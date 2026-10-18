@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_pagetable_eof::{wlock_pagetable_eof, wunlock_pagetable_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -56,21 +58,6 @@ impl KernelK {
         }
         let ret = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            assert(pagetable_tlb_entries_present(self.cpu_tlb, self.cpu_arr, self.pcid_needflush, pagetable_ptr, self.pt_mp.spec_index(pagetable_ptr).view())) by { reveal(tlb_wf_spec); };
-            assert(self.pt_mp.spec_index(pagetable_ptr).view().leaves_present()) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
-            assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp));
-            assert(self.subsystems_inv()) by { lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); };
-            assert(pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
-            assert(self.memory_management_inv()) by {
-                process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(self), *self);
-                lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
-                lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
-                lemma_container_process_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
-                lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall();
-            };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
-            assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -78,6 +65,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_pagetable_eof(*old(self), *self, pagetable_ptr);
         }
         ret
     }
@@ -206,19 +194,6 @@ impl KernelK {
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
         self.pt_mp.wunlock(pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp)) by { pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, pagetable_ptr); };
-            assert(self.subsystems_inv()) by { lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); };
-            assert(pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
-            assert(self.memory_management_inv()) by {
-                process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(self), *self);
-                lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
-                lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
-                lemma_container_process_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
-                lemma_pagetable_pages_wf_preserved_for_pagetable_invariant_fields_forall();
-            };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_pagetable_invariant_fields_forall(); };
-            assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -226,6 +201,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_pagetable_eof(*old(self), *self, pagetable_ptr);
         }
     }
 }

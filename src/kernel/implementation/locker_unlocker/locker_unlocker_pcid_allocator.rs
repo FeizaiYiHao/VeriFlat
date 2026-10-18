@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_pcid_eof::{pcid_allocator_lock_op_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -94,14 +96,10 @@ impl KernelK {
         }
         let ret = self.pcid_allc_mp.wlock(allocator_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PcidAllocator(allocator_ptr)));
         proof {
-            assert(pcid_allocator_perms_wf(self.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(self).pg_arr, self.pg_arr, old(self).pcid_allc_mp, self.pcid_allc_mp); };
-            assert(self.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_pcid_allocator_wf); };
+            pcid_allocator_lock_op_eof(*old(self), *self, allocator_ptr);
         }
         ret
     }
@@ -137,14 +135,10 @@ impl KernelK {
         assert(self.pcid_allc_mp.spec_index(allocator_ptr).wlocked_by(&*lctx)) by { old(self).pcid_allc_mp.typed_lock_map_aligned_write_at(old(lctx).pcid_allocator_lock_map(), old(lctx).thread_id(), allocator_ptr); };
         self.pcid_allc_mp.wunlock(allocator_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PcidAllocator(allocator_ptr)));
         proof {
-            assert(pcid_allocator_perms_wf(self.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(old(self).pg_arr, self.pg_arr, old(self).pcid_allc_mp, self.pcid_allc_mp); };
-            assert(self.process_management_inv()) by { reveal(container_pcid_allocator_wf); reveal(process_pcid_allocator_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_pcid_allocator_wf); };
+            pcid_allocator_lock_op_eof(*old(self), *self, allocator_ptr);
             assert(kernel_k_to_nonlock_kernel_u(*self) == kernel_k_to_nonlock_kernel_u(*old(self))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(self), self); };
         }
     }

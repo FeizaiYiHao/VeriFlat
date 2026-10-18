@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_process_eof::{wlock_process_eof, mark_kill_process_eof, wunlock_process_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -105,24 +107,6 @@ impl KernelK {
         }
         let res = self.prc_mp.wlock_unless_killed(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)));
         proof {
-            assert(res is Some ==> self.prc_mp.spec_index(process_ptr).view().state.view() is Running || self.prc_mp.spec_index(process_ptr).view().state.view() is Zombie) by {
-                process_state_lock_wf_at(old(self).prc_mp, process_ptr);
-            };
-            assert(process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
-            assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
-            assert(process_kill_mark_wf(self.prc_mp)) by { reveal(process_kill_mark_wf); };
-            assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
-            assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_table_lock_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -130,6 +114,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_process_eof(*old(self), *self, process_ptr, *lctx, res);
         }
         res
     }
@@ -206,26 +191,8 @@ impl KernelK {
                 lctx.update_lock_id(KernelObjId::Process(process_ptr), old(self).prc_mp.lock_id_by_key(process_ptr), self.prc_mp.lock_id_by_key(process_ptr));
                 map_insert_overwrite_lemma(old(lctx).process_lock_map(), process_ptr, entry, TypedHeldLock { lock_id: self.prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write });
             }
-            assert(process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
-            assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
-            assert(process_kill_mark_wf(self.prc_mp)) by {
-                reveal(process_kill_mark_wf);
-                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), killer_process);
-                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0);
-            };
-            assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
-            assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_table_lock_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            mark_kill_process_eof(*old(self), *self, *old(lctx), process_ptr, killer_process, killer_thread, killer_info, res is Some);
         }
         res
     }
@@ -284,31 +251,6 @@ impl KernelK {
         assert(self.prc_mp.spec_index(process_ptr).wlocked_by(&*lctx)) by { old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), process_ptr); };
         self.prc_mp.wunlock(process_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Process(process_ptr)));
         proof {
-            assert(process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
-            assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp));
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
-            assert(process_kill_mark_wf(self.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
-            assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
-            assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
-            assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by {
-                reveal(iommu_table_lock_wf); reveal(process_iommu_table_match);
-                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), process_ptr);
-                if old(self).prc_mp.spec_index(process_ptr).view().iommu_table is Some {
-                    let iommu_table = old(self).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
-                    if old(self).it_mp.spec_index(iommu_table).locking_thread() is Write {
-                        assert(old(self).it_mp.spec_index(iommu_table).locked_by_thread(old(lctx).thread_id()));
-                        assert(old(lctx).iommu_table_lock_map().dom().contains(iommu_table)) by { reveal(LockedMap::typed_lock_map_aligned); };
-                    }
-                }
-            };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -316,6 +258,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_process_eof(*old(self), *self, *old(lctx), process_ptr);
             assert(kernel_k_to_nonlock_kernel_u(*self) == kernel_k_to_nonlock_kernel_u(*old(self))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(self), self); };
         }
     }

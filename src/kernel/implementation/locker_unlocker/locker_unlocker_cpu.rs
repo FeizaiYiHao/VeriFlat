@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_cpu_eof::{wlock_cpu_eof, wunlock_cpu_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -57,16 +59,7 @@ impl KernelK {
         }
         assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         let ret = self.cpu_arr.wlock_unless_killed(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
-        assert(ret is Some ==> old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_published_wf); };
         proof {
-            assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); };
-            assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by {
-                reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-                reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-            };
-            assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -74,6 +67,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_cpu_eof(*old(self), *self, cpu_id, *lctx, ret);
         }
         ret
     }
@@ -110,7 +104,10 @@ impl KernelK {
     {
         proof {
             assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
-            assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by { container_cpu_set_wf_cpu_set_at(old(self).ctn_mp, old(self).cpu_set_mp, cpu_set_ptr); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); reveal(container_cpu_wf); };
+            assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by {
+                container_cpu_set_wf_cpu_set_at(old(self).ctn_mp, old(self).cpu_set_mp, cpu_set_ptr); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr);
+                container_cpu_wf_container_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(self).cpu_set_mp.spec_index(cpu_set_ptr).view().owning_container.view(), cpu_id);
+            };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedArray2D::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
@@ -120,16 +117,7 @@ impl KernelK {
         assert(wlock_requires(self.cpu_arr.spec_index(cpu_id).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         assert(!self.cpu_arr.spec_index(cpu_id).view().being_killed()) by { reveal(thread_cpu_wf); };
         let ret = self.cpu_arr.wlock_unless_killed(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id))).unwrap();
-        assert(old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_published_wf); };
         proof {
-            assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); };
-            assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by {
-                reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-                reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-            };
-            assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -137,6 +125,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_cpu_eof(*old(self), *self, cpu_id, *lctx, Some(ret));
         }
         ret
     }
@@ -189,14 +178,6 @@ impl KernelK {
         assert(self.cpu_arr.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         self.cpu_arr.wunlock(cpu_id, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Cpu(cpu_id)));
         proof {
-            assert(cpu_array_wf(self.cpu_arr, self.dflt_pt.view())) by { reveal(cpu_array_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); };
-            assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by {
-                reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-                reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-            };
-            assert(tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.cpu_arr, self.pcid_needflush)) by { reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
             assert(lctx.no_locks_held() ==> self.all_objects_unlocked(lctx)) by { if lctx.no_locks_held() { no_locks_held_imply_all_objects_unlocked(&*self, &*lctx); } };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -205,6 +186,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_cpu_eof(*old(self), *self, cpu_id);
         }
     }
 }

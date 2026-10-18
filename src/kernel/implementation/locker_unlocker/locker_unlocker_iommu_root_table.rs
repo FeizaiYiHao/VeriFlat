@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_iommu_eof::{iommu_root_table_lock_op_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -29,11 +31,11 @@ impl KernelK {
         }
         let ret = self.irt.wlock(Tracked(&mut *lctx), Ghost(self.irt.lock_id()), Ghost(KernelObjId::IommuRootTable(self.irt.view().table_base())));
         proof {
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            iommu_root_table_lock_op_eof(*old(self), *self);
         }
         ret
     }
@@ -59,11 +61,11 @@ impl KernelK {
         proof { assert(old(self).irt.wlocked_by(old(lctx)) && old(lctx).lock_entry_contains(old(self).irt.lock_id(), KernelObjId::IommuRootTable(old(self).irt.view().table_base()))) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
         self.irt.wunlock(Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::IommuRootTable(self.irt.view().table_base())));
         proof {
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            iommu_root_table_lock_op_eof(*old(self), *self);
         }
     }
 }

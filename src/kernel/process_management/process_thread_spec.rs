@@ -58,6 +58,14 @@ verus! {
             },
     { reveal(process_thread_wf); }
 
+    /// Every thread owned by process `p_ptr` is in the thread map.
+    pub proof fn process_thread_wf_owned_threads_dom_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_thread_wf(process_map, thread_map),
+            process_map.dom().contains(p_ptr),
+        ensures forall|t_ptr: RwLockThreadPtr| #[trigger] process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr) ==> thread_map.dom().contains(t_ptr),
+    { reveal(process_thread_wf); }
+
     pub proof fn process_thread_wf_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
         requires
             process_thread_wf(process_map, thread_map),

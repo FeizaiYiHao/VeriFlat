@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_cpu_set_eof::{cpu_set_lock_op_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -43,15 +45,10 @@ impl KernelK {
         assert(wlock_requires(self.cpu_set_mp.spec_index(cpu_set_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         let ret = self.cpu_set_mp.wlock(cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
         proof {
-            assert(cpu_set_perms_wf(self.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { cpu_set_pages_wf_preserved_for_page_state_eq(old(self).cpu_set_mp, self.cpu_set_mp, old(self).pg_arr, self.pg_arr); };
-            assert(cpu_set_invariant_fields_unchanged(old(self).cpu_set_mp, self.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(old(self).cpu_set_mp, self.cpu_set_mp, cpu_set_ptr); };
-            assert(self.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
-            assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            cpu_set_lock_op_eof(*old(self), *self, cpu_set_ptr);
         }
         ret
     }
@@ -84,16 +81,10 @@ impl KernelK {
         assert(self.cpu_set_mp.spec_index(cpu_set_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         self.cpu_set_mp.wunlock(cpu_set_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::CpuSet(cpu_set_ptr)));
         proof {
-            assert(cpu_set_perms_wf(self.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(cpu_set_pages_wf(self.cpu_set_mp, self.pg_arr)) by { reveal(cpu_set_pages_wf); };
-            assert(container_cpu_set_wf(self.ctn_mp, self.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
-            assert(cpu_set_invariant_fields_unchanged(old(self).cpu_set_mp, self.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(old(self).cpu_set_mp, self.cpu_set_mp, cpu_set_ptr); };
-            assert(container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { reveal(cpu_dirty_map_contains_container_processes); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            cpu_set_lock_op_eof(*old(self), *self, cpu_set_ptr);
         }
     }
 }

@@ -556,9 +556,12 @@ fn kill_retire_unlink_process(
             process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target);
         };
         assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom())
-            && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(process_root_wf); reveal(process_uppertree_seq_wf); reveal(process_children_depth_wf); };
+            && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by {
+            krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set_ensures(); process_uppertree_seq_wf_dom_at(root, tree, krnl.prc_mp, target);
+            container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, container_ptr, target); process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_depth_wf_at(root, tree, krnl.prc_mp, target);
+        };
         assert(krnl.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
-            && krnl.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target) by { reveal(process_linkedlist_wf); };
+            && krnl.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target) by { process_linkedlist_wf_at(root, tree, krnl.prc_mp, target); };
     }
     let ghost uppers = krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view();
     let Tracked(node_perm) = process_map_unlink_child(&mut krnl.prc_mp, parent_ptr, target, Ghost(uppers), Tracked(&*lctx), Tracked(parent_perm), Tracked(&target_perm));

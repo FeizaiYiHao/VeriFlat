@@ -36,6 +36,20 @@ verus! {
             }
     }
 
+    /// Thread `t_ptr` owned by container `c_ptr` is in the thread map at `c_ptr`'s depth and shares `c_ptr`'s upper-tree sequence.
+    pub proof fn container_thread_wf_owned_thread_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, c_ptr: RwLockContainerPtr, t_ptr: RwLockThreadPtr)
+        requires
+            container_thread_wf(container_map, thread_map),
+            container_map.dom().contains(c_ptr),
+        ensures
+            container_map.spec_index(c_ptr).view_ghost().owned_threads.view().contains(t_ptr) ==> {
+                &&& thread_map.dom().contains(t_ptr)
+                &&& thread_map.spec_index(t_ptr).view().owning_container == c_ptr
+                &&& thread_map.spec_index(t_ptr).view().container_depth == container_map.spec_index(c_ptr).view_rodata().view().depth
+                &&& thread_map.spec_index(t_ptr).view().upper_container_seq == container_map.spec_index(c_ptr).view_ghost().uppertree_seq
+            },
+    { reveal(container_thread_wf); }
+
     pub proof fn container_thread_wf_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
         requires
             container_thread_wf(container_map, thread_map),

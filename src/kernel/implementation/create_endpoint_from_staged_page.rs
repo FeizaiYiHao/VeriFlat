@@ -98,7 +98,7 @@ pub fn create_endpoint_from_staged_page(
     let page_index = page_ptr2page_index(page_ptr);
     proof {
         assert(krnl.ctn_mp.perms_wf() && krnl.ctn_mp.spec_index(container_ptr).inv()) by { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); };
-        assert(krnl.ep_mp.perms_wf() && !krnl.ep_mp.dom().contains(page_ptr)) by { reveal(endpoint_perms_wf); reveal(endpoint_pages_wf); };
+        assert(krnl.ep_mp.perms_wf() && !krnl.ep_mp.dom().contains(page_ptr)) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_pages_wf_page_at(krnl.ep_mp, krnl.pg_arr, page_ptr); };
         assert(krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by { page_array_wf_at(krnl.pg_arr, page_index); };
     }
     let ghost page_locks = lctx.page_lock_map();

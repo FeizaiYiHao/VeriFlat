@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_pcid_eof::{wlock_pcid_needflush_eof, wunlock_pcid_needflush_eof, mark_pcid_needflush_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -48,14 +50,12 @@ impl KernelK {
         let ret = self.pcid_needflush.wlock(cpu_id, pcid, Tracked(&mut *lctx), Ghost(KernelObjId::PcidNeedFlush(cpu_id, pcid)));
         self.pcid_needflush.set_ghost(cpu_id, pcid, Ghost(Some(lctx.cpu_id())), Tracked(&*lctx), Tracked(ret.borrow()));
         proof {
-            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
-            assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_pcid_needflush_eof(*old(self), *self, cpu_id, pcid, lctx.cpu_id());
         }
-        assert(self.cpu_published[cpu_id as int].owner_cpu() == cpu_id) by { reveal(cpu_published_wf); };
         ret
     }
 
@@ -92,12 +92,11 @@ impl KernelK {
         self.pcid_needflush.set_ghost(cpu_id, pcid, Ghost(None), Tracked(&*lctx), Tracked(lp.borrow()));
         self.pcid_needflush.wunlock(cpu_id, pcid, Tracked(&mut *lctx), lp, Ghost(KernelObjId::PcidNeedFlush(cpu_id, pcid)));
         proof {
-            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
-            assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_pcid_needflush_eof(*old(self), *self, cpu_id, pcid);
         }
     }
 
@@ -133,12 +132,11 @@ impl KernelK {
         let entry = self.pcid_needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), lp);
         entry.set(true);
         proof {
-            assert(self.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
-            assert(self.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
             assert(typed_lock_maps_aligned(self, lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            mark_pcid_needflush_eof(*old(self), *self, *lctx, cpu_id, pcid);
         }
     }
 }

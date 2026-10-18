@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_container_eof::{wlock_container_eof, wunlock_container_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -86,18 +88,11 @@ impl KernelK {
         }
         let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
         proof {
-            assert(res is Some ==> !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); };
-            assert(container_perms_wf(self.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-            assert(container_invariant_fields_unchanged(old(self).ctn_mp, self.ctn_mp)) by { container_lock_op_preserves_invariant_fields(old(self).ctn_mp, self.ctn_mp, container_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_container_invariant_fields(*old(self), *self); };
-            assert(container_process_wf(self.ctn_mp, self.prc_mp)) by { reveal(container_process_wf); };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_container_invariant_fields(*old(self), *self); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { cpu_dirty_map_wf_preserved_for_container_invariant_fields(*old(self), *self); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wlock_container_eof(*old(self), *self, container_ptr, *lctx, res);
         }
         res
     }
@@ -150,17 +145,11 @@ impl KernelK {
         assert(self.ctn_mp.spec_index(container_ptr).wlocked_by(&*lctx)) by { old(self).ctn_mp.typed_lock_map_aligned_write_at(old(lctx).container_lock_map(), old(lctx).thread_id(), container_ptr); };
         self.ctn_mp.wunlock(container_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Container(container_ptr)));
         proof {
-            assert(container_perms_wf(self.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-            assert(container_invariant_fields_unchanged(old(self).ctn_mp, self.ctn_mp)) by { container_lock_op_preserves_invariant_fields(old(self).ctn_mp, self.ctn_mp, container_ptr); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_container_invariant_fields(*old(self), *self); };
-            assert(container_process_wf(self.ctn_mp, self.prc_mp)) by { reveal(container_process_wf); };
-            assert(self.process_management_inv()) by { process_management_inv_preserved_for_container_invariant_fields(*old(self), *self); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { cpu_dirty_map_wf_preserved_for_container_invariant_fields(*old(self), *self); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+            wunlock_container_eof(*old(self), *self, container_ptr);
         }
     }
 }

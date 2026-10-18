@@ -1,3 +1,5 @@
+#[cfg(verus_keep_ghost)]
+use super::locker_unlocker_allocator_eof::allocator_4k_lock_op_eof;
 use vstd::prelude::*;
 use crate::*;
 
@@ -46,18 +48,11 @@ impl KernelK {
         assert(!self.allc_4k_mp.spec_index(alloc_ptr_4k).quota.locked_by_thread(lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         let ret = self.allc_4k_mp.wlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
         proof {
-            assert(allocator_perms_wf(self.allc_4k_mp)) by { reveal(allocator_perms_wf); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by {
-                lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall();
-                reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
-                lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
-                lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
-            };
+            assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+            allocator_4k_lock_op_eof(*old(self), *self, alloc_ptr_4k);
         }
         ret
     }
@@ -101,19 +96,11 @@ impl KernelK {
         assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         self.allc_4k_mp.wunlock_quota(alloc_ptr_4k, Tracked(&mut *lctx), lock_perm, Ghost(PageSize::SZ4k));
         proof {
-            assert(allocator_perms_wf(self.allc_4k_mp)) by { reveal(allocator_perms_wf); };
             assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
-            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-            assert(self.memory_management_inv()) by {
-                lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall();
-                reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
-                lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
-                lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
-            };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
+            allocator_4k_lock_op_eof(*old(self), *self, alloc_ptr_4k);
         }
     }
 }
