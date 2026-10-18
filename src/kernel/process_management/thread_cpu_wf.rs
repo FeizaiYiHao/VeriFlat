@@ -47,4 +47,20 @@ verus! {
                 &&& thread_map.spec_index(cpu_array.spec_index(cpu_i).view().view().view().current_thread.unwrap()).view().owning_proc == cpu_array.spec_index(cpu_i).view().view().view().current_process.unwrap()
             }),
     { reveal(thread_cpu_wf); }
+
+    /// A marked cpu `cpu_i` is running and write-held by the holder of its current thread, which carries the same mark.
+    pub proof fn thread_cpu_wf_killed_cpu_at(thread_map: ThreadLockedMap, cpu_array: CpuLockedArray, cpu_i: CpuId)
+        requires
+            thread_cpu_wf(thread_map, cpu_array),
+        ensures
+            index_valid(NUM_CPUS, cpu_i) && cpu_array.spec_index(cpu_i).view().being_killed() ==> ({
+                let cpu = cpu_array.spec_index(cpu_i).view();
+                let thread = thread_map.spec_index(cpu.view().view().current_thread->Some_0);
+                &&& cpu.view().view().state is Running
+                &&& cpu.view().view().current_thread is Some
+                &&& thread.killer_info() == cpu.killer_info()
+                &&& thread.locking_thread() is Write
+                &&& cpu.wlocked_by_thread(thread.locking_thread()->Write_thread_id)
+            }),
+    { reveal(thread_cpu_wf); }
 }

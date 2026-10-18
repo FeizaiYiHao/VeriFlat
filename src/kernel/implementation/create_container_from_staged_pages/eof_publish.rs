@@ -4,28 +4,15 @@ use super::*;
 
 verus! {
 #[verifier::opaque]
-pub open spec fn publish_staged_container_root_eof_transition_framing(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
-    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
-    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize
+pub open spec fn publish_staged_container_root_eof_preconditions(
+    pre: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr, pcid_allocator_page: PagePtr,
+    allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr, cpu_set_page: PagePtr,
+    process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>, allocator_quota_4k: usize,
+    process_quota_4k: usize
 ) -> bool {
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    let allocator_4k_index = page_ptr2page_index(allocator_4k_page);
-    let allocator_2m_index = page_ptr2page_index(allocator_2m_page);
-    let allocator_1g_index = page_ptr2page_index(allocator_1g_page);
-    let scheduler_index = page_ptr2page_index(scheduler_page);
-    let cpu_set_index = page_ptr2page_index(cpu_set_page);
-    let process_index = page_ptr2page_index(process_page);
-    let pagetable_index = page_ptr2page_index(pagetable_page);
-    let l4_index = page_ptr2page_index(l4_page);
-    let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
-    let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
     let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set());
-    let funding_indices = funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
-    let unpublished = |index: PageIndex| index != container_head && index != pcid_allocator_head && index != allocator_4k_index && index != allocator_2m_index && index != allocator_1g_index
-        && index != scheduler_index && index != cpu_set_index && index != process_index && index != pagetable_index && index != l4_index;
     &&& pre.ctn_mp.dom().contains(parent_container_ptr)
     &&& pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().contains(thread_page)
     &&& !moved_pages.contains(thread_page)
@@ -59,6 +46,32 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& pre.pg_arr.spec_index(container_head).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr })
     &&& pre.pg_arr.spec_index(pcid_allocator_head).view().view().state == (PageState::Owned2m { thread_ptr: current_thread_ptr })
     &&& moved_pages.subset_of(pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view())
+    &&& staged_4k_page_chain(pre.pg_arr, funding_pages)
+}
+
+#[verifier::opaque]
+pub open spec fn publish_staged_container_root_eof_transition_framing(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize
+) -> bool {
+    let container_head = page_ptr2page_index(container_page);
+    let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
+    let allocator_4k_index = page_ptr2page_index(allocator_4k_page);
+    let allocator_2m_index = page_ptr2page_index(allocator_2m_page);
+    let allocator_1g_index = page_ptr2page_index(allocator_1g_page);
+    let scheduler_index = page_ptr2page_index(scheduler_page);
+    let cpu_set_index = page_ptr2page_index(cpu_set_page);
+    let process_index = page_ptr2page_index(process_page);
+    let pagetable_index = page_ptr2page_index(pagetable_page);
+    let l4_index = page_ptr2page_index(l4_page);
+    let root_pcid: Pcid = (KERNEL_DEFAULT_PCID + 1) as usize;
+    let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
+    let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set());
+    let funding_indices = funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
+    let unpublished = |index: PageIndex| index != container_head && index != pcid_allocator_head && index != allocator_4k_index && index != allocator_2m_index && index != allocator_1g_index
+        && index != scheduler_index && index != cpu_set_index && index != process_index && index != pagetable_index && index != l4_index;
     &&& post.it_mp == pre.it_mp
     &&& post.irt == pre.irt
     &&& post.cpu_arr == pre.cpu_arr
@@ -113,7 +126,6 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator_4k_page), state: FreePageAllocatorState::GlobalList })
             &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_page
         }
-    &&& staged_4k_page_chain(pre.pg_arr, funding_pages)
     &&& forall|page_ptr: PagePtr|
         #![trigger post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list]
         #![trigger pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list]
@@ -362,6 +374,11 @@ pub(super) proof fn eof_publish_postconditions(
             allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
             funding_pages, allocator_quota_4k, process_quota_4k,
         ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
+            allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
+            funding_pages, allocator_quota_4k, process_quota_4k,
+        ),
         funding_page_lock_perms.dom() == funding_pages.to_set(),
         forall|page_ptr: PagePtr|
             #![trigger funding_page_lock_perms.dom().contains(page_ptr)]
@@ -451,7 +468,7 @@ pub(super) proof fn eof_publish_postconditions(
                 &&& funding_page_lock_perms.spec_index(page_ptr).lock_id() == post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id
             },
 {
-    reveal(publish_staged_container_root_eof_transition_framing);
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, &pre_lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(held_processes_unchanged(pre.prc_mp, post.prc_mp, &pre_lctx)) by { pre.prc_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.process_lock_map(), pre_lctx.thread_id()); };
     assert(held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx)) by { pre.pt_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id()); };

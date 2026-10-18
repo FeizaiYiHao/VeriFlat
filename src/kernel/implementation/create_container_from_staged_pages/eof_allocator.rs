@@ -63,6 +63,11 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k
         ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k
+        ),
         post.allc_4k_mp.dom().contains(alloc_ptr),
         post.allc_4k_mp.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr),
     ensures
@@ -111,12 +116,17 @@ pub(super) proof fn eof_allocator_quota_wf(
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k
         ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k
+        ),
     ensures
         container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp),
         container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
         container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
 {
-    reveal(publish_staged_container_root_eof_transition_framing);
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     let child_processes = post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view();
     let child_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view();
     let child_indirect_threads = post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view();
@@ -167,6 +177,11 @@ pub(super) proof fn eof_allocator_free_pages_wf(
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k
         ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k
+        ),
     ensures
         post.allocator_free_pages_wf(),
         container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
@@ -174,7 +189,7 @@ pub(super) proof fn eof_allocator_free_pages_wf(
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(publish_staged_container_root_eof_transition_framing);
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_2m_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_1g_mp)) by { reveal(allocator_free_page_ptrs_wf); };

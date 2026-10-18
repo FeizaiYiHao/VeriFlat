@@ -17,6 +17,11 @@ pub(super) proof fn eof_subsystems_inv(
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k,
         ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
         page_array_wf(post.pg_arr),
         post.pt_mp.perms_wf(),
         post.pt_mp.dom().contains(pagetable_page),
@@ -53,7 +58,7 @@ pub(super) proof fn eof_subsystems_inv(
     ensures
         post.subsystems_inv(),
 {
-    reveal(publish_staged_container_root_eof_transition_framing);
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
     assert(container_tree_fields_wf(post.ctn_mp)) by {
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
@@ -108,6 +113,11 @@ pub(super) proof fn eof_inv(
             funding_pages.to_set().contains(page_ptr) ==> page_ptr_valid(page_ptr),
         publish_staged_container_root_eof_transition_framing(
             pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k,
         ),

@@ -214,9 +214,15 @@ impl KernelK {
                     },
                     ThreadState::SCHEDULED { .. } => {
                         assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
+                            let cpu_id = old(lctx).cpu_id();
+                            let cpu = old(self).cpu_arr.spec_index(cpu_id).view().view().view();
+                            cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, cpu_id);
+                            process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, cpu_id); container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, cpu_id);
+                            process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, thread_ptr); container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, target_thread.owning_proc);
+                            if index_valid(NUM_CPUS, cpu_id) && cpu.state is Running { thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0); }
+                            if cpu.current_process is Some { container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0); }
                             reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
-                            reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(container_cpu_wf);
-                            reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(cpu_array_wf);
+                            reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                         };
                     },
                     ThreadState::WAITING_REPLY | ThreadState::DANGLING => {

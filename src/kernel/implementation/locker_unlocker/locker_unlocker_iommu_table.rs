@@ -47,7 +47,7 @@ impl KernelK {
             iommu_table_perms_wf_at(old(self).it_mp, iommu_table_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).it_mp.lock_id_by_key(iommu_table_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
-                reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(iommu_table_perms_wf);
+                reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!old(self).it_mp.spec_index(iommu_table_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).it_mp.spec_index(iommu_table_ptr).locked_by_thread(old(lctx).thread_id()) {

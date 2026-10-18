@@ -82,10 +82,17 @@ impl KernelK {
             pcid_allocator_perms_wf_map(old(self).pcid_allc_mp);
             pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); reveal(container_process_wf); reveal(container_thread_wf);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0) { reveal(thread_cpu_wf); }
+                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0) {
+                    thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id());
+                    container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
+                    thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
+                    container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
+                    container_pcid_allocator_wf_allocator_at(old(self).ctn_mp, old(self).pcid_allc_mp, allocator_ptr); container_pcid_allocator_wf_container_at(old(self).ctn_mp, old(self).pcid_allc_mp, cpu.owning_container);
+                } else {
+                    reveal(container_cpu_wf); reveal(container_pcid_allocator_wf); reveal(container_perms_wf); reveal(container_process_wf); reveal(container_thread_wf);
+                }
+                reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
 
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id())) by {

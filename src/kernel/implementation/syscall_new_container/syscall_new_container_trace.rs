@@ -365,6 +365,8 @@ pub(super) proof fn new_container_root_published_from_k(
         pre.cpu_arr.spec_index(transfer_cpu).value.view().view().owning_container == parent,
         publish_staged_container_root_eof_transition_framing(*staged, *published, parent, thread, container_page, pcid_allocator_page, pages[0], pages[1], pages[2],
             pages[3], pages[8], pages[4], pages[5], pages[6], pages[7], funding_pages, allocator_quota_4k, process_quota_4k),
+        publish_staged_container_root_eof_preconditions(*staged, parent, thread, container_page, pcid_allocator_page, pages[0], pages[1], pages[2],
+            pages[3], pages[8], pages[4], pages[5], pages[6], pages[7], funding_pages, allocator_quota_4k, process_quota_4k),
         *staged == (KernelK { pg_arr: staged.pg_arr, cpu_arr: staged.cpu_arr, ..*pre }),
         *post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, ..*published }),
         kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, staged.cpu_arr),
@@ -385,7 +387,7 @@ pub(super) proof fn new_container_root_published_from_k(
             process_quota_4k, new_container_moved_pages(container_page, pcid_allocator_page, pages[0], pages[1], pages[2], pages[3],
                 pages[8], pages[4], pages[5], pages[6]).union(funding_pages.to_set()), pages[7], progress),
 {
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(container_cpu_offline_flags_wf); reveal(kernel_cpu_nonlock_fields_unchanged);
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_cpu_offline_flags_wf); reveal(kernel_cpu_nonlock_fields_unchanged);
     assert(cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page))) == Seq::new(NUM_CPUS as nat, |i: int| false)) by {
         reveal(cpu_offline_requests_of);
         assert_seqs_equal!(cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page))) == Seq::new(NUM_CPUS as nat, |i: int| false));

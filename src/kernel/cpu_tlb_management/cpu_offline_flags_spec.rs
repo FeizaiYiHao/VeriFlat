@@ -17,4 +17,16 @@ pub open spec fn cpu_offline_flags_wf(flags_map: CpuOfflineFlagsUnLockedMap, cpu
             &&& cell.requested ==> cpu.owning_container == flags_map.spec_index(flags_ptr).owning_container.view() && !(cpu.state is Off)
         }
 }
+
+pub proof fn cpu_offline_flags_wf_map(flags_map: CpuOfflineFlagsUnLockedMap, cpu_array: CpuLockedArray)
+    requires cpu_offline_flags_wf(flags_map, cpu_array)
+    ensures flags_map.perms_wf()
+{ reveal(cpu_offline_flags_wf); }
+
+pub proof fn cpu_offline_flags_wf_at(flags_map: CpuOfflineFlagsUnLockedMap, cpu_array: CpuLockedArray, flags_ptr: RwLockCpuOfflineFlagsPtr)
+    requires
+        cpu_offline_flags_wf(flags_map, cpu_array),
+        flags_map.dom().contains(flags_ptr),
+    ensures flags_map.spec_index(flags_ptr).inv()
+{ reveal(cpu_offline_flags_wf); }
 }

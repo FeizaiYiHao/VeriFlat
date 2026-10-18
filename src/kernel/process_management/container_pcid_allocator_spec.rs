@@ -34,4 +34,15 @@ pub proof fn container_pcid_allocator_wf_container_at(container_map: ContainerLo
             &&& pcid_allocator_map.spec_index(allocator_ptr).view().container_depth.view() == container_map.spec_index(c_ptr).view_rodata().view().depth
         }),
 { reveal(container_pcid_allocator_wf); }
+
+pub proof fn container_pcid_allocator_wf_allocator_at(container_map: ContainerLockedMap, pcid_allocator_map: PcidAllocatorLockedMap, allocator_ptr: RwLockPcidAllocatorPtr)
+    requires
+        container_pcid_allocator_wf(container_map, pcid_allocator_map),
+    ensures
+        pcid_allocator_map.dom().contains(allocator_ptr) ==> ({
+            let c_ptr = pcid_allocator_map.spec_index(allocator_ptr).view().owning_container.view();
+            &&& container_map.dom().contains(c_ptr)
+            &&& container_map.spec_index(c_ptr).view_rodata().view().pcid_allocator == allocator_ptr
+        }),
+{ reveal(container_pcid_allocator_wf); }
 }

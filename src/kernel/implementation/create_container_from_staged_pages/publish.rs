@@ -202,6 +202,11 @@ pub(super) fn publish_staged_container_root_mutation(
             allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
             funding_pages, allocator_quota_4k, process_quota_4k,
         ),
+        publish_staged_container_root_eof_preconditions(
+            *old(krnl), parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
         final(lctx).page_lock_map().get(page_ptr2page_index(thread_page)) == old(lctx).page_lock_map().get(page_ptr2page_index(thread_page)),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
@@ -407,6 +412,11 @@ pub(super) fn publish_staged_container_root_mutation(
             &&& !funding_pages.to_set().contains(pagetable_page)
             &&& !funding_pages.to_set().contains(l4_page)
         }) by { reveal(new_container_moved_pages); reveal(new_container_bootstrap_4k_pages); };
+        assert(publish_staged_container_root_eof_preconditions(
+            pre_krnl, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        )) by { reveal(publish_staged_container_root_eof_preconditions); };
     }
     let (funded_global_pool, Tracked(container_perm), Tracked(pcid_allocator_perm), Ghost(pool_page_locks), Ghost(prepared_page_locks)) = prepare_new_container_backing_pages(
         &mut krnl.pg_arr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page,
@@ -660,6 +670,11 @@ pub fn publish_staged_container_root(
             *old(krnl), *final(krnl), parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
             allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
             funding_pages, allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            *old(krnl), parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
         ),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).kernel_view_locking_state() is Release,

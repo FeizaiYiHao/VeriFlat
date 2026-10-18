@@ -48,7 +48,7 @@ impl KernelK {
             pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
-                reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_perms_wf);
+                reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!old(self).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id()) {

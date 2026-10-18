@@ -168,8 +168,11 @@ impl KernelK {
             process_perms_wf_at(old(self).prc_mp, process_ptr);
             if !old(self).prc_mp.spec_index(process_ptr).being_killed() {
                 assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {
+                    thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id());
+                    container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
+                    thread_perms_wf_at(old(self).thr_mp, killer_thread); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, killer_thread);
+                    container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, killer_process); container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, process_ptr);
                     reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
-                    reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf);
                 };
             }
             assert(!old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id())) by {

@@ -273,27 +273,42 @@ verus! {
             final(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread() == old(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread(),
             final(krnl).cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.wf(),
             final(krnl).cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.wf(),
-            forall|key: RwLockCpuSetPtr| #![trigger old(krnl).cpu_set_mp.spec_index(key)] #![trigger final(krnl).cpu_set_mp.spec_index(key)] old(krnl).cpu_set_mp.dom().contains(key) ==> {
-                let before = old(krnl).cpu_set_mp.spec_index(key);
-                let after = final(krnl).cpu_set_mp.spec_index(key);
-                &&& !(key == source_cpu_set || key == target_cpu_set) ==> after == before
-                &&& (key == source_cpu_set || key == target_cpu_set) ==> {
-                    &&& after.is_init() == before.is_init()
-                    &&& after.view_rodata() == before.view_rodata()
-                    &&& after.view_ghost() == before.view_ghost()
-                    &&& after.being_killed() == before.being_killed()
-                    &&& after.view().owning_container == before.view().owning_container
-                    &&& after.view().container_depth == before.view().container_depth
-                    &&& !transfer ==> after.view().owned_cpus == before.view().owned_cpus
-                    &&& transfer ==> {
-                        &&& after.view().owned_cpus.view() == if key == source_cpu_set { before.view().owned_cpus.view().remove(transfer_cpu_id) } else { before.view().owned_cpus.view().insert(transfer_cpu_id) }
-                        &&& after.view().owned_cpus.closed_view() == if key == source_cpu_set { before.view().owned_cpus.closed_view().remove(transfer_cpu_id) } else { before.view().owned_cpus.closed_view().insert(transfer_cpu_id) }
-                        &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, key == target_cpu_set)
-                        &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, key == target_cpu_set)
-                        &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int + if key == source_cpu_set { -1int } else { 1int }
-                    }
+            forall|key: RwLockCpuSetPtr| #![trigger old(krnl).cpu_set_mp.spec_index(key)] #![trigger final(krnl).cpu_set_mp.spec_index(key)]
+                old(krnl).cpu_set_mp.dom().contains(key) && key != source_cpu_set && key != target_cpu_set ==> final(krnl).cpu_set_mp.spec_index(key) == old(krnl).cpu_set_mp.spec_index(key),
+            ({
+                let before = old(krnl).cpu_set_mp.spec_index(source_cpu_set);
+                let after = final(krnl).cpu_set_mp.spec_index(source_cpu_set);
+                &&& after.is_init() == before.is_init()
+                &&& after.view_rodata() == before.view_rodata()
+                &&& after.view_ghost() == before.view_ghost()
+                &&& after.being_killed() == before.being_killed()
+                &&& after.view().owning_container == before.view().owning_container
+                &&& after.view().container_depth == before.view().container_depth
+                &&& transfer ==> {
+                    &&& after.view().owned_cpus.view() == before.view().owned_cpus.view().remove(transfer_cpu_id)
+                    &&& after.view().owned_cpus.closed_view() == before.view().owned_cpus.closed_view().remove(transfer_cpu_id)
+                    &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, false)
+                    &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, false)
+                    &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int - 1
                 }
-            },
+            }),
+            ({
+                let before = old(krnl).cpu_set_mp.spec_index(target_cpu_set);
+                let after = final(krnl).cpu_set_mp.spec_index(target_cpu_set);
+                &&& after.is_init() == before.is_init()
+                &&& after.view_rodata() == before.view_rodata()
+                &&& after.view_ghost() == before.view_ghost()
+                &&& after.being_killed() == before.being_killed()
+                &&& after.view().owning_container == before.view().owning_container
+                &&& after.view().container_depth == before.view().container_depth
+                &&& transfer ==> {
+                    &&& after.view().owned_cpus.view() == before.view().owned_cpus.view().insert(transfer_cpu_id)
+                    &&& after.view().owned_cpus.closed_view() == before.view().owned_cpus.closed_view().insert(transfer_cpu_id)
+                    &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, true)
+                    &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, true)
+                    &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int + 1
+                }
+            }),
     {
         proof {
             assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {

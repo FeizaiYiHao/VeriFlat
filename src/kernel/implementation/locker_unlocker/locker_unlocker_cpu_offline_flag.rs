@@ -37,7 +37,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id), TypedHeldLock { lock_id: final(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).cpu_offline_mp.perms_wf() && old(self).cpu_offline_mp.spec_index(flags_ptr).inv()) by { reveal(cpu_offline_flags_wf); };
+            cpu_offline_flags_wf_map(old(self).cpu_offline_mp, old(self).cpu_arr); cpu_offline_flags_wf_at(old(self).cpu_offline_mp, old(self).cpu_arr, flags_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); };
             assert(!old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locked_by_thread(old(lctx).thread_id())) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         }
@@ -82,7 +82,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id), old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id)),
     {
         proof {
-            assert(old(self).cpu_offline_mp.perms_wf() && old(self).cpu_offline_mp.spec_index(flags_ptr).inv()) by { reveal(cpu_offline_flags_wf); };
+            cpu_offline_flags_wf_map(old(self).cpu_offline_mp, old(self).cpu_arr); cpu_offline_flags_wf_at(old(self).cpu_offline_mp, old(self).cpu_arr, flags_ptr);
             assert(old(lctx).lock_entry_contains(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id))) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
             assert(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().wlocked_by(old(lctx))) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         }
